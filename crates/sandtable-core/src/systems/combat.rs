@@ -26,17 +26,36 @@ pub struct Monster {
 }
 
 /// 由配置计算第 tier 层怪物。
+///
+/// 数值形状二选一(文档 21 章):`tier_table` 给出时按层取值,行内产出缺省
+/// 回退几何;否则按第 0 层 × 增长率几何推导。表模式下 tier 越界(tier ≥ 表长)
+/// 同样回退几何,供 `validate` 之外的调用兜底。
 pub fn monster_of(cfg: &SimConfig, tier: u32) -> Monster {
     let d = &cfg.dungeon;
+    if let Some(rows) = &d.tier_table {
+        if let Some(r) = rows.get(tier as usize) {
+            let rg = d.reward_gold_growth.powi(tier as i32);
+            let rx = d.reward_xp_growth.powi(tier as i32);
+            return Monster {
+                tier,
+                hp: r.hp,
+                attack: r.attack,
+                defense: r.defense,
+                gold: r.gold.unwrap_or((d.reward_gold as f64 * rg) as i64),
+                xp: r.xp.unwrap_or((d.reward_xp as f64 * rx) as i64),
+            };
+        }
+    }
     let g = d.tier_growth.powi(tier as i32);
-    let rg = d.reward_growth.powi(tier as i32);
+    let rg = d.reward_gold_growth.powi(tier as i32);
+    let rx = d.reward_xp_growth.powi(tier as i32);
     Monster {
         tier,
         hp: (d.m_hp as f64 * g) as i64,
         attack: (d.m_attack as f64 * g) as i64,
         defense: (d.m_defense as f64 * g) as i64,
         gold: (d.reward_gold as f64 * rg) as i64,
-        xp: (d.reward_xp as f64 * rg) as i64,
+        xp: (d.reward_xp as f64 * rx) as i64,
     }
 }
 

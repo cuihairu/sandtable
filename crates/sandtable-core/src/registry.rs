@@ -21,6 +21,8 @@ pub enum ParamKind {
     Mix,
     /// 公式表达式(编译与白名单校验交给 [`crate::formula`])
     Expr,
+    /// 结构参数(如逐层数组):注册在案供校验与提示,不进数值通道
+    Table,
 }
 
 /// 单个参数的注册项。
@@ -72,7 +74,24 @@ const MODEL: &[ParamSpec] = &[
     spec("model.dungeon.tier_growth", F64, "1.5", "每层怪物数值倍率"),
     spec("model.dungeon.reward_gold", I64, "40", "第 0 层金币产出"),
     spec("model.dungeon.reward_xp", I64, "45", "第 0 层经验产出"),
-    spec("model.dungeon.reward_growth", F64, "1.4", "每层产出倍率"),
+    spec(
+        "model.dungeon.reward_gold_growth",
+        F64,
+        "1.4",
+        "每层金币产出倍率",
+    ),
+    spec(
+        "model.dungeon.reward_xp_growth",
+        F64,
+        "1.4",
+        "每层经验产出倍率",
+    ),
+    spec(
+        "model.dungeon.tier_table",
+        Table,
+        "—",
+        "逐层怪物表(给出时覆盖几何推导,长度须等于 tiers)",
+    ),
     spec(
         "model.behavior.casual.sessions_int",
         U32,
@@ -180,7 +199,7 @@ const MODEL: &[ParamSpec] = &[
     spec("model.churn.stall_days", U32, "2", "连续无增长天数判停滞"),
 ];
 
-use ParamKind::{Dur, Expr, Mix, F64, I64, U32, U64};
+use ParamKind::{Dur, Expr, Mix, Table, F64, I64, U32, U64};
 
 const fn spec(
     path: &'static str,
@@ -249,6 +268,11 @@ const SECTIONS: &[&str] = &[
     "model.churn",
 ];
 
+/// 遗留路径:只放行 YAML 加载(serde 侧按遗留语义映射,见
+/// [`crate::config::DungeonConfigRaw`]),不进注册表数值通道(不可 sweep /
+/// 不进参数表)。
+const LEGACY_PATHS: &[&str] = &["model.dungeon.reward_growth"];
+
 /// 校验 YAML 树:根键、节形状、叶路径。类型交给 serde,范围交给 validate。
 pub fn check_tree(root: &Value) -> Result<(), Error> {
     let root_map = root
@@ -274,6 +298,8 @@ fn check_section(prefix: &str, v: &Value) -> Result<(), Error> {
         let path = format!("{prefix}.{key}");
         if SECTIONS.contains(&path.as_str()) {
             check_section(&path, sub)?;
+        } else if LEGACY_PATHS.contains(&path.as_str()) {
+            // 遗留字段:放行加载,不在数值通道(见 LEGACY_PATHS 注释)
         } else if lookup(&path).is_some() {
             // 标量参数,类型检查交给 serde
         } else {
@@ -307,7 +333,8 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.dungeon.tier_growth" => Ok(cfg.dungeon.tier_growth),
         "model.dungeon.reward_gold" => Ok(cfg.dungeon.reward_gold as f64),
         "model.dungeon.reward_xp" => Ok(cfg.dungeon.reward_xp as f64),
-        "model.dungeon.reward_growth" => Ok(cfg.dungeon.reward_growth),
+        "model.dungeon.reward_gold_growth" => Ok(cfg.dungeon.reward_gold_growth),
+        "model.dungeon.reward_xp_growth" => Ok(cfg.dungeon.reward_xp_growth),
         "model.behavior.casual.sessions_int" => Ok(cfg.behavior.casual.sessions_int as f64),
         "model.behavior.casual.sessions_frac" => Ok(cfg.behavior.casual.sessions_frac),
         "model.behavior.casual.p_dungeon" => Ok(cfg.behavior.casual.p_dungeon),
@@ -333,9 +360,9 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.churn.p_stall" => Ok(cfg.churn.p_stall),
         "model.churn.stall_days" => Ok(cfg.churn.stall_days as f64),
         // 非数值槽:与 apply_numeric 同口径
-        "scenario.duration" | "model.formulas.xp_needed" => Err(Error::Config(format!(
-            "{path}: 该参数不是数值,不可数值读取"
-        ))),
+        "scenario.duration" | "model.formulas.xp_needed" | "model.dungeon.tier_table" => Err(
+            Error::Config(format!("{path}: 该参数不是数值,不可数值读取")),
+        ),
         _ => Err(unknown(path)),
     }
 }
@@ -373,7 +400,8 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.dungeon.tier_growth" => cfg.dungeon.tier_growth = value,
         "model.dungeon.reward_gold" => cfg.dungeon.reward_gold = value.round() as i64,
         "model.dungeon.reward_xp" => cfg.dungeon.reward_xp = value.round() as i64,
-        "model.dungeon.reward_growth" => cfg.dungeon.reward_growth = value,
+        "model.dungeon.reward_gold_growth" => cfg.dungeon.reward_gold_growth = value,
+        "model.dungeon.reward_xp_growth" => cfg.dungeon.reward_xp_growth = value,
         "model.behavior.casual.sessions_int" => {
             cfg.behavior.casual.sessions_int = unsigned(value, "sessions_int")?.round() as u32
         }
@@ -418,8 +446,8 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.churn.stall_days" => {
             cfg.churn.stall_days = unsigned(value, "stall_days")?.round() as u32
         }
-        // 非数值槽:不可数值扫描(时长是字符串,公式是表达式)
-        "scenario.duration" | "model.formulas.xp_needed" => {
+        // 非数值槽:不可数值扫描(时长是字符串,公式是表达式,逐层表是数组)
+        "scenario.duration" | "model.formulas.xp_needed" | "model.dungeon.tier_table" => {
             return Err(Error::Config(format!(
                 "{path}: 该参数不是数值,不可数值扫描"
             )));

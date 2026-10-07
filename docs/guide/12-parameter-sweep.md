@@ -8,11 +8,11 @@ title: 12 · 参数扫描
 
 ```yaml
 parameters:
-  warrior.attack:
+  model.warrior.attack:
     min: 90
     max: 110
     step: 5
-  dungeon.reward:
+  model.dungeon.reward_gold:
     min: 100
     max: 200
     step: 20

@@ -31,25 +31,38 @@ model:
     max_rounds: 32
 
   dungeon:
-    # 关都八道馆 → 八层;tier t = 第 t 馆 ace 同级挑战(玩家等级 = ace 等级)
+    # 关都八道馆 → 八层;tier t = 第 t 馆 ace 同级挑战(pokered parties.asm 逐馆等级)
     tiers: 8
+    # —— 几何推导参数(逐层表给出时不参与;保留作 tier0 锚点与战力口径备查)——
     # tier0 = Brock 的 Onix @ L14(HP 33)×5;攻防为差值等效换算(docs 21):
     #   m_defense = 玩家 L14 攻 − 比值模型期望伤害 ×5 = 140 − 79 = 61
     #   m_attack  = 玩家 L14 防 + 被击期望 ×5 = 130 + 89 = 219
     m_hp: 165
     m_attack: 219
     m_defense: 61
-    # 综合战力(atk*2+def+hp/10)口径 t0→t7 几何拟合:(515.5→1669.5)^(1/7) ≈ 1.18;
-    # 三维真实比率 hp 1.26 / atk 1.16 / def 1.28,单参数只能拟合战力口径
-    # (防御序列锯齿 61→126→49→…→335)→ 阻力清单 #3
+    # 综合战力(atk*2+def+hp/10)口径 t0→t7 几何拟合:(515.5→1666.5)^(1/7) ≈ 1.18
     tier_growth: 1.18
+    # —— 逐层显式表(docs 21 阻力 #3 根治)——
+    # 每馆 ace 等级(pokered)× 图鉴种族值(Pokédex)× 差值等效换算(docs 21 公式),
+    # 三维锯齿形状逐格表达(防御 61→65→34→97→276→144→268→332);
+    # 行内 gold / xp 缺省 → 回退下方锚点几何
+    tier_table:
+      - { hp: 165, attack: 219, defense: 61 }   # Onix @14
+      - { hp: 280, attack: 314, defense: 65 }   # Starmie @21
+      - { hp: 310, attack: 359, defense: 34 }   # Raichu @24
+      - { hp: 425, attack: 418, defense: 97 }   # Victreebel @29
+      - { hp: 540, attack: 510, defense: 276 }  # Weezing @43
+      - { hp: 500, attack: 453, defense: 144 }  # Alakazam @43
+      - { hp: 705, attack: 572, defense: 268 }  # Arcanine @47
+      - { hp: 825, attack: 626, defense: 332 }  # Rhydon @50
     # 首馆奖金 ¥1,400(RB),1:1 锚定(消费环是假设层,不缩放)
     reward_gold: 1400
     # Gen1 经验 yield = floor(base_exp × level / 7);Onix base 108 → L14 = 216,×5
     reward_xp: 1080
-    # 经验曲线增速 (1457/216)^(1/7) ≈ 1.31(Rhydon yield 1457 @ L50);
-    # 奖金真实增速 (7000/1400)^(1/7) ≈ 1.26,与经验共用本参数 → 阻力清单 #2
-    reward_growth: 1.31
+    # 双增长率(docs 21 阻力 #2 根治):奖金 (7000/1400)^(1/7) ≈ 1.26,
+    # 经验 (1457/216)^(1/7) ≈ 1.31(首馆锚点 + 末馆端点定形,中段按几何)
+    reward_gold_growth: 1.26
+    reward_xp_growth: 1.31
 
   behavior: # sandtable 假设层,维持默认(宝可梦无会话结构)
     casual: { p_dungeon: 0.7, p_upgrade: 0.2, sessions_frac: 0.5, sessions_int: 1 }

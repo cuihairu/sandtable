@@ -30,7 +30,8 @@ model:
     tier_growth: 1.5
     reward_gold: 40
     reward_xp: 45
-    reward_growth: 1.4
+    reward_gold_growth: 1.4
+    reward_xp_growth: 1.4
 
   behavior:
     casual: { sessions_int: 1, sessions_frac: 0.5, p_dungeon: 0.7, p_upgrade: 0.2 }

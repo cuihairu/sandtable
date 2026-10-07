@@ -80,9 +80,28 @@ impl Default for CombatConfig {
     }
 }
 
+/// 逐层怪物数值一行(`tier_table` 模式,文档 21 章:逐层显式数组)。
+///
+/// `gold / xp` 缺省时该层产出回退几何阶梯(第 0 层 × 各自增长率),
+/// 便于只显式表达三维数值形状、产出仍走锚点几何。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct TierRow {
+    pub hp: i64,
+    pub attack: i64,
+    pub defense: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gold: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub xp: Option<i64>,
+}
+
 /// 怪物 / 副本层数常量。
+///
+/// 数值形状二选一:逐层显式表(`tier_table`,给出时覆盖几何推导)或
+/// 第 0 层 × 增长率几何推导;产出(gold / xp)增长率各自独立
+/// (文档 21 阻力 #2/#3:奖金与经验曲线增速不同,三维形状可旋转)。
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(from = "DungeonConfigRaw")]
 pub struct DungeonConfig {
     /// 层数(0 起)
     pub tiers: u32,
@@ -92,10 +111,16 @@ pub struct DungeonConfig {
     pub m_defense: i64,
     /// 每层成长倍率(hp / attack / defense 同倍率)
     pub tier_growth: f64,
-    /// 第 0 层产出:gold / xp(随层数按 reward_growth 增长)
+    /// 第 0 层产出:gold / xp(随层数按各自增长率增长)
     pub reward_gold: i64,
     pub reward_xp: i64,
-    pub reward_growth: f64,
+    /// 金币逐层增长率
+    pub reward_gold_growth: f64,
+    /// 经验逐层增长率
+    pub reward_xp_growth: f64,
+    /// 逐层显式表(长度必须等于 tiers;`validate` 把关)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier_table: Option<Vec<TierRow>>,
 }
 
 impl Default for DungeonConfig {
@@ -109,7 +134,65 @@ impl Default for DungeonConfig {
             tier_growth: 1.5,
             reward_gold: 40,
             reward_xp: 45,
-            reward_growth: 1.4,
+            reward_gold_growth: 1.4,
+            reward_xp_growth: 1.4,
+            tier_table: None,
+        }
+    }
+}
+
+/// 反序列化中间形态:承接遗留字段 `reward_growth`(拆分前 gold / xp 共用
+/// 一档增长率)。旧配置载入语义不变(同时作用于两个新字段);新字段显式
+/// 给出时优先于遗留字段。
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+struct DungeonConfigRaw {
+    tiers: u32,
+    m_hp: i64,
+    m_attack: i64,
+    m_defense: i64,
+    tier_growth: f64,
+    reward_gold: i64,
+    reward_xp: i64,
+    reward_gold_growth: Option<f64>,
+    reward_xp_growth: Option<f64>,
+    reward_growth: Option<f64>,
+    tier_table: Option<Vec<TierRow>>,
+}
+
+impl Default for DungeonConfigRaw {
+    fn default() -> Self {
+        let d = DungeonConfig::default();
+        Self {
+            tiers: d.tiers,
+            m_hp: d.m_hp,
+            m_attack: d.m_attack,
+            m_defense: d.m_defense,
+            tier_growth: d.tier_growth,
+            reward_gold: d.reward_gold,
+            reward_xp: d.reward_xp,
+            reward_gold_growth: None,
+            reward_xp_growth: None,
+            reward_growth: None,
+            tier_table: None,
+        }
+    }
+}
+
+impl From<DungeonConfigRaw> for DungeonConfig {
+    fn from(r: DungeonConfigRaw) -> Self {
+        let legacy = r.reward_growth;
+        Self {
+            tiers: r.tiers,
+            m_hp: r.m_hp,
+            m_attack: r.m_attack,
+            m_defense: r.m_defense,
+            tier_growth: r.tier_growth,
+            reward_gold: r.reward_gold,
+            reward_xp: r.reward_xp,
+            reward_gold_growth: r.reward_gold_growth.or(legacy).unwrap_or(1.4),
+            reward_xp_growth: r.reward_xp_growth.or(legacy).unwrap_or(1.4),
+            tier_table: r.tier_table,
         }
     }
 }
@@ -381,6 +464,21 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
     }
     if cfg.dungeon.tiers == 0 || cfg.dungeon.tiers > 64 {
         return Err(Error::Config("tiers 必须在 1..=64".into()));
+    }
+    if let Some(rows) = &cfg.dungeon.tier_table {
+        if rows.is_empty() || rows.len() > 64 {
+            return Err(Error::Config("tier_table 长度必须在 1..=64".into()));
+        }
+        if rows.len() != cfg.dungeon.tiers as usize {
+            return Err(Error::Config(format!(
+                "tier_table 长度 {} 与 tiers {} 不一致(表模式下层数由数组长度决定)",
+                rows.len(),
+                cfg.dungeon.tiers
+            )));
+        }
+        if rows.iter().any(|r| r.hp <= 0) {
+            return Err(Error::Config("tier_table 每层 hp 必须为正".into()));
+        }
     }
     if cfg.churn.p_stall < cfg.churn.p_base {
         return Err(Error::Config("p_stall 必须不小于 p_base".into()));

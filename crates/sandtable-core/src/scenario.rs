@@ -327,7 +327,8 @@ model:
     tier_growth: {tier_growth}
     reward_gold: {reward_gold}
     reward_xp: {reward_xp}
-    reward_growth: {reward_growth}
+    reward_gold_growth: {reward_gold_growth}
+    reward_xp_growth: {reward_xp_growth}
 
   behavior:
     casual: {{ sessions_int: {ci_casual}, sessions_frac: {cf_casual}, p_dungeon: {pd_casual}, p_upgrade: {pu_casual} }}
@@ -374,7 +375,8 @@ model:
         tier_growth = d.dungeon.tier_growth,
         reward_gold = d.dungeon.reward_gold,
         reward_xp = d.dungeon.reward_xp,
-        reward_growth = d.dungeon.reward_growth,
+        reward_gold_growth = d.dungeon.reward_gold_growth,
+        reward_xp_growth = d.dungeon.reward_xp_growth,
         ci_casual = b(crate::config::Cohort::Casual).sessions_int,
         cf_casual = b(crate::config::Cohort::Casual).sessions_frac,
         pd_casual = b(crate::config::Cohort::Casual).p_dungeon,
@@ -554,6 +556,83 @@ model:
     fn 示例模板可加载() {
         let cfg = load_str(&example_yaml()).unwrap();
         assert_eq!(config_hash(&cfg), config_hash(&SimConfig::default()));
+    }
+
+    /// 遗留字段 reward_growth(文档 21 阻力 #2 拆分前写法):载入时同时
+    /// 填入 gold / xp 两个新字段(旧配置语义不变);新字段显式给出时优先;
+    /// 遗留字段不进注册表数值通道。
+    #[test]
+    fn 遗留_reward_growth_映射双增长率() {
+        let cfg = load_str(
+            r#"schema_version: "1"
+model:
+  dungeon:
+    reward_growth: 1.31
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.dungeon.reward_gold_growth, 1.31);
+        assert_eq!(cfg.dungeon.reward_xp_growth, 1.31);
+
+        let cfg = load_str(
+            r#"schema_version: "1"
+model:
+  dungeon:
+    reward_growth: 1.31
+    reward_gold_growth: 1.26
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.dungeon.reward_gold_growth, 1.26);
+        assert_eq!(cfg.dungeon.reward_xp_growth, 1.31);
+
+        assert!(crate::registry::lookup("model.dungeon.reward_growth").is_none());
+    }
+
+    /// 逐层数组(文档 21 阻力 #3):三维逐格覆盖几何推导;产出缺省回退几何;
+    /// 层数与数组长度必须一致,hp 须为正。
+    #[test]
+    fn tier_table_逐层覆盖与校验() {
+        let yaml = |tiers: u32| {
+            format!(
+                r#"schema_version: "1"
+model:
+  dungeon:
+    tiers: {tiers}
+    reward_gold: 100
+    reward_gold_growth: 1.5
+    tier_table:
+      - {{hp: 100, attack: 50, defense: 10}}
+      - {{hp: 200, attack: 60, defense: 20, gold: 999}}
+"#
+            )
+        };
+        let cfg = load_str(&yaml(2)).unwrap();
+        let m0 = crate::systems::combat::monster_of(&cfg, 0);
+        let m1 = crate::systems::combat::monster_of(&cfg, 1);
+        assert_eq!((m0.hp, m0.attack, m0.defense), (100, 50, 10));
+        assert_eq!((m1.hp, m1.attack, m1.defense), (200, 60, 20));
+        // 产出缺省回退几何,显式行取表值
+        assert_eq!(m0.gold, 100);
+        assert_eq!(m1.gold, 999);
+        // 表长越界回退几何(防御性;validate 已保证表长 = tiers)
+        let m5 = crate::systems::combat::monster_of(&cfg, 5);
+        assert_eq!(m5.hp, (300.0 * 1.5f64.powi(5)) as i64);
+
+        let err = load_str(&yaml(8)).unwrap_err();
+        assert!(err.to_string().contains("tier_table"), "{err}");
+
+        let err = load_str(
+            r#"schema_version: "1"
+model:
+  dungeon:
+    tiers: 1
+    tier_table:
+      - {hp: 0, attack: 50, defense: 10}
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("hp"), "{err}");
     }
 
     /// 实验文件(docs 10/12 章):scenario + model + sweep 三节齐全,
