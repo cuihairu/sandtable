@@ -35,7 +35,7 @@ pub enum SweepMode {
 }
 
 /// 一个扫描参数的范围(注册表路径寻址)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParamRange {
     pub path: String,
     pub min: f64,
@@ -76,7 +76,7 @@ pub enum TargetKind {
 }
 
 /// 一条约束:某指标的 CI₉₅ 应落在 [min, max] 内(None = 该侧不设界)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
     pub metric: MetricKey,
     pub min: Option<f64>,
@@ -105,7 +105,7 @@ impl Target {
 }
 
 /// 约束判定三态(文档 13 章):看 CI 与约束区间的相对位置。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConstraintVerdict {
     /// CI 完全落在约束区间内
@@ -140,7 +140,8 @@ pub fn judge(target: &Target, s: &SampleStats) -> ConstraintVerdict {
 }
 
 /// 扫描实验定义(Experiment 的 sweep 节;YAML 面在 CLI 加载)。
-#[derive(Debug, Clone, Serialize)]
+/// Deserialize 供 CLI 从 sweep.json 回读(推荐层复用扫描产物)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SweepSpec {
     pub mode: SweepMode,
     /// 网格各维步长范围(Random 模式只用 min/max)
@@ -258,7 +259,7 @@ impl SweepSpec {
 }
 
 /// 单个候选的结果(文档 12 章:失败候选标注,不静默丢弃)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CandidateResult {
     /// 候选参数(有序,输出稳定)
     pub values: BTreeMap<String, f64>,
@@ -270,16 +271,18 @@ pub struct CandidateResult {
     pub target_outcomes: Vec<TargetOutcome>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CandidateStatus {
     Ok,
     ConfigError(String),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetOutcome {
-    pub metric: &'static str,
+    /// 指标名(snake_case,与 [`crate::experiment::MetricKey::name`] 一致;
+    /// String 而非 &'static str,让 sweep.json 可回读)
+    pub metric: String,
     pub kind: TargetKind,
     pub min: Option<f64>,
     pub max: Option<f64>,
@@ -331,7 +334,7 @@ pub fn run_candidate(
         .iter()
         .filter_map(|t| {
             stat_of(t.metric).map(|s| TargetOutcome {
-                metric: t.metric.name(),
+                metric: t.metric.name().to_string(),
                 kind: t.kind,
                 min: t.min,
                 max: t.max,

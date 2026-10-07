@@ -8,7 +8,7 @@
 //! A/B 比较:两臂同 replicate 用同一种子(CRN 配对),主报告配对差值的
 //! 置信区间与标准化效应量 d = Δ / pooled_sd。
 
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// t(0.975, df),df = 1..=30;越界用 1.96。
 const T975: [f64; 30] = [
@@ -29,7 +29,7 @@ pub fn t_critical_975(df: usize) -> f64 {
 }
 
 /// 一组 replicate 值的摘要统计。
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SampleStats {
     pub n: usize,
     pub mean: f64,
@@ -149,7 +149,11 @@ pub fn compare(metric: &str, arm_a: &[f64], arm_b: &[f64]) -> Comparison {
 }
 
 /// 可从 RunMetrics 提取的指标(比较的主指标)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+///
+/// 序列化走 [`MetricKey::name`] / [`MetricKey::parse`](snake_case,如
+/// `win_rate`),与 CSV 列名、sweep.json 里的约束指标名一致;反序列化
+/// 接受 parse 的全部别名。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetricKey {
     /// D7 留存(默认主指标)
     RetentionD7,
@@ -207,6 +211,28 @@ impl MetricKey {
             MetricKey::PowerP50Final => m.power_snapshots.last().map(|s| s.p50),
             MetricKey::ChurnRate => Some(m.churn_rate_total),
         }
+    }
+}
+
+impl Serialize for MetricKey {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.name())
+    }
+}
+
+impl<'de> Deserialize<'de> for MetricKey {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        MetricKey::parse(&s).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "未知指标 {s}(可选:{})",
+                MetricKey::ALL
+                    .iter()
+                    .map(|k| k.name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        })
     }
 }
 

@@ -47,6 +47,18 @@ pub enum SensNote {
     ZeroBaseline,
 }
 
+impl SensNote {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SensNote::Ok => "ok",
+            SensNote::NoBracket => "no_bracket",
+            SensNote::NotIsolated => "not_isolated",
+            SensNote::MissingMetric => "missing_metric",
+            SensNote::ZeroBaseline => "zero_baseline",
+        }
+    }
+}
+
 /// 一条弹性:参数 p 对指标 Y,在基线邻域。
 #[derive(Debug, Clone, Serialize)]
 pub struct Elasticity {
