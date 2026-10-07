@@ -42,6 +42,12 @@ jobs:
           cargo check -p sandtable-core --target wasm32-unknown-unknown --features arrow
           cargo test -p sandtable-cli --features parquet
 
+      # Phase 3(文档 09 章):DuckDB 分析层以 feature 提供,bundled 静态构建
+      - name: DuckDB feature 门
+        run: |
+          cargo check -p sandtable-cli --features duckdb
+          cargo test -p sandtable-cli --features duckdb,parquet
+
       - name: 冒烟(1 万玩家 × 30 天 + A/B + 扫描)
         run: |
           cargo build --release

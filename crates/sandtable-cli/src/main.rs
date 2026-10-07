@@ -82,6 +82,19 @@ enum Cmd {
         #[command(flatten)]
         over: Overrides,
     },
+    /// SQL 事后探索结果数据集(文档 09/10 章;feature duckdb)
+    #[cfg(feature = "duckdb")]
+    Query {
+        /// 输入数据文件(CSV / Parquet);视图名 = 文件名词根
+        #[arg(required = true)]
+        inputs: Vec<PathBuf>,
+        /// SQL 查询(以视图名引用输入)
+        #[arg(long)]
+        sql: String,
+        /// 结果以 CSV 落盘(缺省表格输出 stdout)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// 生成示例场景骨架(默认值 + 注释,可直接编辑运行)
     Init {
         /// 目标路径(缺省 ./scenario.yaml)
@@ -269,6 +282,25 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
             }
             Err(code) => Ok(std::process::ExitCode::from(code as u8)),
         },
+        #[cfg(feature = "duckdb")]
+        Cmd::Query { inputs, sql, out } => {
+            let rows = run_query(&inputs, &sql)?;
+            match out {
+                Some(path) => {
+                    let mut csv = csv_row(rows.0.iter().map(String::as_str));
+                    for r in &rows.1 {
+                        csv.push_str(&csv_row(r.iter().map(String::as_str)));
+                    }
+                    if let Some(parent) = path.parent() {
+                        fs::create_dir_all(parent).context("创建输出目录失败")?;
+                    }
+                    fs::write(&path, csv).with_context(|| format!("写 {} 失败", path.display()))?;
+                    println!("已写出 {} 行 → {}", rows.1.len(), path.display());
+                }
+                None => print_table(&rows),
+            }
+            Ok(std::process::ExitCode::SUCCESS)
+        }
         Cmd::Init { path, force } => {
             let path = path.unwrap_or_else(|| PathBuf::from("scenario.yaml"));
             if path.exists() && !force {
@@ -467,6 +499,127 @@ fn status_str(status: &core::sweep::CandidateStatus) -> &'static str {
         core::sweep::CandidateStatus::Ok => "ok",
         core::sweep::CandidateStatus::ConfigError(_) => "config_error",
     }
+}
+
+/// SQL 查询结果:(列名, 行)。
+#[cfg(feature = "duckdb")]
+type QueryResult = (Vec<String>, Vec<Vec<String>>);
+
+/// 对已落盘的结果数据集跑 SQL(文档 09 章红线:DuckDB 只读结果,
+/// 不进仿真路径)。输入按词根注册为视图:summary.csv → summary。
+#[cfg(feature = "duckdb")]
+fn run_query(inputs: &[PathBuf], sql: &str) -> anyhow::Result<QueryResult> {
+    use duckdb::Connection;
+
+    let conn = Connection::open_in_memory().context("打开 DuckDB 内存库失败")?;
+    for path in inputs {
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("无法从 {} 取视图名", path.display()))?;
+        if !is_ident(stem) {
+            anyhow::bail!("视图名 {stem:?} 非法:文件名词根须为 [A-Za-z_][A-Za-z0-9_]*");
+        }
+        // 路径进 DDL 字面量:单引号翻倍(视图名已在 is_ident 拦住)
+        let p = path.to_string_lossy().replace('\'', "''");
+        let ddl = match path.extension().and_then(|e| e.to_str()) {
+            Some("parquet") => format!("CREATE VIEW {stem} AS SELECT * FROM read_parquet('{p}')"),
+            _ => format!("CREATE VIEW {stem} AS SELECT * FROM read_csv_auto('{p}', header = true)"),
+        };
+        conn.execute_batch(&ddl)
+            .with_context(|| format!("注册视图 {stem} 失败({})", path.display()))?;
+    }
+
+    // 列名取自 DESCRIBE(计划期元数据,不执行查询体):prepare 阶段的
+    // C API 不暴露结果列,column_names 要执行后才可用
+    let sql = sql.trim().trim_end_matches(';');
+    let mut desc = conn.prepare(&format!("DESCRIBE {sql}"))?;
+    let mut dcur = desc.query([])?;
+    let mut names = Vec::new();
+    while let Some(r) = dcur.next()? {
+        let n: String = r.get(0)?;
+        names.push(n);
+    }
+
+    let mut stmt = conn.prepare(sql)?;
+    let ncols = names.len();
+    let mut rows = Vec::new();
+    let mut cur = stmt.query([])?;
+    while let Some(r) = cur.next()? {
+        let mut row = Vec::with_capacity(ncols);
+        for i in 0..ncols {
+            row.push(cell_string(r, i)?);
+        }
+        rows.push(row);
+    }
+    Ok((names, rows))
+}
+
+/// 视图名须是合法标识符(拼进 DDL,注入在注册处拦截)。
+#[cfg(feature = "duckdb")]
+fn is_ident(s: &str) -> bool {
+    let mut cs = s.chars();
+    matches!(cs.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// 单元格转显示文本:数值/文本直转,复合类型走 Debug。
+#[cfg(feature = "duckdb")]
+fn cell_string(r: &duckdb::Row<'_>, i: usize) -> anyhow::Result<String> {
+    use duckdb::types::ValueRef;
+    let s = match r.get_ref(i)? {
+        ValueRef::Null => String::new(),
+        ValueRef::Boolean(v) => v.to_string(),
+        ValueRef::TinyInt(v) => v.to_string(),
+        ValueRef::SmallInt(v) => v.to_string(),
+        ValueRef::Int(v) => v.to_string(),
+        ValueRef::BigInt(v) => v.to_string(),
+        ValueRef::HugeInt(v) => v.to_string(),
+        ValueRef::UTinyInt(v) => v.to_string(),
+        ValueRef::USmallInt(v) => v.to_string(),
+        ValueRef::UInt(v) => v.to_string(),
+        ValueRef::UBigInt(v) => v.to_string(),
+        ValueRef::UHugeInt(v) => v.to_string(),
+        ValueRef::Float(v) => v.to_string(),
+        ValueRef::Double(v) => v.to_string(),
+        ValueRef::Text(t) => String::from_utf8_lossy(t).into_owned(),
+        ValueRef::Date32(v) => v.to_string(),
+        other => format!("{other:?}"),
+    };
+    Ok(s)
+}
+
+/// 简单表格输出:按列宽对齐(终端人读,面向 stdout)。
+#[cfg(feature = "duckdb")]
+fn print_table((names, rows): &QueryResult) {
+    if names.is_empty() {
+        return;
+    }
+    let mut widths: Vec<usize> = names.iter().map(|n| n.chars().count()).collect();
+    for r in rows {
+        for (i, c) in r.iter().enumerate() {
+            widths[i] = widths[i].max(c.chars().count());
+        }
+    }
+    let line = |cells: &[String]| {
+        cells
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!("{c:>width$}", width = widths[i]))
+            .collect::<Vec<_>>()
+            .join("  ")
+    };
+    println!("{}", line(names));
+    let rule = widths
+        .iter()
+        .map(|w| "-".repeat(*w))
+        .collect::<Vec<_>>()
+        .join("  ");
+    println!("{rule}");
+    for r in rows {
+        println!("{}", line(r));
+    }
+    println!("({} 行)", rows.len());
 }
 
 /// 候选清单(文档 12 章:参数组合 + 状态;失败候选不静默丢弃)。

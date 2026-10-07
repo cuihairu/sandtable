@@ -15,6 +15,7 @@ title: 10 · CLI
 | `sandtable validate` | 校验配置(注册表、schema、公式) | **MVP** |
 | `sandtable init` | 生成示例配置骨架 | MVP 顺带 |
 | `sandtable sweep` | 参数扫描实验 | Phase 3 |
+| `sandtable query` | SQL 事后探索结果数据集(DuckDB) | Phase 3 |
 | `sandtable report` | 生成 HTML 报告 | Phase 5 |
 
 ## 用法
@@ -23,8 +24,27 @@ title: 10 · CLI
 sandtable simulate scenario.yaml
 sandtable sweep experiment.yaml
 sandtable compare result-a result-b
+sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate = 'PASS'"
 sandtable report experiment/
 ```
+
+### query(Phase 3,feature `duckdb`)
+
+`sandtable query` 是[分析层](./09-data-output)的壳:对已落盘的结果数据集(CSV / Parquet)跑 SQL,仿真路径完全不经过数据库。输入文件按文件名词根注册为同名的 DuckDB 视图,SQL 直接引用:
+
+```bash
+# CSV:扫描汇总表的失败候选
+sandtable query sweep-out/summary.csv \
+  --sql "SELECT candidate, error FROM summary WHERE status = 'config_error'"
+
+# Parquet:第 7 天分位战力(feature parquet 产出的数据集)
+sandtable query out/day_stats.parquet \
+  --sql "SELECT day, win_rate, sink_ratio FROM day_stats WHERE day <= 7 ORDER BY day"
+```
+
+- 多个输入文件可同时注册,视图名 = 文件名词根(如 `summary.csv` → `summary`);
+- 结果默认表格输出到 stdout;`--out result.csv` 时以 CSV 落盘;
+- DuckDB 以 feature `duckdb` 提供(bundled 静态构建),默认构建不含——分析依赖重,不背在最小构建上。
 
 ## 输出约定
 
