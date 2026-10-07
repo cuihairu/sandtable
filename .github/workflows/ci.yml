@@ -48,7 +48,7 @@ jobs:
           cargo check -p sandtable-cli --features duckdb
           cargo test -p sandtable-cli --features duckdb,parquet
 
-      - name: 冒烟(1 万玩家 × 30 天 + A/B + 扫描)
+      - name: 冒烟(1 万玩家 × 30 天 + A/B + 扫描 + 推荐 + 报告)
         run: |
           cargo build --release
           ./target/release/sandtable validate --players 10000 --days 30
@@ -65,3 +65,6 @@ jobs:
               - {metric: win_rate, min: 0.0, max: 1.0}
           YAML
           ./target/release/sandtable sweep /tmp/exp.yaml --out /tmp/sweep
+          ./target/release/sandtable recommend /tmp/exp.yaml /tmp/sweep --out /tmp/sweep/rec.json
+          ./target/release/sandtable report /tmp/smoke /tmp/sweep /tmp/ab --out /tmp/report.html
+          grep -q "<svg" /tmp/report.html
