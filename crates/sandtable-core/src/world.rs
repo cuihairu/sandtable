@@ -68,9 +68,9 @@ impl World {
             let mut actor = Actor {
                 id,
                 cohort,
-                attack: config.init_attack,
-                defense: config.init_defense,
-                hp: config.init_hp,
+                attack: config.warrior.attack,
+                defense: config.warrior.defense,
+                hp: config.warrior.hp,
                 level: 1,
                 xp_into_level: 0,
                 upgrades: 0,

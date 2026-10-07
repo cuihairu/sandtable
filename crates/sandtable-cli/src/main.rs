@@ -1,10 +1,10 @@
-//! Sandtable CLI(Phase 1 壳层)。
+//! Sandtable CLI(壳层,文档 10 章)。
 //!
 //! 职责:参数解析、文件 I/O、环境 meta;仿真与统计全部在 sandtable-core。
-//! 退出码约定(文档 10 章):0 成功;1 运行失败;2 配置 / 参数错误。
+//! 退出码约定:0 成功;1 运行失败;2 配置 / 参数错误。
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
@@ -15,7 +15,7 @@ use sandtable_core as core;
 #[command(
     name = "sandtable",
     version,
-    about = "配置驱动的游戏系统数字沙盘(Phase 1:硬编码最小 RPG 闭环)"
+    about = "配置驱动的游戏系统数字沙盘(Phase 2:YAML 场景配置 + 硬编码最小 RPG)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -24,8 +24,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// 运行仿真(默认硬编码最小 RPG,参数可覆盖)
+    /// 运行仿真;SCENARIO 为 YAML 场景文件(缺省用内置默认值)
     Simulate {
+        /// YAML 场景文件
+        scenario: Option<PathBuf>,
         #[command(flatten)]
         over: Overrides,
         /// replicate 数(默认 1;增大可平滑指标)
@@ -35,8 +37,10 @@ enum Cmd {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// A/B 比较:两臂仅初始攻击力不同,同种子配对(CRN)
+    /// A/B 比较:两臂仅 warrior.attack 不同,同种子配对(CRN)
     Compare {
+        /// YAML 场景文件
+        scenario: Option<PathBuf>,
         #[command(flatten)]
         over: Overrides,
         #[arg(long, default_value_t = 100)]
@@ -53,25 +57,35 @@ enum Cmd {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// 校验参数组合是否合法
+    /// 校验场景文件 / 参数组合是否合法
     Validate {
+        /// YAML 场景文件
+        scenario: Option<PathBuf>,
         #[command(flatten)]
         over: Overrides,
+    },
+    /// 生成示例场景骨架(默认值 + 注释,可直接编辑运行)
+    Init {
+        /// 目标路径(缺省 ./scenario.yaml)
+        path: Option<PathBuf>,
+        /// 已存在时覆盖
+        #[arg(long)]
+        force: bool,
     },
 }
 
 #[derive(Args)]
 struct Overrides {
-    /// 玩家数
+    /// 玩家数(scenario.population)
     #[arg(long)]
     players: Option<u32>,
-    /// 天数
+    /// 天数(scenario.duration)
     #[arg(long)]
     days: Option<u32>,
-    /// 基础种子
+    /// 基础种子(scenario.seed)
     #[arg(long)]
     seed: Option<u64>,
-    /// 初始攻击力
+    /// 初始攻击力(model.warrior.attack)
     #[arg(long)]
     init_attack: Option<i64>,
 }
@@ -88,7 +102,7 @@ impl Overrides {
             cfg.base_seed = v;
         }
         if let Some(v) = self.init_attack {
-            cfg.init_attack = v;
+            cfg.warrior.attack = v;
         }
     }
 }
@@ -103,35 +117,67 @@ fn main() -> std::process::ExitCode {
     }
 }
 
+/// 配置错误以退出码 2 报告(文档 10 章),其余走 anyhow(退出码 1)。
+fn load_config(scenario: Option<&Path>, over: &Overrides) -> Result<core::config::SimConfig, i32> {
+    let mut cfg = match scenario {
+        Some(path) => {
+            let yaml = fs::read_to_string(path).map_err(|e| {
+                eprintln!("配置错误: 读取 {} 失败: {e}", path.display());
+                2
+            })?;
+            core::scenario::load_str(&yaml).map_err(|e| {
+                eprintln!("配置错误: {e}");
+                2
+            })?
+        }
+        None => core::config::SimConfig::default(),
+    };
+    over.apply(&mut cfg);
+    core::config::validate(&cfg).map_err(|e| {
+        eprintln!("配置错误: {e}");
+        2
+    })?;
+    Ok(cfg)
+}
+
 fn run() -> anyhow::Result<std::process::ExitCode> {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::Validate { over } => {
-            let cfg = build_config(&over);
-            match core::config::validate(&cfg) {
-                Ok(()) => {
-                    println!(
-                        "配置有效。config_hash = {}",
-                        core::config::config_hash(&cfg)
-                    );
-                    Ok(std::process::ExitCode::SUCCESS)
-                }
-                Err(e) => {
-                    eprintln!("配置无效: {e}");
-                    Ok(std::process::ExitCode::from(2))
-                }
+        Cmd::Validate { scenario, over } => match load_config(scenario.as_deref(), &over) {
+            Ok(cfg) => {
+                println!(
+                    "配置有效。config_hash = {}",
+                    core::config::config_hash(&cfg)
+                );
+                Ok(std::process::ExitCode::SUCCESS)
             }
+            Err(code) => Ok(std::process::ExitCode::from(code as u8)),
+        },
+        Cmd::Init { path, force } => {
+            let path = path.unwrap_or_else(|| PathBuf::from("scenario.yaml"));
+            if path.exists() && !force {
+                eprintln!("参数错误: {} 已存在(加 --force 覆盖)", path.display());
+                return Ok(std::process::ExitCode::from(2));
+            }
+            fs::write(&path, core::scenario::example_yaml()).context("写入场景模板失败")?;
+            println!(
+                "已生成 {} ——编辑后:sandtable validate {};sandtable simulate {}",
+                path.display(),
+                path.display(),
+                path.display()
+            );
+            Ok(std::process::ExitCode::SUCCESS)
         }
         Cmd::Simulate {
+            scenario,
             over,
             replicates,
             out,
         } => {
-            let cfg = build_config(&over);
-            if let Err(e) = core::config::validate(&cfg) {
-                eprintln!("配置无效: {e}");
-                return Ok(std::process::ExitCode::from(2));
-            }
+            let cfg = match load_config(scenario.as_deref(), &over) {
+                Ok(c) => c,
+                Err(code) => return Ok(std::process::ExitCode::from(code as u8)),
+            };
             let t0 = std::time::Instant::now();
             let results: Vec<core::metrics::RunMetrics> =
                 (0..replicates).map(|r| core::sim::run(&cfg, r)).collect();
@@ -172,6 +218,7 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
             Ok(std::process::ExitCode::SUCCESS)
         }
         Cmd::Compare {
+            scenario,
             over,
             attack_a,
             attack_b,
@@ -193,16 +240,14 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                     return Ok(std::process::ExitCode::from(2));
                 }
             };
-            let mut cfg_a = build_config(&over);
-            cfg_a.init_attack = attack_a;
-            let mut cfg_b = build_config(&over);
-            cfg_b.init_attack = attack_b;
-            for cfg in [&cfg_a, &cfg_b] {
-                if let Err(e) = core::config::validate(cfg) {
-                    eprintln!("配置无效: {e}");
-                    return Ok(std::process::ExitCode::from(2));
-                }
-            }
+            let base = match load_config(scenario.as_deref(), &over) {
+                Ok(c) => c,
+                Err(code) => return Ok(std::process::ExitCode::from(code as u8)),
+            };
+            let mut cfg_a = base.clone();
+            cfg_a.warrior.attack = attack_a;
+            let mut cfg_b = base.clone();
+            cfg_b.warrior.attack = attack_b;
 
             let t0 = std::time::Instant::now();
             let mut vals_a = Vec::with_capacity(replicates as usize);
@@ -252,12 +297,6 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
             Ok(std::process::ExitCode::SUCCESS)
         }
     }
-}
-
-fn build_config(over: &Overrides) -> core::config::SimConfig {
-    let mut cfg = core::config::SimConfig::default();
-    over.apply(&mut cfg);
-    cfg
 }
 
 fn meta_json() -> serde_json::Value {

@@ -2,7 +2,7 @@
 {
   "schema_version": "1",
   "model_version": "0.1.0",
-  "config_hash": "c8154994d9e02c8420ddd550350849ef8cfb6f3202c8f4e435b905aebb16a5d3",
+  "config_hash": "6601c854fcfd1ee5deb95d4e799164a21ef8daccb494d588b21371fea31e7946",
   "replicate": 0,
   "seed": 2024,
   "players": 200,
@@ -363,7 +363,7 @@
 }{
   "schema_version": "1",
   "model_version": "0.1.0",
-  "config_hash": "c8154994d9e02c8420ddd550350849ef8cfb6f3202c8f4e435b905aebb16a5d3",
+  "config_hash": "6601c854fcfd1ee5deb95d4e799164a21ef8daccb494d588b21371fea31e7946",
   "replicate": 1,
   "seed": 2025,
   "players": 200,

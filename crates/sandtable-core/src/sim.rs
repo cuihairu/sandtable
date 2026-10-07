@@ -195,10 +195,14 @@ mod tests {
             },
             ..SimConfig::default()
         };
-        cfg.behavior.sessions_int = [1; crate::config::COHORT_COUNT];
-        cfg.behavior.sessions_frac = [0.0; crate::config::COHORT_COUNT];
-        cfg.behavior.p_dungeon = [1.0; crate::config::COHORT_COUNT];
-        cfg.behavior.p_upgrade = [0.0; crate::config::COHORT_COUNT];
+        // 全分群只打副本、会话数固定 1(随机性被关掉后逐玩家可手算)
+        for c in crate::config::Cohort::ALL {
+            let b = cfg.behavior.for_cohort_mut(c);
+            b.sessions_int = 1;
+            b.sessions_frac = 0.0;
+            b.p_dungeon = 1.0;
+            b.p_upgrade = 0.0;
+        }
         let m = run(&cfg, 0);
         assert_eq!(m.day1_cohort, 1);
         // 选层:第 3 层需 31 轮(> 20 预算)被跳过,选到第 2 层
@@ -255,7 +259,7 @@ mod tests {
             ..SimConfig::default()
         };
         let mut arm_b = base.clone();
-        arm_b.init_attack = 105;
+        arm_b.warrior.attack = 105;
         let a = run(&base, 3);
         let b = run(&arm_b, 3);
         assert_eq!(a.seed, b.seed);
@@ -272,7 +276,7 @@ mod tests {
             ..SimConfig::default()
         };
         let mut arm_b = base.clone();
-        arm_b.init_attack = 400;
+        arm_b.warrior.attack = 400;
         for r in 0..3 {
             let a = run(&base, r);
             let b = run(&arm_b, r);
