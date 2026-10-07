@@ -12,7 +12,8 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - `replicates` 1–8,本地执行 `run_simulation`;
 - KPI 卡(D3/D7 留存、日胜率、总流失率、人均金币、人均战力)与 `config_hash`;
 - 按天曲线(日活跃 / 日胜率 / 金币存量 / 升级次数);
-- 分群表(casual / core / whale 的等级、金币、战力、流失)。
+- 分群表(casual / core / whale 的等级、金币、战力、流失);
+- **SQL 查询面板(DuckDB-Wasm)**:仿真产物装入内存表 `days`,任意 SQL 本地执行(结果表 + 按天数值列一键画线)。零外链——worker 与 wasm 都经 vite `?url` 本地打包,不经 CDN;mvp 单线程构建按需加载(39 MB 资产,打开查询才下载)。
 
 ## 绑定纪律
 

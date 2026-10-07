@@ -205,3 +205,11 @@ footer {
   border-top: 1px solid var(--border);
   padding-top: 12px;
 }
+
+.sql-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: start;
+  margin-bottom: 10px;
+}

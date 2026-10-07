@@ -2,6 +2,8 @@
 // 配置在浏览器编辑,WASM 内核本地执行,结果只在内存里出图。
 import { useMemo, useState } from 'react'
 import LineChart from './components/LineChart'
+import QueryPanel from './components/QueryPanel'
+import { loadDayStats, runQuery } from './lib/duck'
 import { PRESETS } from './lib/presets'
 import type { RunMetrics, SimOutput } from './lib/types'
 import { runSimulation } from './lib/wasm'
@@ -156,6 +158,16 @@ export default function App() {
                 ))}
               </tbody>
             </table>
+          </section>
+
+          <section className="panel">
+            <h2>SQL 查询(DuckDB 本地,表 days = replicate 1 按天数据)</h2>
+            <QueryPanel
+              run={async (sql) => {
+                await loadDayStats(out.config_hash, out.results[0].day_stats)
+                return runQuery(sql)
+              }}
+            />
           </section>
         </>
       )}
