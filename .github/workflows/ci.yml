@@ -36,9 +36,8 @@ jobs:
         run: cargo check -p sandtable-core --target wasm32-unknown-unknown
 
       # Phase 6(文档 18 章):wasm 绑定可构建出 pkg(核心在 wasm32 下完整可用)
-      - uses: jetli/wasm-pack-install@v0.4.0
-        with:
-          version: latest
+      - name: 安装 wasm-pack(官方预编译)
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: WASM 绑定构建门
         run: |
@@ -98,9 +97,8 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
 
       # Phase 6(文档 18 章):绑定 pkg 先行,前端类型对齐 + 打包即门禁
-      - uses: jetli/wasm-pack-install@v0.4.0
-        with:
-          version: latest
+      - name: 安装 wasm-pack(官方预编译)
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: 构建 wasm pkg(release)
         run: |
