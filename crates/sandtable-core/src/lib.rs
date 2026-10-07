@@ -11,6 +11,7 @@ pub mod config;
 pub mod experiment;
 pub mod export;
 pub mod formula;
+pub mod kernel;
 pub mod metrics;
 pub mod registry;
 pub mod rng;

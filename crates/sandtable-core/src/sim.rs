@@ -1,4 +1,10 @@
-//! 执行循环(文档 05 章分层时间模型的宏观层):以"天"为粒度的离散事件推进。
+//! 执行循环(文档 05 章分层时间模型的宏观层):以"天"为粒度的离散事件推进,
+//! 由通用内核([`crate::kernel`] 的 Clock / EventQueue / System)驱动。
+//!
+//! 事件调度(与 Phase 1 的双层 for 循环逐位对应):第 d 天依次入队
+//! `DayOpen(d)` → 每个玩家一个 `PlayerDay`(id 升序)→ `DayClose(d)`;
+//! 事件按 (tick, seq) 全序出队,出队序即入队序——重构不改行为,
+//! 黄金快照逐字节一致是验收线。
 //!
 //! 每个玩家每天的事件序列:
 //! 会话数抽样 → 逐会话动作选择(副本 / 强化 / 闲逛)→ 战斗解析结算 →
@@ -9,13 +15,25 @@
 //! 分群也按 replicate 种子派生,replicate 间独立,A/B 臂间同键可比(CRN)。
 
 use crate::config::{Cohort, SimConfig};
-use crate::metrics::{cohort_slice, RunAggregator, RunMetrics, SNAPSHOT_DAYS};
+use crate::kernel::{Clock, EventQueue, System};
+use crate::metrics::{cohort_slice, RunMetrics, SNAPSHOT_DAYS};
 use crate::rng::{DayRng, Purpose};
 use crate::systems::{
     behavior::{self, Action},
     churn, combat, progression,
 };
 use crate::world::World;
+
+/// 仿真事件(宏观层)。三类事件各有唯一订阅系统。
+#[derive(Debug, Clone, Copy)]
+enum SimEvent {
+    /// 日初:记录期初存活数(当日流失不影响当日 churn_rate 分母)
+    DayOpen { day: u32 },
+    /// 玩家日:一个玩家一天的全部行为与状态变更
+    PlayerDay { actor_id: u64, day: u32 },
+    /// 日结:存量 G(d)、Power 观测、快照日分布
+    DayClose { day: u32 },
+}
 
 /// 运行第 `replicate` 个 replicate(0 起),返回该次运行的完整指标。
 pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
@@ -29,96 +47,187 @@ pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
     let mut run_cfg = cfg.clone();
     run_cfg.base_seed = seed;
     let mut world = World::new(run_cfg);
-    let mut agg = RunAggregator::new(cfg);
 
+    // 一次性调度全部事件;(tick, seq) 全序保证出队序 = 逐日 id 升序的
+    // 老双层循环序(浮点聚合顺序不变,指标逐位一致)。
+    let mut queue = EventQueue::new();
     for day in 1..=cfg.days {
-        let alive_at_start = world.actors.iter().filter(|a| !a.churned).count() as u64;
+        queue.push(u64::from(day), SimEvent::DayOpen { day });
+        for id in 0..u64::from(cfg.players) {
+            queue.push(u64::from(day), SimEvent::PlayerDay { actor_id: id, day });
+        }
+        queue.push(u64::from(day), SimEvent::DayClose { day });
+    }
 
-        for actor in world.actors.iter_mut() {
-            if actor.churned {
-                continue;
-            }
-            let mut rng = DayRng::new(seed, actor.id, day);
-            let sessions = behavior::n_sessions(&mut rng, actor.cohort, cfg);
-            if sessions == 0 {
-                // 当日不活跃:不计留存,不推进停滞计数(连续"活跃日"无增长才停滞)
-                actor.active = false;
-                continue;
-            }
-            actor.active = true;
-            let is_whale = actor.cohort == Cohort::Whale;
-            let mult = if is_whale { cfg.whale_gain_mult } else { 1 };
-            agg.mark_active(day, actor.in_day1_cohort);
-            if day == 1 {
-                actor.in_day1_cohort = true;
-            }
+    let mut systems: Vec<Box<dyn System<World, SimEvent> + '_>> = vec![
+        Box::new(DayOpenSystem),
+        Box::new(PlayerDaySystem {
+            cfg,
+            seed,
+            xp_formula: &xp_needed_formula,
+        }),
+        Box::new(DayCloseSystem { cfg }),
+    ];
 
-            let power_before = actor.power;
-            let mut battle_index = 0u32;
-            for _ in 0..sessions {
-                let affordable = progression::can_afford(actor);
-                match behavior::choose_action(&mut rng, actor.cohort, cfg, affordable) {
-                    Action::Upgrade => {
-                        let cost = progression::upgrade_cost(actor);
-                        progression::apply_upgrade(actor, &cfg.progression);
-                        agg.record_upgrade(cost);
+    let mut clock = Clock::start();
+    while let Some((tick, event)) = queue.pop() {
+        clock.advance_to(tick);
+        // MVP 中每类事件恰好有一个订阅系统:命中即派发
+        for sys in &mut systems {
+            if sys.subscribed(&event) {
+                sys.update(&mut world, tick, event);
+                break;
+            }
+        }
+    }
+
+    // finish 的 config_hash 输入必须是外层 cfg(base_seed 未被 replicate 覆盖)
+    world.agg.finish(cfg, replicate, seed)
+}
+
+/// 日初系统:记录期初存活数,供日结的 churn_rate 分母使用。
+struct DayOpenSystem;
+
+impl System<World, SimEvent> for DayOpenSystem {
+    fn name(&self) -> &'static str {
+        "day_open"
+    }
+
+    fn subscribed(&self, event: &SimEvent) -> bool {
+        matches!(event, SimEvent::DayOpen { .. })
+    }
+
+    fn update(&mut self, world: &mut World, _tick: u64, event: SimEvent) {
+        let SimEvent::DayOpen { day } = event else {
+            unreachable!("subscribed 已过滤非 DayOpen 事件")
+        };
+        let alive = world.actors.iter().filter(|a| !a.churned).count() as u64;
+        world.alive_at_start[day as usize] = alive;
+    }
+}
+
+/// 玩家日系统:一个玩家一天的全部行为(会话 → 动作 → 战斗 → 成长 → 流失)。
+struct PlayerDaySystem<'a> {
+    cfg: &'a SimConfig,
+    seed: u64,
+    xp_formula: &'a crate::formula::Formula,
+}
+
+impl System<World, SimEvent> for PlayerDaySystem<'_> {
+    fn name(&self) -> &'static str {
+        "player_day"
+    }
+
+    fn subscribed(&self, event: &SimEvent) -> bool {
+        matches!(event, SimEvent::PlayerDay { .. })
+    }
+
+    fn update(&mut self, world: &mut World, _tick: u64, event: SimEvent) {
+        let SimEvent::PlayerDay { actor_id, day } = event else {
+            unreachable!("subscribed 已过滤非 PlayerDay 事件")
+        };
+        let cfg = self.cfg;
+        let actor = &mut world.actors[actor_id as usize];
+        if actor.churned {
+            return;
+        }
+        let mut rng = DayRng::new(self.seed, actor.id, day);
+        let sessions = behavior::n_sessions(&mut rng, actor.cohort, cfg);
+        if sessions == 0 {
+            // 当日不活跃:不计留存,不推进停滞计数(连续"活跃日"无增长才停滞)
+            actor.active = false;
+            return;
+        }
+        actor.active = true;
+        let is_whale = actor.cohort == Cohort::Whale;
+        let mult = if is_whale { cfg.whale_gain_mult } else { 1 };
+        let agg = &mut world.agg;
+        agg.mark_active(day, actor.in_day1_cohort);
+        if day == 1 {
+            actor.in_day1_cohort = true;
+        }
+
+        let power_before = actor.power;
+        let mut battle_index = 0u32;
+        for _ in 0..sessions {
+            let affordable = progression::can_afford(actor);
+            match behavior::choose_action(&mut rng, actor.cohort, cfg, affordable) {
+                Action::Upgrade => {
+                    let cost = progression::upgrade_cost(actor);
+                    progression::apply_upgrade(actor, &cfg.progression);
+                    agg.record_upgrade(cost);
+                }
+                action @ (Action::Dungeon | Action::Explore) => {
+                    let mut tier = combat::pick_tier(actor.attack, actor.defense, actor.hp, cfg);
+                    if action == Action::Explore {
+                        tier = tier.saturating_sub(1);
                     }
-                    action @ (Action::Dungeon | Action::Explore) => {
-                        let mut tier =
-                            combat::pick_tier(actor.attack, actor.defense, actor.hp, cfg);
-                        if action == Action::Explore {
-                            tier = tier.saturating_sub(1);
-                        }
-                        let monster = combat::monster_of(cfg, tier);
-                        let out = combat::settle_battle(
-                            actor.attack,
-                            actor.defense,
-                            actor.hp,
-                            &monster,
-                            &mut rng,
-                            battle_index,
-                            cfg,
-                        );
-                        battle_index += 1;
-                        if out.win {
-                            let gold_gain = out.gold * mult;
-                            let xp_gain = out.xp * mult;
-                            actor.gold += gold_gain;
-                            let levelups = progression::gain_xp(
-                                actor,
-                                xp_gain,
-                                &cfg.progression,
-                                &xp_needed_formula,
-                            );
-                            agg.record_levelup(levelups);
-                            agg.record_battle(true, gold_gain as u64, is_whale);
-                        } else {
-                            agg.record_battle(false, 0, is_whale);
-                        }
+                    let monster = combat::monster_of(cfg, tier);
+                    let out = combat::settle_battle(
+                        actor.attack,
+                        actor.defense,
+                        actor.hp,
+                        &monster,
+                        &mut rng,
+                        battle_index,
+                        cfg,
+                    );
+                    battle_index += 1;
+                    if out.win {
+                        let gold_gain = out.gold * mult;
+                        let xp_gain = out.xp * mult;
+                        actor.gold += gold_gain;
+                        let levelups =
+                            progression::gain_xp(actor, xp_gain, &cfg.progression, self.xp_formula);
+                        agg.record_levelup(levelups);
+                        agg.record_battle(true, gold_gain as u64, is_whale);
+                    } else {
+                        agg.record_battle(false, 0, is_whale);
                     }
                 }
             }
-            actor.recompute_power();
+        }
+        actor.recompute_power();
 
-            // 停滞计数:活跃日无战力增长 +1,有增长清零
-            if actor.power > power_before {
-                actor.idle_streak = 0;
-            } else {
-                actor.idle_streak += 1;
-            }
-
-            // 流失判定:每日一次伯努利,停滞抬升概率
-            let p_churn = churn::churn_probability(actor.idle_streak, &cfg.churn);
-            if rng.chance(Purpose::Churn, p_churn) {
-                actor.churned = true;
-                agg.record_churn();
-            }
+        // 停滞计数:活跃日无战力增长 +1,有增长清零
+        if actor.power > power_before {
+            actor.idle_streak = 0;
+        } else {
+            actor.idle_streak += 1;
         }
 
-        // 日结:存续玩家的存量 G(d)、Power 观测、快照日分布
+        // 流失判定:每日一次伯努利,停滞抬升概率
+        let p_churn = churn::churn_probability(actor.idle_streak, &cfg.churn);
+        if rng.chance(Purpose::Churn, p_churn) {
+            actor.churned = true;
+            agg.record_churn();
+        }
+    }
+}
+
+/// 日结系统:存续玩家的存量 G(d)、Power 观测、快照日分布、期末分群切片。
+struct DayCloseSystem<'a> {
+    cfg: &'a SimConfig,
+}
+
+impl System<World, SimEvent> for DayCloseSystem<'_> {
+    fn name(&self) -> &'static str {
+        "day_close"
+    }
+
+    fn subscribed(&self, event: &SimEvent) -> bool {
+        matches!(event, SimEvent::DayClose { .. })
+    }
+
+    fn update(&mut self, world: &mut World, _tick: u64, event: SimEvent) {
+        let SimEvent::DayClose { day } = event else {
+            unreachable!("subscribed 已过滤非 DayClose 事件")
+        };
         let is_snapshot = SNAPSHOT_DAYS.contains(&day);
+        let alive_at_start = world.alive_at_start[day as usize];
         let mut supply = 0i64;
         let mut snapshot_powers = Vec::new();
+        let agg = &mut world.agg;
         for a in &world.actors {
             if a.churned {
                 continue;
@@ -129,7 +238,7 @@ pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
                 snapshot_powers.push(a.power);
             }
         }
-        let cohort_final = if day == cfg.days {
+        let cohort_final = if day == self.cfg.days {
             Some(cohort_slice(&world.actors))
         } else {
             None
@@ -142,8 +251,6 @@ pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
             cohort_final.as_deref(),
         );
     }
-
-    agg.finish(cfg, replicate, seed)
 }
 
 #[cfg(test)]

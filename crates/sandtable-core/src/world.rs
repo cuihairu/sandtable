@@ -2,6 +2,7 @@
 //! 与不可变配置([`crate::config::SimConfig`],Model 雏形)分离。
 
 use crate::config::{Cohort, SimConfig};
+use crate::metrics::RunAggregator;
 use crate::rng::{DayRng, Purpose};
 
 /// 单个玩家实例(Actor)。
@@ -45,6 +46,10 @@ pub struct World {
     pub config: SimConfig,
     /// 玩家按 id 升序存放——遍历顺序确定(文档 06 章有序容器规则)
     pub actors: Vec<Actor>,
+    /// 在线聚合指标(文档 05/18 章:在线聚合是内核组件,随 World 存续)
+    pub agg: RunAggregator,
+    /// 各天期初存活数(下标 1..=days;DayOpen 记录,DayClose 消费)
+    pub alive_at_start: Vec<u64>,
 }
 
 impl World {
@@ -85,6 +90,13 @@ impl World {
             actor.recompute_power();
             actors.push(actor);
         }
-        Self { config, actors }
+        let agg = RunAggregator::new(&config);
+        let days = config.days;
+        Self {
+            config,
+            actors,
+            agg,
+            alive_at_start: vec![0; days as usize + 1],
+        }
     }
 }
