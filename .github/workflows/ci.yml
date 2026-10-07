@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 格式检查
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: 测试(含解析解、确定性、黄金快照)
+        run: cargo test --workspace
+
+      # 架构红线(文档 04 章):核心必须保持纯 Rust,Phase 1 起持续可编译 WASM
+      - name: WASM 编译门
+        run: cargo check -p sandtable-core --target wasm32-unknown-unknown
+
+      - name: 冒烟(1 万玩家 × 30 天 + A/B)
+        run: |
+          cargo build --release
+          ./target/release/sandtable validate --players 10000 --days 30
+          ./target/release/sandtable simulate --players 10000 --days 30 --out /tmp/smoke
+          ./target/release/sandtable compare --replicates 4 --players 2000 --days 14 --out /tmp/ab

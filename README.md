@@ -6,9 +6,10 @@
 
 [![Docs](https://img.shields.io/badge/docs-online-2c6e63)](https://cuihairu.github.io/sandtable/)
 [![Deploy Docs](https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml)
+[![CI](https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg)](https://github.com/cuihairu/sandtable/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-<!-- codecov / crates.io 徽章待 Phase 1 CI 与首次发布后添加 -->
+<!-- crates.io / codecov 徽章待首次发布后添加 -->
 
 **Sandtable is a configuration-driven simulation and experimentation framework for game systems.**
 
@@ -24,10 +25,25 @@
 
 ## 当前状态
 
-文档先行,代码未开始。完整计划见文档站(源码在 [`docs/`](docs/)),按修正版路线图自 Phase 1(最小闭环纵向切片)开工。
+**Phase 1 最小闭环已实现**(crate:`sandtable-core` + `sandtable-cli`,内核零平台依赖,持续通过 `wasm32-unknown-unknown` 编译门):
 
-- 文档站(部署后):https://cuihairu.github.io/sandtable/
-- 本地构建:`pnpm install && pnpm docs:dev`
+- 带键随机数:`(seed, actor_id, day, event_index, purpose)` 直接派生,战斗用显式序号键,A/B 同键可比(CRN)
+- 硬编码最小 RPG 闭环:行为 → 解析战斗 → 奖励 → 成长 → 停滞 → 流失,天粒度离散事件推进
+- 指标在线聚合:留存 / 胜率 / 通胀(存量日增长率)/ sink_ratio / Power 分位快照,按 cohort 切片
+- 实验统计:replicate 为统计单位,t 分布 CI₉₅,配对差值 + 效应量 d,CI 判定 PASS/BORDERLINE/FAIL 口径
+- 测试:解析解对照(固定伤害闭式解、拉满流失)、同 seed 逐字节确定性、黄金快照
+
+```bash
+cargo install --path crates/sandtable-cli
+sandtable simulate --players 10000 --days 30 --out out/     # 单次运行
+sandtable compare --attack-a 100 --attack-b 105 --replicates 12 --out out/  # A/B 比较
+sandtable validate --days 30                                # 校验参数
+```
+
+10k 玩家 × 30 天单次运行约 0.5s(release)。完整计划见文档站(源码在 [`docs/`](docs/)),路线图见 [18 · 路线图](docs/guide/18-roadmap.md)。
+
+- 文档站:https://cuihairu.github.io/sandtable/
+- 本地文档构建:`pnpm install && pnpm docs:dev`
 
 ## 文档结构
 
