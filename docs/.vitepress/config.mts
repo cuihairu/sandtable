@@ -12,10 +12,18 @@ export default withMermaid(
     base: '/sandtable/',
     lastUpdated: true,
 
+    head: [
+      // head 内不会自动拼 base,需写全路径
+      ['link', { rel: 'icon', type: 'image/svg+xml', href: '/sandtable/logo.svg' }]
+    ],
+
     // 原始计划存档不进站点,仅保留在仓库中
     srcExclude: ['**/计划-原始.md'],
 
     themeConfig: {
+      // logo 路径由默认主题自动拼 base
+      logo: '/logo.svg',
+
       nav: [
         { text: '文档', link: '/guide/01-positioning' },
         { text: '路线图', link: '/guide/18-roadmap' }

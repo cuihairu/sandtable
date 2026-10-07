@@ -1,6 +1,18 @@
+<div align="center">
+
+<img src="docs/public/logo.svg" width="120" alt="Sandtable logo" />
+
 # Sandtable
 
-> **Sandtable is a configuration-driven simulation and experimentation framework for game systems.**
+[![Docs](https://img.shields.io/badge/docs-online-2c6e63)](https://cuihairu.github.io/sandtable/)
+[![Deploy Docs](https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
+<!-- codecov / crates.io 徽章待 Phase 1 CI 与首次发布后添加 -->
+
+**Sandtable is a configuration-driven simulation and experimentation framework for game systems.**
+
+</div>
 
 **Sandtable** 是一个面向游戏系统的配置驱动仿真与实验框架,用于长期模拟玩家、战斗、经济和成长系统,并通过实验与指标分析辅助游戏平衡。
 
