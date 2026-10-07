@@ -322,7 +322,10 @@ mod tests {
             total_levelups(&a)
         );
         let mean_level = |m: &crate::metrics::RunMetrics| {
-            m.cohort_stats.iter().map(|c| c.mean_level * c.count as f64).sum::<f64>()
+            m.cohort_stats
+                .iter()
+                .map(|c| c.mean_level * c.count as f64)
+                .sum::<f64>()
                 / m.cohort_stats.iter().map(|c| c.count as f64).sum::<f64>()
         };
         assert!(mean_level(&b) > mean_level(&a));

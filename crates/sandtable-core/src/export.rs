@@ -1,7 +1,11 @@
 //! 输出渲染(文档 09 章):core 只负责把结果渲染成字符串,文件写出由
 //! 壳层(CLI)完成——平台边界的核心例子。
 //!
-//! MVP 输出两种:JSON(完整结构)与 CSV(日序列表)。
+//! MVP 输出两种:JSON(完整结构)与 CSV(日序列表);Arrow RecordBatch
+//! 以 `arrow` feature 提供(文档 09 章数据契约,见 [`arrow`] 子模块)。
+
+#[cfg(feature = "arrow")]
+pub mod arrow;
 
 use crate::metrics::RunMetrics;
 

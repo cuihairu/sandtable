@@ -36,6 +36,12 @@ enum Cmd {
         /// 输出目录(写 report.json 与 days.csv)
         #[arg(long)]
         out: Option<PathBuf>,
+        /// 追加 Parquet 输出(day_stats / power_snapshots / cohort,
+        /// 文档 09 章数据契约;与 days.csv 同源,取第 1 个 replicate)。
+        /// 需以 --features parquet 构建本 CLI。
+        #[cfg(feature = "parquet")]
+        #[arg(long)]
+        parquet: bool,
     },
     /// A/B 比较:两臂仅 warrior.attack 不同,同种子配对(CRN)
     Compare {
@@ -173,6 +179,8 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
             over,
             replicates,
             out,
+            #[cfg(feature = "parquet")]
+            parquet,
         } => {
             let cfg = match load_config(scenario.as_deref(), &over) {
                 Ok(c) => c,
@@ -202,6 +210,11 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
             }
             println!("耗时 {:.2?}", elapsed);
 
+            #[cfg(feature = "parquet")]
+            if parquet && out.is_none() {
+                eprintln!("参数错误: --parquet 需要 --out 目录(与 JSON/CSV 一起落盘)");
+                return Ok(std::process::ExitCode::from(2));
+            }
             if let Some(dir) = out {
                 fs::create_dir_all(&dir).context("创建输出目录失败")?;
                 let report = serde_json::json!({
@@ -213,6 +226,10 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                     serde_json::to_string_pretty(&report)?,
                 )?;
                 fs::write(dir.join("days.csv"), core::export::day_csv(&results[0]))?;
+                #[cfg(feature = "parquet")]
+                if parquet {
+                    write_parquet(&dir, &results[0])?;
+                }
                 println!("已写出 {}(report.json, days.csv)", dir.display());
             }
             Ok(std::process::ExitCode::SUCCESS)
@@ -311,4 +328,28 @@ fn meta_json() -> serde_json::Value {
         "schema_version": core::SCHEMA_VERSION,
         "model_version": core::MODEL_VERSION,
     })
+}
+
+/// Parquet 落盘(文档 09 章:Arrow 契约的载体,feature `parquet`)。
+/// 与 days.csv 同源:取第 1 个 replicate 的三个批次。
+#[cfg(feature = "parquet")]
+fn write_parquet(dir: &Path, m: &core::metrics::RunMetrics) -> anyhow::Result<()> {
+    use parquet::arrow::ArrowWriter;
+
+    for (name, batch) in [
+        ("day_stats", core::export::arrow::day_stats_batch(m)?),
+        (
+            "power_snapshots",
+            core::export::arrow::power_snapshots_batch(m)?,
+        ),
+        ("cohort", core::export::arrow::cohort_batch(m)?),
+    ] {
+        let path = dir.join(format!("{name}.parquet"));
+        let file =
+            fs::File::create(&path).with_context(|| format!("创建 {} 失败", path.display()))?;
+        let mut w = ArrowWriter::try_new(file, batch.schema(), None)?;
+        w.write(&batch)?;
+        w.close()?;
+    }
+    Ok(())
 }
