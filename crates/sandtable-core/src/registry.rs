@@ -283,6 +283,63 @@ fn check_section(prefix: &str, v: &Value) -> Result<(), Error> {
     Ok(())
 }
 
+/// 读数值参数(弹性 / 推荐要取基线值;与 [`apply_numeric`] 逐路径互为镜像,
+/// 镜像测试锁定)。
+pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
+    match path {
+        "scenario.population" => Ok(cfg.players as f64),
+        "scenario.seed" => Ok(cfg.base_seed as f64),
+        "scenario.population_mix.casual" => Ok(cfg.cohort_weights[0]),
+        "scenario.population_mix.core" => Ok(cfg.cohort_weights[1]),
+        "scenario.population_mix.whale" => Ok(cfg.cohort_weights[2]),
+        "model.warrior.attack" => Ok(cfg.warrior.attack as f64),
+        "model.warrior.defense" => Ok(cfg.warrior.defense as f64),
+        "model.warrior.hp" => Ok(cfg.warrior.hp as f64),
+        "model.whale_gain_mult" => Ok(cfg.whale_gain_mult as f64),
+        "model.combat.p_hit" => Ok(cfg.combat.p_hit),
+        "model.combat.p_hit_monster" => Ok(cfg.combat.p_hit_monster),
+        "model.combat.dmg_var" => Ok(cfg.combat.dmg_var as f64),
+        "model.combat.max_rounds" => Ok(cfg.combat.max_rounds as f64),
+        "model.dungeon.tiers" => Ok(cfg.dungeon.tiers as f64),
+        "model.dungeon.m_hp" => Ok(cfg.dungeon.m_hp as f64),
+        "model.dungeon.m_attack" => Ok(cfg.dungeon.m_attack as f64),
+        "model.dungeon.m_defense" => Ok(cfg.dungeon.m_defense as f64),
+        "model.dungeon.tier_growth" => Ok(cfg.dungeon.tier_growth),
+        "model.dungeon.reward_gold" => Ok(cfg.dungeon.reward_gold as f64),
+        "model.dungeon.reward_xp" => Ok(cfg.dungeon.reward_xp as f64),
+        "model.dungeon.reward_growth" => Ok(cfg.dungeon.reward_growth),
+        "model.behavior.casual.sessions_int" => Ok(cfg.behavior.casual.sessions_int as f64),
+        "model.behavior.casual.sessions_frac" => Ok(cfg.behavior.casual.sessions_frac),
+        "model.behavior.casual.p_dungeon" => Ok(cfg.behavior.casual.p_dungeon),
+        "model.behavior.casual.p_upgrade" => Ok(cfg.behavior.casual.p_upgrade),
+        "model.behavior.core.sessions_int" => Ok(cfg.behavior.core.sessions_int as f64),
+        "model.behavior.core.sessions_frac" => Ok(cfg.behavior.core.sessions_frac),
+        "model.behavior.core.p_dungeon" => Ok(cfg.behavior.core.p_dungeon),
+        "model.behavior.core.p_upgrade" => Ok(cfg.behavior.core.p_upgrade),
+        "model.behavior.whale.sessions_int" => Ok(cfg.behavior.whale.sessions_int as f64),
+        "model.behavior.whale.sessions_frac" => Ok(cfg.behavior.whale.sessions_frac),
+        "model.behavior.whale.p_dungeon" => Ok(cfg.behavior.whale.p_dungeon),
+        "model.behavior.whale.p_upgrade" => Ok(cfg.behavior.whale.p_upgrade),
+        "model.progression.xp_base" => Ok(cfg.progression.xp_base as f64),
+        "model.progression.xp_pow" => Ok(cfg.progression.xp_pow),
+        "model.progression.level_attack_gain" => Ok(cfg.progression.level_attack_gain as f64),
+        "model.progression.level_defense_gain" => Ok(cfg.progression.level_defense_gain as f64),
+        "model.progression.level_hp_gain" => Ok(cfg.progression.level_hp_gain as f64),
+        "model.progression.upgrade_cost_base" => Ok(cfg.progression.upgrade_cost_base as f64),
+        "model.progression.upgrade_cost_num" => Ok(cfg.progression.upgrade_cost_num as f64),
+        "model.progression.upgrade_cost_den" => Ok(cfg.progression.upgrade_cost_den as f64),
+        "model.progression.upgrade_attack_gain" => Ok(cfg.progression.upgrade_attack_gain as f64),
+        "model.churn.p_base" => Ok(cfg.churn.p_base),
+        "model.churn.p_stall" => Ok(cfg.churn.p_stall),
+        "model.churn.stall_days" => Ok(cfg.churn.stall_days as f64),
+        // 非数值槽:与 apply_numeric 同口径
+        "scenario.duration" | "model.formulas.xp_needed" => Err(Error::Config(format!(
+            "{path}: 该参数不是数值,不可数值读取"
+        ))),
+        _ => Err(unknown(path)),
+    }
+}
+
 /// 数值寻址:sweep / override 把一个扫描值写入指定注册表路径。
 /// 非数值槽(时长、公式表达式)与未知路径报配置错误。
 pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), Error> {
@@ -433,5 +490,40 @@ mod tests {
         assert_eq!(edit_distance("abc", "abc"), 0);
         assert_eq!(edit_distance("atk", "attack"), 3);
         assert_eq!(edit_distance("", "ab"), 2);
+    }
+
+    /// read_numeric 与 apply_numeric 互为镜像:全部数值路径读出 → 写回 →
+    /// 读出不变;非数值路径读必报错。新增注册表路径漏写读臂在此红。
+    #[test]
+    fn 读值与写值_全数值路径互为镜像() {
+        let cfg = crate::config::SimConfig::default();
+        for sp in all() {
+            match sp.kind {
+                ParamKind::U32
+                | ParamKind::U64
+                | ParamKind::I64
+                | ParamKind::F64
+                | ParamKind::Mix => {
+                    let v = read_numeric(&cfg, sp.path)
+                        .unwrap_or_else(|e| panic!("{}: 读失败 {e}", sp.path));
+                    let mut c2 = cfg.clone();
+                    apply_numeric(&mut c2, sp.path, v)
+                        .unwrap_or_else(|e| panic!("{}: 写失败 {e}", sp.path));
+                    let v2 = read_numeric(&c2, sp.path).unwrap();
+                    assert!(
+                        (v - v2).abs() <= 1e-12 * v.abs().max(1.0),
+                        "{}: 读 {v} 写后读 {v2}",
+                        sp.path
+                    );
+                }
+                _ => {
+                    assert!(
+                        read_numeric(&cfg, sp.path).is_err(),
+                        "{}: 非数值路径不应可读",
+                        sp.path
+                    );
+                }
+            }
+        }
     }
 }

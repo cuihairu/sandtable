@@ -16,6 +16,7 @@ pub mod metrics;
 pub mod registry;
 pub mod rng;
 pub mod scenario;
+pub mod sensitivity;
 pub mod sim;
 pub mod sweep;
 pub mod systems;
