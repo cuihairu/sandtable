@@ -1,0 +1,51 @@
+# 宝可梦案例扫描实验(docs 21):单轴 model.warrior.attack——
+# "玩家练度 vs 馆主阶梯预期"的失配度;140 = yaml 基准(L14 实值 ×5)。
+schema_version: '1'
+
+scenario:
+  population: 10000
+  duration: 30d
+  seed: 12345
+  population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
+
+model:
+  warrior: { attack: 140, defense: 130, hp: 225 }
+  combat: { p_hit: 0.95, p_hit_monster: 0.95, dmg_var: 7, max_rounds: 32 }
+  dungeon:
+    tiers: 8
+    m_hp: 165
+    m_attack: 219
+    m_defense: 61
+    tier_growth: 1.18
+    reward_gold: 1400
+    reward_xp: 1080
+    reward_growth: 1.31
+  behavior:
+    casual: { p_dungeon: 0.7, p_upgrade: 0.2, sessions_frac: 0.5, sessions_int: 1 }
+    core: { p_dungeon: 0.6, p_upgrade: 0.3, sessions_frac: 0.5, sessions_int: 2 }
+    whale: { p_dungeon: 0.65, p_upgrade: 0.3, sessions_frac: 0, sessions_int: 5 }
+  progression:
+    xp_base: 15
+    xp_pow: 2.0
+    level_attack_gain: 8
+    level_defense_gain: 8
+    level_hp_gain: 13
+    upgrade_cost_base: 50
+    upgrade_cost_num: 5
+    upgrade_cost_den: 4
+    upgrade_attack_gain: 2
+  churn: { p_base: 0.003, p_stall: 0.05, stall_days: 2 }
+
+sweep:
+  replicates: 4
+  parameters:
+    model.warrior.attack: { min: 100, max: 260, step: 40 }
+  targets:
+    - metric: win_rate
+      min: 0.85
+      max: 1.0
+      kind: hard
+    - metric: churn_rate
+      min: 0.0
+      max: 0.2
+      kind: hard

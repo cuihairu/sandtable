@@ -68,7 +68,8 @@ export default withMermaid(
               { text: '17 · 项目结构', link: '/guide/17-project-structure' },
               { text: '18 · 路线图', link: '/guide/18-roadmap' },
               { text: '19 · 测试策略', link: '/guide/19-testing' },
-              { text: '20 · 设计原则与愿景', link: '/guide/20-principles-vision' }
+              { text: '20 · 设计原则与愿景', link: '/guide/20-principles-vision' },
+              { text: '21 · 真实配置验证:宝可梦案例', link: '/guide/21-pokemon-case' }
             ]
           }
         ]

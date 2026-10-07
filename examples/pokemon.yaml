@@ -1,0 +1,77 @@
+# 真实配置验证案例:宝可梦(第一世代关都八道馆)数值接入 sandtable 模型。
+# 映射方法、换算式与阻力清单见 docs/guide/21-pokemon-case.md;本文件注释只标来源。
+schema_version: '1'
+
+scenario:
+  population: 10000
+  duration: 30d
+  seed: 12345
+  population_mix: # sandtable 假设层(宝可梦无分群概念)
+    casual: 0.6
+    core: 0.3
+    whale: 0.1
+
+model:
+  # 玩家实体 = 初始宝可梦(Charizard 78/84/78 种族值,Pokédex)。
+  # 能力公式:HP = floor(2B·L/100)+L+10,其他 = floor(2B·L/100)+5。
+  # 以名义 L14 起步(模型无野怪练级环,取首馆 Brock 的常规到访等级;阻力清单 #4),
+  # 全局 ×5 缩放到 sandtable 数值域:
+  #   atk = floor(2*84*14/100)+5 = 28,def = floor(2*78*14/100)+5 = 26,hp = 45
+  warrior:
+    attack: 140
+    defense: 130
+    hp: 225
+
+  combat:
+    # 宝可梦伤害随机系数 85%~100%,取中值 0.925 表达命中/浮动结构
+    p_hit: 0.95
+    p_hit_monster: 0.95
+    # ±7.5% 相对满幅 → ×5 后绝对半宽 ≈ 7(t0 伤害 74 ± 6,t7 ± 8,取整)
+    dmg_var: 7
+    max_rounds: 32
+
+  dungeon:
+    # 关都八道馆 → 八层;tier t = 第 t 馆 ace 同级挑战(玩家等级 = ace 等级)
+    tiers: 8
+    # tier0 = Brock 的 Onix @ L14(HP 33)×5;攻防为差值等效换算(docs 21):
+    #   m_defense = 玩家 L14 攻 − 比值模型期望伤害 ×5 = 140 − 79 = 61
+    #   m_attack  = 玩家 L14 防 + 被击期望 ×5 = 130 + 89 = 219
+    m_hp: 165
+    m_attack: 219
+    m_defense: 61
+    # 综合战力(atk*2+def+hp/10)口径 t0→t7 几何拟合:(515.5→1669.5)^(1/7) ≈ 1.18;
+    # 三维真实比率 hp 1.26 / atk 1.16 / def 1.28,单参数只能拟合战力口径
+    # (防御序列锯齿 61→126→49→…→335)→ 阻力清单 #3
+    tier_growth: 1.18
+    # 首馆奖金 ¥1,400(RB),1:1 锚定(消费环是假设层,不缩放)
+    reward_gold: 1400
+    # Gen1 经验 yield = floor(base_exp × level / 7);Onix base 108 → L14 = 216,×5
+    reward_xp: 1080
+    # 经验曲线增速 (1457/216)^(1/7) ≈ 1.31(Rhydon yield 1457 @ L50);
+    # 奖金真实增速 (7000/1400)^(1/7) ≈ 1.26,与经验共用本参数 → 阻力清单 #2
+    reward_growth: 1.31
+
+  behavior: # sandtable 假设层,维持默认(宝可梦无会话结构)
+    casual: { p_dungeon: 0.7, p_upgrade: 0.2, sessions_frac: 0.5, sessions_int: 1 }
+    core: { p_dungeon: 0.6, p_upgrade: 0.3, sessions_frac: 0.5, sessions_int: 2 }
+    whale: { p_dungeon: 0.65, p_upgrade: 0.3, sessions_frac: 0, sessions_int: 5 }
+
+  progression:
+    # Medium Fast 曲线:升下一级需 3L²−3L+1 ≈ 3L²(Bulbapedia Experience),
+    # 幂律拟合 xp_base·L^2.0;×5 与能力值同域 → 15·L²
+    xp_base: 15
+    xp_pow: 2.0
+    # 每级增量 = B/50(HP 再 +1):HP 2.56→13,Atk 1.68→8,Def 1.56→8(×5 取整)
+    level_attack_gain: 8
+    level_defense_gain: 8
+    level_hp_gain: 13
+    # 强化链是 sandtable 消费假设层(宝可梦无金币回收环),维持默认定价
+    upgrade_cost_base: 50
+    upgrade_cost_num: 5
+    upgrade_cost_den: 4
+    upgrade_attack_gain: 2
+
+  churn: # sandtable 假设层(卡关流失的 analog:打不动馆主 = 停滞)
+    p_base: 0.003
+    p_stall: 0.05
+    stall_days: 2
