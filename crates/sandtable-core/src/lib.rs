@@ -17,6 +17,7 @@ pub mod registry;
 pub mod rng;
 pub mod scenario;
 pub mod sim;
+pub mod sweep;
 pub mod systems;
 pub mod world;
 

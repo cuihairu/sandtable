@@ -4,6 +4,7 @@
 //! 类型与取值范围由 serde 反序列化与 [`crate::config::validate`] 把关。
 //! 注册表是静态表,运行期寻址零字符串查找(sweep / override 的寻址基础)。
 
+use crate::config::SimConfig;
 use crate::Error;
 use serde_yaml_ng::Value;
 
@@ -278,6 +279,95 @@ fn check_section(prefix: &str, v: &Value) -> Result<(), Error> {
         } else {
             return Err(unknown(&path));
         }
+    }
+    Ok(())
+}
+
+/// 数值寻址:sweep / override 把一个扫描值写入指定注册表路径。
+/// 非数值槽(时长、公式表达式)与未知路径报配置错误。
+pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), Error> {
+    let unsigned = |v: f64, ty: &str| -> Result<f64, Error> {
+        if v < 0.0 {
+            Err(Error::Config(format!("{path}: {ty} 不能为负(得到 {v})")))
+        } else {
+            Ok(v)
+        }
+    };
+    match path {
+        "scenario.population" => cfg.players = unsigned(value, "population")?.round() as u32,
+        "scenario.seed" => cfg.base_seed = unsigned(value, "seed")?.round() as u64,
+        "scenario.population_mix.casual" => cfg.cohort_weights[0] = value,
+        "scenario.population_mix.core" => cfg.cohort_weights[1] = value,
+        "scenario.population_mix.whale" => cfg.cohort_weights[2] = value,
+        "model.warrior.attack" => cfg.warrior.attack = value.round() as i64,
+        "model.warrior.defense" => cfg.warrior.defense = value.round() as i64,
+        "model.warrior.hp" => cfg.warrior.hp = value.round() as i64,
+        "model.whale_gain_mult" => cfg.whale_gain_mult = value.round() as i64,
+        "model.combat.p_hit" => cfg.combat.p_hit = value,
+        "model.combat.p_hit_monster" => cfg.combat.p_hit_monster = value,
+        "model.combat.dmg_var" => cfg.combat.dmg_var = value.round() as i64,
+        "model.combat.max_rounds" => {
+            cfg.combat.max_rounds = unsigned(value, "max_rounds")?.round() as u32
+        }
+        "model.dungeon.tiers" => cfg.dungeon.tiers = unsigned(value, "tiers")?.round() as u32,
+        "model.dungeon.m_hp" => cfg.dungeon.m_hp = value.round() as i64,
+        "model.dungeon.m_attack" => cfg.dungeon.m_attack = value.round() as i64,
+        "model.dungeon.m_defense" => cfg.dungeon.m_defense = value.round() as i64,
+        "model.dungeon.tier_growth" => cfg.dungeon.tier_growth = value,
+        "model.dungeon.reward_gold" => cfg.dungeon.reward_gold = value.round() as i64,
+        "model.dungeon.reward_xp" => cfg.dungeon.reward_xp = value.round() as i64,
+        "model.dungeon.reward_growth" => cfg.dungeon.reward_growth = value,
+        "model.behavior.casual.sessions_int" => {
+            cfg.behavior.casual.sessions_int = unsigned(value, "sessions_int")?.round() as u32
+        }
+        "model.behavior.casual.sessions_frac" => cfg.behavior.casual.sessions_frac = value,
+        "model.behavior.casual.p_dungeon" => cfg.behavior.casual.p_dungeon = value,
+        "model.behavior.casual.p_upgrade" => cfg.behavior.casual.p_upgrade = value,
+        "model.behavior.core.sessions_int" => {
+            cfg.behavior.core.sessions_int = unsigned(value, "sessions_int")?.round() as u32
+        }
+        "model.behavior.core.sessions_frac" => cfg.behavior.core.sessions_frac = value,
+        "model.behavior.core.p_dungeon" => cfg.behavior.core.p_dungeon = value,
+        "model.behavior.core.p_upgrade" => cfg.behavior.core.p_upgrade = value,
+        "model.behavior.whale.sessions_int" => {
+            cfg.behavior.whale.sessions_int = unsigned(value, "sessions_int")?.round() as u32
+        }
+        "model.behavior.whale.sessions_frac" => cfg.behavior.whale.sessions_frac = value,
+        "model.behavior.whale.p_dungeon" => cfg.behavior.whale.p_dungeon = value,
+        "model.behavior.whale.p_upgrade" => cfg.behavior.whale.p_upgrade = value,
+        "model.progression.xp_base" => cfg.progression.xp_base = value.round() as i64,
+        "model.progression.xp_pow" => cfg.progression.xp_pow = value,
+        "model.progression.level_attack_gain" => {
+            cfg.progression.level_attack_gain = value.round() as i64
+        }
+        "model.progression.level_defense_gain" => {
+            cfg.progression.level_defense_gain = value.round() as i64
+        }
+        "model.progression.level_hp_gain" => cfg.progression.level_hp_gain = value.round() as i64,
+        "model.progression.upgrade_cost_base" => {
+            cfg.progression.upgrade_cost_base = value.round() as i64
+        }
+        "model.progression.upgrade_cost_num" => {
+            cfg.progression.upgrade_cost_num = value.round() as i64
+        }
+        "model.progression.upgrade_cost_den" => {
+            cfg.progression.upgrade_cost_den = value.round() as i64
+        }
+        "model.progression.upgrade_attack_gain" => {
+            cfg.progression.upgrade_attack_gain = value.round() as i64
+        }
+        "model.churn.p_base" => cfg.churn.p_base = value,
+        "model.churn.p_stall" => cfg.churn.p_stall = value,
+        "model.churn.stall_days" => {
+            cfg.churn.stall_days = unsigned(value, "stall_days")?.round() as u32
+        }
+        // 非数值槽:不可数值扫描(时长是字符串,公式是表达式)
+        "scenario.duration" | "model.formulas.xp_needed" => {
+            return Err(Error::Config(format!(
+                "{path}: 该参数不是数值,不可数值扫描"
+            )));
+        }
+        _ => return Err(unknown(path)),
     }
     Ok(())
 }

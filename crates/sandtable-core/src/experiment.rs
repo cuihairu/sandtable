@@ -144,7 +144,7 @@ pub fn compare(metric: &str, arm_a: &[f64], arm_b: &[f64]) -> Comparison {
 }
 
 /// 可从 RunMetrics 提取的指标(比较的主指标)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum MetricKey {
     /// D7 留存(默认主指标)
     RetentionD7,
