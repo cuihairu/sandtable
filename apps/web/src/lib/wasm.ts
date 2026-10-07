@@ -3,8 +3,17 @@
 import init, {
   run_simulation as runSim,
   validate_config as validateCfg,
+  sweep_plan as sweepPlanBinding,
+  sweep_candidate as sweepCandidateBinding,
+  sweep_recommend as sweepRecommendBinding,
 } from 'sandtable-wasm'
-import type { SimOutput, ValidateInfo } from './types'
+import type {
+  CandidateResult,
+  SimOutput,
+  SweepPlan,
+  SweepRecOutput,
+  ValidateInfo,
+} from './types'
 
 let ready: Promise<unknown> | null = null
 
@@ -24,4 +33,37 @@ export async function runSimulation(
 ): Promise<SimOutput> {
   await ensureInit()
   return JSON.parse(runSim(yaml, replicates) as unknown as string) as SimOutput
+}
+
+// —— 参数扫描:JS 逐候选驱动,候选间让出主线程(绑定层单线程纯转发)——
+
+export async function planSweep(
+  yaml: string,
+  replicatesOverride: number,
+): Promise<SweepPlan> {
+  await ensureInit()
+  return JSON.parse(
+    sweepPlanBinding(yaml, replicatesOverride) as unknown as string,
+  ) as SweepPlan
+}
+
+export async function runSweepCandidate(
+  yaml: string,
+  replicates: number,
+  values: Record<string, number>,
+): Promise<CandidateResult> {
+  await ensureInit()
+  return JSON.parse(
+    sweepCandidateBinding(yaml, replicates, JSON.stringify(values)) as unknown as string,
+  ) as CandidateResult
+}
+
+export async function recommendSweep(
+  yaml: string,
+  results: CandidateResult[],
+): Promise<SweepRecOutput> {
+  await ensureInit()
+  return JSON.parse(
+    sweepRecommendBinding(yaml, JSON.stringify(results)) as unknown as string,
+  ) as SweepRecOutput
 }

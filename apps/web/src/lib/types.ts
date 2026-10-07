@@ -54,3 +54,79 @@ export interface ValidateInfo {
   schema_version: string
   model_version: string
 }
+
+// —— 参数扫描(与 core::sweep / core::sensitivity / core::recommend 序列化同构)——
+
+export interface SampleStats {
+  n: number
+  mean: number
+  sd: number
+  ci95_lo: number
+  ci95_hi: number
+}
+
+export interface SweepAxis {
+  path: string
+  min: number
+  max: number
+  step: number
+}
+
+export type ConstraintVerdict = 'pass' | 'borderline' | 'fail'
+
+export interface TargetOutcome {
+  metric: string
+  kind: 'hard' | 'soft'
+  min: number | null
+  max: number | null
+  stats: SampleStats
+  verdict: ConstraintVerdict
+}
+
+/** 'ok' 或 {config_error: 消息}(失败候选照常上报,不静默丢弃) */
+export type CandidateStatus = 'ok' | { config_error: string }
+
+export interface CandidateResult {
+  values: Record<string, number>
+  status: CandidateStatus
+  metric_stats: [string, SampleStats][]
+  target_outcomes: TargetOutcome[]
+}
+
+export interface SweepPlan {
+  config_hash: string
+  players: number
+  days: number
+  base_seed: number
+  replicates: number
+  mode: string
+  axes: SweepAxis[]
+  candidates: Record<string, number>[]
+  targets: { metric: string; kind: 'hard' | 'soft'; min: number | null; max: number | null }[]
+  sims: number
+}
+
+export interface Recommendation {
+  param: string
+  baseline: number
+  interval: [number, number] | null
+  interpolated: [boolean, boolean]
+  confidence: 'high' | 'medium' | 'low'
+  reasons: string[]
+}
+
+export interface Elasticity {
+  param: string
+  metric: string
+  e: number
+  e_lo: number
+  e_hi: number
+  delta_eff: number
+  significant: boolean
+  note: string
+}
+
+export interface SweepRecOutput {
+  elasticities: Elasticity[]
+  recommendation: Recommendation
+}

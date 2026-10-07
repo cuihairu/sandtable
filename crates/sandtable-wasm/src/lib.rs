@@ -8,6 +8,10 @@
 //!
 //! Web 定位小中型仿真(文档 09 章:WASM 内存 4GB 上限、单线程),
 //! replicates 上限 64,更大的实验引导走 CLI / 桌面。
+//!
+//! 参数扫描(文档 12/14/15 章)同为薄转发:sweep_plan / sweep_candidate /
+//! sweep_recommend 与 CLI sweep / recommend 同源;单线程下候选并行不可用,
+//! 由 JS 逐候选驱动、候选间让出主线程(见 sweep 段注释)。
 
 use wasm_bindgen::prelude::*;
 
@@ -70,6 +74,108 @@ pub fn run_simulation_native(yaml: &str, replicates: u32) -> Result<serde_json::
     }))
 }
 
+// —— 参数扫描(文档 12/14/15 章)——
+//
+// Web 端单线程,候选间并行(rayon)不可用:由 JS 逐候选调 [`sweep_candidate`],
+// 候选之间让出主线程,进度可渲染;绑定层无状态纯转发,plan / candidate /
+// recommend 与 CLI sweep / recommend 同源(core 纯函数)。
+
+/// Web 扫描预算:候选数 × replicates ≤ 200 次仿真(粗筛可调小 replicates,
+/// 更大实验走 CLI / 桌面)。
+pub const MAX_SWEEP_SIMS: u64 = 200;
+
+/// 单次仿真的规模上限:players × days ≤ 40 万(Web 定位小中型,文档 09 章)。
+pub const MAX_SWEEP_SIM_SCALE: u64 = 400_000;
+
+/// 扫描计划(native 纯函数):实验 YAML → 配置 + 扫描定义 → 网格候选。
+/// `replicates_override` > 0 时覆盖 sweep.replicates(粗筛语义,同 CLI
+/// `sweep --replicates`)。返回 `{config_hash, players, days, base_seed,
+/// replicates, mode, axes, candidates, targets, sims}`;超出 Web 预算时 Err。
+pub fn sweep_plan_native(
+    yaml: &str,
+    replicates_override: u32,
+) -> Result<serde_json::Value, String> {
+    let (cfg, mut spec) =
+        core::scenario::load_experiment_str(yaml).map_err(|e| format!("配置错误: {e}"))?;
+    if replicates_override > 0 {
+        spec.replicates = replicates_override;
+        spec.validate().map_err(|e| format!("配置错误: {e}"))?;
+    }
+    let candidates = spec
+        .plan(cfg.base_seed)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    let sims = candidates.len() as u64 * spec.replicates as u64;
+    if sims > MAX_SWEEP_SIMS {
+        return Err(format!(
+            "参数错误: 候选数 × replicates = {sims} 超出 Web 预算 {MAX_SWEEP_SIMS}(调小网格或 replicates 粗筛,更大实验走 CLI)"
+        ));
+    }
+    let scale = cfg.players as u64 * cfg.days as u64;
+    if scale > MAX_SWEEP_SIM_SCALE {
+        return Err(format!(
+            "参数错误: players × days = {scale} 超出 Web 预算 {MAX_SWEEP_SIM_SCALE}(Web 定位小中型仿真,更大实验走 CLI)"
+        ));
+    }
+    Ok(json!({
+        "config_hash": core::config::config_hash(&cfg),
+        "players": cfg.players,
+        "days": cfg.days,
+        "base_seed": cfg.base_seed,
+        "replicates": spec.replicates,
+        "mode": spec.mode,
+        "axes": spec.parameters,
+        "candidates": candidates,
+        "targets": spec.targets,
+        "sims": sims,
+    }))
+}
+
+/// 单候选运行(native 纯函数):[`core::sweep::run_candidate`] 转发
+/// (应用参数 → validate → R 个 replicate → 汇总 → 约束判定)。
+/// `replicates` 须与 [`sweep_plan_native`] 返回值一致(CI 的 n 才对得上)。
+pub fn sweep_candidate_native(
+    yaml: &str,
+    replicates: u32,
+    values_json: &str,
+) -> Result<serde_json::Value, String> {
+    if replicates == 0 {
+        return Err("参数错误: replicates 至少为 1".into());
+    }
+    if replicates > MAX_REPLICATES {
+        return Err(format!(
+            "参数错误: Web 端 replicates 上限 {MAX_REPLICATES}(更大实验走 CLI / 桌面)"
+        ));
+    }
+    let (cfg, mut spec) =
+        core::scenario::load_experiment_str(yaml).map_err(|e| format!("配置错误: {e}"))?;
+    spec.replicates = replicates;
+    spec.validate().map_err(|e| format!("配置错误: {e}"))?;
+    let values: std::collections::BTreeMap<String, f64> = serde_json::from_str(values_json)
+        .map_err(|e| format!("参数错误: 候选参数解析失败: {e}"))?;
+    serde_json::to_value(core::sweep::run_candidate(&cfg, &spec, &values))
+        .map_err(|e| format!("候选结果序列化失败: {e}"))
+}
+
+/// 推荐(native 纯函数):敏感性矩阵(OAT 弹性,文档 14 章)+ 单轴推荐
+/// 区间(文档 15 章)——只从已有候选结果计算,零额外仿真,与 CLI
+/// `recommend` 同源。MVP 红线:仅单参数轴。
+pub fn sweep_recommend_native(yaml: &str, results_json: &str) -> Result<serde_json::Value, String> {
+    let (cfg, spec) =
+        core::scenario::load_experiment_str(yaml).map_err(|e| format!("配置错误: {e}"))?;
+    if spec.parameters.len() != 1 {
+        return Err(format!(
+            "推荐目前只支持单参数轴,sweep 定义了 {} 个参数(多参数联合可行域属后续阶段)",
+            spec.parameters.len()
+        ));
+    }
+    let results: Vec<core::sweep::CandidateResult> = serde_json::from_str(results_json)
+        .map_err(|e| format!("参数错误: 候选结果解析失败: {e}"))?;
+    let elasticities =
+        core::sensitivity::oat_elasticity(&spec, &cfg, &results, core::sensitivity::DEFAULT_DELTA);
+    let recommendation = core::recommend::recommend_axis(&spec, &cfg, &results, 0);
+    Ok(json!({ "elasticities": elasticities, "recommendation": recommendation }))
+}
+
 /// 校验配置(wasm 入口):返回 JSON 字符串,前端 `JSON.parse`。
 ///
 /// 不用 serde-wasm-bindgen 直出对象——其 JsValue 协议与 wasm-bindgen 新版
@@ -86,6 +192,34 @@ pub fn validate_config(yaml: &str) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub fn run_simulation(yaml: &str, replicates: u32) -> Result<JsValue, JsValue> {
     let v = run_simulation_native(yaml, replicates).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// 扫描计划(wasm 入口):JSON 字符串,形状同 [`sweep_plan_native`]。
+#[wasm_bindgen]
+pub fn sweep_plan(yaml: &str, replicates_override: u32) -> Result<JsValue, JsValue> {
+    let v = sweep_plan_native(yaml, replicates_override).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// 单候选运行(wasm 入口):JSON 字符串,形状同 [`sweep_candidate_native`]。
+#[wasm_bindgen]
+pub fn sweep_candidate(yaml: &str, replicates: u32, values_json: &str) -> Result<JsValue, JsValue> {
+    let v =
+        sweep_candidate_native(yaml, replicates, values_json).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// 推荐(wasm 入口):JSON 字符串,形状同 [`sweep_recommend_native`]。
+#[wasm_bindgen]
+pub fn sweep_recommend(yaml: &str, results_json: &str) -> Result<JsValue, JsValue> {
+    let v = sweep_recommend_native(yaml, results_json).map_err(|e| JsValue::from_str(&e))?;
     serde_json::to_string(&v)
         .map(|s| JsValue::from_str(&s))
         .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -150,5 +284,110 @@ mod tests {
         assert!(run_simulation_native(YAML, 0).is_err());
         let e = run_simulation_native(YAML, MAX_REPLICATES + 1).unwrap_err();
         assert!(e.contains("上限"), "{e}");
+    }
+
+    // —— 参数扫描(文档 12/14/15 章)——
+    // 单轴 attack 网格 90..=110 步 10(3 候选),win_rate 硬约束恒可行 [0,1]。
+    const EXP_YAML: &str = concat!(
+        "schema_version: '1'\n",
+        "scenario: {population: 40, duration: '3d', seed: 7}\n",
+        "sweep:\n",
+        "  replicates: 2\n",
+        "  parameters:\n",
+        "    model.warrior.attack: {min: 90, max: 110, step: 10}\n",
+        "  targets:\n",
+        "    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n",
+    );
+
+    #[test]
+    fn 扫描_plan_候选与replicates覆盖() {
+        let v = sweep_plan_native(EXP_YAML, 0).unwrap();
+        assert_eq!(v["candidates"].as_array().unwrap().len(), 3);
+        assert_eq!(v["sims"], 6);
+        assert_eq!(v["replicates"], 2);
+        assert_eq!(v["axes"][0]["path"], "model.warrior.attack");
+        assert_eq!(v["candidates"][0]["model.warrior.attack"], 90.0);
+        assert_eq!(v["targets"][0]["metric"], "win_rate");
+
+        let v = sweep_plan_native(EXP_YAML, 1).unwrap();
+        assert_eq!(v["replicates"], 1, "覆盖生效(粗筛语义,同 CLI)");
+        assert_eq!(v["sims"], 3);
+
+        let e = sweep_plan_native(
+            "schema_version: '1'\nscenario: {population: 40, duration: '3d', seed: 7}\n",
+            0,
+        )
+        .unwrap_err();
+        assert!(e.contains("sweep 节"), "{e}");
+    }
+
+    #[test]
+    fn 扫描_plan_预算拒绝() {
+        let big = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 7}\n",
+            "sweep:\n",
+            "  replicates: 64\n",
+            "  parameters:\n",
+            "    model.warrior.attack: {min: 90, max: 110, step: 1}\n",
+        );
+        let e = sweep_plan_native(big, 0).unwrap_err();
+        assert!(e.contains("预算"), "{e}");
+    }
+
+    #[test]
+    fn 扫描_candidate_与core直跑逐值一致() {
+        let values = r#"{"model.warrior.attack": 100.0}"#;
+        let v = sweep_candidate_native(EXP_YAML, 2, values).unwrap();
+        let (cfg, spec) = core::scenario::load_experiment_str(EXP_YAML).unwrap();
+        let want = core::sweep::run_candidate(
+            &cfg,
+            &spec,
+            &std::collections::BTreeMap::from([("model.warrior.attack".into(), 100.0)]),
+        );
+        assert_eq!(v, serde_json::to_value(want).unwrap(), "与 core 直跑一致");
+        assert!(v["status"] == "ok");
+        // 3 天窗口提不出 d14/d30 → 指标少于 ALL,列出的都必须 n = replicates
+        let stats = v["metric_stats"].as_array().unwrap();
+        assert!(stats.len() < core::experiment::MetricKey::ALL.len());
+        assert!(stats.iter().all(|s| s[1]["n"] == 2));
+
+        // 配置错误候选照常上报,不静默丢弃(文档 12 章)
+        let bad = sweep_candidate_native(EXP_YAML, 2, r#"{"no.such.path": 1.0}"#).unwrap();
+        assert!(bad["status"]["config_error"].as_str().is_some());
+
+        assert!(sweep_candidate_native(EXP_YAML, 0, values).is_err());
+        assert!(sweep_candidate_native(EXP_YAML, MAX_REPLICATES + 1, values).is_err());
+    }
+
+    #[test]
+    fn 扫描_recommend_敏感性加单轴区间() {
+        let mut results = Vec::new();
+        let (cfg, spec) = core::scenario::load_experiment_str(EXP_YAML).unwrap();
+        for values in spec.plan(cfg.base_seed).unwrap() {
+            results.push(core::sweep::run_candidate(&cfg, &spec, &values));
+        }
+        let results_json = serde_json::to_string(&results).unwrap();
+        let v = sweep_recommend_native(EXP_YAML, &results_json).unwrap();
+        let rec = &v["recommendation"];
+        assert_eq!(rec["param"], "model.warrior.attack");
+        assert_eq!(rec["baseline"], 100.0, "默认 attack 基线");
+        // win_rate∈[0,1] 不会全 FAIL(CI 只会 PASS 或越过上界的 BORDERLINE)
+        // → 至少存在一个可行段;3 天 toy 配置 CI 宽,端点不预设
+        assert!(rec["interval"].is_array(), "{rec}");
+        assert!(rec["confidence"].is_string());
+        assert!(!rec["reasons"].as_array().unwrap().is_empty());
+        assert_eq!(
+            v["elasticities"].as_array().unwrap().len(),
+            core::experiment::MetricKey::ALL.len()
+        );
+
+        // MVP 红线:推荐仅单参数轴(与 CLI recommend 同源拒绝)
+        let two_axis = EXP_YAML.replace(
+            "    model.warrior.attack: {min: 90, max: 110, step: 10}\n",
+            "    model.warrior.attack: {min: 90, max: 110, step: 10}\n    model.warrior.defense: {min: 60, max: 80, step: 10}\n",
+        );
+        let e = sweep_recommend_native(&two_axis, &results_json).unwrap_err();
+        assert!(e.contains("单参数轴"), "{e}");
     }
 }

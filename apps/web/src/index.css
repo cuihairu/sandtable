@@ -242,3 +242,85 @@ footer {
 .file-btn input {
   display: none;
 }
+
+/* —— 参数扫描面板 —— */
+details {
+  margin: 20px 0;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+h3 {
+  font-size: 15px;
+  margin: 18px 0 8px;
+}
+
+.chip {
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 1px 6px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.chip-pass {
+  background: #2e7d32;
+}
+
+.chip-borderline {
+  background: #ef6c00;
+}
+
+.chip-fail {
+  background: var(--error);
+}
+
+.rec {
+  margin: 12px 0;
+  font-size: 14px;
+}
+
+.rec ul {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sweep-chart .band {
+  fill: rgba(46, 125, 50, 0.14);
+}
+
+.sweep-chart .whisker {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.sweep-chart .whisker-fail {
+  stroke: var(--error);
+}
+
+.sweep-chart .dot-pass {
+  fill: #2e7d32;
+}
+
+.sweep-chart .dot-borderline {
+  fill: #ef6c00;
+}
+
+.sweep-chart .dot-fail {
+  fill: var(--error);
+}
+
+.sweep-chart .baseline {
+  stroke: var(--brand);
+  stroke-dasharray: 4 3;
+}

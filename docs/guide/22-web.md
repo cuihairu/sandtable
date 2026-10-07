@@ -15,6 +15,7 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - 分群表(casual / core / whale 的等级、金币、战力、流失);
 - **SQL 查询面板(DuckDB-Wasm)**:仿真产物装入内存表 `days`,任意 SQL 本地执行(结果表 + 按天数值列一键画线)。零外链——worker 与 wasm 都经 vite `?url` 本地打包,不经 CDN;mvp 单线程构建按需加载(39 MB 资产,打开查询才下载)。
 - **结果导出**:`days.csv`(replicate 1,与 CLI `simulate --out` 写盘产物逐字节一致)与 `report.json`(结构同构,`results` 逐值一致)一键下载——放进一个目录即可被 `sandtable report` / `sandtable query` 继续分析([数据输出](./09-data-output) 契约)。
+- **参数扫描(单轴网格 + 推荐带)**:实验文件(scenario + model + sweep 三节,[文档 12 章](./12-parameter-sweep))本地扫描——网格经 YAML 编辑,JS 逐候选驱动(单线程下候选并行不可用,候选间让出主线程,进度可渲染);出候选 × 指标表(约束判定 PASS / BORDERLINE / FAIL,失败候选标注不静默丢弃)、单轴指标折线(CI95 须、判定着色、推荐带与基线标记)、OAT 敏感性矩阵与推荐块——与 CLI `sweep` / `recommend` 同源(core 纯函数);预算门:候选 × replicates ≤ 200、players × days ≤ 40 万,超出引导走 CLI。
 
 ## 绑定纪律
 
@@ -23,6 +24,7 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - 只转发 core(load → validate → run),**不放仿真逻辑**;真实逻辑在 native 纯函数(`*_native`),cargo test 直接覆盖;
 - wasm 入口返回 **JSON 字符串**,前端 `JSON.parse`——不经过 serde-wasm-bindgen 的 JsValue 协议(实测与 wasm-bindgen 新版存在静默不兼容:to_value 产出空对象;字符串是 wasm ABI 最稳通道);
 - `run_simulation` 输出附 `days_csv`(replicate 1,`core::export::day_csv` 直出)——CSV 由 Rust 渲染,浏览器下载与 CLI 写盘**逐字节一致**(`web_parity` 锁死),不在 JS 侧重拼浮点;
+- 扫描三绑定(`sweep_plan / sweep_candidate / sweep_recommend`)同为纯转发;单线程下候选并行(rayon)不可用,由 **JS 逐候选驱动**、候选间让出主线程——`replicates` 由 plan 统一给出,candidate / recommend 不各自解释;推荐仅单参数轴(MVP 红线,[文档 15 章](./15-recommendation)同源拒绝);
 - `meta` 只带 `schema_version / model_version`;`generated_at_unix / git_sha` 属环境字段,由前端构建注入(`VITE_GIT_SHA`,CI 构建期注入;未注入回退 `unknown`,与 CLI 未设 `SANDTABLE_GIT_SHA` 时同),绑定层不伪造;
 - replicates 上限 64(Web 定位小中型,WASM 内存 4GB 上限、单线程,文档 [数据输出](./09-data-output)),更大的实验引导走 CLI / 桌面。
 
@@ -43,5 +45,5 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 
 ## 后续
 
-- sweep 前端化(参数扫描的网格编辑与推荐带可视化);
-- 查询面板改为加载随结果携带的 CSV / Parquet 文件——当前直接装仿真输出的按天数据,文件进 DuckDB 留待与项目打包([数据输出](./09-data-output))一起定型。
+- 查询面板改为加载随结果携带的 CSV / Parquet 文件——当前直接装仿真输出的按天数据,文件进 DuckDB 留待与项目打包([数据输出](./09-data-output))一起定型;
+- 扫描的多参数轴联合可行域与 Random 搜索前端化(当前单轴网格,与 CLI 推荐红线一致)。

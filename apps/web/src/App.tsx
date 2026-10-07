@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import LineChart from './components/LineChart'
 import QueryPanel from './components/QueryPanel'
+import SweepPanel from './components/SweepPanel'
 import { loadDayStats, runQuery } from './lib/duck'
 import { PRESETS } from './lib/presets'
 import type { RunMetrics, SimOutput } from './lib/types'
@@ -230,6 +231,8 @@ export default function App() {
           </section>
         </>
       )}
+
+      <SweepPanel />
 
       <footer>
         <span>
