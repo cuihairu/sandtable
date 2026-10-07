@@ -11,6 +11,7 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
 use sandtable_core as core;
 
+mod params;
 mod report;
 
 #[derive(Parser)]
@@ -116,6 +117,11 @@ enum Cmd {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// 参数表导入导出:扁平 CSV ↔ 注册表数值参数(文档 9/10 章)
+    Params {
+        #[command(subcommand)]
+        cmd: ParamsCmd,
+    },
     /// 生成示例场景骨架(默认值 + 注释,可直接编辑运行)
     Init {
         /// 目标路径(缺省 ./scenario.yaml)
@@ -123,6 +129,28 @@ enum Cmd {
         /// 已存在时覆盖
         #[arg(long)]
         force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ParamsCmd {
+    /// 导出全量数值参数模板(path,value)
+    Export {
+        /// 基线场景(缺省默认配置)
+        scenario: Option<PathBuf>,
+        /// 输出路径(缺省 ./params.csv)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// 导入参数表:逐行覆写基线配置并校验(坏行逐行报,退出码 2)
+    Import {
+        /// 参数表 CSV(path,value)
+        csv: PathBuf,
+        /// 基线场景(缺省默认配置)
+        scenario: Option<PathBuf>,
+        /// 合并结果落盘为场景 YAML(可直接 simulate)
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
 }
 
@@ -349,6 +377,62 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
             }
             fs::write(&dst, html).with_context(|| format!("写 {} 失败", dst.display()))?;
             println!("已写出 {}(单文件 HTML,离线可开)", dst.display());
+            Ok(std::process::ExitCode::SUCCESS)
+        }
+        Cmd::Params { cmd } => {
+            let empty = Overrides {
+                players: None,
+                days: None,
+                seed: None,
+                init_attack: None,
+            };
+            match cmd {
+                ParamsCmd::Export { scenario, out } => {
+                    let cfg = match load_config(scenario.as_deref(), &empty) {
+                        Ok(c) => c,
+                        Err(code) => return Ok(std::process::ExitCode::from(code as u8)),
+                    };
+                    let dst = out.unwrap_or_else(|| PathBuf::from("params.csv"));
+                    if let Some(parent) = dst.parent() {
+                        if !parent.as_os_str().is_empty() {
+                            fs::create_dir_all(parent).context("创建输出目录失败")?;
+                        }
+                    }
+                    fs::write(&dst, params::export_csv(&cfg))
+                        .with_context(|| format!("写 {} 失败", dst.display()))?;
+                    println!("已导出 {} 项 → {}", params::rows(&cfg).len(), dst.display());
+                }
+                ParamsCmd::Import { csv, scenario, out } => {
+                    let cfg = match load_config(scenario.as_deref(), &empty) {
+                        Ok(c) => c,
+                        Err(code) => return Ok(std::process::ExitCode::from(code as u8)),
+                    };
+                    let text = fs::read_to_string(&csv)
+                        .with_context(|| format!("读取 {} 失败", csv.display()))?;
+                    let imp = match params::import_csv(&text, cfg) {
+                        Ok(i) => i,
+                        Err(e) => {
+                            eprintln!("参数错误: {e:#}");
+                            return Ok(std::process::ExitCode::from(2));
+                        }
+                    };
+                    println!(
+                        "已导入 {} 项,config_hash = {}",
+                        imp.applied,
+                        core::config::config_hash(&imp.config)
+                    );
+                    if let Some(dst) = out {
+                        if let Some(parent) = dst.parent() {
+                            if !parent.as_os_str().is_empty() {
+                                fs::create_dir_all(parent).context("创建输出目录失败")?;
+                            }
+                        }
+                        fs::write(&dst, params::merged_yaml(&imp.config))
+                            .with_context(|| format!("写 {} 失败", dst.display()))?;
+                        println!("已写出 {}(可直接 simulate)", dst.display());
+                    }
+                }
+            }
             Ok(std::process::ExitCode::SUCCESS)
         }
         Cmd::Init { path, force } => {

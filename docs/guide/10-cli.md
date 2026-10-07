@@ -17,6 +17,7 @@ title: 10 · CLI
 | `sandtable sweep` | 参数扫描实验 | Phase 3 |
 | `sandtable query` | SQL 事后探索结果数据集(DuckDB) | Phase 3 |
 | `sandtable recommend` | 从扫描产物生成敏感性矩阵与推荐区间 | Phase 4 |
+| `sandtable params` | 数值参数表导出 / 导入(扁平 CSV) | Phase 5 |
 | `sandtable report` | 生成 HTML 报告 | Phase 5 |
 
 ## 用法
@@ -27,6 +28,7 @@ sandtable sweep experiment.yaml
 sandtable compare result-a result-b
 sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate = 'PASS'"
 sandtable recommend experiment.yaml sweep-out/
+sandtable params export --scenario scenario.yaml --out params.csv
 sandtable report experiment/
 ```
 
@@ -63,6 +65,24 @@ sandtable recommend experiment.yaml sweep-out/ --out rec.json
 - Confidence 是判据不是形容词:High / Medium / Low,判据见文档 15 章;
 - `--out rec.json` 把敏感性矩阵与推荐一并落盘,供报告层(Phase 5)复用;
 - sweep.json 的 spec 与 results 原样反序列化,指标名按 snake_case(如 `win_rate`)。
+
+### params(Phase 5)
+
+数值参数表与 YAML 之间的双向扁平 CSV 通道(评估结论见[数据输出](./09-data-output)):策划在 Excel 里维护数值,另存 CSV 回导:
+
+```bash
+# 全量数值参数导出为(path,value)模板
+sandtable params export --scenario scenario.yaml --out params.csv
+
+# 改值后回导:逐行覆写基线配置并校验,错误逐行报(退出码 2)
+sandtable params import params.csv --scenario base.yaml --out merged.yaml
+sandtable simulate merged.yaml
+```
+
+- 表格式:`path,value` 表头,每行一个数值参数;空行与 `#` 开头的行跳过;
+- 覆盖范围 = 注册表全部数值参数(整数 / 浮点 / 分群权重);公式槽与时长(`30d`)不经参数表,需要自定义时直接编辑 YAML;
+- 导入以 `--scenario` 为基线(缺省默认配置),未知路径给编辑距离建议,数值非法 / 越界 / 路径重复逐行标注,不静默跳过;
+- 成功后打印 `config_hash`;`--out merged.yaml` 产出可直接跑仿真的场景文件(含 scenario 节的 population / duration / seed / population_mix 与 model 节全量数值参数)。
 
 ### report(Phase 5)
 

@@ -132,7 +132,7 @@ sandtable params import params.csv         # 逐行 apply_numeric 覆写 → val
 
 **已知风险:** 路径拼写错误(靠建议缓解);Excel 另存 CSV 的编码(按 UTF-8 假设,GBK 报错提示转码);公式单元格另存后成为静态值——数值表本就该导出终值,不算缺陷。
 
-**结论:** 值得做,通道小(模板导出 + 逐行导入 + 校验复用),排在报告与真实配置验证之后;是否实施、何时实施待拍板。
+**结论:** 值得做,通道小(模板导出 + 逐行导入 + 校验复用)。已按此实施(Phase 5,`sandtable params export / import`,用法见 [CLI](./10-cli))。
 
 ## 分析侧接口
 
