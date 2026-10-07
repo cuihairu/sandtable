@@ -64,6 +64,19 @@ sandtable recommend experiment.yaml sweep-out/ --out rec.json
 - `--out rec.json` 把敏感性矩阵与推荐一并落盘,供报告层(Phase 5)复用;
 - sweep.json 的 spec 与 results 原样反序列化,指标名按 snake_case(如 `win_rate`)。
 
+### report(Phase 5)
+
+把结果目录(可多个)渲染成单文件 HTML 报告——KPI、A/B 对比、扫描汇总与图表、敏感性与推荐,[数据输出](./09-data-output)的源文件对照表在彼:
+
+```bash
+sandtable report sim-out/ sweep-out/ rec.json --out report.html
+sandtable report experiment/                 # 缺省写 ./report.html
+```
+
+- 只读已落盘产物(`report.json` / `comparison.json` / `sweep.json` / `rec.json` / `days.csv`),发现什么渲染什么;
+- 输出自包含:内联 CSS + 内联 SVG,无 CDN、无 JS,离线可开;
+- 一个源文件都找不到 → 退出码 2。
+
 ## 输出约定
 
 - **stdout**:人读摘要(运行耗时、关键指标、约束 PASS / FAIL),面向终端;

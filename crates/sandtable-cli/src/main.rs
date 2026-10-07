@@ -11,6 +11,8 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
 use sandtable_core as core;
 
+mod report;
+
 #[derive(Parser)]
 #[command(
     name = "sandtable",
@@ -102,6 +104,15 @@ enum Cmd {
         /// sweep 输出目录或 sweep.json 路径
         sweep_json: PathBuf,
         /// 敏感性矩阵与推荐以 JSON 落盘(供报告层复用)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// HTML 报告:渲染已落盘产物为单文件 HTML(文档 9/10 章)
+    Report {
+        /// 结果目录或产物文件(可多个;发现什么渲染什么)
+        #[arg(required = true)]
+        inputs: Vec<PathBuf>,
+        /// 输出 HTML 路径(缺省 ./report.html)
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -322,6 +333,24 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                 Ok(std::process::ExitCode::from(2))
             }
         },
+        Cmd::Report { inputs, out } => {
+            let html = match report::render(&inputs) {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("配置错误: {e:#}");
+                    return Ok(std::process::ExitCode::from(2));
+                }
+            };
+            let dst = out.unwrap_or_else(|| PathBuf::from("report.html"));
+            if let Some(parent) = dst.parent() {
+                if !parent.as_os_str().is_empty() {
+                    fs::create_dir_all(parent).context("创建输出目录失败")?;
+                }
+            }
+            fs::write(&dst, html).with_context(|| format!("写 {} 失败", dst.display()))?;
+            println!("已写出 {}(单文件 HTML,离线可开)", dst.display());
+            Ok(std::process::ExitCode::SUCCESS)
+        }
         Cmd::Init { path, force } => {
             let path = path.unwrap_or_else(|| PathBuf::from("scenario.yaml"));
             if path.exists() && !force {
