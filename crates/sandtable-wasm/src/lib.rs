@@ -64,18 +64,25 @@ pub fn run_simulation_native(yaml: &str, replicates: u32) -> Result<serde_json::
     }))
 }
 
-/// 校验配置(wasm 入口)。
+/// 校验配置(wasm 入口):返回 JSON 字符串,前端 `JSON.parse`。
+///
+/// 不用 serde-wasm-bindgen 直出对象——其 JsValue 协议与 wasm-bindgen 新版
+/// 存在静默不兼容(实测 to_value 产出空对象);字符串是 wasm ABI 最稳通道。
 #[wasm_bindgen]
 pub fn validate_config(yaml: &str) -> Result<JsValue, JsValue> {
     let v = validate_config_native(yaml).map_err(|e| JsValue::from_str(&e))?;
-    serde_wasm_bindgen::to_value(&v).map_err(|e| JsValue::from_str(&e.to_string()))
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// 运行仿真(wasm 入口)。
+/// 运行仿真(wasm 入口):返回 JSON 字符串(形状同 [`run_simulation_native`])。
 #[wasm_bindgen]
 pub fn run_simulation(yaml: &str, replicates: u32) -> Result<JsValue, JsValue> {
     let v = run_simulation_native(yaml, replicates).map_err(|e| JsValue::from_str(&e))?;
-    serde_wasm_bindgen::to_value(&v).map_err(|e| JsValue::from_str(&e.to_string()))
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 #[cfg(test)]

@@ -36,9 +36,12 @@ jobs:
         run: cargo check -p sandtable-core --target wasm32-unknown-unknown
 
       # Phase 6(文档 18 章):wasm 绑定可构建出 pkg(核心在 wasm32 下完整可用)
+      - uses: jetli/wasm-pack-install@v0.4.0
+        with:
+          version: latest
+
       - name: WASM 绑定构建门
         run: |
-          cargo install wasm-pack --locked || true
           wasm-pack build crates/sandtable-wasm --target web --dev
           test -f crates/sandtable-wasm/pkg/sandtable_wasm_bg.wasm
 
@@ -75,3 +78,38 @@ jobs:
           ./target/release/sandtable recommend /tmp/exp.yaml /tmp/sweep --out /tmp/sweep/rec.json
           ./target/release/sandtable report /tmp/smoke /tmp/sweep /tmp/ab --out /tmp/report.html
           grep -q "<svg" /tmp/report.html
+
+  web:
+    name: Web 构建(wasm + 前端)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      # Phase 6(文档 18 章):绑定 pkg 先行,前端类型对齐 + 打包即门禁
+      - uses: jetli/wasm-pack-install@v0.4.0
+        with:
+          version: latest
+
+      - name: 构建 wasm pkg(release)
+        run: |
+          wasm-pack build crates/sandtable-wasm --target web --release
+          test -f crates/sandtable-wasm/pkg/sandtable_wasm_bg.wasm
+
+      - name: 前端构建(类型检查 + 打包)
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build
+          test -f dist/assets/*.wasm
