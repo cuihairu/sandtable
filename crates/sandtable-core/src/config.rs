@@ -276,6 +276,27 @@ impl Default for ProgressionConfig {
     }
 }
 
+/// 公式槽(文档 07 章:受控表达式,加载期编译)。
+///
+/// 每个槽是一个有界表达式;变量白名单与求值顺序见
+/// [`crate::formula::XP_NEEDED_VARS`]。默认值复现硬编码时代的闭式实现,
+/// 指标逐位一致;validate 在加载期编译所有槽,语法 / 白名单错误在此暴露。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FormulaConfig {
+    /// 升到 level+1 所需经验(截断为 i64)。
+    /// 变量:level、xp_base、xp_pow;默认 `xp_base * level ^ xp_pow`。
+    pub xp_needed: String,
+}
+
+impl Default for FormulaConfig {
+    fn default() -> Self {
+        Self {
+            xp_needed: "xp_base * level ^ xp_pow".into(),
+        }
+    }
+}
+
 /// 流失机制(文档 13 章:停滞 → 流失概率上升)。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -317,6 +338,7 @@ pub struct SimConfig {
     pub dungeon: DungeonConfig,
     pub behavior: BehaviorConfig,
     pub progression: ProgressionConfig,
+    pub formulas: FormulaConfig,
     pub churn: ChurnConfig,
 }
 
@@ -337,6 +359,7 @@ impl Default for SimConfig {
             dungeon: DungeonConfig::default(),
             behavior: BehaviorConfig::default(),
             progression: ProgressionConfig::default(),
+            formulas: FormulaConfig::default(),
             churn: ChurnConfig::default(),
         }
     }
@@ -384,6 +407,10 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
     {
         return Err(Error::Config("命中概率必须在 [0, 1]".into()));
     }
+    // 公式槽加载期编译(文档 07 章):语法 / 白名单 / 有界性在此暴露,
+    // sim::run 假定已通过编译。
+    crate::formula::compile(&cfg.formulas.xp_needed, crate::formula::XP_NEEDED_VARS)
+        .map_err(|e| Error::Config(format!("formulas.xp_needed: {e}")))?;
     Ok(())
 }
 
@@ -403,4 +430,29 @@ pub fn config_hash(cfg: &SimConfig) -> String {
 /// 第 r 个 replicate(0 起)的种子。
 pub fn replicate_seed(base_seed: u64, replicate: u32) -> u64 {
     base_seed.wrapping_add(replicate as u64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 公式槽在 validate 编译(文档 07 章:加载期编译):语法 / 白名单
+    /// 错误报出槽名与原因,默认公式必须通过。
+    #[test]
+    fn validate_公式槽编译报错() {
+        let mut cfg = SimConfig::default();
+        cfg.formulas.xp_needed = "xp_base *".into();
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("formulas.xp_needed"), "{msg}");
+
+        cfg.formulas.xp_needed = "xp_base * atk".into();
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("未知变量"), "{msg}");
+
+        cfg.formulas.xp_needed = String::new();
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("formulas.xp_needed"), "{msg}");
+
+        assert!(validate(&SimConfig::default()).is_ok());
+    }
 }

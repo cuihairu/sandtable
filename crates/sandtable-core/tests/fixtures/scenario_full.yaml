@@ -48,6 +48,9 @@ model:
     upgrade_cost_den: 4
     upgrade_attack_gain: 2
 
+  formulas:
+    xp_needed: "xp_base * level ^ xp_pow"
+
   churn:
     p_base: 0.003
     p_stall: 0.05

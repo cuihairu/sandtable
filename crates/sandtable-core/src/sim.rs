@@ -20,6 +20,11 @@ use crate::world::World;
 /// 运行第 `replicate` 个 replicate(0 起),返回该次运行的完整指标。
 pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
     let seed = crate::config::replicate_seed(cfg.base_seed, replicate);
+    // 公式槽在 run 开始编译一次(文档 07 章加载期编译);非法公式已在
+    // config::validate 拦截,这里直接假定可编译。
+    let xp_needed_formula =
+        crate::formula::compile(&cfg.formulas.xp_needed, crate::formula::XP_NEEDED_VARS)
+            .expect("formulas.xp_needed 编译失败:SimConfig 未经 config::validate");
     // 分群派生也用 replicate 种子:replicate 间独立,同 r 的 A/B 臂分群相同
     let mut run_cfg = cfg.clone();
     run_cfg.base_seed = seed;
@@ -79,7 +84,12 @@ pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
                             let gold_gain = out.gold * mult;
                             let xp_gain = out.xp * mult;
                             actor.gold += gold_gain;
-                            let levelups = progression::gain_xp(actor, xp_gain, &cfg.progression);
+                            let levelups = progression::gain_xp(
+                                actor,
+                                xp_gain,
+                                &cfg.progression,
+                                &xp_needed_formula,
+                            );
                             agg.record_levelup(levelups);
                             agg.record_battle(true, gold_gain as u64, is_whale);
                         } else {
@@ -287,5 +297,34 @@ mod tests {
                 a.gold_earned_total
             );
         }
+    }
+
+    /// 公式槽接入执行循环(文档 07 章):只改配置里的公式、不改代码,
+    /// 实验行为随之改变——升级更便宜 → 升级数严格更多、期末等级更高。
+    #[test]
+    fn 自定义公式_改配置改变行为() {
+        let base = SimConfig {
+            players: 200,
+            days: 10,
+            ..SimConfig::default()
+        };
+        let mut fast = base.clone();
+        fast.formulas.xp_needed = "level * 5".into();
+        let a = run(&base, 0);
+        let b = run(&fast, 0);
+        let total_levelups =
+            |m: &crate::metrics::RunMetrics| m.day_stats.iter().map(|d| d.levelups).sum::<u64>();
+        assert_ne!(a.config_hash, b.config_hash);
+        assert!(
+            total_levelups(&b) > total_levelups(&a),
+            "更便宜的升级公式应产生更多升级:{} vs {}",
+            total_levelups(&b),
+            total_levelups(&a)
+        );
+        let mean_level = |m: &crate::metrics::RunMetrics| {
+            m.cohort_stats.iter().map(|c| c.mean_level * c.count as f64).sum::<f64>()
+                / m.cohort_stats.iter().map(|c| c.count as f64).sum::<f64>()
+        };
+        assert!(mean_level(&b) > mean_level(&a));
     }
 }

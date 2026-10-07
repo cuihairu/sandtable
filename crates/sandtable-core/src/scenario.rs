@@ -10,8 +10,8 @@ use serde::Deserialize;
 use serde_yaml_ng::Value;
 
 use crate::config::{
-    validate, BehaviorConfig, ChurnConfig, CombatConfig, DungeonConfig, ProgressionConfig,
-    SimConfig, WarriorConfig,
+    validate, BehaviorConfig, ChurnConfig, CombatConfig, DungeonConfig, FormulaConfig,
+    ProgressionConfig, SimConfig, WarriorConfig,
 };
 use crate::Error;
 
@@ -57,6 +57,7 @@ struct ModelSection {
     dungeon: DungeonConfig,
     behavior: BehaviorConfig,
     progression: ProgressionConfig,
+    formulas: FormulaConfig,
     churn: ChurnConfig,
 }
 
@@ -70,6 +71,7 @@ impl Default for ModelSection {
             dungeon: d.dungeon,
             behavior: d.behavior,
             progression: d.progression,
+            formulas: d.formulas,
             churn: d.churn,
         }
     }
@@ -134,6 +136,7 @@ impl ScenarioFile {
         cfg.dungeon = m.dungeon;
         cfg.behavior = m.behavior;
         cfg.progression = m.progression;
+        cfg.formulas = m.formulas;
         cfg.churn = m.churn;
 
         validate(&cfg)?;
@@ -216,6 +219,9 @@ model:
     upgrade_cost_den: {ucd}
     upgrade_attack_gain: {ua}
 
+  formulas:
+    xp_needed: "{xp_formula}"   # 升到下一级所需经验;变量: level, xp_base, xp_pow
+
   churn:
     p_base: {p_base}
     p_stall: {p_stall}
@@ -264,6 +270,7 @@ model:
         ucn = d.progression.upgrade_cost_num,
         ucd = d.progression.upgrade_cost_den,
         ua = d.progression.upgrade_attack_gain,
+        xp_formula = d.formulas.xp_needed,
         p_base = d.churn.p_base,
         p_stall = d.churn.p_stall,
         stall_days = d.churn.stall_days,
@@ -374,5 +381,52 @@ model:
             cfg.behavior.whale.p_dungeon,
             SimConfig::default().behavior.whale.p_dungeon
         );
+    }
+
+    /// 公式槽:YAML 覆盖进入配置;非法表达式在加载期(validate)报槽名。
+    #[test]
+    fn 公式覆盖与非法公式报错() {
+        let cfg = load_str(
+            r#"schema_version: "1"
+model:
+  formulas:
+    xp_needed: "level * 10"
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.formulas.xp_needed, "level * 10");
+        // 未覆盖的公式槽保持默认
+        let d = SimConfig::default();
+        assert_eq!(d.formulas.xp_needed, "xp_base * level ^ xp_pow");
+
+        let err = load_str(
+            r#"schema_version: "1"
+model:
+  formulas:
+    xp_needed: "xp_base * level ^"
+"#,
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("formulas.xp_needed"), "{msg}");
+
+        // 白名单外的变量同样在加载期报错
+        let err = load_str(
+            r#"schema_version: "1"
+model:
+  formulas:
+    xp_needed: "xp_base * atk"
+"#,
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("atk") && msg.contains("未知变量"), "{msg}");
+    }
+
+    /// init 模板本身必须是合法场景(默认值模板可直接运行)。
+    #[test]
+    fn 示例模板可加载() {
+        let cfg = load_str(&example_yaml()).unwrap();
+        assert_eq!(config_hash(&cfg), config_hash(&SimConfig::default()));
     }
 }

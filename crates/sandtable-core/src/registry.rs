@@ -18,6 +18,8 @@ pub enum ParamKind {
     Dur,
     /// population_mix 的分群权重(casual / core / whale)
     Mix,
+    /// 公式表达式(编译与白名单校验交给 [`crate::formula`])
+    Expr,
 }
 
 /// 单个参数的注册项。
@@ -166,12 +168,18 @@ const MODEL: &[ParamSpec] = &[
         "2",
         "每次强化攻击增量",
     ),
+    spec(
+        "model.formulas.xp_needed",
+        Expr,
+        "xp_base * level ^ xp_pow",
+        "升级所需经验公式(变量: level, xp_base, xp_pow)",
+    ),
     spec("model.churn.p_base", F64, "0.003", "正常日流失概率"),
     spec("model.churn.p_stall", F64, "0.05", "停滞日流失概率"),
     spec("model.churn.stall_days", U32, "2", "连续无增长天数判停滞"),
 ];
 
-use ParamKind::{Dur, Mix, F64, I64, U32, U64};
+use ParamKind::{Dur, Expr, Mix, F64, I64, U32, U64};
 
 const fn spec(
     path: &'static str,
@@ -236,6 +244,7 @@ const SECTIONS: &[&str] = &[
     "model.behavior.core",
     "model.behavior.whale",
     "model.progression",
+    "model.formulas",
     "model.churn",
 ];
 
