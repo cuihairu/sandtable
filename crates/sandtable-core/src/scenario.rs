@@ -6,6 +6,8 @@
 //! [`crate::config::validate`]。config_hash 在反序列化后的结构体上计算,
 //! 键序与注释天然不影响(文档 07 章)。
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 use serde_yaml_ng::Value;
 
@@ -13,6 +15,7 @@ use crate::config::{
     validate, BehaviorConfig, ChurnConfig, CombatConfig, DungeonConfig, FormulaConfig,
     ProgressionConfig, SimConfig, WarriorConfig,
 };
+use crate::sweep::{ParamRange, SweepMode, SweepSpec, Target, TargetKind};
 use crate::Error;
 
 #[derive(Debug, Deserialize, Default)]
@@ -89,7 +92,14 @@ pub fn load_str(yaml: &str) -> Result<SimConfig, Error> {
     let root: Value =
         serde_yaml_ng::from_str(yaml).map_err(|e| Error::Config(format!("YAML 解析失败: {e}")))?;
     crate::registry::check_tree(&root)?;
+    check_schema_version(&root)?;
 
+    let file: ScenarioFile =
+        serde_yaml_ng::from_value(root).map_err(|e| Error::Config(format!("配置类型不符: {e}")))?;
+    file.into_config()
+}
+
+fn check_schema_version(root: &Value) -> Result<(), Error> {
     let sv = root
         .get("schema_version")
         .ok_or_else(|| Error::Config("配置根节点缺少 schema_version(当前支持 \"1\")".into()))?;
@@ -102,10 +112,126 @@ pub fn load_str(yaml: &str) -> Result<SimConfig, Error> {
             crate::SCHEMA_VERSION
         )));
     }
+    Ok(())
+}
 
-    let file: ScenarioFile =
-        serde_yaml_ng::from_value(root).map_err(|e| Error::Config(format!("配置类型不符: {e}")))?;
-    file.into_config()
+/// 扫描参数范围(sweep.parameters 的值;文档 12 章的 map 形式:路径作键)。
+#[derive(Debug, Deserialize)]
+struct RangeSpec {
+    min: f64,
+    max: f64,
+    step: f64,
+}
+
+/// 约束目标(sweep.targets 的项;metric 用 [`crate::experiment::MetricKey`]
+/// 的名字,kind 缺省 hard)。
+#[derive(Debug, Deserialize)]
+struct TargetYaml {
+    metric: String,
+    min: Option<f64>,
+    max: Option<f64>,
+    #[serde(default)]
+    kind: TargetKind,
+}
+
+/// Experiment 文件的 sweep 节(文档 10/12 章)。parameters 用 map 形式,
+/// 键即注册表路径;这里的形状是 YAML 面,经 [`load_experiment_str`]
+/// 翻译为 [`SweepSpec`] 后交给扫描引擎。
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+struct SweepSection {
+    mode: SweepMode,
+    /// 复跑数缺省 5(文档 11 章:R 默认 5–10)
+    replicates: u32,
+    samples: u32,
+    parameters: BTreeMap<String, RangeSpec>,
+    targets: Vec<TargetYaml>,
+}
+
+impl Default for SweepSection {
+    fn default() -> Self {
+        Self {
+            mode: SweepMode::default(),
+            replicates: 5,
+            samples: 0,
+            parameters: BTreeMap::new(),
+            targets: Vec::new(),
+        }
+    }
+}
+
+impl SweepSection {
+    fn into_spec(self) -> Result<SweepSpec, Error> {
+        let parameters = self
+            .parameters
+            .into_iter()
+            .map(|(path, r)| ParamRange {
+                path,
+                min: r.min,
+                max: r.max,
+                step: r.step,
+            })
+            .collect();
+        let targets = self
+            .targets
+            .into_iter()
+            .map(|t| {
+                let metric = crate::experiment::MetricKey::parse(&t.metric).ok_or_else(|| {
+                    Error::Config(format!(
+                        "sweep.targets: 未知指标 {:?},可选: {:?}",
+                        t.metric,
+                        crate::experiment::MetricKey::ALL.map(|k| k.name())
+                    ))
+                })?;
+                Ok(Target {
+                    metric,
+                    min: t.min,
+                    max: t.max,
+                    kind: t.kind,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(SweepSpec {
+            mode: self.mode,
+            parameters,
+            replicates: self.replicates,
+            samples: self.samples,
+            targets,
+        })
+    }
+}
+
+/// 解析 YAML 实验文件为 (基础配置, 扫描定义)。
+///
+/// 与 [`load_str`] 同一套加载纪律:schema_version 检查 → 注册表树校验
+/// (sweep 节有自己的 schema,摘出后不进注册表树;其参数路径由
+/// [`SweepSpec::validate`] 逐条查注册表)→ 反序列化 → 语义校验。
+pub fn load_experiment_str(yaml: &str) -> Result<(SimConfig, SweepSpec), Error> {
+    let root: Value =
+        serde_yaml_ng::from_str(yaml).map_err(|e| Error::Config(format!("YAML 解析失败: {e}")))?;
+    check_schema_version(&root)?;
+
+    let sweep_value = root.get("sweep").ok_or_else(|| {
+        Error::Config(
+            "实验文件缺少 sweep 节(见文档 12 章:mode / parameters / replicates / targets)".into(),
+        )
+    })?;
+    let sweep: SweepSection = serde_yaml_ng::from_value(sweep_value.clone())
+        .map_err(|e| Error::Config(format!("sweep 节解析失败: {e}")))?;
+    let spec = sweep.into_spec()?;
+
+    // 注册表树校验只看 scenario / model;sweep 的参数路径走 spec 校验
+    let mut cfg_root = root.clone();
+    if let Some(m) = cfg_root.as_mapping_mut() {
+        m.swap_remove(Value::from("sweep"));
+    }
+    crate::registry::check_tree(&cfg_root)?;
+
+    let file: ScenarioFile = serde_yaml_ng::from_value(cfg_root)
+        .map_err(|e| Error::Config(format!("配置类型不符: {e}")))?;
+    let cfg = file.into_config()?;
+    spec.validate()?;
+    Ok((cfg, spec))
 }
 
 impl ScenarioFile {
@@ -428,5 +554,114 @@ model:
     fn 示例模板可加载() {
         let cfg = load_str(&example_yaml()).unwrap();
         assert_eq!(config_hash(&cfg), config_hash(&SimConfig::default()));
+    }
+
+    /// 实验文件(docs 10/12 章):scenario + model + sweep 三节齐全,
+    /// sweep 节不进注册表树校验,但参数路径经 spec 校验查注册表。
+    #[test]
+    fn 实验文件_三节齐全_网格候选与覆盖生效() {
+        let (cfg, spec) = load_experiment_str(
+            r#"schema_version: "1"
+scenario:
+  population: 200
+  duration: "10d"
+model:
+  warrior: {attack: 100, defense: 80, hp: 1000}
+sweep:
+  replicates: 2
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+  targets:
+    - metric: win_rate
+      min: 0.3
+      max: 0.9
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.players, 200);
+        assert_eq!(cfg.warrior.attack, 100);
+        assert_eq!(spec.replicates, 2);
+        assert_eq!(spec.parameters.len(), 1);
+        assert_eq!(spec.targets.len(), 1);
+        assert_eq!(spec.targets[0].kind, TargetKind::Hard);
+        let cands = spec.plan(cfg.base_seed).unwrap();
+        assert_eq!(cands.len(), 3);
+        assert_eq!(cands[0]["model.warrior.attack"], 90.0);
+        assert_eq!(cands[2]["model.warrior.attack"], 110.0);
+    }
+
+    #[test]
+    fn 实验文件_缺_sweep_节报错() {
+        let e = load_experiment_str("schema_version: \"1\"\nscenario:\n  population: 100\n")
+            .unwrap_err();
+        assert!(e.to_string().contains("sweep"), "{e}");
+    }
+
+    #[test]
+    fn 实验文件_参数路径未知_报错附建议() {
+        let e = load_experiment_str(
+            r#"schema_version: "1"
+sweep:
+  parameters:
+    model.warrior.atk: {min: 90, max: 110, step: 10}
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            e.to_string().contains("model.warrior.atk") && e.to_string().contains("attack"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn 实验文件_未知指标报错列可选值() {
+        let e = load_experiment_str(
+            r#"schema_version: "1"
+sweep:
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+  targets:
+    - metric: dps
+      min: 0.3
+"#,
+        )
+        .unwrap_err();
+        let msg = e.to_string();
+        assert!(msg.contains("dps") && msg.contains("win_rate"), "{msg}");
+    }
+
+    #[test]
+    fn 实验文件_随机模式_默认与覆盖() {
+        let (_, spec) = load_experiment_str(
+            r#"schema_version: "1"
+sweep:
+  mode: random
+  samples: 9
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 1}
+"#,
+        )
+        .unwrap();
+        assert_eq!(spec.mode, SweepMode::Random);
+        assert_eq!(spec.replicates, 5, "缺省复跑数 5(文档 11 章)");
+        assert_eq!(spec.plan(7).unwrap().len(), 9);
+    }
+
+    /// sweep 节内部形状错误(min/max/step 缺失)要清晰报错,
+    /// 不能串到 scenario/model 的错误信息上。
+    #[test]
+    fn 实验文件_范围缺_step_报错() {
+        let e = load_experiment_str(
+            r#"schema_version: "1"
+sweep:
+  parameters:
+    model.warrior.attack: {min: 90, max: 110}
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            e.to_string().contains("sweep 节解析失败") || e.to_string().contains("step"),
+            "{e}"
+        );
     }
 }

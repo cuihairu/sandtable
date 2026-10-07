@@ -58,7 +58,12 @@ pub fn summarize(values: &[f64]) -> SampleStats {
         let ss: f64 = values.iter().map(|v| (v - mean).powi(2)).sum();
         (ss / (n - 1) as f64).sqrt()
     };
-    let half = t_critical_975(n - 1) * sd / (n as f64).sqrt();
+    // n = 1:CI 退化为点估计(df=0 的 t 值是 ∞,∞·0 = NaN,须绕开)
+    let half = if n == 1 {
+        0.0
+    } else {
+        t_critical_975(n - 1) * sd / (n as f64).sqrt()
+    };
     SampleStats {
         n,
         mean,
@@ -287,5 +292,14 @@ mod tests {
         };
         assert_eq!(MetricKey::RetentionD7.extract(&m), Some(0.8));
         assert_eq!(MetricKey::GoldPerPlayer.extract(&m), Some(5000.0));
+    }
+
+    /// 单 replicate:CI 退化为点估计(df=0 的 t 值是 ∞,须绕开 ∞·0 = NaN)
+    #[test]
+    fn 单_replicate_ci_退化为点估计() {
+        let s = summarize(&[0.7]);
+        assert_eq!(s.n, 1);
+        assert_eq!(s.sd, 0.0);
+        assert_eq!((s.ci95_lo, s.ci95_hi), (0.7, 0.7));
     }
 }

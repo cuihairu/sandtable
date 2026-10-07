@@ -42,9 +42,20 @@ jobs:
           cargo check -p sandtable-core --target wasm32-unknown-unknown --features arrow
           cargo test -p sandtable-cli --features parquet
 
-      - name: 冒烟(1 万玩家 × 30 天 + A/B)
+      - name: 冒烟(1 万玩家 × 30 天 + A/B + 扫描)
         run: |
           cargo build --release
           ./target/release/sandtable validate --players 10000 --days 30
           ./target/release/sandtable simulate --players 10000 --days 30 --out /tmp/smoke
           ./target/release/sandtable compare --replicates 4 --players 2000 --days 14 --out /tmp/ab
+          cat > /tmp/exp.yaml <<'YAML'
+          schema_version: "1"
+          scenario: {population: 500, duration: "10d"}
+          sweep:
+            replicates: 2
+            parameters:
+              model.warrior.attack: {min: 90, max: 110, step: 10}
+            targets:
+              - {metric: win_rate, min: 0.0, max: 1.0}
+          YAML
+          ./target/release/sandtable sweep /tmp/exp.yaml --out /tmp/sweep

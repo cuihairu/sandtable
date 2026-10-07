@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::{self, SimConfig};
 use crate::experiment::{summarize, MetricKey, SampleStats};
@@ -24,10 +24,11 @@ use crate::Error;
 pub const MAX_CANDIDATES: usize = 10_000;
 
 /// 扫描模式。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SweepMode {
     /// 网格:范围内的等步长点取笛卡尔积
+    #[default]
     Grid,
     /// 随机:每维在 [min, max] 均匀采样(高维空间;后续可加 Latin Hypercube)
     Random,
@@ -66,9 +67,10 @@ impl ParamRange {
 
 /// 约束类型(文档 13 章 targets.type)。判定规则相同;软约束供推荐层(P4)
 /// 区分权重,报告单独标注。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TargetKind {
+    #[default]
     Hard,
     Soft,
 }
