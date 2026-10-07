@@ -6,3 +6,6 @@ docs/.vitepress/cache/
 
 # Rust
 /target/
+
+# wasm-pack 产物(构建生成,不进 git)
+crates/sandtable-wasm/pkg/

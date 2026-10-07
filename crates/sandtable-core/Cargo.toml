@@ -7,7 +7,8 @@ description = "Sandtable 仿真内核:配置编译、带键随机数、离散事
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# float_roundtrip:写盘再读回的 f64 逐位一致(默认解析器个别值差 1 ulp,曾破坏 web 等价验收)
+serde_json = { version = "1", features = ["float_roundtrip"] }
 serde_yaml_ng = "0.10.0"
 sha2 = "0.10"
 thiserror = "2"

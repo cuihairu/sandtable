@@ -35,6 +35,13 @@ jobs:
       - name: WASM 编译门
         run: cargo check -p sandtable-core --target wasm32-unknown-unknown
 
+      # Phase 6(文档 18 章):wasm 绑定可构建出 pkg(核心在 wasm32 下完整可用)
+      - name: WASM 绑定构建门
+        run: |
+          cargo install wasm-pack --locked || true
+          wasm-pack build crates/sandtable-wasm --target web --dev
+          test -f crates/sandtable-wasm/pkg/sandtable_wasm_bg.wasm
+
       # Phase 2(文档 09 章):Arrow / Parquet 导出以 feature 提供,默认构建不含
       - name: Arrow/Parquet feature 门
         run: |

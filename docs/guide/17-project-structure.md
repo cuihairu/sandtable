@@ -24,7 +24,7 @@ sandtable/
 │   │       └── lib.rs
 │   ├── sandtable-cli/
 │   │   └── src/main.rs       # clap 子命令,薄封装 core(MVP)
-│   └── sandtable-wasm/       # wasm-bindgen 薄绑定(Phase 6,不放仿真逻辑)
+│   └── sandtable-wasm/       # wasm-bindgen 薄绑定(已落地:validate_config / run_simulation;native 纯函数承逻辑,wasm 层只包装,与 CLI 等价有测试锁死)
 │
 ├── apps/
 │   ├── web/                  # React + TS + Vite(Phase 6)
