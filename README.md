@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/public/logo.svg" width="120" alt="Sandtable logo" />
+<img src="docs/public/logo.svg" width="64" alt="Sandtable logo" />
 
 # Sandtable
 
@@ -20,6 +20,7 @@
 
 - **相对比较,而非绝对预测。** 玩家行为概率是人为设定的,仿真输出的绝对数值不可信。Sandtable 的价值在于比较:参数 A 与参数 B 跑同一场实验后的差值(如 ΔD7 Power、ΔWinRate)及其置信区间。
 - **建模假设:** MVP 阶段玩家相互独立、只有 PvE 内容、经济指标是全体玩家资源产出与消耗的聚合。这是最大的建模假设,决定了"按玩家并行"的架构。引入市场、PvP 或公会后将改变架构,不属于 MVP。
+- **形态:** CLI(MVP)/ Web(Rust→WASM + React)/ Desktop(Tauri 2),三种形态共用同一 Rust 内核;local-first,无服务器。结果数据走 Arrow / Parquet,分析层用 DuckDB(native 与 DuckDB-Wasm)。
 
 ## 当前状态
 

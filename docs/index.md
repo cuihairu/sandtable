@@ -29,4 +29,6 @@ features:
     details: 不存每个玩家每步的数据。固定分箱直方图、分位数草图、增量统计,十万玩家 × 90 天也在内存预算内。
   - title: 相对比较立场
     details: 玩家行为概率是人为设定的,输出的绝对数值不可信。Sandtable 的价值在 A/B 差值(ΔD7 Power 这类),不在绝对预言。
+  - title: 单核三形态
+    details: 同一 Rust 内核跑 CLI / Web(WASM)/ Desktop(Tauri 2)。core 可编译 wasm32 是 Phase 1 的 CI 门禁;浏览器跑小中型,桌面与 CLI 跑大型;local-first,无服务器。
 ---

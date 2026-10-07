@@ -21,14 +21,31 @@ title: 02 · 产品边界
 - 可复现实验
 - JSON / CSV 报告(Parquet 走 feature flag,见[数据输出](./09-data-output))
 
+## 产品形态:同一内核,三种壳
+
+Sandtable 规划三种运行形态,共用**同一个 Rust Core**,不存在 JS 重实现:
+
+| 形态 | 定位 | 阶段 |
+| --- | --- | --- |
+| **CLI** | CI、大规模实验、开发者自动化 | MVP(唯一交付形态) |
+| **Web**(WASM + React) | 浏览器本地跑小中型仿真,"Try in your browser" 演示与教学 | Phase 6 |
+| **Desktop**(Tauri 2) | Windows 等平台的主力形态:本地文件 + native 分析,无 Node / Python 后端 | Phase 7 |
+
+三条共性约束:
+
+- **Local-first**:配置、实验、仿真、结果、分析全部本地完成,不需要账号、服务器、数据库、网络;
+- **单一内核**:CLI / Web / Desktop 都链接 `sandtable-core`,严禁为 Web 单独写一份 JS 仿真——否则"Web 结果和桌面结果不一样"迟早发生,可复现性承诺就破了;
+- **架构先行,功能后置**:MVP 只交付 CLI,但 Core 从 Phase 1 起就以"可编译 WASM、可被 Tauri 复用、与分析引擎解耦"为硬约束([仿真内核](./04-kernel)平台边界)。
+
 ## 后续方向
 
 - 参数优化(Bayesian / Evolutionary / Pareto)
 - 真实游戏引擎 Adapter
 - CI 平衡回归
 - Excel / CSV 配置导入(策划数值表接入)
-- Web UI 与可视化系统图
-- 策划工作流
+- DuckDB 分析层与 Arrow / Parquet 数据契约(见[数据输出](./09-data-output))
+- Web 版与桌面版(见[路线图](./18-roadmap) Phase 6 / 7)
+- 可视化系统图与策划工作流
 
 ## MVP 明确不做
 

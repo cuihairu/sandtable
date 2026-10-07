@@ -6,7 +6,7 @@ title: 17 · 项目结构
 
 ## crate 布局
 
-MVP 只拆两个 crate(避免过度工程化,理由见[技术栈](./08-tech-stack)):
+MVP 只拆两个 crate(避免过度工程化,理由见[技术栈](./08-tech-stack));平台壳按阶段增加,目录提前预留:
 
 ```text
 sandtable/
@@ -22,24 +22,40 @@ sandtable/
 │   │       ├── metrics/      # 在线聚合器与指标定义
 │   │       ├── experiment/   # 运行编排、replicates、比较
 │   │       └── lib.rs
-│   └── sandtable-cli/
-│       └── src/main.rs       # clap 子命令,薄封装 core
+│   ├── sandtable-cli/
+│   │   └── src/main.rs       # clap 子命令,薄封装 core(MVP)
+│   └── sandtable-wasm/       # wasm-bindgen 薄绑定(Phase 6,不放仿真逻辑)
+│
+├── apps/
+│   ├── web/                  # React + TS + Vite(Phase 6)
+│   └── desktop/              # Tauri 2 壳(Phase 7)
 │
 ├── examples/
 │   └── minimal-rpg/          # MVP 最小 RPG 实验配置与说明
 ├── docs/                     # 本文档站(VitePress)
-├── .github/workflows/        # CI 与 Pages 部署
+├── .github/workflows/        # CI(含 wasm32 门禁)与 Pages 部署
 └── README.md
 ```
 
 ## 依赖方向
 
 ```text
-sandtable-cli → sandtable-core
+sandtable-cli ─┐
+sandtable-wasm ─┼→ sandtable-core
+apps/desktop ──┘
 core 内部:experiment → systems → world/kernel;config/model 被各层依赖
+分析层(DuckDB / Arrow)只被壳层调用,不进 core
 ```
 
-core 不依赖 cli;systems 不依赖 experiment;kernel 不依赖任何上层。
+core 不依赖任何壳;systems 不依赖 experiment;kernel 不依赖任何上层。
+
+## 平台边界规则
+
+| 规则 | 落点 |
+| --- | --- |
+| `cargo check --target wasm32-unknown-unknown` 从 Phase 1 起进 CI | [路线图](./18-roadmap) Phase 1 |
+| core 禁止 `duckdb` / `web-sys` / `tokio` / 文件与网络 I/O / 壁钟 | [仿真内核](./04-kernel)平台边界 |
+| 并行(rayon)是 feature,core 算法串行确定,WASM 下退化单线程 | [技术栈](./08-tech-stack) |
 
 ## 模块职责速查
 
@@ -65,10 +81,11 @@ core 不依赖 cli;systems 不依赖 experiment;kernel 不依赖任何上层。
 
 ## 与原计划的差异
 
-原计划列了六个 crate(core / model / config / experiment / report / cli)。合并理由:
+原计划列了六个 crate(core / model / config / experiment / report / cli)。合并与调整理由:
 
 - 配置、实验在 MVP 规模下不足以独立成 crate,拆开只会增加接口维护成本;
 - `sandtable-model` 与概念 Model 重名,内容(战斗、经济系统)实际是 systems;
-- report 在 HTML 阶段(Phase 5)出现真实需求时再独立。
+- report 在 HTML 阶段(Phase 5)出现真实需求时再独立;
+- Web / Desktop 是壳(apps/),不是 crate——壳的职责是把 core 装进目标平台,不承载仿真语义。
 
 扩张原则:**有真实复用或编译隔离需求时再拆**,不预设。
