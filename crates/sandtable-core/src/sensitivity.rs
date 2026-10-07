@@ -166,12 +166,12 @@ fn unusable(param: &str, metric: MetricKey, note: SensNote) -> Elasticity {
 }
 
 /// 相等判定带容差:网格生成(min + k·step)与配置读数的浮点路径不同。
-fn approx(a: f64, b: f64) -> bool {
+pub(crate) fn approx(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-9 * a.abs().max(b.abs()).max(1.0)
 }
 
 /// 第 axis 个参数轴上,"其他参数都在基线值上"的候选轴值(升序,去重)。
-fn baseline_slice(
+pub(crate) fn baseline_slice(
     spec: &SweepSpec,
     base: &SimConfig,
     results: &[CandidateResult],
@@ -224,7 +224,7 @@ fn bracket(slice: &[f64], p0: f64, delta: f64) -> Option<(f64, f64)> {
 }
 
 /// 切片上轴值等于 v 的候选的指标统计。
-fn stat_at<'a>(
+pub(crate) fn stat_at<'a>(
     spec: &SweepSpec,
     results: &'a [CandidateResult],
     axis: usize,
