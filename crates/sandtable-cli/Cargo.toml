@@ -18,7 +18,7 @@ serde_json = "1"
 # 候选间并行(文档 11 章);core 保持无 rayon,并行只在壳层
 rayon = "1"
 # Parquet 载体(文档 09 章):以 feature 提供,默认构建不含
-parquet = { version = "54", default-features = false, features = ["arrow"], optional = true }
+parquet = { version = "59.3", default-features = false, features = ["arrow"], optional = true }
 # DuckDB 分析层(文档 09 章:只读结果数据集,不进仿真路径),feature 提供
 duckdb = { version = "1", default-features = false, features = ["bundled", "parquet"], optional = true }
 
@@ -27,4 +27,4 @@ parquet = ["dep:parquet", "sandtable-core/arrow"]
 duckdb = ["dep:duckdb"]
 
 [dev-dependencies]
-arrow = { version = "54", default-features = false }
+arrow = { version = "59.3", default-features = false }

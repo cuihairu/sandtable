@@ -12,7 +12,7 @@ serde_yaml_ng = "0.10.0"
 sha2 = "0.10"
 thiserror = "2"
 # Arrow 数据契约(文档 09 章):RecordBatch 构建以 feature 提供,默认构建不含
-arrow = { version = "54", default-features = false, optional = true }
+arrow = { version = "59.3", default-features = false, optional = true }
 
 [features]
 arrow = ["dep:arrow"]
