@@ -74,6 +74,21 @@ export default function App() {
               {p.name}
             </button>
           ))}
+          <label className="file-btn">
+            导入配置文件
+            <input
+              type="file"
+              accept=".yaml,.yml,.txt,text/yaml"
+              onChange={async (e) => {
+                const f = e.target.files?.[0]
+                if (!f) return
+                setYaml(await f.text())
+                setError(null)
+                setOut(null)
+                e.target.value = ''
+              }}
+            />
+          </label>
           <label className="reps">
             replicates
             <select value={replicates} onChange={(e) => setReplicates(Number(e.target.value))}>
