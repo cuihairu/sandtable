@@ -14,6 +14,7 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - 按天曲线(日活跃 / 日胜率 / 金币存量 / 升级次数);
 - 分群表(casual / core / whale 的等级、金币、战力、流失);
 - **SQL 查询面板(DuckDB-Wasm)**:仿真产物装入内存表 `days`,任意 SQL 本地执行(结果表 + 按天数值列一键画线)。零外链——worker 与 wasm 都经 vite `?url` 本地打包,不经 CDN;mvp 单线程构建按需加载(39 MB 资产,打开查询才下载)。
+- **结果导出**:`days.csv`(replicate 1,与 CLI `simulate --out` 写盘产物逐字节一致)与 `report.json`(结构同构,`results` 逐值一致)一键下载——放进一个目录即可被 `sandtable report` / `sandtable query` 继续分析([数据输出](./09-data-output) 契约)。
 
 ## 绑定纪律
 
@@ -21,7 +22,8 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 
 - 只转发 core(load → validate → run),**不放仿真逻辑**;真实逻辑在 native 纯函数(`*_native`),cargo test 直接覆盖;
 - wasm 入口返回 **JSON 字符串**,前端 `JSON.parse`——不经过 serde-wasm-bindgen 的 JsValue 协议(实测与 wasm-bindgen 新版存在静默不兼容:to_value 产出空对象;字符串是 wasm ABI 最稳通道);
-- `meta` 只带 `schema_version / model_version`;`generated_at_unix / git_sha` 属环境字段,由前端构建注入,绑定层不伪造;
+- `run_simulation` 输出附 `days_csv`(replicate 1,`core::export::day_csv` 直出)——CSV 由 Rust 渲染,浏览器下载与 CLI 写盘**逐字节一致**(`web_parity` 锁死),不在 JS 侧重拼浮点;
+- `meta` 只带 `schema_version / model_version`;`generated_at_unix / git_sha` 属环境字段,由前端构建注入(`VITE_GIT_SHA`,CI 构建期注入;未注入回退 `unknown`,与 CLI 未设 `SANDTABLE_GIT_SHA` 时同),绑定层不伪造;
 - replicates 上限 64(Web 定位小中型,WASM 内存 4GB 上限、单线程,文档 [数据输出](./09-data-output)),更大的实验引导走 CLI / 桌面。
 
 ## 等价验收
@@ -41,6 +43,5 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 
 ## 后续
 
-- DuckDB-Wasm 本地查询结果数据集(路线图 Phase 6 余项):随结果携带的 CSV/Parquet 进 DuckDB-Wasm,SQL 本地执行后出图;
 - sweep 前端化(参数扫描的网格编辑与推荐带可视化);
-- 结果导出(与 [项目文件](./09-data-output) 契约对齐,CLI 可继续分析)。
+- 查询面板改为加载随结果携带的 CSV / Parquet 文件——当前直接装仿真输出的按天数据,文件进 DuckDB 留待与项目打包([数据输出](./09-data-output))一起定型。

@@ -31,6 +31,8 @@ experiment/
 
 `meta.json` 中的字段由运行环境生成(时间戳、路径、机器信息),**不参与**结果摘要的确定性哈希——同 seed 重跑的 `summary.json` 应当逐位一致(见[测试策略](./19-testing))。
 
+Web 端([Web 端](./22-web),Phase 6)按同一契约导出:`days.csv` 与 CLI `simulate --out` 写盘产物**逐字节一致**(由 Rust 渲染直出,`web_parity` 测试锁死),`report.json` 结构同构、`results` 逐值一致——浏览器下载的两个文件放进一个目录,`sandtable report` / `sandtable query` 即可直接继续分析。
+
 ## Arrow:仿真 → 分析 → 可视化的数据契约
 
 数据从仿真流向分析的中间表示统一为 Arrow:

@@ -122,6 +122,19 @@ textarea {
   word-break: break-all;
 }
 
+.export {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.export .note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .kpis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

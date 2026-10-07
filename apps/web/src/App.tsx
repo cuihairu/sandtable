@@ -12,6 +12,17 @@ function pct(v: number): string {
   return `${(v * 100).toFixed(2)}%`
 }
 
+// 结果导出(文档 09 章契约):文件名与列结构与 CLI simulate --out 产物一致,
+// 下载后 sandtable report / query 可直接继续分析
+function download(text: string, filename: string, mime: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function dayMetric(m: RunMetrics, key: 'active' | 'win_rate' | 'gold_supply' | 'levelups' | 'churn_rate'): number[] {
   return m.day_stats.map((d) => d[key])
 }
@@ -135,6 +146,39 @@ export default function App() {
               ))}
             </div>
             <p className="hash">config_hash = {out.config_hash}</p>
+            <div className="export">
+              <button onClick={() => download(out.days_csv, 'days.csv', 'text/csv')}>
+                下载 days.csv(replicate 1)
+              </button>
+              <button
+                onClick={() =>
+                  download(
+                    JSON.stringify(
+                      {
+                        meta: {
+                          // 环境字段(文档 22 绑定纪律):时间戳取导出时刻,
+                          // git_sha 由构建注入(VITE_GIT_SHA),未注入回退 unknown(与 CLI 同)
+                          generated_at_unix: Math.floor(Date.now() / 1000),
+                          git_sha: import.meta.env.VITE_GIT_SHA ?? 'unknown',
+                          schema_version: out.meta.schema_version,
+                          model_version: out.meta.model_version,
+                        },
+                        results: out.results,
+                      },
+                      null,
+                      2,
+                    ),
+                    'report.json',
+                    'application/json',
+                  )
+                }
+              >
+                下载 report.json
+              </button>
+              <span className="note">
+                与 CLI simulate --out 产物同构,下载后 sandtable report / query 可继续分析
+              </span>
+            </div>
           </section>
 
           <section className="panel">

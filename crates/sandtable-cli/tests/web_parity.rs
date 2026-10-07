@@ -46,4 +46,13 @@ fn web绑定与cli同配置同seed逐值一致() {
         cli["results"][0]["config_hash"], web["config_hash"],
         "config_hash 一致"
     );
+
+    // 文档 09 章契约:绑定输出附带的 days_csv 与 CLI --out 写盘产物逐字节
+    // 一致——浏览器下载的 days.csv 可直接被 sandtable report / query 继续分析
+    let cli_days = fs::read_to_string(dir.join("days.csv")).unwrap();
+    assert_eq!(
+        cli_days,
+        web["days_csv"].as_str().unwrap(),
+        "days.csv 与 CLI --out 产物逐字节一致"
+    );
 }

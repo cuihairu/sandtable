@@ -42,6 +42,8 @@ export interface RunMetrics {
 export interface SimOutput {
   meta: { schema_version: string; model_version: string }
   config_hash: string
+  /** replicate 1 按天 CSV,与 CLI simulate --out 写盘的 days.csv 逐字节一致(文档 09) */
+  days_csv: string
   results: RunMetrics[]
 }
 

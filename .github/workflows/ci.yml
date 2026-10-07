@@ -107,6 +107,9 @@ jobs:
 
       - name: 前端构建(类型检查 + 打包)
         working-directory: apps/web
+        env:
+          # report.json 导出的环境字段(docs 22 绑定纪律):构建期注入 git_sha
+          VITE_GIT_SHA: ${{ github.sha }}
         run: |
           npm ci
           npm run build

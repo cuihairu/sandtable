@@ -1,7 +1,8 @@
 //! WebAssembly 薄绑定(文档 08/18 章:Phase 6)。
 //!
 //! 纪律:**不放仿真逻辑**——只转发 sandtable-core(load → validate → run),
-//! 输出与 CLI `simulate` 的 report.json 同构(`{meta, results}`),统计等价
+//! 输出与 CLI `simulate` 的 report.json 同构(`{meta, results}`,另附
+//! `days_csv` 与 CLI 写盘产物逐字节一致,文档 09 章),统计等价
 //! 由 CLI 侧等价测试锁死。meta 只带版本字段;`generated_at_unix`/`git_sha`
 //! 是环境字段,由前端构建注入,不在绑定层伪造。
 //!
@@ -42,6 +43,10 @@ pub fn validate_config_native(yaml: &str) -> Result<serde_json::Value, String> {
 /// 运行仿真(native 纯函数):R 个 replicate 的 [`core::metrics::RunMetrics`]
 /// 序列化数组,与 CLI `simulate` report.json 的 `results` 逐字段同构
 /// (同 seed 同配置时逐值相等,含 day_stats / cohort_stats)。
+///
+/// 另附 `days_csv`:replicate 1 的按天 CSV([`core::export::day_csv`]),
+/// 与 CLI `simulate --out` 写盘的 days.csv **逐字节一致**(文档 09 章契约,
+/// `web_parity` 测试锁死)——浏览器导出的文件 CLI 可直接继续分析。
 pub fn run_simulation_native(yaml: &str, replicates: u32) -> Result<serde_json::Value, String> {
     if replicates == 0 {
         return Err("参数错误: replicates 至少为 1".into());
@@ -60,6 +65,7 @@ pub fn run_simulation_native(yaml: &str, replicates: u32) -> Result<serde_json::
             "model_version": core::MODEL_VERSION,
         },
         "config_hash": core::config::config_hash(&cfg),
+        "days_csv": core::export::day_csv(&results[0]),
         "results": results,
     }))
 }
@@ -124,6 +130,19 @@ mod tests {
             "results 与 core::sim::run 直序列化逐值一致"
         );
         assert_eq!(v["results"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn 运行_输出附days_csv与core渲染同字节() {
+        let cfg = core::scenario::load_str(YAML).unwrap();
+        let v = run_simulation_native(YAML, 2).unwrap();
+        let want = core::export::day_csv(&core::sim::run(&cfg, 0));
+        assert_eq!(
+            v["days_csv"].as_str().unwrap(),
+            want,
+            "与 CLI simulate --out 写盘的 days.csv 同源同字节"
+        );
+        assert!(want.starts_with("day,active,"), "首列天索引(文档 09 契约)");
     }
 
     #[test]
