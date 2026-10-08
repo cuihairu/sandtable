@@ -1,6 +1,6 @@
 # sandtable 脚本层设计(Python 载体)
 
-状态:**设计定稿,未实施**(分期计划见文末;每期实施前按本文件为口径基线)。
+状态:**阶段 0 已落地(2026-10-08),阶段 1 起未实施**(分期计划见文末;每期实施前按本文件为口径基线)。
 拍板:**脚本语言定为 Python**(2026-10-08,理由:简单库多、仿真分析生态成熟——numpy / pandas / scipy / matplotlib 一线贯通)。本文档回答:嵌入形态怎么选、与 CLI / Web / WASM 三形态的边界、性能红线、脚本不被信任时怎么办。
 
 ## 0. 定位(承既有架构口径)
@@ -79,12 +79,17 @@ rec = st.recommend("examples/pokemon-sweep.yaml", sw.results)
 
 | 阶段 | 交付 | 验收 |
 | --- | --- | --- |
-| 0(零开发) | 外挂模式规范(本文档 §5)+ `examples/python/`:pandas 消费 report.json / days.csv / Parquet 的三个示例脚本 | 示例脚本本地跑通并产出图/表;README 记录依赖(numpy/pandas/pyarrow) |
+| 0(零开发)✅ **已落地** | 外挂模式规范(本文档 §5)+ `examples/python/`:三个示例脚本(`kpi_report.py` 消费 report.json 出 KPI 汇总表、`daily_curves.py` 消费 days.csv 出按天四联图、`parquet_analysis.py` 消费三个 Parquet 批次出分群画像)+ README 依赖与运行记录 | 已验收(2026-10-08):三脚本本地跑通出 1 表 + 2 图(python 3.14 / pandas 3.0.6 / pyarrow 25.0.1 / matplotlib 3.10.7);零 Rust 改动 |
 | 1 | `sandtable-python` crate(pyo3 feature 门)+ maturin 构建 + load / run / sweep / recommend / params 只读绑定 | `maturin build` 出 wheel;pytest 冒烟;`py_parity` 逐值一致;wasm 门不回归 |
 | 2 | 编排 API:批量实验、A/B/扫描结果聚合、matplotlib 出图示例;`scripts/` 下官方模板 | 阶段 1 用例 ×N;CI 加 wheel 构建 job(可选发布) |
 | 3(远期,需再拍板) | 批处理粒度的 Python System 回调(day-level chunk;GIL 侧依赖子解释器 [PEP 684](https://peps.python.org/pep-0684/) 与 free-threading [PEP 703](https://peps.python.org/pep-0703/) 的成熟度)、Pyodide Web 实验 | 先出性能实测报告再拍板,不预设结论 |
 
 阶段 0 可与本设计文档同一批落地(纯示例);阶段 1 起动 Rust 侧,按"文档先行、每阶段独立提交、测试全绿再合"推进。
+
+### 轮记录
+
+- **2026-10-08 阶段 0 落地**(点火来源:巡检续批;依据:上表阶段 0 为纯示例、可随时开工,故拍板记录"直接开工,不等过目"):`examples/python/` 三示例 + README(依赖/运行/口径纪律,`sim-out/` 已 gitignore);验收列全过——三脚本消费 report.json / days.csv / Parquet 各自跑通,KPI 表与两张 PNG 本地产出。两点口径存档:①示例 CI95 用 ±1.96·SE 正态近似,权威 t 分布口径仍归 CLI(脚本头与 README 均注明);②本批零 Rust 改动,内核 / wasm / CI 门不涉及。
+- **阶段 1 起(动 Rust 侧)继续冻结**,待设计过目后按上表验收逐期推进。
 
 ## 8. 来源与分级
 
