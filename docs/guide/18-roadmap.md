@@ -95,8 +95,9 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 ## 后续方向
 
 - 参数优化:Bayesian / Evolutionary / Pareto;
-- 复杂行为脚本:评估 rhai(见[公式引擎](./07-config-formula));
-- Python 绑定(另行命名,见[项目结构](./17-project-structure));
+- 复杂行为脚本:载体已拍板 Python(rhai 缓议),设计与分期见 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md);
+- Python 绑定:同上,扩展模块(maturin + PyO3)为主路径,另行命名(见[项目结构](./17-project-structure));
+- 随机函数扩展(加权表/保底/正态/卡方):设计与分期见[随机函数与概率系统](./24-random-functions);
 - 项目导入 / 导出格式定型(见[数据输出](./09-data-output));
 - 游戏引擎 Adapter;Web API(仅当出现真实的服务端需求,local-first 不预设)。
 

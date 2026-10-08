@@ -139,4 +139,4 @@ sandtable params import params.csv         # 逐行 apply_numeric 覆写 → val
 ## 分析侧接口
 
 - 保证 CSV / Parquet(feature 启用时)输出质量,使 notebook 分析顺畅;
-- Python 绑定列入后续方向——注意 PyPI 上的 `sandtable` 名称已被占用,届时 Python 包需另行命名([命名核查](./17-project-structure))。
+- Python 绑定已定载体与分期(2026-10-08 拍板:Python 载体,扩展模块为主路径,见设计文档 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md))——注意 PyPI 上的 `sandtable` 名称已被占用,届时 Python 包需另行命名([命名核查](./17-project-structure))。

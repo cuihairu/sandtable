@@ -75,7 +75,7 @@ core 不依赖任何壳;systems 不依赖 experiment;kernel 不依赖任何上�
 | --- | --- |
 | GitHub | `cuihairu/sandtable` 无冲突(本仓库) |
 | crates.io | `sandtable` 前缀暂无冲突记录;**正式发布前需再核一次** |
-| PyPI | `sandtable` 已被占用;将来 Python 绑定**另行命名**,不占用 sandtable 名 |
+| PyPI | `sandtable` 已被占用;将来 Python 绑定**另行命名**,不占用 sandtable 名(设计文档暂记候选 `sandtable_sim`,发布前按本章纪律再核)——载体与分期见 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md) |
 
 内置系统模块命名 `systems`;若未来独立成 crate 用 `sandtable-systems`,不用 `sandtable-model`(避免与概念 Model 混淆,见[技术栈](./08-tech-stack))。
 

@@ -72,6 +72,14 @@ export default withMermaid(
               { text: '21 · 真实配置验证:宝可梦案例', link: '/guide/21-pokemon-case' },
               { text: '22 · Web 端', link: '/guide/22-web' }
             ]
+          },
+          {
+            text: '调研与扩展',
+            items: [
+              { text: '23 · 游戏类型 × 仿真函数清单', link: '/guide/23-genre-simulation' },
+              { text: '24 · 随机函数与概率系统', link: '/guide/24-random-functions' },
+              { text: '脚本层设计(Python,定稿待实施)', link: 'https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md' }
+            ]
           }
         ]
       },
