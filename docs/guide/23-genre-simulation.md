@@ -6,7 +6,7 @@ title: 23 · 游戏类型 × 仿真函数清单
 
 sandtable 是横向沙盘:内核(时间/事件/带键随机/在线聚合)与实验层(sweep / 敏感性 / 推荐 / CI95)与游戏类型无关,类型知识全部在配置里(见[宝可梦案例](./21-pokemon-case))。本页反过来做一次**纵向盘点**:按主流游戏类型整理"做数值仿真时常用的仿真函数清单",并逐项对照 sandtable 现状——哪些是通用积木(已有)、哪些经映射可表达、哪些是缺口(扩展方向)。
 
-与 [hello-game](https://github.com/cuihairu/hello-game) 的游戏类型调研联动:那边(`24-game-types-architecture` 树)从**架构侧**回答"这类游戏服务端怎么承载",`numerical` 树从**设计侧**回答"数值怎么定";本页从**仿真侧**回答"这类游戏的数值决策怎么在沙盘里验证后再落盘"。三视角共用同一套类型词汇。
+与 [hello-game](https://github.com/cuihairu/hello-game) 的调研直接联动:其 [genre-coverage.md(玩法品类与功能组件覆盖对照)](https://github.com/cuihairu/hello-game/blob/main/docs/system/genre-coverage.md)(检索日期 2026-10-08)拉了 **21 品类 × 46 组件**的覆盖网——品类清单每行给核心循环 / 最先要求的功能组件 / 主导问题模型,从**服务端组件侧**回答"这类游戏要建哪些件";`24-game-types-architecture` 树从**架构侧**回答"怎么承载",`numerical` 树从**设计侧**回答"数值怎么定";本页从**仿真侧**回答"这类游戏的数值决策怎么在沙盘里验证后再落盘"。四视角共用同一套类型词汇,本页六族与 21 品类的映射见文末。
 
 ## 现状标记约定
 
@@ -116,12 +116,29 @@ idle 数值设计的系统性参考资料:Kongregate 开发者博客 "The Math o
 
 这正是 sandtable 选"横向沙盘"的立论:**六类游戏共享约六成仿真需求,共享部分做成内核,差异部分做成插件**——清单的价值在于把"六成"和"四成"逐项点清,避免给内核塞类型逻辑。
 
+## 与 hello-game 21 品类的映射
+
+本页六族是按"仿真函数族"归并的(同族函数与口径基本共用),对应 genre-coverage 品类清单如下;六族各表的"典型仿真问题"行与那边品类行的"核心循环 / 主导问题模型"列对读:
+
+| 本页六族 | genre-coverage 品类 |
+| --- | --- |
+| MMORPG | MMORPG 与大世界 |
+| FPS / MOBA | MOBA;FPS / TPS 与战术射击 |
+| 卡牌 / 自走棋 | 卡牌与 CCG;自走棋(回合制 RPG 与战棋邻接) |
+| SLG / 策略 | SLG 与 4X 赛季沙盘 |
+| 放置 / Idle | 放置与挂机养成 |
+| 模拟经营 | 模拟经营与生活 |
+
+其余品类(棋牌对局、派对、三消、音乐节奏、格斗、竞速体育、RTS、塔防、ARPG、生存建造、Roguelike、UGC)的仿真诉求大体是六族函数的子集或组合(如棋牌=洗牌/无放回抽样、ARPG=战斗轮+掉落表+逐层表),需要时按同一表式增族,不预设。
+
+另注意两条缺口清单**不同轴**:genre-coverage 的 11 缺口是服务端**组件面**(任务、成就、强化升星、战令……),本页 ⛔ 是**仿真函数面**(抽卡保底、匹配评分、供需均衡……)——组件缺口由那边树补篇解决,仿真缺口由本仓扩展分期解决,不互指。
+
 ## 来源与分级
 
 | 级别 | 内容 | 来源 |
 | --- | --- | --- |
 | 本仓(公式) | 现状列的全部 ✅/🔶 判定 | 本 docs 04–15、21 章与仓库代码 |
-| 交叉引用 | 类型划分、设计侧口径(期望/保底/公式族)、架构侧对应 | [hello-game](https://github.com/cuihairu/hello-game) `24-game-types-architecture` 与 `numerical` 树 |
+| 交叉引用 | 品类词汇与品类清单基准(21 类 × 46 组件,六族映射)、设计侧口径(期望/保底/公式族)、架构侧对应 | hello-game [genre-coverage.md](https://github.com/cuihairu/hello-game/blob/main/docs/system/genre-coverage.md)、`24-game-types-architecture` 树与 `numerical` 树 |
 | 外部(算法) | Glicko/Glicko-2 原文 | [glicko.net(Mark E. Glickman)](http://www.glicko.net/glicko.html) |
 | 外部(综述) | idle 数学设计资料 | "The Math of Idle Games" 系列(Kongregate 博客 / GDC,Anthony Pecorella;按标题检索) |
 | 组织方式 | 类型分组、"六成/四成"归纳、清单表结构 | 本页作者综合,非行业标准 |
