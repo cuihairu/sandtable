@@ -126,6 +126,11 @@ fn 报告_多源合并单文件_无外部资源() {
         "成长曲线板块(原计划 Phase 7:Progression)"
     );
     assert!(html.contains("升级次数累计"), "升级累计衍生曲线");
+    assert!(
+        html.contains("群体分位曲线"),
+        "群体分位板块(原计划 Phase 7:Population 分布面)"
+    );
+    assert!(html.contains("p90"), "分位序列(p50/p90/p99)");
     assert!(html.contains("参数扫描"), "sweep.json 板块");
     assert!(html.contains("敏感性与推荐"), "rec.json 板块");
     assert!(html.contains("按天指标"), "days.csv 板块");

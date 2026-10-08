@@ -6,6 +6,7 @@
 //! - 输出内联 CSS + 手写内联 SVG,无 CDN、无 JS,离线双击可开;
 //! - 一个源文件都找不到则报错(调用方走退出码 2)。
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context};
@@ -152,6 +153,7 @@ fn page(src: &Sources) -> String {
     section_overview(&mut body, src);
     section_kpi(&mut body, src);
     section_population(&mut body, src);
+    section_power_dist(&mut body, src);
     section_compare(&mut body, src);
     section_sweep(&mut body, src);
     section_recommend(&mut body, src);
@@ -417,6 +419,81 @@ fn section_kpi(body: &mut String, src: &Sources) {
         ));
     }
     body.push_str("</tbody></table>\n");
+}
+
+// ----------------------------------------------------------- 群体分位板块
+
+/// 群体分位曲线(原计划 Phase 7:Population Analysis 的分布面):
+/// power_snapshots 的 p50/p90/p99 随快照日三线同轴;快照日是抽样点非逐天,
+/// 各 replicate 的同日分位取平均。
+fn section_power_dist(body: &mut String, src: &Sources) {
+    for r in &src.reports {
+        let Some(results) = r.get("results").and_then(Value::as_array) else {
+            continue;
+        };
+        let mut acc: BTreeMap<u64, Vec<[f64; 3]>> = BTreeMap::new();
+        for x in results {
+            let Some(snaps) = x.get("power_snapshots").and_then(Value::as_array) else {
+                continue;
+            };
+            for s in snaps {
+                let (Some(day), Some(p50), Some(p90), Some(p99)) = (
+                    s.get("day").and_then(Value::as_u64),
+                    s.get("p50").and_then(Value::as_f64),
+                    s.get("p90").and_then(Value::as_f64),
+                    s.get("p99").and_then(Value::as_f64),
+                ) else {
+                    continue;
+                };
+                acc.entry(day).or_default().push([p50, p90, p99]);
+            }
+        }
+        if acc.is_empty() {
+            continue;
+        }
+        let xs: Vec<f64> = acc.keys().map(|d| *d as f64).collect();
+        let mean_at = |j: usize| -> Vec<f64> {
+            acc.values()
+                .map(|v| v.iter().map(|t| t[j]).sum::<f64>() / v.len() as f64)
+                .collect()
+        };
+        let (p50, p90, p99) = (mean_at(0), mean_at(1), mean_at(2));
+        let hash = results
+            .first()
+            .and_then(|x| x.get("config_hash"))
+            .and_then(Value::as_str)
+            .and_then(|h| h.get(..12))
+            .unwrap_or("?");
+        body.push_str(&format!(
+            "<h2>群体分位曲线</h2>\n<p class=\"mut\">config {hash} · replicates = {}(同日分位跨 replicate 平均;快照日为抽样点,非逐天)</p>\n<div class=\"grid\">\n",
+            results.len()
+        ));
+        body.push_str(&svg_chart(&Chart {
+            title: "战力分位 p50 / p90 / p99",
+            x_label: "day",
+            xs: &xs,
+            series: vec![
+                Series {
+                    label: Some("p50"),
+                    ys: &p50,
+                    color: "#0969da",
+                },
+                Series {
+                    label: Some("p90"),
+                    ys: &p90,
+                    color: "#9a6700",
+                },
+                Series {
+                    label: Some("p99"),
+                    ys: &p99,
+                    color: "#cf222e",
+                },
+            ],
+            ci: None,
+            mark: None,
+        }));
+        body.push_str("</div>\n");
+    }
 }
 
 // --------------------------------------------------------------- A/B 对比板块
