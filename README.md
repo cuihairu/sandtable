@@ -1,3 +1,5 @@
+[English](README.md) | [中文](README.zh.md)
+
 <div align="center">
 
 <img src="docs/public/logo.svg" width="64" alt="Sandtable logo" />
@@ -9,69 +11,69 @@
 [![CI](https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg)](https://github.com/cuihairu/sandtable/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-<!-- crates.io / codecov 徽章待首次发布后添加 -->
+<!-- crates.io / codecov badges to be added after the first release -->
 
 **Sandtable is a configuration-driven simulation and experimentation framework for game systems.**
 
 </div>
 
-**Sandtable** 是一个面向游戏系统的配置驱动仿真与实验框架,用于长期模拟玩家、战斗、经济和成长系统,并通过实验与指标分析辅助游戏平衡。
+**Sandtable** is a configuration-driven simulation and experimentation framework for game systems. It is used to simulate players, combat, the economy, and progression over long time horizons, and to support game-balance work through experiments and metric analysis.
 
-## 项目定位(请先读这一段)
+## Positioning (read this first)
 
-- **相对比较,而非绝对预测。** 玩家行为概率是人为设定的,仿真输出的绝对数值不可信。Sandtable 的价值在于比较:参数 A 与参数 B 跑同一场实验后的差值(如 ΔD7 Power、ΔWinRate)及其置信区间。
-- **建模假设:** MVP 阶段玩家相互独立、只有 PvE 内容、经济指标是全体玩家资源产出与消耗的聚合。这是最大的建模假设,决定了"按玩家并行"的架构。引入市场、PvP 或公会后将改变架构,不属于 MVP。
-- **形态:** CLI(MVP)/ Web(Rust→WASM + React)/ Desktop(Tauri 2),三种形态共用同一 Rust 内核;local-first,无服务器。结果数据走 Arrow / Parquet,分析层用 DuckDB(native 与 DuckDB-Wasm)。
+- **Relative comparison, not absolute prediction.** Player behavior probabilities are set by hand, so the absolute numbers produced by the simulation are not to be trusted on their own. Sandtable's value lies in comparison: the difference between parameter A and parameter B when both run the same experiment (e.g. ΔD7 Power, ΔWinRate), together with confidence intervals.
+- **Modeling assumptions:** at the MVP stage, players are mutually independent, only PvE content exists, and economy metrics are aggregates of resource income and spending across all players. This is the largest modeling assumption, and it drives the "parallelize by player" architecture. Introducing markets, PvP, or guilds would change the architecture and is out of MVP scope.
+- **Forms:** CLI (MVP) / Web (Rust→WASM + React) / Desktop (Tauri 2); all three forms share the same Rust kernel; local-first, no server. Result data goes through Arrow / Parquet, with DuckDB (native and DuckDB-Wasm) as the analysis layer.
 
-## 当前状态
+## Current status
 
-**Phase 1 最小闭环已实现**(crate:`sandtable-core` + `sandtable-cli`,内核零平台依赖,持续通过 `wasm32-unknown-unknown` 编译门):
+**The Phase 1 minimal loop is implemented** (crates: `sandtable-core` + `sandtable-cli`; the kernel has zero platform dependencies and continuously passes the `wasm32-unknown-unknown` compile gate):
 
-- 带键随机数:`(seed, actor_id, day, event_index, purpose)` 直接派生,战斗用显式序号键,A/B 同键可比(CRN)
-- 硬编码最小 RPG 闭环:行为 → 解析战斗 → 奖励 → 成长 → 停滞 → 流失,天粒度离散事件推进
-- 指标在线聚合:留存 / 胜率 / 通胀(存量日增长率)/ sink_ratio / Power 分位快照,按 cohort 切片
-- 实验统计:replicate 为统计单位,t 分布 CI₉₅,配对差值 + 效应量 d,CI 判定 PASS/BORDERLINE/FAIL 口径
-- 测试:解析解对照(固定伤害闭式解、拉满流失)、同 seed 逐字节确定性、黄金快照
+- Keyed RNG: derived directly from `(seed, actor_id, day, event_index, purpose)`; combat uses explicit sequence keys so that A/B arms share keys and remain comparable (CRN)
+- A hard-coded minimal RPG loop: behavior → resolved combat → rewards → progression → stagnation → churn, advancing as day-granularity discrete events
+- Online metric aggregation: retention / win rate / inflation (daily growth rate of the stock) / sink_ratio / power percentile snapshots, sliced by cohort
+- Experiment statistics: the replicate is the statistical unit; t-distribution CI₉₅, paired differences + effect size d, and CI verdicts under the PASS/BORDERLINE/FAIL convention
+- Testing: closed-form cross-checks (fixed-damage closed-form solution, churn driven to its maximum), byte-for-byte determinism under the same seed, golden snapshots
 
 ```bash
 cargo install --path crates/sandtable-cli
-sandtable simulate --players 10000 --days 30 --out out/     # 单次运行
-sandtable compare --attack-a 100 --attack-b 105 --replicates 12 --out out/  # A/B 比较
-sandtable validate --days 30                                # 校验参数
+sandtable simulate --players 10000 --days 30 --out out/     # single run
+sandtable compare --attack-a 100 --attack-b 105 --replicates 12 --out out/  # A/B comparison
+sandtable validate --days 30                                # validate parameters
 ```
 
-10k 玩家 × 30 天单次运行约 0.5s(release)。完整计划见文档站(源码在 [`docs/`](docs/)),路线图见 [18 · 路线图](docs/guide/18-roadmap.md)。
+A single run of 10k players × 30 days takes about 0.5 s (release build). The full plan lives in the documentation site (sources under [`docs/`](docs/)); for the roadmap see [18 · Roadmap](docs/guide/18-roadmap.md).
 
-- 文档站:https://cuihairu.github.io/sandtable/
-- 本地文档构建:`pnpm install && pnpm docs:dev`
+- Documentation site: https://cuihairu.github.io/sandtable/
+- Local documentation build: `pnpm install && pnpm docs:dev`
 
-## 文档结构
+## Documentation structure
 
-计划原文为单体文档(存档于 `docs/计划-原始.md`),现拆分为 20 章。章节与原计划的对应关系:
+The original plan was a single monolithic document (archived at `docs/计划-原始.md`) and is now split into 20 chapters. The mapping from chapters to the original plan:
 
-| 章节 | 内容 | 原计划 |
+| Chapter | Contents | Original plan |
 | --- | --- | --- |
-| [01 项目定位](docs/guide/01-positioning.md) | 核心问题、建模假设、相对比较定位 | §1 |
-| [02 产品边界](docs/guide/02-scope.md) | 做什么、不做什么、许可证 | §2 |
-| [03 核心概念](docs/guide/03-concepts.md) | 七个概念、Model 与 World 拆分 | §3 |
-| [04 仿真内核](docs/guide/04-kernel.md) | World 组成、执行循环、并行模型 | §4 |
-| [05 时间模型](docs/guide/05-time-model.md) | 分层嵌套:离散事件 + 战斗内 tick | §4.1、§21 |
-| [06 确定性随机数](docs/guide/06-deterministic-rng.md) | 带键随机数、并行确定性规则 | §5 |
-| [07 配置与公式引擎](docs/guide/07-config-formula.md) | 参数注册表、config_hash、表达式编译 | §6 |
-| [08 技术栈](docs/guide/08-tech-stack.md) | 选型总表与依赖决策记录 | §7、§8 |
-| [09 数据输出](docs/guide/09-data-output.md) | JSON/CSV 优先,Parquet 走 feature flag | §9 |
-| [10 CLI](docs/guide/10-cli.md) | 子命令与输出约定 | §10 |
-| [11 实验管线](docs/guide/11-experiment-pipeline.md) | 全流程与 replicates | §11 |
-| [12 参数扫描](docs/guide/12-parameter-sweep.md) | Grid / Random / Monte Carlo | §12 |
-| [13 KPI 与指标](docs/guide/13-kpi-metrics.md) | 指标公式、在线聚合、置信区间判定 | §13 |
-| [14 敏感性分析](docs/guide/14-sensitivity.md) | OAT 弹性(选定方法) | §14 |
-| [15 平衡推荐](docs/guide/15-recommendation.md) | 插值区间、置信度定义 | §15 |
-| [16 MVP](docs/guide/16-mvp.md) | 最小 RPG 闭环、A/B 对比、验收标准 | §16、§17、§26 |
-| [17 项目结构](docs/guide/17-project-structure.md) | crate 划分与命名核查 | §18 |
-| [18 路线图](docs/guide/18-roadmap.md) | 纵向切片 + 验证节点 | §19 |
-| [19 测试策略](docs/guide/19-testing.md) | 解析解对照、快照与统计回归分层 | §20 |
-| [20 设计原则与愿景](docs/guide/20-principles-vision.md) | 原则、产品形态、愿景 | §22–§25 |
+| [01 Positioning](docs/guide/01-positioning.md) | Core problem, modeling assumptions, relative-comparison stance | §1 |
+| [02 Scope](docs/guide/02-scope.md) | What is included, what is excluded, license | §2 |
+| [03 Core concepts](docs/guide/03-concepts.md) | The seven concepts, the Model/World split | §3 |
+| [04 Simulation kernel](docs/guide/04-kernel.md) | World composition, execution loop, parallelism model | §4 |
+| [05 Time model](docs/guide/05-time-model.md) | Layered nesting: discrete events + in-combat ticks | §4.1, §21 |
+| [06 Deterministic RNG](docs/guide/06-deterministic-rng.md) | Keyed randomness, parallel determinism rules | §5 |
+| [07 Configuration and formula engine](docs/guide/07-config-formula.md) | Parameter registry, config_hash, expression compilation | §6 |
+| [08 Tech stack](docs/guide/08-tech-stack.md) | Selection table and dependency decision records | §7, §8 |
+| [09 Data output](docs/guide/09-data-output.md) | JSON/CSV first; Parquet behind a feature flag | §9 |
+| [10 CLI](docs/guide/10-cli.md) | Subcommands and output conventions | §10 |
+| [11 Experiment pipeline](docs/guide/11-experiment-pipeline.md) | Full workflow and replicates | §11 |
+| [12 Parameter sweep](docs/guide/12-parameter-sweep.md) | Grid / Random / Monte Carlo | §12 |
+| [13 KPIs and metrics](docs/guide/13-kpi-metrics.md) | Metric formulas, online aggregation, CI-based verdicts | §13 |
+| [14 Sensitivity analysis](docs/guide/14-sensitivity.md) | OAT elasticities (selected method) | §14 |
+| [15 Balance recommendation](docs/guide/15-recommendation.md) | Interpolated intervals, confidence definitions | §15 |
+| [16 MVP](docs/guide/16-mvp.md) | Minimal RPG loop, A/B comparison, acceptance criteria | §16, §17, §26 |
+| [17 Project structure](docs/guide/17-project-structure.md) | Crate split and naming checks | §18 |
+| [18 Roadmap](docs/guide/18-roadmap.md) | Vertical slices + verification nodes | §19 |
+| [19 Testing strategy](docs/guide/19-testing.md) | Layered: closed-form checks, snapshots, statistical regression | §20 |
+| [20 Design principles and vision](docs/guide/20-principles-vision.md) | Principles, product forms, vision | §22–§25 |
 
-## 许可证
+## License
 
-[Apache-2.0](LICENSE)。
+[Apache-2.0](LICENSE).
