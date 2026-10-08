@@ -335,6 +335,40 @@ mod tests {
         assert!(e.contains("预算"), "{e}");
     }
 
+    // Random 模式(文档 12 章):采样数 = samples,采样流与 base_seed 绑定,
+    // 同配置同采样(sweep_plan 输出可复现)。
+    const EXP_YAML_RANDOM: &str = concat!(
+        "schema_version: '1'\n",
+        "scenario: {population: 40, duration: '3d', seed: 7}\n",
+        "sweep:\n",
+        "  mode: random\n",
+        "  samples: 5\n",
+        "  replicates: 2\n",
+        "  parameters:\n",
+        "    model.warrior.attack: {min: 90, max: 110, step: 10}\n",
+        "  targets:\n",
+        "    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n",
+    );
+
+    #[test]
+    fn 扫描_plan_random_采样数与可复现() {
+        let v = sweep_plan_native(EXP_YAML_RANDOM, 0).unwrap();
+        assert_eq!(v["mode"], "random");
+        let cands = v["candidates"].as_array().unwrap();
+        assert_eq!(cands.len(), 5, "samples 决定候选数");
+        for c in cands {
+            let x = c["model.warrior.attack"].as_f64().unwrap();
+            assert!((90.0..=110.0).contains(&x), "采样落在 [min, max]:{x}");
+        }
+        assert_eq!(v["sims"], 10);
+        // 同配置同采样:两次 plan 候选逐值一致
+        let v2 = sweep_plan_native(EXP_YAML_RANDOM, 0).unwrap();
+        assert_eq!(v["candidates"], v2["candidates"]);
+        // samples 缺省(grid YAML 无 samples 键)走 grid 分支不受影响
+        let g = sweep_plan_native(EXP_YAML, 0).unwrap();
+        assert_eq!(g["mode"], "grid");
+    }
+
     #[test]
     fn 扫描_candidate_与core直跑逐值一致() {
         let values = r#"{"model.warrior.attack": 100.0}"#;

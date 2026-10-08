@@ -1,10 +1,12 @@
-// 参数扫描面板(文档 12/14/15 章):实验 YAML → 网格候选逐个本地运行
-// (JS 驱动、候选间让出主线程,进度可渲染)→ 候选 × 指标表 + 单轴折线
-// (CI 须、判定着色、推荐带)+ 敏感性矩阵与推荐块。与 CLI sweep / recommend
-// 同源(core 纯函数);预算门在 sandtable-wasm(MAX_SWEEP_SIMS / MAX_SWEEP_SIM_SCALE)。
+// 参数扫描面板(文档 12/14/15 章):实验 YAML → 候选逐个本地运行
+// (JS 驱动、候选间让出主线程,进度可渲染;网格笛卡尔积或 Random 采样,
+// 同源 core::sweep 两种 SweepMode)→ 候选 × 指标表 + 单轴图
+// (网格折线 / Random 散点,CI 须、判定着色、推荐带)+ 敏感性矩阵与推荐块。
+// 与 CLI sweep / recommend 同源(core 纯函数);预算门在 sandtable-wasm
+// (MAX_SWEEP_SIMS / MAX_SWEEP_SIM_SCALE)。
 import { useState } from 'react'
 import SweepChart from './SweepChart'
-import { SWEEP_PRESET } from '../lib/presets'
+import { SWEEP_PRESETS } from '../lib/presets'
 import { planSweep, recommendSweep, runSweepCandidate } from '../lib/wasm'
 import type {
   CandidateResult,
@@ -26,7 +28,7 @@ const CONFIDENCE_LABEL: Record<string, string> = {
 }
 
 export default function SweepPanel() {
-  const [yaml, setYaml] = useState(SWEEP_PRESET)
+  const [yaml, setYaml] = useState(SWEEP_PRESETS[0].yaml)
   const [override, setOverride] = useState(0) // 0 = 跟随配置
   const [plan, setPlan] = useState<SweepPlan | null>(null)
   const [results, setResults] = useState<CandidateResult[]>([])
@@ -93,7 +95,7 @@ export default function SweepPanel() {
 
   return (
     <details>
-      <summary>参数扫描(单轴网格 + 推荐带)</summary>
+      <summary>参数扫描(网格 / Random + 推荐带)</summary>
       <div className="panel">
         <div className="toolbar">
           <button className="primary" disabled={busy} onClick={run}>
@@ -111,6 +113,24 @@ export default function SweepPanel() {
                   {r}(粗筛)
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="reps">
+            预设
+            <select
+              value={SWEEP_PRESETS.find((p) => p.yaml === yaml)?.name ?? ''}
+              onChange={(e) => {
+                const p = SWEEP_PRESETS.find((x) => x.name === e.target.value)
+                if (p) setYaml(p.yaml)
+              }}
+            >
+              {SWEEP_PRESETS.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+              {yaml !== SWEEP_PRESETS[0].yaml &&
+                yaml !== SWEEP_PRESETS[1].yaml && <option value="">自定义</option>}
             </select>
           </label>
           {progress && <span className="note">{progress}</span>}
@@ -193,7 +213,7 @@ export default function SweepPanel() {
           {chartData && rec && (
             <>
               <SweepChart
-                title={`${chartMetric} vs ${axis!.path.split('.').pop()}(CI95 须,绿带 = 推荐区间)`}
+                title={`${chartMetric} vs ${axis!.path.split('.').pop()}(CI95 须,绿带 = 推荐区间${plan.mode === 'random' ? ',Random 散点' : ''})`}
                 xs={chartData.xs}
                 means={chartData.means}
                 los={chartData.los}
@@ -201,6 +221,7 @@ export default function SweepPanel() {
                 verdicts={chartData.verdicts}
                 band={rec.recommendation.interval}
                 baseline={rec.recommendation.baseline}
+                scatter={plan.mode === 'random'}
               />
               <div className="rec">
                 <strong>推荐区间</strong>{' '}
@@ -209,7 +230,9 @@ export default function SweepPanel() {
                     [{rec.recommendation.interval[0]}, {rec.recommendation.interval[1]}]
                     {rec.recommendation.interpolated[0] && <sup>↓插值</sup>}
                     {rec.recommendation.interpolated[1] && <sup>↑插值</sup>}{' '}
-                    <span className="note">(网格是离散的,端点由可行段边界插值)</span>
+                    <span className="note">
+                      (候选是离散点,端点由相邻可行段边界插值)
+                    </span>
                   </>
                 ) : (
                   '无可行区间(hard 约束无 PASS 点或交集为空)'

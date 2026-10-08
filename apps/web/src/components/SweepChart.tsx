@@ -1,5 +1,7 @@
 // 单轴扫描图(与 CLI report 扫描折线同视觉纪律:手绘 SVG、零图表库、零外链):
 // 指标均值折线 + CI95 须 + 候选判定着色 + 推荐带(插值区间)与基线标记。
+// scatter 模式(Random 搜索):候选是采样点非网格序,只画点与须、不连线;
+// 采样点多时 x 轴刻度抽稀到首尾。
 import type { ConstraintVerdict } from '../lib/types'
 
 interface Props {
@@ -12,6 +14,7 @@ interface Props {
   band: [number, number] | null
   baseline: number
   fmt?: (v: number) => string
+  scatter?: boolean
 }
 
 const W = 640
@@ -39,9 +42,12 @@ export default function SweepChart({
   band,
   baseline,
   fmt = fmtNum,
+  scatter = false,
 }: Props) {
   const n = xs.length
   if (n < 2) return null
+  // 刻度抽稀:点太多时只标首尾(网格两端 / Random 采样极值)
+  const showAllTicks = n <= 10
   const lo = Math.min(...los)
   const hi = Math.max(...his)
   const span = hi - lo || Math.abs(hi) || 1
@@ -82,9 +88,11 @@ export default function SweepChart({
         <line x1={PL} x2={W - PR} y1={H - PB} y2={H - PB} className="axis" />
         {xs.map((v, i) => (
           <g key={xs[i]}>
-            <text x={px(v)} y={H - 10} textAnchor="middle" className="tick">
-              {fmtNum(v)}
-            </text>
+            {(showAllTicks || i === 0 || i === n - 1) && (
+              <text x={px(v)} y={H - 10} textAnchor="middle" className="tick">
+                {fmtNum(v)}
+              </text>
+            )}
             <line
               x1={px(v)}
               x2={px(v)}
@@ -104,7 +112,7 @@ export default function SweepChart({
         <text x={px(baseline) + 4} y={PT + 10} className="tick">
           基线
         </text>
-        <path d={path} className="line" />
+        {!scatter && <path d={path} className="line" />}
       </svg>
     </figure>
   )
