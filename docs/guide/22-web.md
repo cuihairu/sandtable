@@ -15,7 +15,7 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - 分群表(casual / core / whale 的等级、金币、战力、流失);
 - **SQL 查询面板(DuckDB-Wasm)**:仿真产物装入内存表 `days`,任意 SQL 本地执行(结果表 + 按天数值列一键画线)。零外链——worker 与 wasm 都经 vite `?url` 本地打包,不经 CDN;mvp 单线程构建按需加载(39 MB 资产,打开查询才下载)。
 - **结果导出**:`days.csv`(replicate 1,与 CLI `simulate --out` 写盘产物逐字节一致)与 `report.json`(结构同构,`results` 逐值一致)一键下载——放进一个目录即可被 `sandtable report` / `sandtable query` 继续分析([数据输出](./09-data-output) 契约)。
-- **参数扫描(单轴网格 + 推荐带)**:实验文件(scenario + model + sweep 三节,[文档 12 章](./12-parameter-sweep))本地扫描——网格经 YAML 编辑,JS 逐候选驱动(单线程下候选并行不可用,候选间让出主线程,进度可渲染);出候选 × 指标表(约束判定 PASS / BORDERLINE / FAIL,失败候选标注不静默丢弃)、单轴指标折线(CI95 须、判定着色、推荐带与基线标记)、OAT 敏感性矩阵与推荐块——与 CLI `sweep` / `recommend` 同源(core 纯函数);预算门:候选 × replicates ≤ 200、players × days ≤ 40 万,超出引导走 CLI。
+- **参数扫描(网格 / Random + 推荐带 + 联合可行域)**:实验文件(scenario + model + sweep 三节,[文档 12 章](./12-parameter-sweep))本地扫描——经 YAML 编辑或预设选择器(单轴网格 / 单轴随机 / 双轴网格),JS 逐候选驱动(单线程下候选并行不可用,候选间让出主线程,进度可渲染);出候选 × 指标表(约束判定 PASS / BORDERLINE / FAIL,失败候选标注不静默丢弃)、单轴图(网格折线 / Random 散点,CI95 须、判定着色、推荐带与基线标记)、双轴联合可行域矩阵(逐目标三色判定,Random 稀疏格留空)、OAT 敏感性矩阵与推荐块——与 CLI `sweep` / `recommend` 同源(core 纯函数);预算门:候选 × replicates ≤ 200、players × days ≤ 40 万,超出引导走 CLI。
 
 ## 绑定纪律
 
@@ -46,4 +46,4 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 ## 后续
 
 - 查询面板改为加载随结果携带的 CSV / Parquet 文件——当前直接装仿真输出的按天数据,文件进 DuckDB 留待与项目打包([数据输出](./09-data-output))一起定型;
-- 扫描的多参数轴联合可行域与 Random 搜索前端化(当前单轴网格,与 CLI 推荐红线一致)。
+- ~~扫描的多参数轴联合可行域与 Random 搜索前端化~~ **已完成(2026-10-09,1952308 + 9b75565)**:Random 预设 + 散点图(采样点不连线、刻度抽稀);双轴联合可行域矩阵(SweepMatrix,逐目标三色判定,Random 稀疏格如实留空,单轴取值过多降级提示);单轴推荐带红线不变,≥3 轴仍仅候选表。
