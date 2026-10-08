@@ -369,6 +369,47 @@ mod tests {
         assert_eq!(g["mode"], "grid");
     }
 
+    // 双轴网格:笛卡尔积 = 3×3 = 9 候选(Web 联合可行域矩阵的数据源,
+    // docs 22 后续项)。
+    #[test]
+    fn 扫描_plan_双轴网格_笛卡尔积() {
+        let yaml2 = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 7}\n",
+            "sweep:\n",
+            "  replicates: 4\n",
+            "  parameters:\n",
+            "    model.warrior.attack: {min: 100, max: 260, step: 80}\n",
+            "    model.combat.p_hit: {min: 0.9, max: 1.0, step: 0.05}\n",
+            "  targets:\n",
+            "    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n",
+        );
+        let v = sweep_plan_native(yaml2, 0).unwrap();
+        assert_eq!(v["axes"].as_array().unwrap().len(), 2);
+        let cands = v["candidates"].as_array().unwrap();
+        assert_eq!(cands.len(), 9, "3 × 3 笛卡尔积");
+        assert_eq!(v["sims"], 36);
+        // 两轴键都在每个候选里,取值集合恰为格点
+        let mut attacks: Vec<f64> = cands
+            .iter()
+            .map(|c| c["model.warrior.attack"].as_f64().unwrap())
+            .collect();
+        attacks.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        attacks.dedup();
+        assert_eq!(attacks, vec![100.0, 180.0, 260.0]);
+        let mut hits: Vec<f64> = cands
+            .iter()
+            .map(|c| c["model.combat.p_hit"].as_f64().unwrap())
+            .collect();
+        hits.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        hits.dedup();
+        // min + k·step 有固有浮点漂移(0.9 + 0.05),近似比较
+        assert_eq!(hits.len(), 3);
+        for (got, want) in hits.iter().zip([0.9, 0.95, 1.0]) {
+            assert!((got - want).abs() < 1e-9, "{got} vs {want}");
+        }
+    }
+
     #[test]
     fn 扫描_candidate_与core直跑逐值一致() {
         let values = r#"{"model.warrior.attack": 100.0}"#;

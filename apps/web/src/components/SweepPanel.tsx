@@ -1,11 +1,13 @@
 // 参数扫描面板(文档 12/14/15 章):实验 YAML → 候选逐个本地运行
 // (JS 驱动、候选间让出主线程,进度可渲染;网格笛卡尔积或 Random 采样,
 // 同源 core::sweep 两种 SweepMode)→ 候选 × 指标表 + 单轴图
-// (网格折线 / Random 散点,CI 须、判定着色、推荐带)+ 敏感性矩阵与推荐块。
+// (网格折线 / Random 散点,CI 须、判定着色、推荐带)+ 两轴联合可行域矩阵
+// (SweepMatrix,三色判定)+ 敏感性矩阵与推荐块。
 // 与 CLI sweep / recommend 同源(core 纯函数);预算门在 sandtable-wasm
 // (MAX_SWEEP_SIMS / MAX_SWEEP_SIM_SCALE)。
 import { useState } from 'react'
 import SweepChart from './SweepChart'
+import SweepMatrix from './SweepMatrix'
 import { SWEEP_PRESETS } from '../lib/presets'
 import { planSweep, recommendSweep, runSweepCandidate } from '../lib/wasm'
 import type {
@@ -129,8 +131,9 @@ export default function SweepPanel() {
                   {p.name}
                 </option>
               ))}
-              {yaml !== SWEEP_PRESETS[0].yaml &&
-                yaml !== SWEEP_PRESETS[1].yaml && <option value="">自定义</option>}
+              {!SWEEP_PRESETS.some((p) => p.yaml === yaml) && (
+                <option value="">自定义</option>
+              )}
             </select>
           </label>
           {progress && <span className="note">{progress}</span>}
@@ -204,9 +207,26 @@ export default function SweepPanel() {
             </tbody>
           </table>
 
-          {plan.axes.length > 1 && (
+          {plan.axes.length === 2 && results.length > 0 && plan.targets.length > 0 && (
+            <>
+              <h3>联合可行域(两轴 × 目标判定)</h3>
+              {plan.targets.map((t) => (
+                <SweepMatrix
+                  key={t.metric}
+                  yPath={plan.axes[0].path}
+                  xPath={plan.axes[1].path}
+                  metric={t.metric}
+                  results={results}
+                />
+              ))}
+              <p className="note">
+                格 = 判定;· = 未采样(Random 稀疏覆盖)。单轴推荐带(文档 15 章)不适用于两轴。
+              </p>
+            </>
+          )}
+          {plan.axes.length > 2 && (
             <p className="note">
-              多参数轴:仅列候选表;单轴推荐带(文档 15 章)不适用。
+              多参数轴(≥3):仅列候选表;单轴推荐带(文档 15 章)不适用。
             </p>
           )}
 

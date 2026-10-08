@@ -162,9 +162,66 @@ sweep:
     - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
 `
 
+// 双轴网格预设(文档 22 后续项:联合可行域矩阵的演示形态):attack 3 点
+// × p_hit 3 点 = 9 候选 × 4 replicates = 36 次仿真,在 Web 预算门内;
+// 出两轴判定矩阵,不出单轴推荐带(红线不变)。
+export const SWEEP_PRESET_GRID2 = `schema_version: '1'
+scenario:
+  population: 3000
+  duration: 30d
+  seed: 12345
+  population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
+model:
+  warrior: { attack: 140, defense: 130, hp: 225 }
+  combat: { p_hit: 0.95, p_hit_monster: 0.95, dmg_var: 7, max_rounds: 32 }
+  dungeon:
+    tiers: 8
+    m_hp: 165
+    m_attack: 219
+    m_defense: 61
+    tier_growth: 1.18
+    tier_table:
+      - { hp: 165, attack: 219, defense: 61 }
+      - { hp: 280, attack: 314, defense: 65 }
+      - { hp: 310, attack: 359, defense: 34 }
+      - { hp: 425, attack: 418, defense: 97 }
+      - { hp: 540, attack: 510, defense: 276 }
+      - { hp: 500, attack: 453, defense: 144 }
+      - { hp: 705, attack: 572, defense: 268 }
+      - { hp: 825, attack: 626, defense: 332 }
+    reward_gold: 1400
+    reward_xp: 1080
+    reward_gold_growth: 1.26
+    reward_xp_growth: 1.31
+  behavior:
+    casual: { p_dungeon: 0.7, p_upgrade: 0.2, sessions_frac: 0.5, sessions_int: 1 }
+    core: { p_dungeon: 0.6, p_upgrade: 0.3, sessions_frac: 0.5, sessions_int: 2 }
+    whale: { p_dungeon: 0.65, p_upgrade: 0.3, sessions_frac: 0, sessions_int: 5 }
+  progression:
+    xp_base: 15
+    xp_pow: 2.0
+    level_attack_gain: 8
+    level_defense_gain: 8
+    level_hp_gain: 13
+    upgrade_cost_base: 50
+    upgrade_cost_num: 5
+    upgrade_cost_den: 4
+    upgrade_attack_gain: 2
+  churn: { p_base: 0.003, p_stall: 0.05, stall_days: 2 }
+sweep:
+  replicates: 4
+  parameters:
+    model.warrior.attack: { min: 100, max: 260, step: 80 }
+    model.combat.p_hit: { min: 0.9, max: 1.0, step: 0.05 }
+  targets:
+    - { metric: win_rate, min: 0.85, max: 1.0, kind: hard }
+    - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
+`
+
 // 扫描预设选择器条目(网格 / Random,同源 core::sweep 两种 SweepMode)
 export const SWEEP_PRESETS: { name: string; yaml: string }[] = [
   { name: '宝可梦 · 单轴网格', yaml: SWEEP_PRESET },
   { name: '宝可梦 · 单轴随机(Random)', yaml: SWEEP_PRESET_RANDOM },
+  { name: '宝可梦 · 双轴网格(联合可行域)', yaml: SWEEP_PRESET_GRID2 },
 ]
 
