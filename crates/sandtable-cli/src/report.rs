@@ -149,7 +149,9 @@ footer{margin-top:44px;border-top:1px solid var(--line);padding-top:10px;font-si
 
 fn page(src: &Sources) -> String {
     let mut body = String::new();
+    section_overview(&mut body, src);
     section_kpi(&mut body, src);
+    section_population(&mut body, src);
     section_compare(&mut body, src);
     section_sweep(&mut body, src);
     section_recommend(&mut body, src);
@@ -188,6 +190,185 @@ fn f(v: f64) -> String {
         format!("{v:.2}")
     } else {
         format!("{v:.4}")
+    }
+}
+
+// ---------------------------------------------------------------- 总览板块
+
+/// 总览块(原计划 Phase 7:Dashboard):run 身份一屏读全——规模 / 时长 /
+/// replicates / 种子 / 版本 / config_hash。取第一份 report 的 meta 与首 replicate。
+fn section_overview(body: &mut String, src: &Sources) {
+    let Some(r) = src.reports.first() else {
+        return;
+    };
+    let results = r.get("results").and_then(Value::as_array);
+    let Some(r0) = results.and_then(|a| a.first()) else {
+        return;
+    };
+    let u64_of = |v: &Value, k: &str| v.get(k).and_then(Value::as_u64);
+    let mut chips: Vec<(&str, String)> = vec![
+        (
+            "玩家数",
+            u64_of(r0, "players")
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "?".into()),
+        ),
+        (
+            "时长",
+            u64_of(r0, "days")
+                .map(|v| format!("{v} 天"))
+                .unwrap_or_else(|| "?".into()),
+        ),
+        (
+            "replicates",
+            results.map(|a| a.len()).unwrap_or(0).to_string(),
+        ),
+        (
+            "基础种子",
+            u64_of(r0, "seed")
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "?".into()),
+        ),
+    ];
+    if let Some(meta) = r.get("meta") {
+        let s_of = |k: &str| {
+            meta.get(k)
+                .and_then(Value::as_str)
+                .unwrap_or("?")
+                .to_string()
+        };
+        chips.push(("model_version", s_of("model_version")));
+        chips.push(("git_sha", s_of("git_sha")));
+    }
+    // 多份 report 可能是不同配置:列出不同 hash 数,页内各板块按报告分列
+    let mut hashes: Vec<String> = src
+        .reports
+        .iter()
+        .flat_map(|r| {
+            r.get("results")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        })
+        .filter_map(|x| {
+            x.get("config_hash")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect();
+    hashes.sort();
+    hashes.dedup();
+    if let Some(h) = hashes.first() {
+        let short = h.get(..12).unwrap_or(h).to_string();
+        chips.push((
+            "config_hash",
+            if hashes.len() == 1 {
+                short
+            } else {
+                format!("{short} 等 {} 种", hashes.len())
+            },
+        ));
+    }
+    body.push_str("<h2>总览</h2>\n<div class=\"kv\">\n");
+    for (k, v) in chips {
+        body.push_str(&format!("<div><b>{k}</b>{}</div>\n", esc(&v)));
+    }
+    body.push_str("</div>\n");
+}
+
+// ------------------------------------------------------------- 分群画像板块
+
+/// 分群画像(原计划 Phase 7:Population Analysis):按 report 聚合三分群——
+/// 人数取首 replicate(人口结构固定),流失率跨 replicate 合并,均值跨 replicate 平均。
+fn section_population(body: &mut String, src: &Sources) {
+    for r in &src.reports {
+        let Some(results) = r.get("results").and_then(Value::as_array) else {
+            continue;
+        };
+        let Some(cohorts) = results
+            .first()
+            .and_then(|x| x.get("cohort_stats"))
+            .and_then(Value::as_array)
+        else {
+            continue;
+        };
+        let names: Vec<&str> = cohorts
+            .iter()
+            .filter_map(|c| c.get("cohort").and_then(Value::as_str))
+            .collect();
+        if names.is_empty() {
+            continue;
+        }
+        let n = results.len();
+        let hash = results
+            .first()
+            .and_then(|x| x.get("config_hash"))
+            .and_then(Value::as_str)
+            .and_then(|h| h.get(..12))
+            .unwrap_or("?");
+        body.push_str(&format!(
+            "<h2>分群画像</h2>\n<p class=\"mut\">config {hash} · replicates = {n}(人数为首 replicate 结构,流失率合并,均值跨 replicate 平均)</p>\n"
+        ));
+
+        let mut counts = Vec::new();
+        let mut rates = Vec::new();
+        let mut levels = Vec::new();
+        let mut powers = Vec::new();
+        let mut golds = Vec::new();
+        for (i, name) in names.iter().enumerate() {
+            let per: Vec<&Value> = results
+                .iter()
+                .filter_map(|x| x.get("cohort_stats").and_then(Value::as_array))
+                .filter_map(|a| a.get(i))
+                .filter(|c| c.get("cohort").and_then(Value::as_str) == Some(name))
+                .collect();
+            let fsum = |field: &str| -> f64 {
+                per.iter()
+                    .filter_map(|c| c.get(field).and_then(Value::as_f64))
+                    .sum()
+            };
+            let count = cohorts[i]
+                .get("count")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
+            let churned = fsum("churned") / n as f64;
+            let denom = fsum("count") / n as f64;
+            counts.push(count);
+            rates.push(if denom > 0.0 { churned / denom } else { 0.0 });
+            levels.push(fsum("mean_level") / n as f64);
+            powers.push(fsum("mean_power") / n as f64);
+            golds.push(fsum("mean_gold") / n as f64);
+        }
+
+        body.push_str("<table><thead><tr><th>分群</th><th>人数</th><th>流失率</th><th>平均等级</th><th>平均战力</th><th>平均金币</th></tr></thead><tbody>\n");
+        for (i, name) in names.iter().enumerate() {
+            body.push_str(&format!(
+                "<tr><td>{name}</td><td>{}</td><td>{:.2}%</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
+                format!("{:.0}", counts[i]),
+                rates[i] * 100.0,
+                f(levels[i]),
+                f(powers[i]),
+                f(golds[i]),
+            ));
+        }
+        body.push_str("</tbody></table>\n");
+
+        body.push_str("<div class=\"grid\">\n");
+        body.push_str(&svg_bars(
+            "平均战力(按分群)",
+            &names,
+            &powers,
+            "#0969da",
+            &f,
+        ));
+        body.push_str(&svg_bars(
+            "流失率(按分群)",
+            &names,
+            &rates,
+            "#cf222e",
+            &|v| format!("{:.1}%", v * 100.0),
+        ));
+        body.push_str("</div>\n");
     }
 }
 
@@ -676,6 +857,70 @@ fn section_days(body: &mut String, src: &Sources) {
 }
 
 // ------------------------------------------------------------ 手写 SVG 图
+
+/// 分群条形图(竖条):类目轴 + 零基线,值标注条顶。与折线图共用画幅常量。
+fn svg_bars(
+    title: &str,
+    cats: &[&str],
+    vals: &[f64],
+    color: &str,
+    fmt: &dyn Fn(f64) -> String,
+) -> String {
+    const W: f64 = 460.0;
+    const H: f64 = 190.0;
+    const PL: f64 = 56.0;
+    const PR: f64 = 14.0;
+    const PT: f64 = 34.0;
+    const PB: f64 = 34.0;
+    let n = cats.len().min(vals.len());
+    if n == 0 {
+        return format!("<div class=\"mut\">{}:无数据</div>", esc(title));
+    }
+    let max = vals[..n].iter().copied().fold(0.0_f64, f64::max).max(1e-12);
+    let y1 = max * 1.12;
+    let sy = |y: f64| PT + (1.0 - y / y1) * (H - PT - PB);
+    let slot = (W - PL - PR) / n as f64;
+    let mut g = String::new();
+    for i in 0..n {
+        let v = vals[i].max(0.0);
+        let bx = PL + slot * i as f64 + slot * 0.18;
+        let bw = slot * 0.64;
+        let by = sy(v);
+        g.push_str(&format!(
+            "<rect x=\"{bx:.1}\" y=\"{by:.1}\" width=\"{bw:.1}\" height=\"{:.1}\" fill=\"{color}\" opacity=\"0.85\"/>",
+            H - PB - by
+        ));
+        let cx = bx + bw / 2.0;
+        g.push_str(&format!(
+            "<text x=\"{cx:.1}\" y=\"{ty:.1}\" font-size=\"9.5\" fill=\"#1f2328\" text-anchor=\"middle\">{}</text>",
+            fmt(vals[i]),
+            ty = (by - 5.0).max(PT + 8.0)
+        ));
+        g.push_str(&format!(
+            "<text x=\"{cx:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#656d76\" text-anchor=\"middle\">{}</text>",
+            esc(cats[i]),
+            ty = H - PB + 14.0
+        ));
+    }
+    g.push_str(&format!(
+        "<line x1=\"{pl}\" y1=\"{yb}\" x2=\"{pr}\" y2=\"{yb}\" stroke=\"#d8dee4\" stroke-width=\"1\"/>",
+        pl = PL,
+        pr = W - PR,
+        yb = H - PB
+    ));
+    g.push_str(&format!(
+        "<text x=\"{lx:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#656d76\" text-anchor=\"end\">{}</text>",
+        fmt(0.0),
+        lx = PL - 6.0,
+        ty = H - PB
+    ));
+    g.push_str(&format!(
+        "<text x=\"{x:.1}\" y=\"17\" font-size=\"11\" fill=\"#1f2328\" font-weight=\"600\" text-anchor=\"middle\">{}</text>",
+        esc(title),
+        x = (PL + W - PR) / 2.0
+    ));
+    format!("<svg viewBox=\"0 0 {W} {H}\" role=\"img\">{g}</svg>")
+}
 
 struct Chart<'a> {
     title: &'a str,

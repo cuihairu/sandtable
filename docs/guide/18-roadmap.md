@@ -92,6 +92,23 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 **验收**:桌面端跑通与 CLI 等价的完整实验流;安装包在 Windows / macOS 可用。
 
+## 已立项:Report / Web UI 深化(原计划 Phase 7,2026-10-08)
+
+::: note 编号澄清
+原始计划([计划-原始.md](https://github.com/cuihairu/sandtable/blob/main/docs/计划-原始.md))的 Phase 7 是 **Report / Web UI**(HTML Report / Dashboard / Charts / Parameter Comparison / Population / Economy / Progression 七项),与本章 Phase 7(桌面)**编号不同源**。桌面在本章编号下仍未立项;本节立项的是原计划 Phase 7 的剩余项。
+:::
+
+**现状对账**:HTML Report 与 Charts 已随 Phase 5 落地(`sandtable report`,见[数据输出](./09-data-output));Parameter Comparison 由 A/B 与扫描判定覆盖。**本批补齐四个缺口**(全部落在 CLI 报告侧,只读产物纪律不变;Web 侧按[22 章](./22-web)小中型定位按需跟进):
+
+| 缺口 | 落点 | 数据源 |
+| --- | --- | --- |
+| Experiment Dashboard(总览块) | 报告页首:规模 / 时长 / replicates / 种子 / 版本 / config_hash | report.json meta + results |
+| Population Analysis(分群画像) | 三分群聚合表 + 条形图;群体分位曲线(p50/p90/p99) | report.json cohort_stats / power_snapshots |
+| Economy Flow(经济流) | 产出 vs 消耗双线 + 累计汇总 | days.csv |
+| Progression Curve(成长曲线) | 平均战力 + 升级累计 | days.csv |
+
+**验收**:`sandtable report` 对常规产物出全上述板块,端到端测试断言各板块存在;只读产物、单文件自包含两条纪律不破。
+
 ## 后续方向
 
 - 参数优化:Bayesian / Evolutionary / Pareto;

@@ -86,11 +86,13 @@ Parquet 适合大规模时序、群体明细与 notebook 分析,但 Arrow 系依
 
 | 源文件 | 板块 |
 | --- | --- |
-| `report.json` | KPI 汇总(replicate 聚合的 mean ± CI₉₅) |
+| `report.json` | 总览块(玩家 / 时长 / replicates / 种子 / 版本 / config_hash);KPI 汇总(replicate 聚合的 mean ± CI₉₅);分群画像(三分群聚合表 + 条形图);群体分位曲线(p50/p90/p99 随天) |
 | `comparison.json` | A/B 均值、配对差与 CI、效应量 d、判定 |
 | `sweep.json` | 扫描汇总表(候选 × 指标)、约束判定分布、单轴指标折线图(CI 须) |
 | `rec.json` | 敏感性矩阵与推荐区间(文档 15 章形态) |
-| `days.csv` | 按天指标逐列折线图 |
+| `days.csv` | 按天指标逐列折线图;经济流(产出 vs 消耗双线 + 累计汇总);成长曲线(平均战力 + 升级累计) |
+
+总览 / 分群 / 经济流 / 成长 / 分位五板块是原计划 Phase 7(Report / Web UI)的补齐项(立项记录见[路线图](./18-roadmap));KPI / A-B / 扫描 / 推荐为 Phase 5 既有板块。
 
 一个源文件都找不到则报错(退出码 2);页首列出实际读取的源,保证报告可追溯。报告不重新仿真——与 `query` 同一条纪律:**产物 → 报告,仿真路径之外**。
 

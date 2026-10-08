@@ -109,7 +109,13 @@ fn 报告_多源合并单文件_无外部资源() {
     let html = fs::read_to_string(&html_path).unwrap();
     assert!(html.starts_with("<!DOCTYPE html>"), "单文件 HTML 头");
     // 各板块(发现什么渲染什么)
+    assert!(html.contains("总览"), "总览板块(原计划 Phase 7:Dashboard)");
     assert!(html.contains("KPI 汇总"), "report.json 板块");
+    assert!(
+        html.contains("分群画像"),
+        "分群画像板块(原计划 Phase 7:Population)"
+    );
+    assert!(html.contains("casual"), "分群行(三分群键)");
     assert!(html.contains("参数扫描"), "sweep.json 板块");
     assert!(html.contains("敏感性与推荐"), "rec.json 板块");
     assert!(html.contains("按天指标"), "days.csv 板块");
