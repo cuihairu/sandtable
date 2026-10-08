@@ -116,6 +116,16 @@ fn 报告_多源合并单文件_无外部资源() {
         "分群画像板块(原计划 Phase 7:Population)"
     );
     assert!(html.contains("casual"), "分群行(三分群键)");
+    assert!(
+        html.contains("经济流"),
+        "经济流板块(原计划 Phase 7:Economy)"
+    );
+    assert!(html.contains("合计 sink"), "经济流累计汇总");
+    assert!(
+        html.contains("成长曲线"),
+        "成长曲线板块(原计划 Phase 7:Progression)"
+    );
+    assert!(html.contains("升级次数累计"), "升级累计衍生曲线");
     assert!(html.contains("参数扫描"), "sweep.json 板块");
     assert!(html.contains("敏感性与推荐"), "rec.json 板块");
     assert!(html.contains("按天指标"), "days.csv 板块");

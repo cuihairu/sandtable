@@ -156,6 +156,8 @@ fn page(src: &Sources) -> String {
     section_sweep(&mut body, src);
     section_recommend(&mut body, src);
     section_days(&mut body, src);
+    section_economy(&mut body, src);
+    section_progression(&mut body, src);
     let sources = src
         .found
         .iter()
@@ -343,8 +345,8 @@ fn section_population(body: &mut String, src: &Sources) {
         body.push_str("<table><thead><tr><th>分群</th><th>人数</th><th>流失率</th><th>平均等级</th><th>平均战力</th><th>平均金币</th></tr></thead><tbody>\n");
         for (i, name) in names.iter().enumerate() {
             body.push_str(&format!(
-                "<tr><td>{name}</td><td>{}</td><td>{:.2}%</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
-                format!("{:.0}", counts[i]),
+                "<tr><td>{name}</td><td>{:.0}</td><td>{:.2}%</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
+                counts[i],
                 rates[i] * 100.0,
                 f(levels[i]),
                 f(powers[i]),
@@ -696,7 +698,11 @@ fn section_sweep_charts(
             title: m,
             x_label: param,
             xs: &xs,
-            ys: &ys,
+            series: vec![Series {
+                label: None,
+                ys: &ys,
+                color: "#0969da",
+            }],
             ci: Some(&ci),
             mark,
         }));
@@ -817,41 +823,165 @@ fn section_recommend(body: &mut String, src: &Sources) {
 
 // ----------------------------------------------------------- 按天时序板块
 
+/// days.csv 解析为(表头, 数值行);行长度不齐或解析失败的行丢弃。
+fn days_frame(csv: &str) -> Option<(Vec<&str>, Vec<Vec<f64>>)> {
+    let mut lines = csv.lines();
+    let header = lines.next()?;
+    let cols: Vec<&str> = header.split(',').collect();
+    if cols.len() < 2 {
+        return None;
+    }
+    let rows: Vec<Vec<f64>> = lines
+        .filter_map(|l| {
+            let cells: Vec<&str> = l.split(',').collect();
+            (cells.len() == cols.len())
+                .then(|| cells.iter().map(|c| c.trim().parse::<f64>().ok()).collect())
+                .flatten()
+        })
+        .collect();
+    (!rows.is_empty()).then_some((cols, rows))
+}
+
+/// 按列名取数值列。
+fn days_col(cols: &[&str], rows: &[Vec<f64>], name: &str) -> Option<Vec<f64>> {
+    let i = cols.iter().position(|c| *c == name)?;
+    Some(rows.iter().map(|r| r[i]).collect())
+}
+
 /// days.csv → 每数值列一张小折线图(各列自持 y 范围,量纲不互扰)。
 fn section_days(body: &mut String, src: &Sources) {
     for csv in &src.days {
-        let mut lines = csv.lines();
-        let Some(header) = lines.next() else {
+        let Some((cols, rows)) = days_frame(csv) else {
             continue;
         };
-        let cols: Vec<&str> = header.split(',').collect();
-        if cols.len() < 2 {
-            continue;
-        }
-        let rows: Vec<Vec<f64>> = lines
-            .filter_map(|l| {
-                let cells: Vec<&str> = l.split(',').collect();
-                (cells.len() == cols.len())
-                    .then(|| cells.iter().map(|c| c.trim().parse::<f64>().ok()).collect())
-                    .flatten()
-            })
-            .collect();
-        if rows.is_empty() {
-            continue;
-        }
         body.push_str("<h2>按天指标</h2>\n<div class=\"grid\">\n");
+        let xs: Vec<f64> = rows.iter().map(|r| r[0]).collect();
         for ci in 1..cols.len() {
-            let xs: Vec<f64> = rows.iter().map(|r| r[0]).collect();
             let ys: Vec<f64> = rows.iter().map(|r| r[ci]).collect();
             body.push_str(&svg_chart(&Chart {
                 title: cols[ci],
                 x_label: cols[0],
                 xs: &xs,
-                ys: &ys,
+                series: vec![Series {
+                    label: None,
+                    ys: &ys,
+                    color: "#0969da",
+                }],
                 ci: None,
                 mark: None,
             }));
         }
+        body.push_str("</div>\n");
+    }
+}
+
+// ----------------------------------------------------------- 经济流板块
+
+/// 经济流(原计划 Phase 7:Economy Flow):产出 vs 消耗双线(同量纲共用 y 轴)
+/// + 累计汇总(合计 sink = Σ消耗 / Σ产出)。
+fn section_economy(body: &mut String, src: &Sources) {
+    for csv in &src.days {
+        let Some((cols, rows)) = days_frame(csv) else {
+            continue;
+        };
+        let (Some(earned), Some(spent)) = (
+            days_col(&cols, &rows, "gold_earned"),
+            days_col(&cols, &rows, "gold_spent"),
+        ) else {
+            continue;
+        };
+        let xs: Vec<f64> = rows.iter().map(|r| r[0]).collect();
+        let sum = |v: &[f64]| v.iter().sum::<f64>();
+        let sink = if sum(&earned) > 0.0 {
+            sum(&spent) / sum(&earned)
+        } else {
+            0.0
+        };
+        let supply = days_col(&cols, &rows, "gold_supply");
+        body.push_str("<h2>经济流</h2>\n<div class=\"kv\">\n");
+        body.push_str(&format!("<div><b>累计产出</b>{}</div>\n", f(sum(&earned))));
+        body.push_str(&format!("<div><b>累计消耗</b>{}</div>\n", f(sum(&spent))));
+        body.push_str(&format!(
+            "<div><b>合计 sink</b>{:.2}%</div>\n",
+            sink * 100.0
+        ));
+        if let Some(s) = &supply {
+            body.push_str(&format!(
+                "<div><b>期末存量</b>{}</div>\n",
+                f(*s.last().unwrap_or(&0.0))
+            ));
+        }
+        body.push_str("</div>\n<div class=\"grid\">\n");
+        body.push_str(&svg_chart(&Chart {
+            title: "产出 vs 消耗(按天)",
+            x_label: cols[0],
+            xs: &xs,
+            series: vec![
+                Series {
+                    label: Some("产出 gold_earned"),
+                    ys: &earned,
+                    color: "#0969da",
+                },
+                Series {
+                    label: Some("消耗 gold_spent"),
+                    ys: &spent,
+                    color: "#9a6700",
+                },
+            ],
+            ci: None,
+            mark: None,
+        }));
+        body.push_str("</div>\n");
+    }
+}
+
+// ----------------------------------------------------------- 成长曲线板块
+
+/// 成长曲线(原计划 Phase 7:Progression Curve):平均战力按天(存量)+
+/// 升级次数累计(节奏;战力与升级次数量纲悬殊,分图各持 y 轴,不硬画双轴)。
+fn section_progression(body: &mut String, src: &Sources) {
+    for csv in &src.days {
+        let Some((cols, rows)) = days_frame(csv) else {
+            continue;
+        };
+        let (Some(power), Some(levelups)) = (
+            days_col(&cols, &rows, "mean_power"),
+            days_col(&cols, &rows, "levelups"),
+        ) else {
+            continue;
+        };
+        let xs: Vec<f64> = rows.iter().map(|r| r[0]).collect();
+        let mut cum = Vec::with_capacity(levelups.len());
+        let mut acc = 0.0;
+        for v in &levelups {
+            acc += v;
+            cum.push(acc);
+        }
+        body.push_str("<h2>成长曲线</h2>\n<div class=\"grid\">\n");
+        body.push_str(&svg_chart(&Chart {
+            title: "平均战力(按天)",
+            x_label: cols[0],
+            xs: &xs,
+            series: vec![Series {
+                label: None,
+                ys: &power,
+                color: "#0969da",
+            }],
+            ci: None,
+            mark: None,
+        }));
+        body.push_str(&svg_chart(&Chart {
+            title: "升级次数累计",
+            x_label: cols[0],
+            xs: &xs,
+            series: vec![Series {
+                label: None,
+                ys: &cum,
+                color: "#1a7f37",
+            }],
+            ci: None,
+            mark: None,
+        }));
         body.push_str("</div>\n");
     }
 }
@@ -922,11 +1052,19 @@ fn svg_bars(
     format!("<svg viewBox=\"0 0 {W} {H}\" role=\"img\">{g}</svg>")
 }
 
+struct Series<'a> {
+    /// 图例文字;None = 不进图例(单序列图的标题已表意)
+    label: Option<&'a str>,
+    ys: &'a [f64],
+    color: &'a str,
+}
+
 struct Chart<'a> {
     title: &'a str,
     x_label: &'a str,
     xs: &'a [f64],
-    ys: &'a [f64],
+    /// 多序列共用 x 轴与 y 量纲;CI 须挂在首序列上
+    series: Vec<Series<'a>>,
     /// 每点 CI 须 (lo, hi);None = 无须
     ci: Option<&'a [(f64, f64)]>,
     /// 基线(虚线)与可行区间带,随 x 轴量纲
@@ -940,10 +1078,10 @@ fn svg_chart(c: &Chart) -> String {
     const PR: f64 = 14.0;
     const PT: f64 = 34.0;
     const PB: f64 = 34.0;
-    if c.xs.is_empty() || c.ys.is_empty() {
+    if c.xs.is_empty() || c.series.is_empty() || c.series.iter().all(|s| s.ys.is_empty()) {
         return format!("<div class=\"mut\">{}:无数据</div>", esc(c.title));
     }
-    let n = c.xs.len().min(c.ys.len());
+    let n = c.xs.len();
     let mut x0 = f64::INFINITY;
     let mut x1 = f64::NEG_INFINITY;
     let mut y0 = f64::INFINITY;
@@ -951,8 +1089,12 @@ fn svg_chart(c: &Chart) -> String {
     for i in 0..n {
         x0 = x0.min(c.xs[i]);
         x1 = x1.max(c.xs[i]);
-        y0 = y0.min(c.ys[i]);
-        y1 = y1.max(c.ys[i]);
+    }
+    for s in &c.series {
+        for &y in s.ys.iter().take(n) {
+            y0 = y0.min(y);
+            y1 = y1.max(y);
+        }
     }
     if let Some(ci) = c.ci {
         for &(lo, hi) in &ci[..n.min(ci.len())] {
@@ -1025,18 +1167,45 @@ fn svg_chart(c: &Chart) -> String {
             ));
         }
     }
-    let poly: String = (0..n)
-        .map(|i| format!("{:.1},{:.1}", sx(c.xs[i]), sy(c.ys[i])))
-        .collect::<Vec<_>>()
-        .join(" ");
-    g.push_str(&format!(
-        "<polyline points=\"{poly}\" fill=\"none\" stroke=\"#0969da\" stroke-width=\"1.8\" stroke-linejoin=\"round\"/>"
-    ));
-    for i in 0..n {
-        let (x, y) = (sx(c.xs[i]), sy(c.ys[i]));
+    for (si, s) in c.series.iter().enumerate() {
+        let m = n.min(s.ys.len());
+        if m == 0 {
+            continue;
+        }
+        let poly: String = (0..m)
+            .map(|i| format!("{:.1},{:.1}", sx(c.xs[i]), sy(s.ys[i])))
+            .collect::<Vec<_>>()
+            .join(" ");
         g.push_str(&format!(
-            "<circle cx=\"{x:.1}\" cy=\"{y:.1}\" r=\"2.6\" fill=\"#0969da\"/>"
+            "<polyline points=\"{poly}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" stroke-linejoin=\"round\"/>",
+            s.color,
+            if si == 0 { "1.8" } else { "1.6" }
         ));
+        for i in 0..m {
+            let (x, y) = (sx(c.xs[i]), sy(s.ys[i]));
+            g.push_str(&format!(
+                "<circle cx=\"{x:.1}\" cy=\"{y:.1}\" r=\"2.6\" fill=\"{}\"/>",
+                s.color
+            ));
+        }
+    }
+    // 多序列图例:左上竖排,色块 + 文字
+    let labeled: Vec<&Series> = c.series.iter().filter(|s| s.label.is_some()).collect();
+    if labeled.len() > 1 {
+        for (i, s) in labeled.iter().enumerate() {
+            let ly = PT + 10.0 + i as f64 * 14.0;
+            g.push_str(&format!(
+                "<rect x=\"{lx:.1}\" y=\"{ly:.1}\" width=\"9\" height=\"9\" fill=\"{}\"/>",
+                s.color,
+                lx = PL + 8.0
+            ));
+            g.push_str(&format!(
+                "<text x=\"{lx:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#1f2328\">{}</text>",
+                esc(s.label.unwrap_or("")),
+                lx = PL + 21.0,
+                ty = ly + 8.5
+            ));
+        }
     }
     // 框线与刻度文字
     g.push_str(&format!(
