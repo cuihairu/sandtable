@@ -23,6 +23,9 @@ rayon = "1"
 parquet = { version = "59.3", default-features = false, features = ["arrow"], optional = true }
 # DuckDB 分析层(文档 09 章:只读结果数据集,不进仿真路径),feature 提供
 duckdb = { version = "1", default-features = false, features = ["bundled", "parquet"], optional = true }
+# 项目打包(文档 09 章):.sandtable 归档,只开 deflate,不背多余编码
+zip = { version = "2", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
 
 [features]
 parquet = ["dep:parquet", "sandtable-core/arrow"]
@@ -30,5 +33,7 @@ duckdb = ["dep:duckdb"]
 
 [dev-dependencies]
 arrow = { version = "59.3", default-features = false }
+# 项目打包测试:手工构造篡改归档(哈希不匹配 / 路径纪律)
+zip = { version = "2", default-features = false, features = ["deflate"] }
 # Web 等价测试:直接调绑定层的 native 转发(文档 18 章 Phase 6 验收)
 sandtable-wasm = { path = "../sandtable-wasm" }

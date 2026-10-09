@@ -12,6 +12,7 @@ use clap::{Args, Parser, Subcommand};
 use sandtable_core as core;
 
 mod params;
+mod project;
 mod report;
 
 #[derive(Parser)]
@@ -122,6 +123,11 @@ enum Cmd {
         #[command(subcommand)]
         cmd: ParamsCmd,
     },
+    /// 项目打包:场景 / 实验(可选产物)→ 单个 .sandtable 归档(文档 9/10 章)
+    Project {
+        #[command(subcommand)]
+        cmd: ProjectCmd,
+    },
     /// 生成示例场景骨架(默认值 + 注释,可直接编辑运行)
     Init {
         /// 目标路径(缺省 ./scenario.yaml)
@@ -151,6 +157,31 @@ enum ParamsCmd {
         /// 合并结果落盘为场景 YAML(可直接 simulate)
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProjectCmd {
+    /// 打包项目目录为 .sandtable 归档(scenarios/ experiments/ results/ 一层)
+    Pack {
+        /// 项目目录
+        dir: PathBuf,
+        /// 输出归档路径(缺省 <目录名>.sandtable)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// 校验并展开归档(目标目录须不存在或为空,不覆盖既有文件)
+    Unpack {
+        /// .sandtable 归档
+        archive: PathBuf,
+        /// 输出目录(缺省归档去扩展名)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// 只校验归档(manifest、哈希、路径纪律、配置加载),不落盘
+    Check {
+        /// .sandtable 归档
+        archive: PathBuf,
     },
 }
 
@@ -432,6 +463,39 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                         println!("已写出 {}(可直接 simulate)", dst.display());
                     }
                 }
+            }
+            Ok(std::process::ExitCode::SUCCESS)
+        }
+        Cmd::Project { cmd } => {
+            let r = match cmd {
+                ProjectCmd::Pack { dir, out } => {
+                    let dst = out.unwrap_or_else(|| {
+                        let mut s = dir.as_os_str().to_owned();
+                        s.push(".sandtable");
+                        PathBuf::from(s)
+                    });
+                    project::pack(&dir, &dst)
+                }
+                ProjectCmd::Unpack { archive, out } => {
+                    let dst = out.unwrap_or_else(|| {
+                        let stem = archive
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or_default();
+                        if stem.is_empty() {
+                            PathBuf::from("restored")
+                        } else {
+                            PathBuf::from(stem)
+                        }
+                    });
+                    project::unpack(&archive, &dst)
+                }
+                ProjectCmd::Check { archive } => project::check(&archive),
+            };
+            // 校验 / 路径纪律 / 哈希失败都是配置类错误,退出码 2
+            if let Err(e) = r {
+                eprintln!("项目错误: {e:#}");
+                return Ok(std::process::ExitCode::from(2));
             }
             Ok(std::process::ExitCode::SUCCESS)
         }
