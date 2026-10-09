@@ -92,12 +92,12 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 **验收**:桌面端跑通与 CLI 等价的完整实验流;安装包在 Windows / macOS 可用。
 
-**依赖评估(2026-10-10,可开工,无依赖阻塞)**:
+**依赖评估(2026-10-10,可开工,无依赖阻塞)→ 已拍板开工(2026-10-10)**:
 
-- **技术面**:Tauri 2.x 为现行稳定线(2024-10 稳定,2026 年仍在活跃维护,updater 插件要求 Rust 1.90+);架构与本节立项一致——`src-tauri` 壳 + `sandtable-core` 以 path 依赖直连(native 仿真,不经 wasm 边界)+ `duckdb-rs` 读 Parquet/CSV(与 Phase 6 native 分析层同一依赖)+ 复用 apps/web 的 React 19 + Vite 8 前端(Tauri 原生支持 Vite 构建产物)。core 侧零改动:CI 门禁已强制 core 可编译 wasm32、依赖树无平台库、并行可退化为串行。
+- **技术面**:Tauri 2.x 为现行稳定线(2024-10 稳定,2026 年仍在活跃维护,updater 插件要求 Rust 1.90+);架构与本节立项一致——`apps/desktop` 壳(见[项目结构](./17-project-structure)壳落点约定)+ `sandtable-core` 以 path 依赖直连(native 仿真,不经 wasm 边界)+ `duckdb-rs` 读 Parquet/CSV(与 Phase 6 native 分析层同一依赖)+ 复用 apps/web 的 React 19 + Vite 8 前端(Tauri 原生支持 Vite 构建产物)。core 侧零改动:CI 门禁已强制 core 可编译 wasm32、依赖树无平台库、并行可退化为串行。
 - **CI/打包**:官方 `tauri-apps/tauri-action` 支持三平台矩阵;Windows / macOS runner 零额外依赖(WebView2 / WKWebView 系统自带),Linux runner 需 webkit2gtk-4.1 等约 8 个 apt 包;二进制用系统 WebView,体积远小于 Electron。
 - **风险**:代码签名(Windows SmartScreen / macOS Gatekeeper)是发布质量门槛,非技术阻塞;不签名仅影响首次打开体验。
-- **待拍板(非依赖)**:目标平台优先级(18 章口径 Windows 主力)、是否启用自动更新器、签名证书方案。
+- **拍板结论(2026-10-10)**:① 平台优先级 **Linux 本机先行**(壳在本机开发验收,Windows/macOS 后置);② **暂不引入自动更新器**(验证通道先行手动安装,更新器二期);③ 签名证书**留到发布时再定**;④ 开工顺序:壳 + core path 直连最小可跑 → 前端接入 → 实验流对齐 CLI 验收。
 
 ## 已立项:Report / Web UI 深化(原计划 Phase 7,2026-10-08)
 
