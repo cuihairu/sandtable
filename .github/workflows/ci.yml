@@ -22,13 +22,19 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # Phase 7(文档 18 章):桌面壳(Tauri 2)Linux 编译门,拍板 2026-10-10 本机先行
+      - name: 安装 Linux 桌面依赖(webkit2gtk-4.1)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf libxdo-dev libssl-dev libglib2.0-dev
+
       - name: 格式检查
         run: cargo fmt --all --check
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: 测试(含解析解、确定性、黄金快照)
+      - name: 测试(含解析解、确定性、黄金快照、桌面命令面)
         run: cargo test --workspace
 
       # 架构红线(文档 04 章):核心必须保持纯 Rust,Phase 1 起持续可编译 WASM
