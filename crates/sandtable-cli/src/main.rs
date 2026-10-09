@@ -79,6 +79,18 @@ enum Cmd {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// 参数寻优:读寻优实验文件(scenario + model + optimize 三节),进化
+    /// 算法逐代搜索可行点(文档 12 章自动寻优;代间串行是算法语义)
+    Optimize {
+        /// 实验 YAML 文件
+        experiment: PathBuf,
+        /// 覆盖 optimize.replicates(粗筛可临时调小)
+        #[arg(long)]
+        replicates: Option<u32>,
+        /// 输出目录(opt.json / candidates.csv,缺省 ./opt-out)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// 校验场景文件 / 参数组合是否合法
     Validate {
         /// YAML 场景文件
@@ -329,8 +341,14 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
 
             let dir = out.unwrap_or_else(|| PathBuf::from("sweep-out"));
             fs::create_dir_all(&dir).context("创建输出目录失败")?;
-            fs::write(dir.join("candidates.csv"), candidates_csv(&spec, &results))?;
-            fs::write(dir.join("summary.csv"), summary_csv(&spec, &results))?;
+            fs::write(
+                dir.join("candidates.csv"),
+                candidates_csv(&spec.parameters, &results),
+            )?;
+            fs::write(
+                dir.join("summary.csv"),
+                summary_csv(&spec.parameters, &spec.targets, &results),
+            )?;
             let report = serde_json::json!({
                 "meta": meta_json(),
                 "spec": spec,
@@ -350,6 +368,96 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                 "已写出 {}(candidates.csv, summary.csv, sweep.json)",
                 dir.display()
             );
+            Ok(std::process::ExitCode::SUCCESS)
+        }
+        Cmd::Optimize {
+            experiment,
+            replicates,
+            out,
+        } => {
+            let yaml = match fs::read_to_string(&experiment) {
+                Ok(y) => y,
+                Err(e) => {
+                    eprintln!("配置错误: 读取 {} 失败: {e}", experiment.display());
+                    return Ok(std::process::ExitCode::from(2));
+                }
+            };
+            let (cfg, mut spec) = match core::scenario::load_optimize_str(&yaml) {
+                Ok(x) => x,
+                Err(e) => {
+                    eprintln!("配置错误: {e}");
+                    return Ok(std::process::ExitCode::from(2));
+                }
+            };
+            if let Some(r) = replicates {
+                spec.replicates = r;
+                if let Err(e) = spec.validate() {
+                    eprintln!("参数错误: {e}");
+                    return Ok(std::process::ExitCode::from(2));
+                }
+            }
+            println!(
+                "寻优计划:{} 种群 × {} 代 × {} replicates(mode {:?},候选预算上限 {})",
+                spec.population,
+                spec.generations,
+                spec.replicates,
+                spec.mode,
+                spec.population as usize * (spec.generations as usize + 1),
+            );
+            let t0 = std::time::Instant::now();
+            let result = match core::optimize::optimize(&cfg, &spec) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("配置错误: {e}");
+                    return Ok(std::process::ExitCode::from(2));
+                }
+            };
+            println!(
+                "完成:评了 {} 个候选(≈{} 次仿真),耗时 {:.2?}",
+                result.evaluated,
+                result.total_sims,
+                t0.elapsed()
+            );
+            for g in &result.history {
+                println!(
+                    "  gen {:>2}:feasible {:>3}/{} · best hard_pass {} · score {:.4}",
+                    g.generation,
+                    g.feasible,
+                    result.spec.targets.len(),
+                    g.best.hard_pass,
+                    g.best.score
+                );
+            }
+            match (&result.best, result.best_fitness) {
+                (Some(b), Some(f)) => {
+                    println!(
+                        "最优:hard_pass {}/{} · score {:.4} · {:?}",
+                        f.hard_pass,
+                        result.spec.targets.len(),
+                        f.score,
+                        b.values
+                    );
+                }
+                _ => println!("最优:无(全部候选配置错误)"),
+            }
+
+            let dir = out.unwrap_or_else(|| PathBuf::from("opt-out"));
+            fs::create_dir_all(&dir).context("创建输出目录失败")?;
+            fs::write(
+                dir.join("candidates.csv"),
+                candidates_csv(&result.spec.parameters, &result.all),
+            )?;
+            let report = serde_json::json!({
+                "meta": meta_json(),
+                "spec": result.spec,
+                "evaluated": result.evaluated,
+                "total_sims": result.total_sims,
+                "best_fitness": result.best_fitness,
+                "history": result.history,
+                "best": result.best,
+            });
+            fs::write(dir.join("opt.json"), serde_json::to_string_pretty(&report)?)?;
+            println!("已写出 {}(opt.json, candidates.csv)", dir.display());
             Ok(std::process::ExitCode::SUCCESS)
         }
         Cmd::Validate { scenario, over } => match load_config(scenario.as_deref(), &over) {
@@ -922,15 +1030,15 @@ fn run_recommend(experiment: &Path, sweep_path: &Path, out: Option<&Path>) -> an
 
 /// 候选清单(文档 12 章:参数组合 + 状态;失败候选不静默丢弃)。
 fn candidates_csv(
-    spec: &core::sweep::SweepSpec,
+    parameters: &[core::sweep::ParamRange],
     results: &[core::sweep::CandidateResult],
 ) -> String {
     let mut header: Vec<String> = vec!["candidate".into(), "status".into()];
-    header.extend(spec.parameters.iter().map(|p| p.path.clone()));
+    header.extend(parameters.iter().map(|p| p.path.clone()));
     let mut out = csv_row(header.iter().map(String::as_str));
     for (i, r) in results.iter().enumerate() {
         let mut row: Vec<String> = vec![i.to_string(), status_str(&r.status).into()];
-        for p in &spec.parameters {
+        for p in parameters {
             row.push(
                 r.values
                     .get(&p.path)
@@ -945,15 +1053,19 @@ fn candidates_csv(
 
 /// 汇总表(文档 12 章:候选 × 指标 mean ± CI + 约束判定;失败候选在
 /// error 列标注原因,指标与判定列留空)。
-fn summary_csv(spec: &core::sweep::SweepSpec, results: &[core::sweep::CandidateResult]) -> String {
+fn summary_csv(
+    parameters: &[core::sweep::ParamRange],
+    targets: &[core::sweep::Target],
+    results: &[core::sweep::CandidateResult],
+) -> String {
     let mut header: Vec<String> = vec!["candidate".into(), "status".into(), "error".into()];
-    header.extend(spec.parameters.iter().map(|p| p.path.clone()));
+    header.extend(parameters.iter().map(|p| p.path.clone()));
     for k in core::experiment::MetricKey::ALL {
         for s in ["mean", "ci95_lo", "ci95_hi"] {
             header.push(format!("{}_{}", k.name(), s));
         }
     }
-    for (i, t) in spec.targets.iter().enumerate() {
+    for (i, t) in targets.iter().enumerate() {
         header.push(format!("t{}_{}", i + 1, t.metric.name()));
     }
     let mut out = csv_row(header.iter().map(String::as_str));
@@ -967,7 +1079,7 @@ fn summary_csv(spec: &core::sweep::SweepSpec, results: &[core::sweep::CandidateR
                 core::sweep::CandidateStatus::Ok => String::new(),
             },
         ];
-        for p in &spec.parameters {
+        for p in parameters {
             row.push(
                 r.values
                     .get(&p.path)
@@ -988,7 +1100,7 @@ fn summary_csv(spec: &core::sweep::SweepSpec, results: &[core::sweep::CandidateR
         // target_outcomes 按声明序生成,但指标不足的 target 会被跳过:
         // 按 (指标, 区间, 类型) 消费式匹配回原位,缺口记 n/a
         let mut used = vec![false; r.target_outcomes.len()];
-        for t in &spec.targets {
+        for t in targets {
             let pos = r.target_outcomes.iter().enumerate().position(|(idx, o)| {
                 !used[idx]
                     && o.metric == t.metric.name()
@@ -1104,7 +1216,7 @@ mod tests {
             metric_stats: vec![],
             target_outcomes: vec![],
         };
-        let csv = summary_csv(&spec, &[ok, err]);
+        let csv = summary_csv(&spec.parameters, &spec.targets, &[ok, err]);
         let lines: Vec<&str> = csv.lines().collect();
         assert_eq!(lines.len(), 3);
         let header = lines[0];
@@ -1171,7 +1283,7 @@ mod tests {
                 verdict: ConstraintVerdict::Pass,
             }],
         };
-        let csv = summary_csv(&spec, &[r]);
+        let csv = summary_csv(&spec.parameters, &spec.targets, &[r]);
         let row = csv.lines().nth(1).unwrap();
         assert!(row.ends_with("n/a,PASS"), "{row}");
     }
