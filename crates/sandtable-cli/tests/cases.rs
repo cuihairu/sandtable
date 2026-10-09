@@ -29,13 +29,15 @@ fn 宝可梦案例_校验仿真与分层梯度() {
             .unwrap()
             .as_nanos()
     ));
+    // 30 天口径(docs 21 基线):练级环落地后,短窗口的等级梯度会被
+    // 行为带份额扰动(casual 练级带份额最高,10 天内反而领先)。
     let out = bin(&[
         "simulate",
         yaml,
         "--players",
         "200",
         "--days",
-        "10",
+        "30",
         "--replicates",
         "1",
         "--out",

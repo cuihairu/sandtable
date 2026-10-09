@@ -19,7 +19,7 @@ scenario:
   seed: 12345
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
-  warrior: { attack: 140, defense: 130, hp: 225 }
+  warrior: { attack: 30, defense: 30, hp: 60 }
   combat:
     damage_model: ratio
     ratio_k: 260
@@ -27,6 +27,9 @@ model:
     p_hit_monster: 0.95
     dmg_var: 7
     max_rounds: 32
+  training:
+    xp: 300
+    gold: 100
   dungeon:
     tiers: 8
     m_hp: 165
@@ -52,7 +55,7 @@ model:
     level_attack_gain: 8
     level_defense_gain: 8
     level_hp_gain: 13
-  churn: { p_base: 0.003, p_stall: 0.05, stall_days: 2 }
+  churn: { p_base: 0.003, p_stall: 0.02, stall_days: 3 }
 `,
   },
 ]
@@ -66,7 +69,7 @@ scenario:
   seed: 12345
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
-  warrior: { attack: 140, defense: 130, hp: 225 }
+  warrior: { attack: 30, defense: 30, hp: 60 }
   combat:
     damage_model: ratio
     ratio_k: 260
@@ -74,6 +77,9 @@ model:
     p_hit_monster: 0.95
     dmg_var: 7
     max_rounds: 32
+  training:
+    xp: 300
+    gold: 100
   dungeon:
     tiers: 8
     m_hp: 165
@@ -94,9 +100,9 @@ model:
     reward_gold_growth: 1.26
     reward_xp_growth: 1.31
   behavior:
-    casual: { p_dungeon: 0.7, p_upgrade: 0.2, sessions_frac: 0.5, sessions_int: 1 }
-    core: { p_dungeon: 0.6, p_upgrade: 0.3, sessions_frac: 0.5, sessions_int: 2 }
-    whale: { p_dungeon: 0.65, p_upgrade: 0.3, sessions_frac: 0, sessions_int: 5 }
+    casual: { p_dungeon: 0.3, p_upgrade: 0.2, p_training: 0.5, sessions_frac: 0.5, sessions_int: 1 }
+    core: { p_dungeon: 0.5, p_upgrade: 0.3, p_training: 0.2, sessions_frac: 0.5, sessions_int: 2 }
+    whale: { p_dungeon: 0.6, p_upgrade: 0.3, p_training: 0.1, sessions_frac: 0, sessions_int: 5 }
   progression:
     xp_base: 15
     xp_pow: 2.0
@@ -107,14 +113,14 @@ model:
     upgrade_cost_num: 5
     upgrade_cost_den: 4
     upgrade_attack_gain: 2
-  churn: { p_base: 0.003, p_stall: 0.05, stall_days: 2 }
+  churn: { p_base: 0.003, p_stall: 0.02, stall_days: 3 }
 sweep:
   replicates: 4
   parameters:
-    model.warrior.attack: { min: 100, max: 260, step: 40 }
+    model.warrior.attack: { min: 20, max: 220, step: 40 }
   targets:
-    - { metric: win_rate, min: 0.85, max: 1.0, kind: hard }
     - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
+    - { metric: retention_d7, min: 0.9, max: 1.0, kind: hard }
 `
 
 // Random 搜索预设(文档 12 章 Random 模式):与网格预设同模型同约束,
@@ -127,7 +133,7 @@ scenario:
   seed: 12345
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
-  warrior: { attack: 140, defense: 130, hp: 225 }
+  warrior: { attack: 30, defense: 30, hp: 60 }
   combat:
     damage_model: ratio
     ratio_k: 260
@@ -135,6 +141,9 @@ model:
     p_hit_monster: 0.95
     dmg_var: 7
     max_rounds: 32
+  training:
+    xp: 300
+    gold: 100
   dungeon:
     tiers: 8
     m_hp: 165
@@ -155,9 +164,9 @@ model:
     reward_gold_growth: 1.26
     reward_xp_growth: 1.31
   behavior:
-    casual: { p_dungeon: 0.7, p_upgrade: 0.2, sessions_frac: 0.5, sessions_int: 1 }
-    core: { p_dungeon: 0.6, p_upgrade: 0.3, sessions_frac: 0.5, sessions_int: 2 }
-    whale: { p_dungeon: 0.65, p_upgrade: 0.3, sessions_frac: 0, sessions_int: 5 }
+    casual: { p_dungeon: 0.3, p_upgrade: 0.2, p_training: 0.5, sessions_frac: 0.5, sessions_int: 1 }
+    core: { p_dungeon: 0.5, p_upgrade: 0.3, p_training: 0.2, sessions_frac: 0.5, sessions_int: 2 }
+    whale: { p_dungeon: 0.6, p_upgrade: 0.3, p_training: 0.1, sessions_frac: 0, sessions_int: 5 }
   progression:
     xp_base: 15
     xp_pow: 2.0
@@ -168,16 +177,16 @@ model:
     upgrade_cost_num: 5
     upgrade_cost_den: 4
     upgrade_attack_gain: 2
-  churn: { p_base: 0.003, p_stall: 0.05, stall_days: 2 }
+  churn: { p_base: 0.003, p_stall: 0.02, stall_days: 3 }
 sweep:
   mode: random
   samples: 24
   replicates: 4
   parameters:
-    model.warrior.attack: { min: 100, max: 260, step: 40 }
+    model.warrior.attack: { min: 20, max: 220, step: 40 }
   targets:
-    - { metric: win_rate, min: 0.85, max: 1.0, kind: hard }
     - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
+    - { metric: retention_d7, min: 0.9, max: 1.0, kind: hard }
 `
 
 // 双轴网格预设(文档 22 后续项:联合可行域矩阵的演示形态):attack 3 点
@@ -190,7 +199,7 @@ scenario:
   seed: 12345
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
-  warrior: { attack: 140, defense: 130, hp: 225 }
+  warrior: { attack: 30, defense: 30, hp: 60 }
   combat:
     damage_model: ratio
     ratio_k: 260
@@ -198,6 +207,9 @@ model:
     p_hit_monster: 0.95
     dmg_var: 7
     max_rounds: 32
+  training:
+    xp: 300
+    gold: 100
   dungeon:
     tiers: 8
     m_hp: 165
@@ -218,9 +230,9 @@ model:
     reward_gold_growth: 1.26
     reward_xp_growth: 1.31
   behavior:
-    casual: { p_dungeon: 0.7, p_upgrade: 0.2, sessions_frac: 0.5, sessions_int: 1 }
-    core: { p_dungeon: 0.6, p_upgrade: 0.3, sessions_frac: 0.5, sessions_int: 2 }
-    whale: { p_dungeon: 0.65, p_upgrade: 0.3, sessions_frac: 0, sessions_int: 5 }
+    casual: { p_dungeon: 0.3, p_upgrade: 0.2, p_training: 0.5, sessions_frac: 0.5, sessions_int: 1 }
+    core: { p_dungeon: 0.5, p_upgrade: 0.3, p_training: 0.2, sessions_frac: 0.5, sessions_int: 2 }
+    whale: { p_dungeon: 0.6, p_upgrade: 0.3, p_training: 0.1, sessions_frac: 0, sessions_int: 5 }
   progression:
     xp_base: 15
     xp_pow: 2.0
@@ -231,15 +243,15 @@ model:
     upgrade_cost_num: 5
     upgrade_cost_den: 4
     upgrade_attack_gain: 2
-  churn: { p_base: 0.003, p_stall: 0.05, stall_days: 2 }
+  churn: { p_base: 0.003, p_stall: 0.02, stall_days: 3 }
 sweep:
   replicates: 4
   parameters:
-    model.warrior.attack: { min: 100, max: 260, step: 80 }
+    model.warrior.attack: { min: 20, max: 220, step: 40 }
     model.combat.p_hit: { min: 0.9, max: 1.0, step: 0.05 }
   targets:
-    - { metric: win_rate, min: 0.85, max: 1.0, kind: hard }
     - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
+    - { metric: retention_d7, min: 0.9, max: 1.0, kind: hard }
 `
 
 // Latin Hypercube 预设(文档 12 章 lhs 模式):同模型同约束,samples 24
@@ -251,7 +263,7 @@ scenario:
   seed: 12345
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
-  warrior: { attack: 140, defense: 130, hp: 225 }
+  warrior: { attack: 30, defense: 30, hp: 60 }
   combat:
     damage_model: ratio
     ratio_k: 260
@@ -259,6 +271,9 @@ model:
     p_hit_monster: 0.95
     dmg_var: 7
     max_rounds: 32
+  training:
+    xp: 300
+    gold: 100
   dungeon:
     tiers: 8
     m_hp: 165
@@ -279,9 +294,9 @@ model:
     reward_gold_growth: 1.26
     reward_xp_growth: 1.31
   behavior:
-    casual: { p_dungeon: 0.7, p_upgrade: 0.2, sessions_frac: 0.5, sessions_int: 1 }
-    core: { p_dungeon: 0.6, p_upgrade: 0.3, sessions_frac: 0.5, sessions_int: 2 }
-    whale: { p_dungeon: 0.65, p_upgrade: 0.3, sessions_frac: 0, sessions_int: 5 }
+    casual: { p_dungeon: 0.3, p_upgrade: 0.2, p_training: 0.5, sessions_frac: 0.5, sessions_int: 1 }
+    core: { p_dungeon: 0.5, p_upgrade: 0.3, p_training: 0.2, sessions_frac: 0.5, sessions_int: 2 }
+    whale: { p_dungeon: 0.6, p_upgrade: 0.3, p_training: 0.1, sessions_frac: 0, sessions_int: 5 }
   progression:
     xp_base: 15
     xp_pow: 2.0
@@ -292,16 +307,16 @@ model:
     upgrade_cost_num: 5
     upgrade_cost_den: 4
     upgrade_attack_gain: 2
-  churn: { p_base: 0.003, p_stall: 0.05, stall_days: 2 }
+  churn: { p_base: 0.003, p_stall: 0.02, stall_days: 3 }
 sweep:
   mode: latin_hypercube
   samples: 24
   replicates: 4
   parameters:
-    model.warrior.attack: { min: 100, max: 260, step: 40 }
+    model.warrior.attack: { min: 20, max: 220, step: 40 }
   targets:
-    - { metric: win_rate, min: 0.85, max: 1.0, kind: hard }
     - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
+    - { metric: retention_d7, min: 0.9, max: 1.0, kind: hard }
 `
 
 // 扫描预设选择器条目(网格 / Random / LHS,同源 core::sweep SweepMode)

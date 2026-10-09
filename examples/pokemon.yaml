@@ -14,13 +14,13 @@ scenario:
 model:
   # 玩家实体 = 初始宝可梦(Charizard 78/84/78 种族值,Pokédex)。
   # 能力公式:HP = floor(2B·L/100)+L+10,其他 = floor(2B·L/100)+5。
-  # 以名义 L14 起步(模型无野怪练级环,取首馆 Brock 的常规到访等级;阻力清单 #4),
-  # 全局 ×5 缩放到 sandtable 数值域:
-  #   atk = floor(2*84*14/100)+5 = 28,def = floor(2*78*14/100)+5 = 26,hp = 45
+  # L1 真起步(阻力清单 #4 根治):练级产出面把玩家从 L1 带到首馆可战等级,
+  # 不再需要"名义 L14 起步"的 workaround;全局 ×5 缩放到 sandtable 数值域:
+  #   atk = floor(2*84*1/100)+5 = 6,def = floor(2*78*1/100)+5 = 6,hp = 12
   warrior:
-    attack: 140
-    defense: 130
-    hp: 225
+    attack: 30
+    defense: 30
+    hp: 60
 
   combat:
     # 比值口径(阻力 #1 根治):宝可梦伤害公式是比值模型,直抄不再做差值等效换算。
@@ -35,6 +35,15 @@ model:
     # ±7.5% 相对满幅 → ×5 后绝对半宽 ≈ 7
     dmg_var: 7
     max_rounds: 32
+
+  training:
+    # 练级产出面(阻力 #4 根治):野怪练级的 sandtable 类比——非 dungeon 的练级带。
+    # 一次练级带聚合一 session 的野怪遭遇(原作单只 yield 太小,30 天节奏对不上):
+    #   xp ≈ 300(约单次野怪遭遇 ×20、首馆 yield 1080 的 27%),
+    #   gold ≈ 100(≈ 首馆奖金 1400 的 7%,原作野怪不给钱的类比)。
+    # 数值为假设层,按 30 天节奏标定(玩家 L1→首馆可战 ≈ 十来天,见 docs 21)。
+    xp: 300
+    gold: 100
 
   dungeon:
     # 关都八道馆 → 八层;tier t = 第 t 馆 ace 同级挑战(pokered parties.asm 逐馆等级)
@@ -70,10 +79,11 @@ model:
     reward_gold_growth: 1.26
     reward_xp_growth: 1.31
 
-  behavior: # sandtable 假设层,维持默认(宝可梦无会话结构)
-    casual: { p_dungeon: 0.7, p_upgrade: 0.2, sessions_frac: 0.5, sessions_int: 1 }
-    core: { p_dungeon: 0.6, p_upgrade: 0.3, sessions_frac: 0.5, sessions_int: 2 }
-    whale: { p_dungeon: 0.65, p_upgrade: 0.3, sessions_frac: 0, sessions_int: 5 }
+  behavior: # 练级带节奏为假设层(阻力 #4): dungeon 让位给练级带,
+    # 原作"先野外练够等级再打馆"的张力由此表达
+    casual: { p_dungeon: 0.3, p_upgrade: 0.2, p_training: 0.5, sessions_frac: 0.5, sessions_int: 1 }
+    core: { p_dungeon: 0.5, p_upgrade: 0.3, p_training: 0.2, sessions_frac: 0.5, sessions_int: 2 }
+    whale: { p_dungeon: 0.6, p_upgrade: 0.3, p_training: 0.1, sessions_frac: 0, sessions_int: 5 }
 
   progression:
     # Medium Fast 曲线:升下一级需 3L²−3L+1 ≈ 3L²(Bulbapedia Experience),
@@ -90,7 +100,9 @@ model:
     upgrade_cost_den: 4
     upgrade_attack_gain: 2
 
-  churn: # sandtable 假设层(卡关流失的 analog:打不动馆主 = 停滞)
+  churn: # sandtable 假设层(卡关流失的 analog:打不动馆主 = 停滞)。
+    # L1 起步后重标定(原参数按"全员 L14 开局"标定):平台期容忍上调
+    # (练级期 / 后期无升级日不再按 5%/日出血),RPG 语境玩家会回头练级而非流失。
     p_base: 0.003
-    p_stall: 0.05
-    stall_days: 2
+    p_stall: 0.02
+    stall_days: 3
