@@ -55,6 +55,18 @@ pub struct WarriorConfig {
     pub hp: i64,
 }
 
+/// 战斗伤害口径(文档 21 阻力 #1)。
+///
+/// `difference`(缺省):`dmg = attack − defense + var`,下限 1——攻击远小于
+/// 防御时钳到 1;`ratio`:`dmg = ratio_k·attack/(attack + defense) + var`,
+/// 弱打强时伤害按比例平滑趋小、不钳底(外部比值公式可直抄,无需等效换算)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DamageModel {
+    Difference,
+    Ratio,
+}
+
 /// 战斗数值常量(本档不随参数变化)。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -67,6 +79,19 @@ pub struct CombatConfig {
     pub dmg_var: i64,
     /// 最大轮数(超过判负;对应 rng::MAX_ROUND_SLOTS)
     pub max_rounds: u32,
+    /// 伤害口径:缺省 difference(旧配置不静默改语义,显式给出才切换)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub damage_model: Option<DamageModel>,
+    /// 比值口径比例参数:dmg = ratio_k·attack/(attack+defense)。
+    /// 注册表数值参数(可 sweep);仅 ratio 口径下生效,显式给出而口径未切
+    /// 时 validate 报错(防扫死参数)
+    #[serde(skip_serializing_if = "ratio_k_is_default")]
+    pub ratio_k: f64,
+}
+
+/// ratio_k 缺省值 1.0 不进 canonical JSON(旧配置 config_hash 不变)。
+fn ratio_k_is_default(v: &f64) -> bool {
+    *v == 1.0
 }
 
 impl Default for CombatConfig {
@@ -76,6 +101,8 @@ impl Default for CombatConfig {
             p_hit_monster: 0.85,
             dmg_var: 10,
             max_rounds: crate::rng::MAX_ROUND_SLOTS,
+            damage_model: None,
+            ratio_k: 1.0,
         }
     }
 }
@@ -505,6 +532,19 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
     {
         return Err(Error::Config("命中概率必须在 [0, 1]".into()));
     }
+    // 口径显式性(阻力 #1,同 reward_growth 拆分先例):ratio_k 只在
+    // damage_model: ratio 下生效,给出而口径未切属配置矛盾(扫它扫了个死参数)。
+    let ratio = matches!(cfg.combat.damage_model, Some(DamageModel::Ratio));
+    if !ratio && cfg.combat.ratio_k != 1.0 {
+        return Err(Error::Config(
+            "combat.ratio_k 只在 damage_model: ratio 下生效(damage_model 缺省为 difference)".into(),
+        ));
+    }
+    if ratio && !(cfg.combat.ratio_k > 0.0 && cfg.combat.ratio_k.is_finite()) {
+        return Err(Error::Config(
+            "combat.ratio_k 必须为正的有限值(比值口径的分母含 defense,比例参数给出量纲)".into(),
+        ));
+    }
     // 公式槽加载期编译(文档 07 章):语法 / 白名单 / 有界性在此暴露,
     // sim::run 假定已通过编译。
     crate::formula::compile(&cfg.formulas.xp_needed, crate::formula::XP_NEEDED_VARS)
@@ -552,5 +592,34 @@ mod tests {
         assert!(msg.contains("formulas.xp_needed"), "{msg}");
 
         assert!(validate(&SimConfig::default()).is_ok());
+    }
+
+    /// 比值口径约束(阻力 #1 显式性):ratio_k 只在 damage_model: ratio 下
+    /// 生效;口径未切时给出即报错,k 非正报错;缺省配置保持合法。
+    #[test]
+    fn validate_比值口径约束() {
+        let mut cfg = SimConfig::default();
+        cfg.combat.ratio_k = 260.0;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("damage_model"), "{msg}");
+
+        cfg.combat.damage_model = Some(DamageModel::Ratio);
+        assert!(validate(&cfg).is_ok());
+
+        cfg.combat.ratio_k = 0.0;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("ratio_k"), "{msg}");
+    }
+
+    /// 新口径字段缺省不进 canonical JSON:旧配置(无字段)与缺省配置
+    /// config_hash 逐字节一致——加字段不改存量语义。
+    #[test]
+    fn config_hash_口径字段缺省不变() {
+        let legacy = SimConfig::default();
+        assert!(legacy.combat.damage_model.is_none());
+        assert_eq!(legacy.combat.ratio_k, 1.0);
+        let mut switched = SimConfig::default();
+        switched.combat.damage_model = Some(DamageModel::Ratio);
+        assert_ne!(config_hash(&switched), config_hash(&legacy));
     }
 }

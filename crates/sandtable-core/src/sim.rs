@@ -296,6 +296,45 @@ mod tests {
         assert_eq!(out.damage_dealt, 4);
     }
 
+    /// 比值口径闭式解(文档 21 阻力 #1):必中零浮动下
+    /// dmg = floor(k·attack/(attack+defense)),轮数 = ceil(hp / dmg)。
+    #[test]
+    fn 比值战斗_闭式解() {
+        let mut cfg = SimConfig::default();
+        cfg.combat.p_hit = 1.0;
+        cfg.combat.p_hit_monster = 0.0;
+        cfg.combat.dmg_var = 0;
+        cfg.combat.max_rounds = 32;
+        cfg.combat.damage_model = Some(crate::config::DamageModel::Ratio);
+        cfg.combat.ratio_k = 200.0;
+        let m = monster_of(&cfg, 0); // hp 300, defense 20
+        let mut rng = DayRng::new(1, 1, 1);
+        // dmg = floor(200·120/140) = 171/轮 → 2 轮打完 300
+        let out = settle_battle(120, 80, 1000, &m, &mut rng, 0, &cfg);
+        assert!(out.win);
+        assert_eq!(out.rounds, 2);
+        assert_eq!(out.damage_dealt, 342);
+    }
+
+    /// 比值口径的平滑性(阻力 #1 根因):attack ≪ defense 时差值口径钳到 1
+    /// 磨不死(见超时判负测试),比值口径按比例仍有伤害、有限轮内可胜。
+    #[test]
+    fn 比值战斗_弱打强不钳底() {
+        let mut cfg = SimConfig::default();
+        cfg.combat.p_hit = 1.0;
+        cfg.combat.p_hit_monster = 0.0;
+        cfg.combat.dmg_var = 0;
+        cfg.combat.max_rounds = 32;
+        cfg.combat.damage_model = Some(crate::config::DamageModel::Ratio);
+        cfg.combat.ratio_k = 200.0;
+        let m = monster_of(&cfg, 0); // hp 300, defense 20
+        let mut rng = DayRng::new(1, 1, 1);
+        // dmg = floor(200·10/30) = 66/轮 → 5 轮打完(差值口径同输入只有 1/轮,超时判负)
+        let out = settle_battle(10, 80, 1000, &m, &mut rng, 0, &cfg);
+        assert!(out.win);
+        assert_eq!(out.rounds, 5);
+    }
+
     /// 确定收入:必中、零浮动、全分群只打副本,单日金币收入 = 会话数 ×
     /// 对应层产出,与种子无关(随机性被关掉后逐玩家可手算)。
     #[test]

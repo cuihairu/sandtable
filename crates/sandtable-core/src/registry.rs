@@ -67,6 +67,18 @@ const MODEL: &[ParamSpec] = &[
         "32",
         "最大战斗轮数(超过判负)",
     ),
+    spec(
+        "model.combat.damage_model",
+        Table,
+        "difference",
+        "战斗伤害口径(difference 缺省 / ratio;结构开关,不进数值通道)",
+    ),
+    spec(
+        "model.combat.ratio_k",
+        F64,
+        "1.0",
+        "比值伤害比例参数(dmg = k·attack/(attack+defense),仅 damage_model: ratio 生效)",
+    ),
     spec("model.dungeon.tiers", U32, "8", "副本层数(0 起)"),
     spec("model.dungeon.m_hp", I64, "300", "第 0 层怪物 hp"),
     spec("model.dungeon.m_attack", I64, "45", "第 0 层怪物攻击"),
@@ -326,6 +338,7 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.combat.p_hit_monster" => Ok(cfg.combat.p_hit_monster),
         "model.combat.dmg_var" => Ok(cfg.combat.dmg_var as f64),
         "model.combat.max_rounds" => Ok(cfg.combat.max_rounds as f64),
+        "model.combat.ratio_k" => Ok(cfg.combat.ratio_k),
         "model.dungeon.tiers" => Ok(cfg.dungeon.tiers as f64),
         "model.dungeon.m_hp" => Ok(cfg.dungeon.m_hp as f64),
         "model.dungeon.m_attack" => Ok(cfg.dungeon.m_attack as f64),
@@ -360,9 +373,12 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.churn.p_stall" => Ok(cfg.churn.p_stall),
         "model.churn.stall_days" => Ok(cfg.churn.stall_days as f64),
         // 非数值槽:与 apply_numeric 同口径
-        "scenario.duration" | "model.formulas.xp_needed" | "model.dungeon.tier_table" => Err(
-            Error::Config(format!("{path}: 该参数不是数值,不可数值读取")),
-        ),
+        "scenario.duration"
+        | "model.formulas.xp_needed"
+        | "model.dungeon.tier_table"
+        | "model.combat.damage_model" => Err(Error::Config(format!(
+            "{path}: 该参数不是数值,不可数值读取"
+        ))),
         _ => Err(unknown(path)),
     }
 }
@@ -393,6 +409,7 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.combat.max_rounds" => {
             cfg.combat.max_rounds = unsigned(value, "max_rounds")?.round() as u32
         }
+        "model.combat.ratio_k" => cfg.combat.ratio_k = value,
         "model.dungeon.tiers" => cfg.dungeon.tiers = unsigned(value, "tiers")?.round() as u32,
         "model.dungeon.m_hp" => cfg.dungeon.m_hp = value.round() as i64,
         "model.dungeon.m_attack" => cfg.dungeon.m_attack = value.round() as i64,
@@ -446,8 +463,12 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.churn.stall_days" => {
             cfg.churn.stall_days = unsigned(value, "stall_days")?.round() as u32
         }
-        // 非数值槽:不可数值扫描(时长是字符串,公式是表达式,逐层表是数组)
-        "scenario.duration" | "model.formulas.xp_needed" | "model.dungeon.tier_table" => {
+        // 非数值槽:不可数值扫描(时长是字符串,公式是表达式,逐层表是数组,
+        // 伤害口径是枚举开关)
+        "scenario.duration"
+        | "model.formulas.xp_needed"
+        | "model.dungeon.tier_table"
+        | "model.combat.damage_model" => {
             return Err(Error::Config(format!(
                 "{path}: 该参数不是数值,不可数值扫描"
             )));

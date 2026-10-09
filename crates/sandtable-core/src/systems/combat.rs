@@ -8,11 +8,24 @@
 //! (hit 与 damage 是不同 purpose)。因此前面战斗的回合数变化不会错位后续
 //! 战斗的随机路径,玩家与怪物的键空间互不重叠(文档 06 章)。
 
-use crate::config::SimConfig;
+use crate::config::{DamageModel, SimConfig};
 use crate::rng::{DayRng, Purpose, MAX_ROUND_SLOTS};
 
 /// 一场战斗占用的键空间:玩家与怪物各 MAX_ROUND_SLOTS。
 const ROUND_STRIDE: u32 = 2 * MAX_ROUND_SLOTS;
+
+/// 单击伤害(文档 21 阻力 #1 两口径):差值 = attack − defense + var;
+/// 比值 = ratio_k·attack/(attack + defense) + var。同下限 1、浮动同叠加点,
+/// 比值口径先按 f64 合成再取整(两次截断会系统性偏低)。
+fn strike_damage(cfg: &SimConfig, attack: i64, defense: i64, var: i64) -> i64 {
+    let c = &cfg.combat;
+    match c.damage_model {
+        Some(DamageModel::Ratio) => {
+            ((c.ratio_k * attack as f64 / (attack + defense) as f64 + var as f64) as i64).max(1)
+        }
+        _ => (attack - defense + var).max(1),
+    }
+}
 
 /// 第 t 层怪物数值(由配置推导;t 从 0 起)。
 #[derive(Debug, Clone)]
@@ -69,14 +82,25 @@ pub fn monster_power(m: &Monster) -> i64 {
 /// ② 期望承伤(计入怪物命中率)≤ 生命八成(不送死)。
 /// 都不满足则退回第 0 层。估算用期望值、不消耗随机数,保持确定性。
 pub fn pick_tier(attack: i64, defense: i64, hp: i64, cfg: &SimConfig) -> u32 {
+    let ratio = matches!(cfg.combat.damage_model, Some(DamageModel::Ratio));
     for t in (0..cfg.dungeon.tiers).rev() {
         let m = monster_of(cfg, t);
-        let dmg_out = (attack - m.defense).max(1);
+        // 期望口径(必中、零浮动)与 settle_battle 同式:比值口径下限同样取 1
+        // (弱打强仍有少量伤害,轮数有限);差值口径承伤下限 0(打不穿 = 零承伤)
+        let dmg_out = if ratio {
+            ((cfg.combat.ratio_k * attack as f64 / (attack + m.defense) as f64) as i64).max(1)
+        } else {
+            (attack - m.defense).max(1)
+        };
         let rounds = ceil_div(m.hp, dmg_out);
         if rounds > CLEAR_BUDGET_ROUNDS {
             continue;
         }
-        let dmg_in = (m.attack - defense).max(0);
+        let dmg_in = if ratio {
+            ((cfg.combat.ratio_k * m.attack as f64 / (m.attack + defense) as f64) as i64).max(1)
+        } else {
+            (m.attack - defense).max(0)
+        };
         if dmg_in > 0 {
             let incoming = (rounds as f64 * cfg.combat.p_hit_monster * dmg_in as f64) as i64;
             if incoming > hp * 8 / 10 {
@@ -133,7 +157,7 @@ pub fn settle_battle(
             let var = rng
                 .draw_indexed(Purpose::CombatDamage, key_base + r)
                 .range_i64(-c.dmg_var, c.dmg_var);
-            let dmg = (attack - monster.defense + var).max(1);
+            let dmg = strike_damage(cfg, attack, monster.defense, var);
             m_hp -= dmg;
             dealt += dmg;
         }
@@ -154,7 +178,7 @@ pub fn settle_battle(
             let var = rng
                 .draw_indexed(Purpose::CombatDamage, m_base + r)
                 .range_i64(-c.dmg_var, c.dmg_var);
-            a_hp -= (monster.attack - defense + var).max(1);
+            a_hp -= strike_damage(cfg, monster.attack, defense, var);
         }
         if a_hp <= 0 {
             return BattleOutcome {
