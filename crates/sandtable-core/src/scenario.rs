@@ -15,6 +15,7 @@ use crate::config::{
     validate, BehaviorConfig, ChurnConfig, CombatConfig, DungeonConfig, FormulaConfig,
     ProgressionConfig, SimConfig, TrainingConfig, WarriorConfig,
 };
+use crate::optimize::{Direction, Objective, OptimMode, OptimSpec};
 use crate::sweep::{ParamRange, SweepMode, SweepSpec, Target, TargetKind};
 use crate::Error;
 
@@ -117,11 +118,13 @@ fn check_schema_version(root: &Value) -> Result<(), Error> {
     Ok(())
 }
 
-/// 扫描参数范围(sweep.parameters 的值;文档 12 章的 map 形式:路径作键)。
+/// 扫描参数范围(sweep/optimize.parameters 的值;文档 12 章的 map 形式:
+/// 路径作键)。step 只服务网格扫描,寻优可省略;grid 模式校验拦截缺省 0.0。
 #[derive(Debug, Deserialize)]
 struct RangeSpec {
     min: f64,
     max: f64,
+    #[serde(default)]
     step: f64,
 }
 
@@ -203,15 +206,136 @@ impl SweepSection {
     }
 }
 
-/// 解析 YAML 实验文件为 (基础配置, 扫描定义)。
+/// Experiment 文件的 optimize 节(文档 12 章自动寻优)。parameters 用 map
+/// 形式同 sweep;elite / mutation_* 有缺省值。
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+struct OptimSection {
+    mode: OptimMode,
+    replicates: u32,
+    population: u32,
+    generations: u32,
+    elite: u32,
+    mutation_rate: f64,
+    mutation_scale: f64,
+    parameters: BTreeMap<String, RangeSpec>,
+    targets: Vec<TargetYaml>,
+    objective: Option<ObjectiveYaml>,
+}
+
+impl Default for OptimSection {
+    fn default() -> Self {
+        Self {
+            mode: OptimMode::default(),
+            replicates: 5,
+            population: 8,
+            generations: 5,
+            elite: 2,
+            mutation_rate: 0.3,
+            mutation_scale: 0.2,
+            parameters: BTreeMap::new(),
+            targets: Vec::new(),
+            objective: None,
+        }
+    }
+}
+
+/// 排序目标(optimize.objective 的项;direction 缺省 maximize)。
+#[derive(Debug, Deserialize)]
+struct ObjectiveYaml {
+    metric: String,
+    #[serde(default)]
+    direction: Direction,
+}
+
+impl OptimSection {
+    fn into_spec(self) -> Result<OptimSpec, Error> {
+        let parameters = self
+            .parameters
+            .into_iter()
+            .map(|(path, r)| ParamRange {
+                path,
+                min: r.min,
+                max: r.max,
+                step: r.step,
+            })
+            .collect();
+        let targets = self
+            .targets
+            .into_iter()
+            .map(|t| {
+                let metric = crate::experiment::MetricKey::parse(&t.metric).ok_or_else(|| {
+                    Error::Config(format!(
+                        "optimize.targets: 未知指标 {:?},可选: {:?}",
+                        t.metric,
+                        crate::experiment::MetricKey::ALL.map(|k| k.name())
+                    ))
+                })?;
+                Ok(Target {
+                    metric,
+                    min: t.min,
+                    max: t.max,
+                    kind: t.kind,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        let objective = match self.objective {
+            None => None,
+            Some(o) => {
+                let metric = crate::experiment::MetricKey::parse(&o.metric).ok_or_else(|| {
+                    Error::Config(format!(
+                        "optimize.objective: 未知指标 {:?},可选: {:?}",
+                        o.metric,
+                        crate::experiment::MetricKey::ALL.map(|k| k.name())
+                    ))
+                })?;
+                Some(Objective {
+                    metric,
+                    direction: o.direction,
+                })
+            }
+        };
+        Ok(OptimSpec {
+            mode: self.mode,
+            parameters,
+            replicates: self.replicates,
+            targets,
+            population: self.population,
+            generations: self.generations,
+            elite: self.elite,
+            mutation_rate: self.mutation_rate,
+            mutation_scale: self.mutation_scale,
+            objective,
+        })
+    }
+}
+
+/// 解析 YAML 实验文件为 (基础配置, 扫描/寻优定义)。
 ///
 /// 与 [`load_str`] 同一套加载纪律:schema_version 检查 → 注册表树校验
-/// (sweep 节有自己的 schema,摘出后不进注册表树;其参数路径由
-/// [`SweepSpec::validate`] 逐条查注册表)→ 反序列化 → 语义校验。
+/// (sweep / optimize 节有自己的 schema,摘出后不进注册表树;其参数路径由
+/// 各自 spec 校验逐条查注册表)→ 反序列化 → 语义校验。
+fn load_base_from_root(root: &Value, experiment_section: &str) -> Result<SimConfig, Error> {
+    let mut cfg_root = root.clone();
+    if let Some(m) = cfg_root.as_mapping_mut() {
+        m.swap_remove(Value::from(experiment_section));
+    }
+    crate::registry::check_tree(&cfg_root)?;
+    let file: ScenarioFile = serde_yaml_ng::from_value(cfg_root)
+        .map_err(|e| Error::Config(format!("配置类型不符: {e}")))?;
+    file.into_config()
+}
+
+/// 解析 YAML 实验文件为 (基础配置, 扫描定义)。
 pub fn load_experiment_str(yaml: &str) -> Result<(SimConfig, SweepSpec), Error> {
     let root: Value =
         serde_yaml_ng::from_str(yaml).map_err(|e| Error::Config(format!("YAML 解析失败: {e}")))?;
     check_schema_version(&root)?;
+    if root.get("optimize").is_some() {
+        return Err(Error::Config(
+            "实验文件不能同时含 sweep 与 optimize 节(两种实验形态互斥,见文档 12 章)".into(),
+        ));
+    }
 
     let sweep_value = root.get("sweep").ok_or_else(|| {
         Error::Config(
@@ -221,17 +345,31 @@ pub fn load_experiment_str(yaml: &str) -> Result<(SimConfig, SweepSpec), Error> 
     let sweep: SweepSection = serde_yaml_ng::from_value(sweep_value.clone())
         .map_err(|e| Error::Config(format!("sweep 节解析失败: {e}")))?;
     let spec = sweep.into_spec()?;
+    let cfg = load_base_from_root(&root, "sweep")?;
+    spec.validate()?;
+    Ok((cfg, spec))
+}
 
-    // 注册表树校验只看 scenario / model;sweep 的参数路径走 spec 校验
-    let mut cfg_root = root.clone();
-    if let Some(m) = cfg_root.as_mapping_mut() {
-        m.swap_remove(Value::from("sweep"));
+/// 解析 YAML 寻优实验文件为 (基础配置, 寻优定义)(文档 12 章自动寻优)。
+pub fn load_optimize_str(yaml: &str) -> Result<(SimConfig, OptimSpec), Error> {
+    let root: Value =
+        serde_yaml_ng::from_str(yaml).map_err(|e| Error::Config(format!("YAML 解析失败: {e}")))?;
+    check_schema_version(&root)?;
+    if root.get("sweep").is_some() {
+        return Err(Error::Config(
+            "实验文件不能同时含 sweep 与 optimize 节(两种实验形态互斥,见文档 12 章)".into(),
+        ));
     }
-    crate::registry::check_tree(&cfg_root)?;
 
-    let file: ScenarioFile = serde_yaml_ng::from_value(cfg_root)
-        .map_err(|e| Error::Config(format!("配置类型不符: {e}")))?;
-    let cfg = file.into_config()?;
+    let optim_value = root.get("optimize").ok_or_else(|| {
+        Error::Config(
+            "实验文件缺少 optimize 节(见文档 12 章:mode / parameters / population / generations / targets)".into(),
+        )
+    })?;
+    let optim: OptimSection = serde_yaml_ng::from_value(optim_value.clone())
+        .map_err(|e| Error::Config(format!("optimize 节解析失败: {e}")))?;
+    let spec = optim.into_spec()?;
+    let cfg = load_base_from_root(&root, "optimize")?;
     spec.validate()?;
     Ok((cfg, spec))
 }
@@ -677,6 +815,78 @@ sweep:
         let e = load_experiment_str("schema_version: \"1\"\nscenario:\n  population: 100\n")
             .unwrap_err();
         assert!(e.to_string().contains("sweep"), "{e}");
+    }
+
+    /// 寻优实验(docs 12 章自动寻优):scenario + model + optimize 三节,
+    /// 字段缺省值与 objective 方向缺省 maximize;与 sweep 节互斥。
+    #[test]
+    fn 实验文件_寻优节加载与互斥() {
+        let (cfg, spec) = load_optimize_str(
+            r#"schema_version: "1"
+scenario:
+  population: 200
+  duration: "10d"
+model:
+  warrior: {attack: 100, defense: 80, hp: 1000}
+optimize:
+  mode: evolutionary
+  population: 6
+  generations: 4
+  replicates: 2
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+  targets:
+    - metric: churn_rate
+      max: 0.3
+  objective:
+    metric: power_p50
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.players, 200);
+        assert_eq!(spec.population, 6);
+        assert_eq!(spec.generations, 4);
+        assert_eq!(spec.replicates, 2);
+        assert_eq!(spec.parameters.len(), 1);
+        assert_eq!(spec.targets.len(), 1);
+        // 缺省值:elite 2 / mutation 0.3 / 0.2 / direction maximize
+        assert_eq!(spec.elite, 2);
+        assert_eq!(spec.mutation_rate, 0.3);
+        assert_eq!(spec.mutation_scale, 0.2);
+        let obj = spec.objective.unwrap();
+        assert_eq!(obj.direction, Direction::Maximize);
+
+        // 与 sweep 节互斥(两个方向都报)
+        let both = r#"schema_version: "1"
+sweep:
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+optimize:
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+"#;
+        let e = load_experiment_str(both).unwrap_err();
+        assert!(e.to_string().contains("互斥"), "{e}");
+        let e = load_optimize_str(both).unwrap_err();
+        assert!(e.to_string().contains("互斥"), "{e}");
+
+        // 缺 optimize 节报错
+        let e =
+            load_optimize_str("schema_version: \"1\"\nscenario:\n  population: 100\n").unwrap_err();
+        assert!(e.to_string().contains("optimize"), "{e}");
+
+        // 未知指标报错列可选值
+        let e = load_optimize_str(
+            r#"schema_version: "1"
+optimize:
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+  objective:
+    metric: dps
+"#,
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("optimize.objective"), "{e}");
     }
 
     #[test]
