@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/sandtable-core", "crates/sandtable-cli", "crates/sandtable-wasm"]
+members = [
+  "crates/sandtable-core",
+  "crates/sandtable-cli",
+  "crates/sandtable-wasm",
+  "apps/desktop/src-tauri",
+]
 
 [workspace.package]
 version = "0.1.0"

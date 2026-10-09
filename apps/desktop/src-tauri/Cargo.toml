@@ -1,0 +1,18 @@
+[package]
+name = "sandtable-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "sandtable desktop shell (Tauri 2, Linux first)"
+
+[lib]
+name = "sandtable_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+sandtable-core = { path = "../../../crates/sandtable-core" }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
