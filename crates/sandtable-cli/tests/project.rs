@@ -135,14 +135,14 @@ fn 篡改哈希与清单外条目被拒() {
 
     // 1) 哈希不匹配:清单写全零哈希
     let bad_hash = format!(
-        "schema_version: '1'\nname: bad\nentries:\n  - path: scenarios/base.yaml\n    kind: scenario\n    sha256: {}\n",
+        "{{\"schema_version\":\"1\",\"name\":\"bad\",\"entries\":[{{\"path\":\"scenarios/base.yaml\",\"kind\":\"scenario\",\"sha256\":\"{}\"}}]}}\n",
         "0".repeat(64)
     );
     let arc = dir.join("badhash.sandtable");
     hand_zip(
         &arc,
         &[
-            ("manifest.yaml", bad_hash),
+            ("manifest.json", bad_hash),
             ("scenarios/base.yaml", SCENARIO.into()),
         ],
     );
@@ -151,12 +151,12 @@ fn 篡改哈希与清单外条目被拒() {
     assert!(stderr(&out).contains("sha256 不匹配"), "{}", stderr(&out));
 
     // 2) 归档里有清单未声明的条目(多一件都报错)
-    let mf = "schema_version: '1'\nname: extra\nentries:\n  - path: scenarios/base.yaml\n    kind: scenario\n    sha256: 0\n".to_string();
+    let mf = r#"{"schema_version":"1","name":"extra","entries":[{"path":"scenarios/base.yaml","kind":"scenario","sha256":"0"}]}"#.to_string();
     let arc = dir.join("extra.sandtable");
     hand_zip(
         &arc,
         &[
-            ("manifest.yaml", mf),
+            ("manifest.json", mf),
             ("scenarios/base.yaml", SCENARIO.into()),
             ("results/x.bin", "\u{1}\u{2}\u{3}".into()),
         ],
@@ -174,20 +174,20 @@ fn 路径纪律与schema_version被拒() {
     fs::create_dir_all(&dir).unwrap();
 
     // 1) 路径越界 ..:先拒路径纪律(哈希校验之前)
-    let mf = "schema_version: '1'\nname: evil\nentries:\n  - path: ../evil.yaml\n    kind: scenario\n    sha256: 0\n".to_string();
+    let mf = r#"{"schema_version":"1","name":"evil","entries":[{"path":"../evil.yaml","kind":"scenario","sha256":"0"}]}"#.to_string();
     let arc = dir.join("evil.sandtable");
     hand_zip(
         &arc,
-        &[("manifest.yaml", mf), ("base.yaml", SCENARIO.into())],
+        &[("manifest.json", mf), ("base.yaml", SCENARIO.into())],
     );
     let out = bin(&["project", "check", arc.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(2));
     assert!(stderr(&out).contains("路径"), "{}", stderr(&out));
 
     // 2) schema_version 不支持
-    let mf = "schema_version: '2'\nname: fut\nentries: []\n".to_string();
+    let mf = r#"{"schema_version":"2","name":"fut","entries":[]}"#.to_string();
     let arc = dir.join("fut.sandtable");
-    hand_zip(&arc, &[("manifest.yaml", mf)]);
+    hand_zip(&arc, &[("manifest.json", mf)]);
     let out = bin(&["project", "check", arc.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(2));
     assert!(stderr(&out).contains("schema_version"), "{}", stderr(&out));

@@ -19,7 +19,7 @@ use sandtable_core as core;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-const MANIFEST: &str = "manifest.yaml";
+const MANIFEST: &str = "manifest.json";
 /// 归档内固定时间戳(zip 格式起点 1980-01-01):打包产物只随内容变化。
 const FIXED_MTIME: (u16, u8, u8, u8, u8, u8) = (1980, 1, 1, 0, 0, 0);
 
@@ -204,7 +204,9 @@ pub fn pack(dir: &Path, out: &Path) -> anyhow::Result<()> {
         name,
         entries,
     };
-    let manifest_yaml = serde_yaml_ng::to_string(&manifest).context("manifest 序列化失败")?;
+    // manifest 用 JSON:机器生成的打包元数据,序列化字节稳定,
+    // 浏览器端零依赖可解析(Web 侧加载项目文件,文档 22 章)
+    let manifest_json = serde_json::to_string_pretty(&manifest).context("manifest 序列化失败")?;
 
     let file = fs::File::create(out).with_context(|| format!("创建 {} 失败", out.display()))?;
     let mut zw = zip::ZipWriter::new(file);
@@ -216,7 +218,7 @@ pub fn pack(dir: &Path, out: &Path) -> anyhow::Result<()> {
         .last_modified_time(mtime);
     zw.start_file(MANIFEST, opts)
         .context("写入 manifest 失败")?;
-    std::io::Write::write_all(&mut zw, manifest_yaml.as_bytes())?;
+    std::io::Write::write_all(&mut zw, manifest_json.as_bytes())?;
     for (path, (_, bytes)) in &files {
         zw.start_file(path.as_str(), opts)
             .with_context(|| format!("写入 {path} 失败"))?;
@@ -253,10 +255,10 @@ fn read_archive(path: &Path) -> anyhow::Result<(Manifest, BTreeMap<String, Vec<u
     if !names.remove(MANIFEST) {
         bail!("归档缺少 {MANIFEST}");
     }
-    let manifest_yaml = read_entry(&mut ar, MANIFEST)?;
-    let text = std::str::from_utf8(&manifest_yaml).map_err(|_| anyhow!("{MANIFEST} 非 UTF-8"))?;
+    let manifest_bytes = read_entry(&mut ar, MANIFEST)?;
+    let text = std::str::from_utf8(&manifest_bytes).map_err(|_| anyhow!("{MANIFEST} 非 UTF-8"))?;
     let manifest: Manifest =
-        serde_yaml_ng::from_str(text).map_err(|e| anyhow!("{MANIFEST} 解析失败: {e}"))?;
+        serde_json::from_str(text).map_err(|e| anyhow!("{MANIFEST} 解析失败: {e}"))?;
     if manifest.schema_version != "1" {
         bail!(
             "manifest schema_version = {},本工具支持 \"1\"",
