@@ -410,6 +410,36 @@ mod tests {
         }
     }
 
+    // Latin Hypercube(文档 12 章):serde 名 latin_hypercube,采样数 =
+    // samples,与 Random 同走 wasm 透传(plan 纯转发不改写候选)。
+    #[test]
+    fn 扫描_plan_lhs_透传() {
+        let yaml = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 7}\n",
+            "sweep:\n",
+            "  mode: latin_hypercube\n",
+            "  samples: 6\n",
+            "  replicates: 2\n",
+            "  parameters:\n",
+            "    model.warrior.attack: {min: 90, max: 110, step: 10}\n",
+            "  targets:\n",
+            "    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n",
+        );
+        let v = sweep_plan_native(yaml, 0).unwrap();
+        assert_eq!(v["mode"], "latin_hypercube");
+        let cands = v["candidates"].as_array().unwrap();
+        assert_eq!(cands.len(), 6, "候选数 = samples");
+        assert_eq!(v["sims"], 12);
+        for c in cands {
+            let x = c["model.warrior.attack"].as_f64().unwrap();
+            assert!((90.0..=110.0).contains(&x), "采样落在 [min, max]:{x}");
+        }
+        // 同配置同采样可复现
+        let v2 = sweep_plan_native(yaml, 0).unwrap();
+        assert_eq!(v["candidates"], v2["candidates"]);
+    }
+
     #[test]
     fn 扫描_candidate_与core直跑逐值一致() {
         let values = r#"{"model.warrior.attack": 100.0}"#;
