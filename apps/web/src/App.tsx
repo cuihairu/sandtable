@@ -1,12 +1,13 @@
 // sandtable Web 端(文档 18 章 Phase 6):本地跑小中型仿真,零安装零上传。
 // 配置在浏览器编辑,WASM 内核本地执行,结果只在内存里出图。
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import LineChart from './components/LineChart'
 import QueryPanel from './components/QueryPanel'
 import SweepPanel from './components/SweepPanel'
 import { loadDayStats, runQuery } from './lib/duck'
 import { PRESETS, SWEEP_PRESETS } from './lib/presets'
 import { unpackProject } from './lib/project'
+import type { UnpackedProject } from './lib/project'
 import type { RunMetrics, SimOutput } from './lib/types'
 import { runSimulation } from './lib/wasm'
 
@@ -37,6 +38,13 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [out, setOut] = useState<SimOutput | null>(null)
+  // 项目多配置选择器:.sandtable 里可有多个 scenario / experiment,
+  // 列表与当前项目引用留在这里,toolbar 出下拉(单个时不占位置)
+  const projRef = useRef<UnpackedProject | null>(null)
+  const [scenarios, setScenarios] = useState<string[]>([])
+  const [experiments, setExperiments] = useState<string[]>([])
+  const [selScenario, setSelScenario] = useState(0)
+  const [selExperiment, setSelExperiment] = useState(0)
 
   async function run() {
     setBusy(true)
@@ -52,23 +60,44 @@ export default function App() {
   }
 
   // .sandtable 项目文件:scenario → 仿真编辑器,experiment → 扫描编辑器
-  // (各取路径序首个;校验同 CLI project check)
+  // (默认取路径序首个,多配置时 toolbar 出下拉切换;校验同 CLI project check)
   async function importFile(f: File) {
     setError(null)
     setOut(null)
     if (!f.name.toLowerCase().endsWith('.sandtable')) {
       setYaml(await f.text())
+      projRef.current = null
+      setScenarios([])
+      setExperiments([])
       return
     }
     const proj = await unpackProject(new Uint8Array(await f.arrayBuffer()))
     const decode = (p: string) => new TextDecoder().decode(proj.files.get(p))
-    const scenarios = proj.entries.filter((e) => e.kind === 'scenario').map((e) => e.path)
-    const experiments = proj.entries.filter((e) => e.kind === 'experiment').map((e) => e.path)
-    if (scenarios.length === 0 && experiments.length === 0) {
+    const ss = proj.entries.filter((e) => e.kind === 'scenario').map((e) => e.path)
+    const es = proj.entries.filter((e) => e.kind === 'experiment').map((e) => e.path)
+    if (ss.length === 0 && es.length === 0) {
       throw new Error(`${proj.name}:归档内没有 scenario / experiment 配置`)
     }
-    if (scenarios.length > 0) setYaml(decode(scenarios[0]))
-    if (experiments.length > 0) setSweepYaml(decode(experiments[0]))
+    projRef.current = proj
+    setScenarios(ss)
+    setExperiments(es)
+    setSelScenario(0)
+    setSelExperiment(0)
+    if (ss.length > 0) setYaml(decode(ss[0]))
+    if (es.length > 0) setSweepYaml(decode(es[0]))
+  }
+
+  // 切换项目内的配置:对应编辑器换成该路径的内容(另一个编辑器不动)
+  function pickScenario(i: number) {
+    setSelScenario(i)
+    const p = projRef.current?.files.get(scenarios[i])
+    if (p) setYaml(new TextDecoder().decode(p))
+  }
+
+  function pickExperiment(i: number) {
+    setSelExperiment(i)
+    const p = projRef.current?.files.get(experiments[i])
+    if (p) setSweepYaml(new TextDecoder().decode(p))
   }
 
   const mean = useMemo(() => {
@@ -136,6 +165,30 @@ export default function App() {
               ))}
             </select>
           </label>
+          {scenarios.length > 1 && (
+            <label className="reps">
+              场景配置
+              <select value={selScenario} onChange={(e) => pickScenario(Number(e.target.value))}>
+                {scenarios.map((p, i) => (
+                  <option key={p} value={i}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {experiments.length > 1 && (
+            <label className="reps">
+              实验配置
+              <select value={selExperiment} onChange={(e) => pickExperiment(Number(e.target.value))}>
+                {experiments.map((p, i) => (
+                  <option key={p} value={i}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button className="primary" disabled={busy} onClick={run}>
             {busy ? '运行中…' : '运行仿真'}
           </button>
