@@ -48,7 +48,47 @@ sweep:
 - 洗牌只打乱层序配对,不改变层内取值——排序后仍每层恰一点;
 - `step` 不参与(与 Random 一致,只作范围元数据保留)。
 
-## Monte Carlo 的语义
+## 自动寻优(`optimize`,Phase 8 点火,2026-10-10)
+
+扫描回答"这条曲线上哪些点可行",寻优回答"机器帮我在多维空间里找可行点"——[平衡推荐](./15-recommendation)遗留的"多参数联合可行域需要代理模型或优化器"由此接上。实验文件的第三节换成 `optimize`:
+
+```yaml
+optimize:
+  mode: evolutionary
+  population: 8        # 种群大小
+  generations: 5       # 迭代代数
+  elite: 2             # 精英保留数(每代原样进入下一代)
+  mutation_rate: 0.3   # 每维变异概率
+  mutation_scale: 0.2  # 变异幅度(相对各维 [min,max] 宽度)
+  replicates: 4
+  parameters:          # 与 sweep.parameters 同形状(step 不参与)
+    model.warrior.attack: { min: 20, max: 220 }
+    model.dungeon.reward_gold: { min: 800, max: 2000, step: 100 }
+  targets:             # hard 约束定义可行域(与 sweep.targets 同形状)
+    - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
+  objective:           # 可行点内的排序目标(可省;省略则任一可行点即达标)
+    metric: power_p50
+    direction: maximize
+```
+
+**适应度是字典序,不是加权分**(可解释性优先):
+
+1. 主键:hard 约束 pass 数(复用[约束判定](./13-kpi-metrics)三态,PASS 计 1);
+2. 次键:objective 指标值(direction 已折算为越大越好;省略则同分,先到先得);
+3. 配置错误候选垫底,不静默、不崩溃。
+
+**进化算法**(纯内核、单线程、逐代依赖——代间串行是算法语义,非性能欠账):
+
+- 初始种群:各维 [min, max] 均匀采样;采样流与 `base_seed` 绑定,同配置同结果,线程数无关;
+- 每代:精英原样保留 → 余量由 锦标赛选择(size 2)× 逐维均匀交叉 × 均匀变异 产生;
+- 变异用均匀扰动而非高斯——正态随机属[随机函数](./24-random-functions) R3 分期,寻优不越界抢依赖;
+- 最优解跨代追踪(同适应度保先到),全历史候选落盘可追溯。
+
+**成本账**:总仿真数 = [population + generations × (population − elite)] × replicates(精英不重评;粗上界 population × (generations + 1) × replicates 用于预算校验)。上限沿用 MAX_CANDIDATES,先算账再跑。
+
+**输出**:与 sweep 同目录契约——`opt.json`(meta + spec + best + 逐代统计)、`candidates.csv`(全历史候选 × 指标 + 判定)。
+
+**非目标**:Bayesian(需代理模型选型:GP / 随机森林,待拍板)、Pareto / 多目标(多目标支配排序,待拍板)属后续增量——本节先交付可运行的进化寻优,不为后续算法预埋接口。
 
 本项目的 Monte Carlo 指**多 seed 复跑**(replicates):同一候选换 seed 跑 R 次,用于估计指标的抽样噪声、给出置信区间。它是一种统计手段,不是参数寻优方法。
 
