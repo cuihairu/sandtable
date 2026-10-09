@@ -157,6 +157,18 @@ impl System<World, SimEvent> for PlayerDaySystem<'_> {
                     progression::apply_upgrade(actor, &cfg.progression);
                     agg.record_upgrade(cost);
                 }
+                Action::Training => {
+                    // 练级产出面(阻力 #4):金币经验入账、升级推进,不进战斗统计
+                    if let Some(t) = cfg.training {
+                        let gold_gain = t.gold * mult;
+                        let xp_gain = t.xp * mult;
+                        actor.gold += gold_gain;
+                        let levelups =
+                            progression::gain_xp(actor, xp_gain, &cfg.progression, self.xp_formula);
+                        agg.record_levelup(levelups);
+                        agg.record_training(gold_gain as u64);
+                    }
+                }
                 action @ (Action::Dungeon | Action::Explore) => {
                     let mut tier = combat::pick_tier(actor.attack, actor.defense, actor.hp, cfg);
                     if action == Action::Explore {
@@ -333,6 +345,35 @@ mod tests {
         let out = settle_battle(10, 80, 1000, &m, &mut rng, 0, &cfg);
         assert!(out.win);
         assert_eq!(out.rounds, 5);
+    }
+
+    /// 练级产出面(阻力 #4):p_training 满概率时全分群只练级——金币经验
+    /// 入账、升级推进;战斗计数与胜率不动(练级不是战斗,不虚增胜率)。
+    #[test]
+    fn 练级产出_入账且不进战斗统计() {
+        let mut cfg = SimConfig {
+            players: 1,
+            days: 1,
+            base_seed: 7,
+            ..SimConfig::default()
+        };
+        cfg.cohort_weights = [1.0, 0.0, 0.0]; // 全 casual,产出无 whale 倍率,可手算
+        cfg.training = Some(crate::config::TrainingConfig { xp: 200, gold: 30 });
+        for c in crate::config::Cohort::ALL {
+            let b = cfg.behavior.for_cohort_mut(c);
+            b.sessions_int = 1;
+            b.sessions_frac = 0.0;
+            b.p_dungeon = 0.0;
+            b.p_upgrade = 0.0;
+            b.p_training = 1.0;
+        }
+        let m = run(&cfg, 0);
+        let day1 = &m.day_stats[0];
+        assert_eq!(day1.battles, 0);
+        assert_eq!(day1.win_rate, 0.0);
+        assert_eq!(day1.gold_earned, 30);
+        // 200 xp:升 1 级(60)后余 140 < xp_needed(2) = floor(60·2^1.3) = 147
+        assert_eq!(day1.levelups, 1);
     }
 
     /// 确定收入:必中、零浮动、全分群只打副本,单日金币收入 = 会话数 ×

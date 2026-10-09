@@ -235,9 +235,17 @@ pub struct ActorBehaviorConfig {
     pub sessions_int: u32,
     /// 小数部分作为概率补 1
     pub sessions_frac: f64,
-    /// 每次会话动作概率:副本 / 升级 / 其余为闲逛(打低一层)
+    /// 每次会话动作概率:副本 / 升级 / 练级 / 其余为闲逛(打低一层)。
+    /// p_training 仅在 model.training 产出面配置后生效(缺省 0,旧配置语义不变)
     pub p_dungeon: f64,
     pub p_upgrade: f64,
+    #[serde(skip_serializing_if = "p_training_is_default")]
+    pub p_training: f64,
+}
+
+/// p_training 缺省值 0.0 不进 canonical JSON(旧配置 config_hash 不变)。
+fn p_training_is_default(v: &f64) -> bool {
+    *v == 0.0
 }
 
 impl Default for ActorBehaviorConfig {
@@ -247,6 +255,7 @@ impl Default for ActorBehaviorConfig {
             sessions_frac: 0.5,
             p_dungeon: 0.7,
             p_upgrade: 0.2,
+            p_training: 0.0,
         }
     }
 }
@@ -271,6 +280,7 @@ struct PartialActorBehavior {
     sessions_frac: Option<f64>,
     p_dungeon: Option<f64>,
     p_upgrade: Option<f64>,
+    p_training: Option<f64>,
 }
 
 impl PartialActorBehavior {
@@ -280,6 +290,7 @@ impl PartialActorBehavior {
             sessions_frac: self.sessions_frac.unwrap_or(base.sessions_frac),
             p_dungeon: self.p_dungeon.unwrap_or(base.p_dungeon),
             p_upgrade: self.p_upgrade.unwrap_or(base.p_upgrade),
+            p_training: self.p_training.unwrap_or(base.p_training),
         }
     }
 }
@@ -322,12 +333,14 @@ impl Default for BehaviorConfig {
                 sessions_frac: 0.5,
                 p_dungeon: 0.6,
                 p_upgrade: 0.3,
+                p_training: 0.0,
             },
             whale: ActorBehaviorConfig {
                 sessions_int: 5,
                 sessions_frac: 0.0,
                 p_dungeon: 0.65,
                 p_upgrade: 0.3,
+                p_training: 0.0,
             },
         }
     }
@@ -429,6 +442,19 @@ impl Default for ChurnConfig {
     }
 }
 
+/// 练级产出面(文档 21 阻力 #4):behavior 各分群 `p_training` 带的动作产出
+/// ——无战斗风险的成长通道,玩家从真实低等级起步的"野怪练级环"替身。
+/// 缺省 None = 无练级环(旧配置语义不变);与 p_training 互相咬合,
+/// 单边给出由 validate 报错。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct TrainingConfig {
+    /// 每次练级会话经验产出
+    pub xp: i64,
+    /// 每次练级会话金币产出
+    pub gold: i64,
+}
+
 /// 仿真配置(内部编译产物)。YAML 的 scenario / model 两节都映射到这里。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -447,6 +473,9 @@ pub struct SimConfig {
     pub combat: CombatConfig,
     pub dungeon: DungeonConfig,
     pub behavior: BehaviorConfig,
+    /// 练级产出面(缺省 None = 无练级环)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub training: Option<TrainingConfig>,
     pub progression: ProgressionConfig,
     pub formulas: FormulaConfig,
     pub churn: ChurnConfig,
@@ -468,6 +497,7 @@ impl Default for SimConfig {
             combat: CombatConfig::default(),
             dungeon: DungeonConfig::default(),
             behavior: BehaviorConfig::default(),
+            training: None,
             progression: ProgressionConfig::default(),
             formulas: FormulaConfig::default(),
             churn: ChurnConfig::default(),
@@ -521,12 +551,40 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
     }
     for c in Cohort::ALL {
         let b = cfg.behavior.for_cohort(c);
-        if b.p_dungeon < 0.0 || b.p_upgrade < 0.0 || b.p_dungeon + b.p_upgrade > 1.0 {
+        if b.p_dungeon < 0.0
+            || b.p_upgrade < 0.0
+            || b.p_training < 0.0
+            || b.p_dungeon + b.p_upgrade + b.p_training > 1.0
+        {
             return Err(Error::Config(format!(
-                "behavior.{}: p_dungeon + p_upgrade 必须在 [0, 1]",
+                "behavior.{}: p_dungeon + p_upgrade + p_training 必须在 [0, 1]",
                 c.name()
             )));
         }
+    }
+    // 练级环显式性(阻力 #4):产出面与行为带互相咬合,单边给出属配置矛盾。
+    let any_training_band = Cohort::ALL
+        .iter()
+        .any(|c| cfg.behavior.for_cohort(*c).p_training > 0.0);
+    match cfg.training {
+        Some(t) => {
+            if t.xp < 0 || t.gold < 0 {
+                return Err(Error::Config("training.xp / training.gold 不能为负".into()));
+            }
+            // 零产出({xp:0,gold:0})合法且惰性:参数模板回导会产生它,
+            // 行为上等同无练级带(会话照常消耗但不改变任何统计)
+            if !any_training_band && (t.xp > 0 || t.gold > 0) {
+                return Err(Error::Config(
+                    "model.training 产出已配置但各分群 p_training 均为 0(练级带永不触发)".into(),
+                ));
+            }
+        }
+        None if any_training_band => {
+            return Err(Error::Config(
+                "behavior.*.p_training > 0 需要 model.training 配置练级产出(xp / gold)".into(),
+            ));
+        }
+        None => {}
     }
     if !(0.0..=1.0).contains(&cfg.combat.p_hit) || !(0.0..=1.0).contains(&cfg.combat.p_hit_monster)
     {
@@ -609,6 +667,52 @@ mod tests {
         cfg.combat.ratio_k = 0.0;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("ratio_k"), "{msg}");
+    }
+
+    /// 练级环耦合(阻力 #4 显式性):产出面与行为带互相咬合,单边给出报错。
+    #[test]
+    fn validate_练级环耦合() {
+        let mut cfg = SimConfig {
+            training: Some(TrainingConfig { xp: 100, gold: 10 }),
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("p_training"), "{msg}"); // 产出面有、行为带无
+
+        cfg.behavior.casual.p_dungeon = 0.5;
+        cfg.behavior.casual.p_upgrade = 0.1;
+        cfg.behavior.casual.p_training = 0.4; // 合计恰为 1
+        assert!(validate(&cfg).is_ok());
+
+        // 零产出产出面合法(参数模板回导产生):惰性、不报死配置
+        let zero = SimConfig {
+            training: Some(TrainingConfig { xp: 0, gold: 0 }),
+            ..SimConfig::default()
+        };
+        assert!(validate(&zero).is_ok());
+
+        let cfg2 = SimConfig {
+            behavior: {
+                let mut b = BehaviorConfig::default();
+                b.core.p_training = 0.1; // 0.6 + 0.3 + 0.1 合计恰为 1
+                b
+            },
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg2).unwrap_err().to_string();
+        assert!(msg.contains("model.training"), "{msg}"); // 行为带有、产出面无
+
+        let cfg3 = SimConfig {
+            behavior: {
+                let mut b = BehaviorConfig::default();
+                b.whale.p_dungeon = 0.8;
+                b.whale.p_training = 0.3; // 0.8 + 0.3(升级)+ 0.3 > 1
+                b
+            },
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg3).unwrap_err().to_string();
+        assert!(msg.contains("p_training"), "{msg}");
     }
 
     /// 新口径字段缺省不进 canonical JSON:旧配置(无字段)与缺省配置

@@ -13,7 +13,7 @@ use serde_yaml_ng::Value;
 
 use crate::config::{
     validate, BehaviorConfig, ChurnConfig, CombatConfig, DungeonConfig, FormulaConfig,
-    ProgressionConfig, SimConfig, WarriorConfig,
+    ProgressionConfig, SimConfig, TrainingConfig, WarriorConfig,
 };
 use crate::sweep::{ParamRange, SweepMode, SweepSpec, Target, TargetKind};
 use crate::Error;
@@ -59,6 +59,7 @@ struct ModelSection {
     combat: CombatConfig,
     dungeon: DungeonConfig,
     behavior: BehaviorConfig,
+    training: Option<TrainingConfig>,
     progression: ProgressionConfig,
     formulas: FormulaConfig,
     churn: ChurnConfig,
@@ -73,6 +74,7 @@ impl Default for ModelSection {
             combat: d.combat,
             dungeon: d.dungeon,
             behavior: d.behavior,
+            training: d.training,
             progression: d.progression,
             formulas: d.formulas,
             churn: d.churn,
@@ -261,6 +263,7 @@ impl ScenarioFile {
         cfg.combat = m.combat;
         cfg.dungeon = m.dungeon;
         cfg.behavior = m.behavior;
+        cfg.training = m.training;
         cfg.progression = m.progression;
         cfg.formulas = m.formulas;
         cfg.churn = m.churn;

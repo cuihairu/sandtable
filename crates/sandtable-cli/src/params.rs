@@ -116,6 +116,10 @@ pub fn merged_yaml(cfg: &SimConfig) -> String {
         if !s.path.starts_with("model.") {
             continue;
         }
+        // 练级产出面未配置时不落节(read_numeric 对缺省回 0,写出会无中生有)
+        if s.path.starts_with("model.training.") && cfg.training.is_none() {
+            continue;
+        }
         let Ok(v) = core::registry::read_numeric(cfg, s.path) else {
             continue;
         };

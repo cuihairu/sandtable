@@ -63,7 +63,7 @@ fn 导出_改值_回导_合并可直接仿真() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("47 项"), "{stdout}");
+    assert!(stdout.contains("52 项"), "{stdout}");
     let imported_hash = stdout
         .split("config_hash = ")
         .nth(1)

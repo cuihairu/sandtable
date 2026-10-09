@@ -219,6 +219,13 @@ impl RunAggregator {
         }
     }
 
+    /// 一次练级会话产出(阻力 #4):金币进经济面,不进战斗统计
+    /// (练级不是战斗,胜率分母不含它)。
+    pub fn record_training(&mut self, gold_gain: u64) {
+        self.cur.gold_earned += gold_gain;
+        self.gold_earned_total += gold_gain;
+    }
+
     pub fn record_upgrade(&mut self, cost: i64) {
         self.cur.gold_spent += cost as u64;
         self.gold_spent_total += cost as u64;

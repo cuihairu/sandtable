@@ -10,6 +10,8 @@ pub enum Action {
     Dungeon,
     /// 强化(金币足够时)
     Upgrade,
+    /// 练级:非副本产出面(model.training;无战斗风险)
+    Training,
     /// 闲逛:打低一层
     Explore,
 }
@@ -27,6 +29,7 @@ pub fn n_sessions(rng: &mut DayRng, cohort: Cohort, cfg: &SimConfig) -> u32 {
 
 /// 动作选择。消耗 1 个 Behavior 事件。
 /// 选中升级但金币不足时回退为副本,保证动作总可执行。
+/// 练级带在产出面缺省时不可达(validate 把关);防御性回退副本。
 pub fn choose_action(
     rng: &mut DayRng,
     cohort: Cohort,
@@ -40,6 +43,12 @@ pub fn choose_action(
     } else if roll < b.p_dungeon + b.p_upgrade {
         if can_afford {
             Action::Upgrade
+        } else {
+            Action::Dungeon
+        }
+    } else if roll < b.p_dungeon + b.p_upgrade + b.p_training {
+        if cfg.training.is_some() {
+            Action::Training
         } else {
             Action::Dungeon
         }

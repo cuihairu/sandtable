@@ -79,6 +79,18 @@ const MODEL: &[ParamSpec] = &[
         "1.0",
         "比值伤害比例参数(dmg = k·attack/(attack+defense),仅 damage_model: ratio 生效)",
     ),
+    spec(
+        "model.training.xp",
+        I64,
+        "0",
+        "每次练级会话经验产出(需 behavior.*.p_training > 0)",
+    ),
+    spec(
+        "model.training.gold",
+        I64,
+        "0",
+        "每次练级会话金币产出(需 behavior.*.p_training > 0)",
+    ),
     spec("model.dungeon.tiers", U32, "8", "副本层数(0 起)"),
     spec("model.dungeon.m_hp", I64, "300", "第 0 层怪物 hp"),
     spec("model.dungeon.m_attack", I64, "45", "第 0 层怪物攻击"),
@@ -129,6 +141,12 @@ const MODEL: &[ParamSpec] = &[
         "casual 升级概率",
     ),
     spec(
+        "model.behavior.casual.p_training",
+        F64,
+        "0.0",
+        "casual 练级概率(需 model.training 产出面)",
+    ),
+    spec(
         "model.behavior.core.sessions_int",
         U32,
         "2",
@@ -142,6 +160,12 @@ const MODEL: &[ParamSpec] = &[
     ),
     spec("model.behavior.core.p_dungeon", F64, "0.6", "core 副本概率"),
     spec("model.behavior.core.p_upgrade", F64, "0.3", "core 升级概率"),
+    spec(
+        "model.behavior.core.p_training",
+        F64,
+        "0.0",
+        "core 练级概率(需 model.training 产出面)",
+    ),
     spec(
         "model.behavior.whale.sessions_int",
         U32,
@@ -165,6 +189,12 @@ const MODEL: &[ParamSpec] = &[
         F64,
         "0.3",
         "whale 升级概率",
+    ),
+    spec(
+        "model.behavior.whale.p_training",
+        F64,
+        "0.0",
+        "whale 练级概率(需 model.training 产出面)",
     ),
     spec("model.progression.xp_base", I64, "60", "升级经验基数"),
     spec("model.progression.xp_pow", F64, "1.3", "升级经验指数"),
@@ -271,6 +301,7 @@ const SECTIONS: &[&str] = &[
     "model.warrior",
     "model.combat",
     "model.dungeon",
+    "model.training",
     "model.behavior",
     "model.behavior.casual",
     "model.behavior.core",
@@ -339,6 +370,8 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.combat.dmg_var" => Ok(cfg.combat.dmg_var as f64),
         "model.combat.max_rounds" => Ok(cfg.combat.max_rounds as f64),
         "model.combat.ratio_k" => Ok(cfg.combat.ratio_k),
+        "model.training.xp" => Ok(cfg.training.map(|t| t.xp).unwrap_or(0) as f64),
+        "model.training.gold" => Ok(cfg.training.map(|t| t.gold).unwrap_or(0) as f64),
         "model.dungeon.tiers" => Ok(cfg.dungeon.tiers as f64),
         "model.dungeon.m_hp" => Ok(cfg.dungeon.m_hp as f64),
         "model.dungeon.m_attack" => Ok(cfg.dungeon.m_attack as f64),
@@ -352,14 +385,17 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.behavior.casual.sessions_frac" => Ok(cfg.behavior.casual.sessions_frac),
         "model.behavior.casual.p_dungeon" => Ok(cfg.behavior.casual.p_dungeon),
         "model.behavior.casual.p_upgrade" => Ok(cfg.behavior.casual.p_upgrade),
+        "model.behavior.casual.p_training" => Ok(cfg.behavior.casual.p_training),
         "model.behavior.core.sessions_int" => Ok(cfg.behavior.core.sessions_int as f64),
         "model.behavior.core.sessions_frac" => Ok(cfg.behavior.core.sessions_frac),
         "model.behavior.core.p_dungeon" => Ok(cfg.behavior.core.p_dungeon),
         "model.behavior.core.p_upgrade" => Ok(cfg.behavior.core.p_upgrade),
+        "model.behavior.core.p_training" => Ok(cfg.behavior.core.p_training),
         "model.behavior.whale.sessions_int" => Ok(cfg.behavior.whale.sessions_int as f64),
         "model.behavior.whale.sessions_frac" => Ok(cfg.behavior.whale.sessions_frac),
         "model.behavior.whale.p_dungeon" => Ok(cfg.behavior.whale.p_dungeon),
         "model.behavior.whale.p_upgrade" => Ok(cfg.behavior.whale.p_upgrade),
+        "model.behavior.whale.p_training" => Ok(cfg.behavior.whale.p_training),
         "model.progression.xp_base" => Ok(cfg.progression.xp_base as f64),
         "model.progression.xp_pow" => Ok(cfg.progression.xp_pow),
         "model.progression.level_attack_gain" => Ok(cfg.progression.level_attack_gain as f64),
@@ -410,6 +446,16 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
             cfg.combat.max_rounds = unsigned(value, "max_rounds")?.round() as u32
         }
         "model.combat.ratio_k" => cfg.combat.ratio_k = value,
+        "model.training.xp" => {
+            cfg.training
+                .get_or_insert_with(crate::config::TrainingConfig::default)
+                .xp = value.round() as i64;
+        }
+        "model.training.gold" => {
+            cfg.training
+                .get_or_insert_with(crate::config::TrainingConfig::default)
+                .gold = value.round() as i64;
+        }
         "model.dungeon.tiers" => cfg.dungeon.tiers = unsigned(value, "tiers")?.round() as u32,
         "model.dungeon.m_hp" => cfg.dungeon.m_hp = value.round() as i64,
         "model.dungeon.m_attack" => cfg.dungeon.m_attack = value.round() as i64,
@@ -425,18 +471,21 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.behavior.casual.sessions_frac" => cfg.behavior.casual.sessions_frac = value,
         "model.behavior.casual.p_dungeon" => cfg.behavior.casual.p_dungeon = value,
         "model.behavior.casual.p_upgrade" => cfg.behavior.casual.p_upgrade = value,
+        "model.behavior.casual.p_training" => cfg.behavior.casual.p_training = value,
         "model.behavior.core.sessions_int" => {
             cfg.behavior.core.sessions_int = unsigned(value, "sessions_int")?.round() as u32
         }
         "model.behavior.core.sessions_frac" => cfg.behavior.core.sessions_frac = value,
         "model.behavior.core.p_dungeon" => cfg.behavior.core.p_dungeon = value,
         "model.behavior.core.p_upgrade" => cfg.behavior.core.p_upgrade = value,
+        "model.behavior.core.p_training" => cfg.behavior.core.p_training = value,
         "model.behavior.whale.sessions_int" => {
             cfg.behavior.whale.sessions_int = unsigned(value, "sessions_int")?.round() as u32
         }
         "model.behavior.whale.sessions_frac" => cfg.behavior.whale.sessions_frac = value,
         "model.behavior.whale.p_dungeon" => cfg.behavior.whale.p_dungeon = value,
         "model.behavior.whale.p_upgrade" => cfg.behavior.whale.p_upgrade = value,
+        "model.behavior.whale.p_training" => cfg.behavior.whale.p_training = value,
         "model.progression.xp_base" => cfg.progression.xp_base = value.round() as i64,
         "model.progression.xp_pow" => cfg.progression.xp_pow = value,
         "model.progression.level_attack_gain" => {
