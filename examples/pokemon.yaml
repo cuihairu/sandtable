@@ -1,5 +1,5 @@
 # 真实配置验证案例:宝可梦(第一世代关都八道馆)数值接入 sandtable 模型。
-# 映射方法、换算式与阻力清单见 docs/guide/21-pokemon-case.md;本文件注释只标来源。
+# 映射方法与阻力清单见 docs/guide/21-pokemon-case.md;本文件注释只标来源。
 schema_version: '1'
 
 scenario:
@@ -23,10 +23,16 @@ model:
     hp: 225
 
   combat:
+    # 比值口径(阻力 #1 根治):宝可梦伤害公式是比值模型,直抄不再做差值等效换算。
+    # ratio_k 标定:Gen1 L50 威力 60 期望伤害 ((2L/5+2)·60·A/D/50 + 2),随机取中值
+    # 0.925,×5 域下 A/D=1 锚点 ≈ 131 → k = 2×131 ≈ 262,取 260(配置可读,
+    # 同全局 ×5 的取整先例;比例结构在锚点对齐,非线性项不逐位等价)
+    damage_model: ratio
+    ratio_k: 260
     # 宝可梦伤害随机系数 85%~100%,取中值 0.925 表达命中/浮动结构
     p_hit: 0.95
     p_hit_monster: 0.95
-    # ±7.5% 相对满幅 → ×5 后绝对半宽 ≈ 7(t0 伤害 74 ± 6,t7 ± 8,取整)
+    # ±7.5% 相对满幅 → ×5 后绝对半宽 ≈ 7
     dmg_var: 7
     max_rounds: 32
 
@@ -34,27 +40,27 @@ model:
     # 关都八道馆 → 八层;tier t = 第 t 馆 ace 同级挑战(pokered parties.asm 逐馆等级)
     tiers: 8
     # —— 几何推导参数(逐层表给出时不参与;保留作 tier0 锚点与战力口径备查)——
-    # tier0 = Brock 的 Onix @ L14(HP 33)×5;攻防为差值等效换算(docs 21):
-    #   m_defense = 玩家 L14 攻 − 比值模型期望伤害 ×5 = 140 − 79 = 61
-    #   m_attack  = 玩家 L14 防 + 被击期望 ×5 = 130 + 89 = 219
+    # tier0 = Brock 的 Onix @ L14 ×5,攻防直抄能力值(docs 21:比值口径根治后换算层删除):
+    #   atk = floor(2*45*14/100)+5 = 17,def = floor(2*160*14/100)+5 = 49,hp = 33
     m_hp: 165
-    m_attack: 219
-    m_defense: 61
-    # 综合战力(atk*2+def+hp/10)口径 t0→t7 几何拟合:(515.5→1666.5)^(1/7) ≈ 1.18
-    tier_growth: 1.18
+    m_attack: 85
+    m_defense: 245
+    # 综合战力(atk*2+def+hp/10)口径 t0→t7 几何拟合:(431.5→2057.5)^(1/7) ≈ 1.25
+    tier_growth: 1.25
     # —— 逐层显式表(docs 21 阻力 #3 根治)——
-    # 每馆 ace 等级(pokered)× 图鉴种族值(Pokédex)× 差值等效换算(docs 21 公式),
-    # 三维锯齿形状逐格表达(防御 61→65→34→97→276→144→268→332);
+    # 每馆 ace 等级(pokered)× 图鉴种族值(Pokédex),能力值直抄 ×5、零换算;
+    # 锯齿形状逐格表达(atk 85→180→240→325→410→240→540→675,
+    # def 245→200→155→210→540→215→400→625);
     # 行内 gold / xp 缺省 → 回退下方锚点几何
     tier_table:
-      - { hp: 165, attack: 219, defense: 61 }   # Onix @14
-      - { hp: 280, attack: 314, defense: 65 }   # Starmie @21
-      - { hp: 310, attack: 359, defense: 34 }   # Raichu @24
-      - { hp: 425, attack: 418, defense: 97 }   # Victreebel @29
-      - { hp: 540, attack: 510, defense: 276 }  # Weezing @43
-      - { hp: 500, attack: 453, defense: 144 }  # Alakazam @43
-      - { hp: 705, attack: 572, defense: 268 }  # Arcanine @47
-      - { hp: 825, attack: 626, defense: 332 }  # Rhydon @50
+      - { hp: 165, attack: 85, defense: 245 }   # Onix @14(45/160 种族)
+      - { hp: 280, attack: 180, defense: 200 }  # Starmie @21(75/85)
+      - { hp: 310, attack: 240, defense: 155 }  # Raichu @24(90/55)
+      - { hp: 425, attack: 325, defense: 210 }  # Victreebel @29(105/65)
+      - { hp: 540, attack: 410, defense: 540 }  # Weezing @43(90/120)
+      - { hp: 500, attack: 240, defense: 215 }  # Alakazam @43(50/45)
+      - { hp: 705, attack: 540, defense: 400 }  # Arcanine @47(110/80)
+      - { hp: 825, attack: 675, defense: 625 }  # Rhydon @50(130/120)
     # 首馆奖金 ¥1,400(RB),1:1 锚定(消费环是假设层,不缩放)
     reward_gold: 1400
     # Gen1 经验 yield = floor(base_exp × level / 7);Onix base 108 → L14 = 216,×5

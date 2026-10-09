@@ -20,22 +20,28 @@ scenario:
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
   warrior: { attack: 140, defense: 130, hp: 225 }
-  combat: { p_hit: 0.95, p_hit_monster: 0.95, dmg_var: 7, max_rounds: 32 }
+  combat:
+    damage_model: ratio
+    ratio_k: 260
+    p_hit: 0.95
+    p_hit_monster: 0.95
+    dmg_var: 7
+    max_rounds: 32
   dungeon:
     tiers: 8
     m_hp: 165
-    m_attack: 219
-    m_defense: 61
-    tier_growth: 1.18
+    m_attack: 85
+    m_defense: 245
+    tier_growth: 1.25
     tier_table:
-      - { hp: 165, attack: 219, defense: 61 }
-      - { hp: 280, attack: 314, defense: 65 }
-      - { hp: 310, attack: 359, defense: 34 }
-      - { hp: 425, attack: 418, defense: 97 }
-      - { hp: 540, attack: 510, defense: 276 }
-      - { hp: 500, attack: 453, defense: 144 }
-      - { hp: 705, attack: 572, defense: 268 }
-      - { hp: 825, attack: 626, defense: 332 }
+      - { hp: 165, attack: 85, defense: 245 }
+      - { hp: 280, attack: 180, defense: 200 }
+      - { hp: 310, attack: 240, defense: 155 }
+      - { hp: 425, attack: 325, defense: 210 }
+      - { hp: 540, attack: 410, defense: 540 }
+      - { hp: 500, attack: 240, defense: 215 }
+      - { hp: 705, attack: 540, defense: 400 }
+      - { hp: 825, attack: 675, defense: 625 }
     reward_gold: 1400
     reward_xp: 1080
     reward_gold_growth: 1.26
@@ -61,22 +67,28 @@ scenario:
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
   warrior: { attack: 140, defense: 130, hp: 225 }
-  combat: { p_hit: 0.95, p_hit_monster: 0.95, dmg_var: 7, max_rounds: 32 }
+  combat:
+    damage_model: ratio
+    ratio_k: 260
+    p_hit: 0.95
+    p_hit_monster: 0.95
+    dmg_var: 7
+    max_rounds: 32
   dungeon:
     tiers: 8
     m_hp: 165
-    m_attack: 219
-    m_defense: 61
-    tier_growth: 1.18
+    m_attack: 85
+    m_defense: 245
+    tier_growth: 1.25
     tier_table:
-      - { hp: 165, attack: 219, defense: 61 }
-      - { hp: 280, attack: 314, defense: 65 }
-      - { hp: 310, attack: 359, defense: 34 }
-      - { hp: 425, attack: 418, defense: 97 }
-      - { hp: 540, attack: 510, defense: 276 }
-      - { hp: 500, attack: 453, defense: 144 }
-      - { hp: 705, attack: 572, defense: 268 }
-      - { hp: 825, attack: 626, defense: 332 }
+      - { hp: 165, attack: 85, defense: 245 }
+      - { hp: 280, attack: 180, defense: 200 }
+      - { hp: 310, attack: 240, defense: 155 }
+      - { hp: 425, attack: 325, defense: 210 }
+      - { hp: 540, attack: 410, defense: 540 }
+      - { hp: 500, attack: 240, defense: 215 }
+      - { hp: 705, attack: 540, defense: 400 }
+      - { hp: 825, attack: 675, defense: 625 }
     reward_gold: 1400
     reward_xp: 1080
     reward_gold_growth: 1.26
@@ -116,22 +128,28 @@ scenario:
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
   warrior: { attack: 140, defense: 130, hp: 225 }
-  combat: { p_hit: 0.95, p_hit_monster: 0.95, dmg_var: 7, max_rounds: 32 }
+  combat:
+    damage_model: ratio
+    ratio_k: 260
+    p_hit: 0.95
+    p_hit_monster: 0.95
+    dmg_var: 7
+    max_rounds: 32
   dungeon:
     tiers: 8
     m_hp: 165
-    m_attack: 219
-    m_defense: 61
-    tier_growth: 1.18
+    m_attack: 85
+    m_defense: 245
+    tier_growth: 1.25
     tier_table:
-      - { hp: 165, attack: 219, defense: 61 }
-      - { hp: 280, attack: 314, defense: 65 }
-      - { hp: 310, attack: 359, defense: 34 }
-      - { hp: 425, attack: 418, defense: 97 }
-      - { hp: 540, attack: 510, defense: 276 }
-      - { hp: 500, attack: 453, defense: 144 }
-      - { hp: 705, attack: 572, defense: 268 }
-      - { hp: 825, attack: 626, defense: 332 }
+      - { hp: 165, attack: 85, defense: 245 }
+      - { hp: 280, attack: 180, defense: 200 }
+      - { hp: 310, attack: 240, defense: 155 }
+      - { hp: 425, attack: 325, defense: 210 }
+      - { hp: 540, attack: 410, defense: 540 }
+      - { hp: 500, attack: 240, defense: 215 }
+      - { hp: 705, attack: 540, defense: 400 }
+      - { hp: 825, attack: 675, defense: 625 }
     reward_gold: 1400
     reward_xp: 1080
     reward_gold_growth: 1.26
@@ -173,22 +191,28 @@ scenario:
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
   warrior: { attack: 140, defense: 130, hp: 225 }
-  combat: { p_hit: 0.95, p_hit_monster: 0.95, dmg_var: 7, max_rounds: 32 }
+  combat:
+    damage_model: ratio
+    ratio_k: 260
+    p_hit: 0.95
+    p_hit_monster: 0.95
+    dmg_var: 7
+    max_rounds: 32
   dungeon:
     tiers: 8
     m_hp: 165
-    m_attack: 219
-    m_defense: 61
-    tier_growth: 1.18
+    m_attack: 85
+    m_defense: 245
+    tier_growth: 1.25
     tier_table:
-      - { hp: 165, attack: 219, defense: 61 }
-      - { hp: 280, attack: 314, defense: 65 }
-      - { hp: 310, attack: 359, defense: 34 }
-      - { hp: 425, attack: 418, defense: 97 }
-      - { hp: 540, attack: 510, defense: 276 }
-      - { hp: 500, attack: 453, defense: 144 }
-      - { hp: 705, attack: 572, defense: 268 }
-      - { hp: 825, attack: 626, defense: 332 }
+      - { hp: 165, attack: 85, defense: 245 }
+      - { hp: 280, attack: 180, defense: 200 }
+      - { hp: 310, attack: 240, defense: 155 }
+      - { hp: 425, attack: 325, defense: 210 }
+      - { hp: 540, attack: 410, defense: 540 }
+      - { hp: 500, attack: 240, defense: 215 }
+      - { hp: 705, attack: 540, defense: 400 }
+      - { hp: 825, attack: 675, defense: 625 }
     reward_gold: 1400
     reward_xp: 1080
     reward_gold_growth: 1.26
@@ -228,22 +252,28 @@ scenario:
   population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
 model:
   warrior: { attack: 140, defense: 130, hp: 225 }
-  combat: { p_hit: 0.95, p_hit_monster: 0.95, dmg_var: 7, max_rounds: 32 }
+  combat:
+    damage_model: ratio
+    ratio_k: 260
+    p_hit: 0.95
+    p_hit_monster: 0.95
+    dmg_var: 7
+    max_rounds: 32
   dungeon:
     tiers: 8
     m_hp: 165
-    m_attack: 219
-    m_defense: 61
-    tier_growth: 1.18
+    m_attack: 85
+    m_defense: 245
+    tier_growth: 1.25
     tier_table:
-      - { hp: 165, attack: 219, defense: 61 }
-      - { hp: 280, attack: 314, defense: 65 }
-      - { hp: 310, attack: 359, defense: 34 }
-      - { hp: 425, attack: 418, defense: 97 }
-      - { hp: 540, attack: 510, defense: 276 }
-      - { hp: 500, attack: 453, defense: 144 }
-      - { hp: 705, attack: 572, defense: 268 }
-      - { hp: 825, attack: 626, defense: 332 }
+      - { hp: 165, attack: 85, defense: 245 }
+      - { hp: 280, attack: 180, defense: 200 }
+      - { hp: 310, attack: 240, defense: 155 }
+      - { hp: 425, attack: 325, defense: 210 }
+      - { hp: 540, attack: 410, defense: 540 }
+      - { hp: 500, attack: 240, defense: 215 }
+      - { hp: 705, attack: 540, defense: 400 }
+      - { hp: 825, attack: 675, defense: 625 }
     reward_gold: 1400
     reward_xp: 1080
     reward_gold_growth: 1.26
