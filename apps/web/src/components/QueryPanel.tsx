@@ -1,6 +1,10 @@
-// SQL 查询面板(DuckDB-Wasm):查询结果表 + 选中数值列画折线
+// SQL 查询面板(DuckDB-Wasm):查询结果表 + 选中数值列画折线;
+// 可载入项目文件(.sandtable,解包校验同 CLI project check)或散装 CSV,
+// CSV 产物注册为 DuckDB 表后直接 SQL(文档 22 章)。
 import { useMemo, useState } from 'react'
 import LineChart from './LineChart'
+import { loadProjectCsvs } from '../lib/duck'
+import { unpackProject } from '../lib/project'
 import type { QueryColumn } from '../lib/duck'
 
 const MAX_ROWS = 100
@@ -17,6 +21,39 @@ export default function QueryPanel({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [plotCol, setPlotCol] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState<string | null>(null)
+
+  async function loadFile(f: File) {
+    setBusy(true)
+    setError(null)
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer())
+      if (f.name.toLowerCase().endsWith('.csv')) {
+        const tables = await loadProjectCsvs([{ name: f.name, bytes }])
+        setLoaded(
+          tables.length > 0
+            ? `已载入表:${tables.join(', ')}(旧项目表已清)`
+            : '没有可载入的 CSV',
+        )
+        return
+      }
+      const proj = await unpackProject(bytes)
+      const csvs = proj.entries
+        .filter((e) => e.kind === 'result' && e.path.endsWith('.csv'))
+        .map((e) => ({ name: e.path, bytes: proj.files.get(e.path)! }))
+      const tables = await loadProjectCsvs(csvs)
+      setLoaded(
+        tables.length > 0
+          ? `${proj.name}:CSV 产物已载入表 ${tables.join(', ')}`
+          : `${proj.name}:归档有效,但无 CSV 产物(scenario / experiment 配置复现随配置编辑器另行接线)`,
+      )
+    } catch (e) {
+      setError(String(e))
+      setLoaded(null)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function exec() {
     setBusy(true)
@@ -70,6 +107,25 @@ export default function QueryPanel({
         <button className="primary" disabled={busy} onClick={exec}>
           {busy ? '查询中…' : '查询'}
         </button>
+      </div>
+      <div className="toolbar" style={{ margin: '8px 0' }}>
+        <label className="reps">
+          载入项目 / CSV
+          <input
+            type="file"
+            accept=".sandtable,.csv"
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) void loadFile(f)
+              e.target.value = ''
+            }}
+          />
+        </label>
+        <span className="note">
+          .sandtable 解包校验同 CLI project check;CSV 产物进 DuckDB 表
+        </span>
+        {loaded && <span className="note">{loaded}</span>}
       </div>
       {error && <p className="error">{error}</p>}
       {cols && (

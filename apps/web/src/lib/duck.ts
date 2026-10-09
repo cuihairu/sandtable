@@ -53,3 +53,40 @@ export async function runQuery(sql: string): Promise<QueryColumn[]> {
   const result = await conn.query(sql)
   return toColumns(result)
 }
+
+// 项目 / CSV 载入(文档 22 章):results 里的 CSV 产物注册为内存表,
+// 表名 = 文件名去扩展名(非法字符转 _,冲突加序号);再次载入先清旧表。
+const projectTables: string[] = []
+
+function tableName(path: string, used: Set<string>): string {
+  const base = path.split('/').pop() ?? 'file'
+  const stem = base.replace(/\.[^.]*$/, '').replace(/[^a-zA-Z0-9_]/g, '_')
+  const safe = /^[A-Za-z_]/.test(stem) ? stem : `t_${stem}`
+  let name = safe
+  let i = 2
+  while (used.has(name)) name = `${safe}_${i++}`
+  return name
+}
+
+/** 把 CSV 产物装进 DuckDB 内存表,返回实际表名(调用方展示给用户)。 */
+export async function loadProjectCsvs(
+  csvs: { name: string; bytes: Uint8Array }[],
+): Promise<string[]> {
+  const conn = await getConn()
+  for (const t of projectTables) await conn.query(`DROP TABLE IF EXISTS "${t}"`)
+  projectTables.length = 0
+  const loaded: string[] = []
+  for (const f of csvs) {
+    const table = tableName(f.name, new Set([...projectTables]))
+    const bufName = `proj-${table}.csv`
+    await db!.registerFileBuffer(bufName, f.bytes as Uint8Array<ArrayBuffer>)
+    try {
+      await conn.query(`CREATE TABLE "${table}" AS SELECT * FROM read_csv_auto('${bufName}')`)
+    } finally {
+      await db!.dropFile(bufName)
+    }
+    projectTables.push(table)
+    loaded.push(table)
+  }
+  return loaded
+}
