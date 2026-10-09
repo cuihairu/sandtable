@@ -5,7 +5,8 @@ import LineChart from './components/LineChart'
 import QueryPanel from './components/QueryPanel'
 import SweepPanel from './components/SweepPanel'
 import { loadDayStats, runQuery } from './lib/duck'
-import { PRESETS } from './lib/presets'
+import { PRESETS, SWEEP_PRESETS } from './lib/presets'
+import { unpackProject } from './lib/project'
 import type { RunMetrics, SimOutput } from './lib/types'
 import { runSimulation } from './lib/wasm'
 
@@ -30,6 +31,8 @@ function dayMetric(m: RunMetrics, key: 'active' | 'win_rate' | 'gold_supply' | '
 
 export default function App() {
   const [yaml, setYaml] = useState(PRESETS[0].yaml)
+  // 实验编辑器状态抬升到 App:项目文件(.sandtable)可同时喂两个编辑器
+  const [sweepYaml, setSweepYaml] = useState(SWEEP_PRESETS[0].yaml)
   const [replicates, setReplicates] = useState(2)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,6 +49,26 @@ export default function App() {
     } finally {
       setBusy(false)
     }
+  }
+
+  // .sandtable 项目文件:scenario → 仿真编辑器,experiment → 扫描编辑器
+  // (各取路径序首个;校验同 CLI project check)
+  async function importFile(f: File) {
+    setError(null)
+    setOut(null)
+    if (!f.name.toLowerCase().endsWith('.sandtable')) {
+      setYaml(await f.text())
+      return
+    }
+    const proj = await unpackProject(new Uint8Array(await f.arrayBuffer()))
+    const decode = (p: string) => new TextDecoder().decode(proj.files.get(p))
+    const scenarios = proj.entries.filter((e) => e.kind === 'scenario').map((e) => e.path)
+    const experiments = proj.entries.filter((e) => e.kind === 'experiment').map((e) => e.path)
+    if (scenarios.length === 0 && experiments.length === 0) {
+      throw new Error(`${proj.name}:归档内没有 scenario / experiment 配置`)
+    }
+    if (scenarios.length > 0) setYaml(decode(scenarios[0]))
+    if (experiments.length > 0) setSweepYaml(decode(experiments[0]))
   }
 
   const mean = useMemo(() => {
@@ -87,16 +110,18 @@ export default function App() {
             </button>
           ))}
           <label className="file-btn">
-            导入配置文件
+            导入配置文件(.yaml / .sandtable)
             <input
               type="file"
-              accept=".yaml,.yml,.txt,text/yaml"
+              accept=".yaml,.yml,.txt,.sandtable,text/yaml"
               onChange={async (e) => {
                 const f = e.target.files?.[0]
                 if (!f) return
-                setYaml(await f.text())
-                setError(null)
-                setOut(null)
+                try {
+                  await importFile(f)
+                } catch (err) {
+                  setError(String(err))
+                }
                 e.target.value = ''
               }}
             />
@@ -232,7 +257,7 @@ export default function App() {
         </>
       )}
 
-      <SweepPanel />
+      <SweepPanel yaml={sweepYaml} onYamlChange={setSweepYaml} />
 
       <footer>
         <span>

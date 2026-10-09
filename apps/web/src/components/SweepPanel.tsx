@@ -29,8 +29,13 @@ const CONFIDENCE_LABEL: Record<string, string> = {
   low: 'Low',
 }
 
-export default function SweepPanel() {
-  const [yaml, setYaml] = useState(SWEEP_PRESETS[0].yaml)
+export default function SweepPanel({
+  yaml,
+  onYamlChange,
+}: {
+  yaml: string
+  onYamlChange: (v: string) => void
+}) {
   const [override, setOverride] = useState(0) // 0 = 跟随配置
   const [plan, setPlan] = useState<SweepPlan | null>(null)
   const [results, setResults] = useState<CandidateResult[]>([])
@@ -123,7 +128,7 @@ export default function SweepPanel() {
               value={SWEEP_PRESETS.find((p) => p.yaml === yaml)?.name ?? ''}
               onChange={(e) => {
                 const p = SWEEP_PRESETS.find((x) => x.name === e.target.value)
-                if (p) setYaml(p.yaml)
+                if (p) onYamlChange(p.yaml)
               }}
             >
               {SWEEP_PRESETS.map((p) => (
@@ -143,7 +148,7 @@ export default function SweepPanel() {
         </div>
         <textarea
           value={yaml}
-          onChange={(e) => setYaml(e.target.value)}
+          onChange={(e) => onYamlChange(e.target.value)}
           rows={16}
           spellCheck={false}
           aria-label="扫描实验 YAML"

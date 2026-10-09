@@ -45,7 +45,7 @@ export default function QueryPanel({
       setLoaded(
         tables.length > 0
           ? `${proj.name}:CSV 产物已载入表 ${tables.join(', ')}`
-          : `${proj.name}:归档有效,但无 CSV 产物(scenario / experiment 配置复现随配置编辑器另行接线)`,
+          : `${proj.name}:归档有效,但无 CSV 产物(配置复现走顶部「导入配置文件」)`,
       )
     } catch (e) {
       setError(String(e))
