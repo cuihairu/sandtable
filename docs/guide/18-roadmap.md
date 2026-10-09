@@ -98,6 +98,7 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 - **CI/打包**:官方 `tauri-apps/tauri-action` 支持三平台矩阵;Windows / macOS runner 零额外依赖(WebView2 / WKWebView 系统自带),Linux runner 需 webkit2gtk-4.1 等约 8 个 apt 包;二进制用系统 WebView,体积远小于 Electron。
 - **风险**:代码签名(Windows SmartScreen / macOS Gatekeeper)是发布质量门槛,非技术阻塞;不签名仅影响首次打开体验。
 - **拍板结论(2026-10-10)**:① 平台优先级 **Linux 本机先行**(壳在本机开发验收,Windows/macOS 后置);② **暂不引入自动更新器**(验证通道先行手动安装,更新器二期);③ 签名证书**留到发布时再定**;④ 开工顺序:壳 + core path 直连最小可跑 → 前端接入 → 实验流对齐 CLI 验收。
+- **进度**:壳已起步(2026-10-10)——`apps/desktop/src-tauri`(tauri 2.12 + tauri-build 2.7,workspace member),`run_scenario(yaml, replicates)` 命令 = `scenario::load_str` → 逐 replicate `sim::run` → results JSON(与 wasm run_simulation_native 同构,core 直连不经 wasm 边界),2 个命令面单测;前端复用(React UI 接入)与 duckdb-rs 接入是下一步。
 
 ## 已立项:Report / Web UI 深化(原计划 Phase 7,2026-10-08)
 
