@@ -19,6 +19,7 @@ title: 10 · CLI
 | `sandtable recommend` | 从扫描产物生成敏感性矩阵与推荐区间 | Phase 4 |
 | `sandtable params` | 数值参数表导出 / 导入(扁平 CSV) | Phase 5 |
 | `sandtable report` | 生成 HTML 报告 | Phase 5 |
+| `sandtable project` | 项目打包 pack / unpack / check(`.sandtable`) | 2026-10 |
 
 ## 用法
 
@@ -29,6 +30,7 @@ sandtable compare result-a result-b
 sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate = 'PASS'"
 sandtable recommend experiment.yaml sweep-out/
 sandtable params export --scenario scenario.yaml --out params.csv
+sandtable project pack myproj --out myproj.sandtable
 sandtable report experiment/
 ```
 
@@ -83,6 +85,20 @@ sandtable simulate merged.yaml
 - 覆盖范围 = 注册表全部数值参数(整数 / 浮点 / 分群权重);公式槽与时长(`30d`)不经参数表,需要自定义时直接编辑 YAML;
 - 导入以 `--scenario` 为基线(缺省默认配置),未知路径给编辑距离建议,数值非法 / 越界 / 路径重复逐行标注,不静默跳过;
 - 成功后打印 `config_hash`;`--out merged.yaml` 产出可直接跑仿真的场景文件(含 scenario 节的 population / duration / seed / population_mix 与 model 节全量数值参数)。
+
+### project(项目打包)
+
+把场景 / 实验定义(可选产物)打包为单个 `.sandtable` 归档,在 CLI / Web / Desktop 之间交换;manifest v1 契约与校验规则见[项目打包](./09-data-output):
+
+```bash
+sandtable project pack myproj --out myproj.sandtable    # 目录 → 归档
+sandtable project unpack myproj.sandtable --out restored # 校验后展开(目标目录须为空)
+sandtable project check myproj.sandtable                 # 只校验不落盘
+```
+
+- 导入即全量校验:manifest 结构、路径纪律、逐条 sha256、归档文件集合与清单严格相等、scenario / experiment 逐个加载校验,坏条目逐条报完再失败(退出码 2);
+- 打包确定性:同目录两次打包字节一致(条目按路径排序、时间戳固定);
+- Project 不新增仿真语义——展开出的就是普通配置文件,`simulate` / `sweep` 直接可跑。
 
 ### report(Phase 5)
 

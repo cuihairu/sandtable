@@ -96,26 +96,50 @@ Parquet 适合大规模时序、群体明细与 notebook 分析,但 Arrow 系依
 
 一个源文件都找不到则报错(退出码 2);页首列出实际读取的源,保证报告可追溯。报告不重新仿真——与 `query` 同一条纪律:**产物 → 报告,仿真路径之外**。
 
-## 项目打包:导入 / 导出(规划)
+## 项目打包:导入 / 导出
 
 ::: note 概念定位
-**Project(项目)是配置组织单元,不新增仿真语义**——一个 Project 把若干 Model、Scenario、Experiment 定义(可选:最近一次结果)打包为**单个可交换文件**,在任何形态(CLI / Web / Desktop)之间导入导出。七个核心概念不变,Project 只是它们的容器。
+**Project(项目)是配置组织单元,不新增仿真语义**——一个 Project 把若干场景与实验定义(可选:最近一次产物)打包为**单个可交换文件**,在任何形态(CLI / Web / Desktop)之间导入导出。七个核心概念不变,Project 只是它们的容器。
 :::
 
-倾向形态:zip 归档 + 清单(示意,细节待定):
+形态(2026-10-09 定型):zip 归档(deflate)+ 清单,扩展名 `.sandtable`。Model 是配置树的一节而非独立文件,故场景文件 = `schema_version + scenario + model`,实验文件再加 `sweep` 节:
 
 ```text
 mysim.sandtable (zip)
-├── manifest.yaml      # schema_version、名称、包含的条目清单
-├── models/*.yaml
-├── scenarios/*.yaml
-├── experiments/*.yaml
-└── results/           # 可选:最近实验结果(JSON/CSV/Parquet)
+├── manifest.yaml      # schema_version '1'、name、entries(path / kind / sha256)
+├── scenarios/*.yaml   # 场景(一层,不递归)
+├── experiments/*.yaml # 实验(一层,不递归)
+└── results/*          # 可选:最近实验产物(report.json / days.csv / sweep.json …)
 ```
 
-- 导入即校验:schema_version、参数注册表、config_hash 重算,坏档明确报错;
-- 与 Web 形态天然互补:浏览器里直接打开一个项目文件即可复现实验;
-- 排期在 Phase 5(报告与真实配置验证)之后评估,见[路线图](./18-roadmap)。
+`manifest.yaml`(schema v1):
+
+```yaml
+schema_version: '1'
+name: my-sim
+entries:
+  - { path: scenarios/base.yaml, kind: scenario, sha256: <64 位十六进制> }
+  - { path: experiments/sweep.yaml, kind: experiment, sha256: … }
+  - { path: results/report.json, kind: result, sha256: … }
+```
+
+格式规则:
+
+- `kind` 三类:`scenario`(须过 `validate` 同源加载校验)/ `experiment`(同源实验校验,含 sweep 节)/ `result`(任意产物字节,只验哈希不解析);
+- 路径纪律:相对路径、正斜杠、禁 `..` / 盘符 / 绝对路径;`scenario` 与 `experiment` 必须是 `.yaml` 且分别位于 `scenarios/`、`experiments/` 下,`result` 必须位于 `results/` 下;路径不重复;
+- 打包要求:项目目录内至少一个 scenario 或 experiment;清单约定之外的文件即报错(不静默丢弃);`manifest.yaml` 由打包器生成,目录里的旧清单不参与打包;
+- 确定性:条目按路径排序、归档内时间戳固定(zip 格式起点 1980),同目录两次打包字节一致——产物可 diff 可审计,与内核确定性同一条纪律;
+- 导入即全量校验:manifest 结构与 schema_version、路径纪律、逐条 sha256、归档文件集合与清单严格相等(多一件少一件都报错)、scenario / experiment 逐个加载校验——坏条目逐条报完再失败(同 [params import](./10-cli) 纪律),不静默跳过。
+
+CLI(文档 10 章):
+
+```bash
+sandtable project pack   myproj --out myproj.sandtable   # 目录 → 归档
+sandtable project unpack myproj.sandtable --out restored # 校验后展开(目标目录须为空)
+sandtable project check  myproj.sandtable                # 只校验不落盘
+```
+
+与 Web 形态互补:浏览器打开项目文件即可复现实验——Web 侧加载随此定型排期,见[Web 端](./22-web)。
 
 ## 配置接入:Excel / CSV 导入(评估结论)
 
