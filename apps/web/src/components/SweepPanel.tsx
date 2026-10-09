@@ -1,8 +1,8 @@
 // 参数扫描面板(文档 12/14/15 章):实验 YAML → 候选逐个本地运行
 // (JS 驱动、候选间让出主线程,进度可渲染;网格笛卡尔积或 Random 采样,
-// 同源 core::sweep 两种 SweepMode)→ 候选 × 指标表 + 单轴图
-// (网格折线 / Random 散点,CI 须、判定着色、推荐带)+ 两轴联合可行域矩阵
-// (SweepMatrix,三色判定)+ 敏感性矩阵与推荐块。
+// 同源 core::sweep SweepMode)→ 候选 × 指标表 + 单轴图
+// (网格折线 / 采样散点(Random / LHS),CI 须、判定着色、推荐带)
+// + 两轴联合可行域矩阵(SweepMatrix,三色判定)+ 敏感性矩阵与推荐块。
 // 与 CLI sweep / recommend 同源(core 纯函数);预算门在 sandtable-wasm
 // (MAX_SWEEP_SIMS / MAX_SWEEP_SIM_SCALE)。
 import { useState } from 'react'
@@ -233,7 +233,7 @@ export default function SweepPanel() {
           {chartData && rec && (
             <>
               <SweepChart
-                title={`${chartMetric} vs ${axis!.path.split('.').pop()}(CI95 须,绿带 = 推荐区间${plan.mode === 'random' ? ',Random 散点' : ''})`}
+                title={`${chartMetric} vs ${axis!.path.split('.').pop()}(CI95 须,绿带 = 推荐区间${plan.mode !== 'grid' ? `,${plan.mode === 'latin_hypercube' ? 'LHS' : 'Random'} 散点` : ''})`}
                 xs={chartData.xs}
                 means={chartData.means}
                 los={chartData.los}
@@ -241,7 +241,7 @@ export default function SweepPanel() {
                 verdicts={chartData.verdicts}
                 band={rec.recommendation.interval}
                 baseline={rec.recommendation.baseline}
-                scatter={plan.mode === 'random'}
+                scatter={plan.mode !== 'grid'}
               />
               <div className="rec">
                 <strong>推荐区间</strong>{' '}
