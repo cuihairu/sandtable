@@ -30,8 +30,12 @@ pub enum SweepMode {
     /// 网格:范围内的等步长点取笛卡尔积
     #[default]
     Grid,
-    /// 随机:每维在 [min, max] 均匀采样(高维空间;后续可加 Latin Hypercube)
+    /// 随机:每维在 [min, max] 均匀采样(高维空间)
     Random,
+    /// Latin Hypercube:每维 [min, max] 分 samples 层、层内均匀采 1 点,
+    /// 各维独立洗牌配对(同预算下覆盖均匀性优于 Random;采样流同 base_seed
+    /// 绑定,文档 12 章)
+    LatinHypercube,
 }
 
 /// 一个扫描参数的范围(注册表路径寻址)。
@@ -248,6 +252,43 @@ impl SweepSpec {
                                 let v = p.min + rng.next_f64() * (p.max - p.min);
                                 (p.path.clone(), v)
                             })
+                            .collect::<BTreeMap<_, _>>()
+                    })
+                    .collect()
+            }
+            SweepMode::LatinHypercube => {
+                let n = self.samples as usize;
+                if n == 0 {
+                    return Err(Error::Config(
+                        "sweep.samples 必须 ≥ 1(Latin Hypercube 模式)".into(),
+                    ));
+                }
+                if n > MAX_CANDIDATES {
+                    return Err(Error::Config(format!(
+                        "Latin Hypercube 采样数 {n} 超上限 {MAX_CANDIDATES}"
+                    )));
+                }
+                // 每维:分 n 层、层内均匀采 1 点,再 Fisher–Yates 洗牌打乱
+                // 层序(避免各维同序采样的对角相关);洗牌不改变层内取值,
+                // 排序后仍每层恰一点。采样流与 base_seed 绑定(文档 12 章)。
+                let mut rng = SweepRng::new(base_seed);
+                let mut axes: Vec<Vec<f64>> = Vec::with_capacity(self.parameters.len());
+                for p in &self.parameters {
+                    let mut col: Vec<f64> = (0..n)
+                        .map(|i| p.min + (i as f64 + rng.next_f64()) * (p.max - p.min) / n as f64)
+                        .collect();
+                    for i in (1..n).rev() {
+                        let j = (rng.next_f64() * (i + 1) as f64) as usize;
+                        col.swap(i, j);
+                    }
+                    axes.push(col);
+                }
+                (0..n)
+                    .map(|i| {
+                        self.parameters
+                            .iter()
+                            .zip(&axes)
+                            .map(|(p, col)| (p.path.clone(), col[i]))
                             .collect::<BTreeMap<_, _>>()
                     })
                     .collect()
@@ -509,6 +550,39 @@ mod tests {
         }
         let c = spec.plan(43).unwrap();
         assert_ne!(a, c, "不同种子应有不同采样(概率 1-ε)");
+    }
+
+    #[test]
+    fn 计划_lhs_分层确定且有界() {
+        let mut spec = grid_spec();
+        spec.mode = SweepMode::LatinHypercube;
+        spec.samples = 12;
+        spec.parameters[0].step = 1.0; // LHS 不用 step
+        let a = spec.plan(42).unwrap();
+        let b = spec.plan(42).unwrap();
+        assert_eq!(a.len(), 12);
+        assert_eq!(a, b, "同种子采样必须确定");
+        // 分层性质:每维排序后逐层恰一点(floor((v-min)/层宽) = 层号)
+        let (min, max) = (90.0, 110.0);
+        let width = (max - min) / 12.0;
+        let mut vs: Vec<f64> = a.iter().map(|c| c["model.warrior.attack"]).collect();
+        vs.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        for (i, v) in vs.iter().enumerate() {
+            assert!((90.0..=110.0).contains(v), "落在 [min, max]:{v}");
+            let stratum = ((v - min) / width + 1e-9).floor();
+            assert_eq!(stratum, i as f64, "第 {i} 层恰一点,实际 {v}");
+        }
+        // 洗牌生效:未排序的原始序不应严格递增(概率 1-ε)
+        let raw: Vec<f64> = a.iter().map(|c| c["model.warrior.attack"]).collect();
+        assert!(
+            !raw.windows(2).all(|w| w[0] < w[1]),
+            "各维独立洗牌配对,原始序不该是递增的对角线"
+        );
+        let c = spec.plan(43).unwrap();
+        assert_ne!(a, c, "不同种子应有不同采样(概率 1-ε)");
+        // samples=0 拒绝
+        spec.samples = 0;
+        assert!(spec.plan(1).unwrap_err().to_string().contains("≥ 1"));
     }
 
     #[test]
