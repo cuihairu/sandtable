@@ -44,6 +44,8 @@ pub struct ParamRange {
     pub path: String,
     pub min: f64,
     pub max: f64,
+    /// 网格步长;寻优(optimize)不使用,可省略(缺省 0.0,grid 模式校验会拦截)
+    #[serde(default)]
     pub step: f64,
 }
 
@@ -359,10 +361,13 @@ pub fn run_candidate(
     }
 
     let mut metric_stats = Vec::with_capacity(MetricKey::ALL.len());
+    // 每个 replicate 跑一次仿真,全部指标从同一份 RunMetrics 提取——
+    // 原实现逐指标重跑同一仿真,6 倍成本零语义差
+    let runs: Vec<_> = (0..spec.replicates)
+        .map(|r| crate::sim::run(&cfg, r))
+        .collect();
     for key in MetricKey::ALL {
-        let vals: Vec<f64> = (0..spec.replicates)
-            .filter_map(|r| key.extract(&crate::sim::run(&cfg, r)))
-            .collect();
+        let vals: Vec<f64> = runs.iter().filter_map(|m| key.extract(m)).collect();
         if vals.len() == spec.replicates as usize {
             metric_stats.push((key, summarize(&vals)));
         }
@@ -393,20 +398,20 @@ pub fn run_candidate(
     }
 }
 
-/// SplitMix64 采样流(Random 扫描用):与 rng 模块的按键派生分立——
-/// 这里没有"玩家/天/用途"语义,就是一条确定性均匀流。
-struct SweepRng {
+/// SplitMix64 采样流(Random 扫描 / 进化寻优用):与 rng 模块的按键派生
+/// 分立——这里没有"玩家/天/用途"语义,就是一条确定性均匀流。
+pub(crate) struct SweepRng {
     state: u64,
 }
 
 impl SweepRng {
-    fn new(seed: u64) -> Self {
+    pub(crate) fn new(seed: u64) -> Self {
         Self {
             state: seed ^ 0x2545_F491_4F6C_DD1D,
         }
     }
 
-    fn next_u64(&mut self) -> u64 {
+    pub(crate) fn next_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.state;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -415,7 +420,7 @@ impl SweepRng {
     }
 
     /// [0, 1) 均匀。
-    fn next_f64(&mut self) -> f64 {
+    pub(crate) fn next_f64(&mut self) -> f64 {
         (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }
 }

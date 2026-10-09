@@ -13,6 +13,7 @@ pub mod export;
 pub mod formula;
 pub mod kernel;
 pub mod metrics;
+pub mod optimize;
 pub mod recommend;
 pub mod registry;
 pub mod rng;

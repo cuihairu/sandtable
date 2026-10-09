@@ -522,6 +522,11 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
     if cfg.dungeon.tiers == 0 || cfg.dungeon.tiers > 64 {
         return Err(Error::Config("tiers 必须在 1..=64".into()));
     }
+    if cfg.dungeon.reward_gold < 0 || cfg.dungeon.reward_xp < 0 {
+        return Err(Error::Config(
+            "reward_gold / reward_xp 不能为负(负奖励会让经济面 u64 回绕)".into(),
+        ));
+    }
     if let Some(rows) = &cfg.dungeon.tier_table {
         if rows.is_empty() || rows.len() > 64 {
             return Err(Error::Config("tier_table 长度必须在 1..=64".into()));
