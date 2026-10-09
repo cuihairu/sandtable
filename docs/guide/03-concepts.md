@@ -164,4 +164,4 @@ Experiment 描述"如何改变参数并比较结果":
 Parameter Space → Simulation → Metrics → Constraints → Ranking → Recommendation
 ```
 
-第一阶段支持 Grid Search、Random Search、Monte Carlo、Parameter Sweep;后续支持 Latin Hypercube、Bayesian / Evolutionary / Pareto Optimization。实验是核心模型,不是 CLI 外面的脚本([实验管线](./11-experiment-pipeline))。
+第一阶段支持 Grid Search、Random Search、Monte Carlo、Parameter Sweep;Latin Hypercube 已落地(2026-10-09,`mode: latin_hypercube`,见[参数扫描](./12-parameter-sweep));后续支持 Bayesian / Evolutionary / Pareto Optimization。实验是核心模型,不是 CLI 外面的脚本([实验管线](./11-experiment-pipeline))。

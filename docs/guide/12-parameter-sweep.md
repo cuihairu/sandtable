@@ -30,7 +30,23 @@ parameters:
 
 ## Random Search
 
-用于高维参数空间:在注册表声明的范围内按分布采样。后续可加 Latin Hypercube 改善覆盖均匀性。
+用于高维参数空间:在注册表声明的范围内按分布采样。
+
+## Latin Hypercube(`mode: latin_hypercube`,2026-10-09 落地)
+
+Random 的分层改进:每维 [min, max] 分 `samples` 层、层内均匀采 1 点,再各维独立 Fisher–Yates 洗牌配对——同样 N 个样本下每维的覆盖均匀性优于纯随机(各维保证无空层、无堆叠),适合高维空间预算有限时的采样。
+
+```yaml
+sweep:
+  mode: latin_hypercube
+  samples: 24        # 候选数 = samples(与 Random 同字段)
+  replicates: 4
+```
+
+- 候选数 = `samples`,总运行数 = samples × R;规模上限与 Random 同门(MAX_CANDIDATES 兜底);
+- 采样流与 `base_seed` 绑定:同配置同采样,线程数无关(与 [Random 模式](#random-search) 同一条纪律);
+- 洗牌只打乱层序配对,不改变层内取值——排序后仍每层恰一点;
+- `step` 不参与(与 Random 一致,只作范围元数据保留)。
 
 ## Monte Carlo 的语义
 
