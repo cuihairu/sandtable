@@ -45,5 +45,5 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 
 ## 后续
 
-- 查询面板改为加载随结果携带的 CSV / Parquet 文件——当前直接装仿真输出的按天数据;项目打包格式已定型(manifest v1 + CLI `project pack/unpack/check`,见[数据输出](./09-data-output)),浏览器侧加载项目文件(解包 + 文件进 DuckDB)为待办;
+- ~~查询面板改为加载随结果携带的 CSV / Parquet 文件~~ **CSV 与项目文件已落地(2026-10-09,a47ad10)**:查询面板可载入 `.sandtable`(fflate 本地解包,校验同 CLI `project check`——manifest v1、路径纪律、逐条 sha256 走 WebCrypto、归档集合与清单严格相等)或散装 CSV,产物注册为 DuckDB 内存表直接 SQL;**余项**:Parquet 产物进 DuckDB(需浏览器 parquet 读取器,另行评估)、项目内 scenario / experiment 配置复现接进配置编辑器。仿真按天数据仍同时可查(`days` 表)。
 - ~~扫描的多参数轴联合可行域与 Random 搜索前端化~~ **已完成(2026-10-09,1952308 + 9b75565)**:Random 预设 + 散点图(采样点不连线、刻度抽稀);双轴联合可行域矩阵(SweepMatrix,逐目标三色判定,Random 稀疏格如实留空,单轴取值过多降级提示);单轴推荐带红线不变,≥3 轴仍仅候选表。
