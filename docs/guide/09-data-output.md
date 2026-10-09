@@ -106,28 +106,31 @@ Parquet 适合大规模时序、群体明细与 notebook 分析,但 Arrow 系依
 
 ```text
 mysim.sandtable (zip)
-├── manifest.yaml      # schema_version '1'、name、entries(path / kind / sha256)
+├── manifest.json      # schema_version '1'、name、entries(path / kind / sha256)
 ├── scenarios/*.yaml   # 场景(一层,不递归)
 ├── experiments/*.yaml # 实验(一层,不递归)
 └── results/*          # 可选:最近实验产物(report.json / days.csv / sweep.json …)
 ```
 
-`manifest.yaml`(schema v1):
+`manifest.json`(schema v1,机器生成的打包元数据;JSON 序列化字节稳定,浏览器端零依赖可解析,Web 侧加载见[Web 端](./22-web)):
 
-```yaml
-schema_version: '1'
-name: my-sim
-entries:
-  - { path: scenarios/base.yaml, kind: scenario, sha256: <64 位十六进制> }
-  - { path: experiments/sweep.yaml, kind: experiment, sha256: … }
-  - { path: results/report.json, kind: result, sha256: … }
+```json
+{
+  "schema_version": "1",
+  "name": "my-sim",
+  "entries": [
+    { "path": "scenarios/base.yaml", "kind": "scenario", "sha256": "<64 位十六进制>" },
+    { "path": "experiments/sweep.yaml", "kind": "experiment", "sha256": "…" },
+    { "path": "results/report.json", "kind": "result", "sha256": "…" }
+  ]
+}
 ```
 
 格式规则:
 
 - `kind` 三类:`scenario`(须过 `validate` 同源加载校验)/ `experiment`(同源实验校验,含 sweep 节)/ `result`(任意产物字节,只验哈希不解析);
 - 路径纪律:相对路径、正斜杠、禁 `..` / 盘符 / 绝对路径;`scenario` 与 `experiment` 必须是 `.yaml` 且分别位于 `scenarios/`、`experiments/` 下,`result` 必须位于 `results/` 下;路径不重复;
-- 打包要求:项目目录内至少一个 scenario 或 experiment;清单约定之外的文件即报错(不静默丢弃);`manifest.yaml` 由打包器生成,目录里的旧清单不参与打包;
+- 打包要求:项目目录内至少一个 scenario 或 experiment;清单约定之外的文件即报错(不静默丢弃);`manifest.json` 由打包器生成,目录里的旧清单不参与打包;
 - 确定性:条目按路径排序、归档内时间戳固定(zip 格式起点 1980),同目录两次打包字节一致——产物可 diff 可审计,与内核确定性同一条纪律;
 - 导入即全量校验:manifest 结构与 schema_version、路径纪律、逐条 sha256、归档文件集合与清单严格相等(多一件少一件都报错)、scenario / experiment 逐个加载校验——坏条目逐条报完再失败(同 [params import](./10-cli) 纪律),不静默跳过。
 
