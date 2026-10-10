@@ -119,7 +119,7 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 ## 后续方向
 
-- 参数优化:Evolutionary 已落地(2026-10-10,`optimize` 子命令,见[参数扫描](./12-parameter-sweep)自动寻优节);**后续增量裁定(2026-10-10)**:Bayesian 代理模型选型 = 随机森林(GP 留后续——无线性代数依赖、确定性同构、特征重要性可解释、小数据足够);Pareto / 多目标 = 约束感知非支配排序(加权求和被拒,前沿即答案);**Pareto 已落地(2026-10-10,`mode: pareto` + `objectives` 列表,三级字典序 hard_pass → 非支配层级 → 拥挤距离,front0 全前沿落 opt.json;顺带修 GA bug:pop 种群向量停在初始种群致第 2 代起育种读错基因)**;
+- 参数优化:Evolutionary 已落地(2026-10-10,`optimize` 子命令,见[参数扫描](./12-parameter-sweep)自动寻优节);**后续增量裁定(2026-10-10)**:Bayesian 代理模型选型 = 随机森林(GP 留后续——无线性代数依赖、确定性同构、特征重要性可解释、小数据足够);Pareto / 多目标 = 约束感知非支配排序(加权求和被拒,前沿即答案);**Pareto 已落地(2026-10-10,`mode: pareto` + `objectives` 列表,三级字典序 hard_pass → 非支配层级 → 拥挤距离,front0 全前沿落 opt.json;顺带修 GA bug:pop 种群向量停在初始种群致第 2 代起育种读错基因)**;**随机森林代理已落地(2026-10-10,`surrogate` 子命令 train / predict / importance,bootstrap + CART 回归 + 方差削减重要性,种子派生确定性,只读 sweep 产物不进仿真路径)**;
 - ~~Parquet-in-browser 依赖评估~~ **已评估(2026-10-10):零新依赖可达成**——浏览器端已有 `@duckdb/duckdb-wasm`(查询层依赖),其原生支持 Parquet 读写:`SELECT * FROM read_parquet(...)` 读入、`COPY (SELECT ...) TO 'x.parquet' (FORMAT PARQUET)` 导出(从 duckdb 文件系统取字节 Blob 下载即可);落地动作只是 QueryPanel 增收 `.parquet` 分支与导出菜单加 Parquet 项,随 [Web 端](./22-web)跟进。**两项均已落地(2026-10-10)**:查询面板收 `.parquet`(read_parquet 装表)、结果导出菜单加 `days.parquet` 项(COPY TO PARQUET 取字节下载)。备选 [hyparquet](https://github.com/hyparam/hyparquet)(纯 JS 零依赖,只读,289KB unpacked,支持 HTTP range 按列懒读)仅在"不初始化 DuckDB 就预览 Parquet"成为真实需求时按需引入;`parquet-wasm`(Rust→WASM,读写全)与既有两块 wasm(仿真 + DuckDB)相叠,边际价值低,不引入;
 - 复杂行为脚本:载体已拍板 Python(rhai 缓议),设计与分期见 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md);
 - Python 绑定:同上,扩展模块(maturin + PyO3)为主路径,另行命名(见[项目结构](./17-project-structure));

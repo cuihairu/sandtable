@@ -120,6 +120,22 @@ optimize:
 
 成本账与进化模式同式(population × (generations + 1) × replicates,精英不重评)。示例:`examples/pokemon-pareto.yaml`(与 `pokemon-optimize.yaml` 同账,双目标张力交给前沿呈现)。
 
+## 随机森林代理(`surrogate` 子命令,2026-10-10 落地)
+
+上上节裁定 1 的随机森林落地为独立子命令——代理**只读 sweep 产物,不进仿真路径**(文档 09 章红线):
+
+```bash
+sandtable surrogate train sweep-out --metric power_p50   # → model.json(训练内 MAE + 重要性表)
+sandtable surrogate predict model.json --params '{"model.warrior.attack": 105}'
+sandtable surrogate importance model.json                # 参数重要性排序表
+```
+
+- 训练数据 = sweep.json 的 Ok 候选(参数集须一致;配置错误候选不进代理,缺指标 / 参数集不一致报错,退出码 2);
+- 森林:bootstrap 采样(第 t 棵流 = `seed ^ t·0x9E37…`,同种子同森林、线程数无关)× CART 回归树(全特征扫相邻不同值中点,最小加权方差,两侧满足 min_samples_leaf;达限深 / 目标常数 / 无有效分裂即落叶);
+- 重要性 = 分裂方差削减归一(和为 1),直接回答"哪些参数驱动指标";
+- 预测 = 全树均值,附全树 min / max 散布(森林分歧度);超参(树数 / 深度 / 叶下限 / 种子)显式落 model.json;
+- 定位:36–152 候选小数据的可解释代理;GP(稠密矩阵求逆 + 核超参黑箱)留后续按需评估。
+
 本项目的 Monte Carlo 指**多 seed 复跑**(replicates):同一候选换 seed 跑 R 次,用于估计指标的抽样噪声、给出置信区间。它是一种统计手段,不是参数寻优方法。
 
 ## 网格是离散的,推荐是连续的
