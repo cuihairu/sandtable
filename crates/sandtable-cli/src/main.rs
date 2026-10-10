@@ -418,25 +418,49 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                 result.total_sims,
                 t0.elapsed()
             );
+            let is_pareto = matches!(spec.mode, core::optimize::OptimMode::Pareto);
             for g in &result.history {
-                println!(
-                    "  gen {:>2}:feasible {:>3}/{} · best hard_pass {} · score {:.4}",
-                    g.generation,
-                    g.feasible,
-                    result.spec.targets.len(),
-                    g.best.hard_pass,
-                    g.best.score
-                );
+                if is_pareto {
+                    println!(
+                        "  gen {:>2}:feasible {:>3}/{} · front0 {:>3} · best hard_pass {}",
+                        g.generation,
+                        g.feasible,
+                        result.spec.targets.len(),
+                        g.front0,
+                        g.best.hard_pass
+                    );
+                } else {
+                    println!(
+                        "  gen {:>2}:feasible {:>3}/{} · best hard_pass {} · score {:.4}",
+                        g.generation,
+                        g.feasible,
+                        result.spec.targets.len(),
+                        g.best.hard_pass,
+                        g.best.score
+                    );
+                }
             }
             match (&result.best, result.best_fitness) {
                 (Some(b), Some(f)) => {
-                    println!(
-                        "最优:hard_pass {}/{} · score {:.4} · {:?}",
-                        f.hard_pass,
-                        result.spec.targets.len(),
-                        f.score,
-                        b.values
-                    );
+                    if is_pareto {
+                        // 多目标无单一最优:best = 代表点(前沿 0 拥挤距离最大者)
+                        println!(
+                            "最优前沿:{} 个非支配解 · 代表点 hard_pass {}/{} · 首目标 {:.4} · {:?}",
+                            result.front0.len(),
+                            f.hard_pass,
+                            result.spec.targets.len(),
+                            f.score,
+                            b.values
+                        );
+                    } else {
+                        println!(
+                            "最优:hard_pass {}/{} · score {:.4} · {:?}",
+                            f.hard_pass,
+                            result.spec.targets.len(),
+                            f.score,
+                            b.values
+                        );
+                    }
                 }
                 _ => println!("最优:无(全部候选配置错误)"),
             }
@@ -455,6 +479,7 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                 "best_fitness": result.best_fitness,
                 "history": result.history,
                 "best": result.best,
+                "front0": result.front0,
             });
             fs::write(dir.join("opt.json"), serde_json::to_string_pretty(&report)?)?;
             println!("已写出 {}(opt.json, candidates.csv)", dir.display());
