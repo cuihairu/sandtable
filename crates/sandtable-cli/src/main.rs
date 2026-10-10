@@ -60,7 +60,7 @@ enum Cmd {
         /// 每臂 replicate 数
         #[arg(long, default_value_t = 12)]
         replicates: u32,
-        /// 比较指标:retention_d7 | retention_d3 | win_rate | gold_per_player | power_p50 | churn_rate
+        /// 比较指标:retention_d7 | retention_d3 | win_rate | gold_per_player | power_p50 | churn_rate | gacha_pulls_to_hit
         #[arg(long, default_value = "retention_d7")]
         metric: String,
         /// 输出目录(写 comparison.json)
@@ -167,7 +167,7 @@ enum SurrogateAction {
     Train {
         /// sweep 输出目录或 sweep.json 路径
         sweep_json: PathBuf,
-        /// 训练目标指标(retention_d7 | retention_d3 | win_rate | gold_per_player | power_p50 | churn_rate)
+        /// 训练目标指标(retention_d7 | retention_d3 | win_rate | gold_per_player | power_p50 | churn_rate | gacha_pulls_to_hit)
         #[arg(long, default_value = "retention_d7")]
         metric: String,
         /// 树数
@@ -1091,7 +1091,7 @@ fn run_surrogate(action: &SurrogateAction) -> anyhow::Result<()> {
             let run: SweepRun = serde_json::from_str(&raw)
                 .with_context(|| format!("{} 解析失败(sweep 产物)", json_path.display()))?;
             let key = core::experiment::MetricKey::parse(metric).ok_or_else(|| {
-                anyhow::anyhow!("未知指标 {metric}(可选 retention_d7 | retention_d3 | win_rate | gold_per_player | power_p50 | churn_rate)")
+                anyhow::anyhow!("未知指标 {metric}(可选 retention_d7 | retention_d3 | win_rate | gold_per_player | power_p50 | churn_rate | gacha_pulls_to_hit)")
             })?;
             let spec = core::surrogate::SurrogateSpec {
                 trees: *trees,
