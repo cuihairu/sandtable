@@ -13,6 +13,7 @@ pub fn run() {
             sweep_plan,
             sweep_candidate,
             sweep_recommend,
+            query,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -135,6 +136,94 @@ fn sweep_recommend(yaml: String, results_json: String) -> Result<serde_json::Val
     Ok(serde_json::json!({ "elasticities": elasticities, "recommendation": recommendation }))
 }
 
+/// 本地分析层(文档 09 章红线:DuckDB 只读结果,不进仿真路径):输入文件
+/// 按词根注册视图(summary.csv → summary;parquet 走 read_parquet),跑 SQL
+/// 返回 `{columns, rows}`;与 CLI `query` 子命令同源(视图名 is_ident 拦注入、
+/// 列名走 DESCRIBE、单元格转显示文本)。
+#[tauri::command]
+fn query(inputs: Vec<String>, sql: String) -> Result<serde_json::Value, String> {
+    use duckdb::types::ValueRef;
+    use duckdb::Connection;
+
+    let conn = Connection::open_in_memory().map_err(|e| format!("打开 DuckDB 内存库失败: {e}"))?;
+    for path in &inputs {
+        let stem = path
+            .rsplit(['/', '\\'])
+            .next()
+            .and_then(|s| s.rsplit_once('.'))
+            .map(|(stem, _)| stem)
+            .ok_or_else(|| format!("无法从 {path} 取视图名"))?;
+        if !is_ident(stem) {
+            return Err(format!(
+                "视图名 {stem:?} 非法:文件名词根须为 [A-Za-z_][A-Za-z0-9_]*"
+            ));
+        }
+        // 路径进 DDL 字面量:单引号翻倍(视图名已在 is_ident 拦住)
+        let p = path.replace('\'', "''");
+        let ddl = if path.ends_with(".parquet") {
+            format!("CREATE VIEW {stem} AS SELECT * FROM read_parquet('{p}')")
+        } else {
+            format!("CREATE VIEW {stem} AS SELECT * FROM read_csv_auto('{p}', header = true)")
+        };
+        conn.execute_batch(&ddl)
+            .map_err(|e| format!("注册视图 {stem} 失败: {e}"))?;
+    }
+
+    // 列名取自 DESCRIBE(计划期元数据,不执行查询体):prepare 阶段的
+    // C API 不暴露结果列,column_names 要执行后才可用
+    let sql = sql.trim().trim_end_matches(';');
+    let mut desc = conn
+        .prepare(&format!("DESCRIBE {sql}"))
+        .map_err(|e| format!("查询准备失败: {e}"))?;
+    let mut dcur = desc.query([]).map_err(|e| format!("查询准备失败: {e}"))?;
+    let mut names = Vec::new();
+    while let Some(r) = dcur.next().map_err(|e| format!("查询准备失败: {e}"))? {
+        let n: String = r.get(0).map_err(|e| format!("列名读取失败: {e}"))?;
+        names.push(n);
+    }
+
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| format!("查询准备失败: {e}"))?;
+    let ncols = names.len();
+    let mut rows = Vec::new();
+    let mut cur = stmt.query([]).map_err(|e| format!("查询执行失败: {e}"))?;
+    while let Some(r) = cur.next().map_err(|e| format!("查询执行失败: {e}"))? {
+        let mut row = Vec::with_capacity(ncols);
+        for i in 0..ncols {
+            let s = match r.get_ref(i).map_err(|e| format!("单元格读取失败: {e}"))? {
+                ValueRef::Null => String::new(),
+                ValueRef::Boolean(v) => v.to_string(),
+                ValueRef::TinyInt(v) => v.to_string(),
+                ValueRef::SmallInt(v) => v.to_string(),
+                ValueRef::Int(v) => v.to_string(),
+                ValueRef::BigInt(v) => v.to_string(),
+                ValueRef::HugeInt(v) => v.to_string(),
+                ValueRef::UTinyInt(v) => v.to_string(),
+                ValueRef::USmallInt(v) => v.to_string(),
+                ValueRef::UInt(v) => v.to_string(),
+                ValueRef::UBigInt(v) => v.to_string(),
+                ValueRef::Float(v) => v.to_string(),
+                ValueRef::Double(v) => v.to_string(),
+                ValueRef::Decimal(v) => v.to_string(),
+                ValueRef::Text(v) => String::from_utf8_lossy(v).into_owned(),
+                ValueRef::Blob(v) => String::from_utf8_lossy(v).into_owned(),
+                other => format!("{other:?}"),
+            };
+            row.push(s);
+        }
+        rows.push(row);
+    }
+    Ok(serde_json::json!({ "columns": names, "rows": rows }))
+}
+
+/// 视图名须是合法标识符(拼进 DDL,注入在注册处拦截)。
+fn is_ident(s: &str) -> bool {
+    let mut cs = s.chars();
+    matches!(cs.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 #[cfg(test)]
 mod tests {
     // 不用 use super::*:command 宏在同模块生成隐藏 item,重导入会 E0255
@@ -208,5 +297,21 @@ mod tests {
         );
         assert!(sweep_candidate(EXP_YAML.into(), 0, values.into()).is_err());
         assert!(sweep_recommend("no sweep".into(), "[]".into()).is_err());
+    }
+
+    #[test]
+    fn 查询_csv视图() {
+        let dir = std::env::temp_dir().join(format!("st-desktop-query-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("summary.csv");
+        std::fs::write(&f, "a,b\n1,2\n3,4\n").unwrap();
+        let v = query(
+            vec![f.to_string_lossy().into_owned()],
+            "SELECT sum(a) AS s, count(*) AS n FROM summary".into(),
+        )
+        .unwrap();
+        assert_eq!(v["columns"], serde_json::json!(["s", "n"]));
+        assert_eq!(v["rows"], serde_json::json!([["4", "2"]]));
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -13,6 +13,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 sandtable-core = { path = "../../../crates/sandtable-core" }
 serde_json = "1"
 tauri = { version = "2", features = [] }
+# 本地分析层(拍板 2026-10-10 复用 duckdb-rs):只读结果数据集,
+# 与 CLI query 子命令同源;前端查询层继续 duckdb-wasm(同一前端零改动)
+duckdb = { version = "1", default-features = false, features = ["bundled", "parquet"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
