@@ -1,0 +1,27 @@
+# 抽卡保底扫描实验(docs 24 章 R2 验收:sweep 保底长度出推荐区间)。
+# 轴 = model.gacha.pity_hard ∈ {10, 20, 30, 40, 50},hard 约束
+# 「期望抽数 ≤ 30」:E[T](H) = (1 − 0.98^H)/0.02 → H=40 时 27.7(过)、
+# H=50 时 31.8(不过),解析交点 H ≈ 45.7,推荐区间上端点由此插值。
+schema_version: '1'
+
+scenario:
+  population: 2000
+  duration: 1d
+  seed: 42
+  population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
+
+model:
+  gacha:
+    base_rate: 0.02
+    pity_hard: 50
+    pity_soft_start: 0
+    pity_soft_step: 0.0
+
+sweep:
+  replicates: 4
+  parameters:
+    model.gacha.pity_hard: { min: 10, max: 50, step: 10 }
+  targets:
+    - metric: gacha_pulls_to_hit
+      max: 30
+      kind: hard

@@ -22,7 +22,7 @@ title: 24 · 随机函数与概率系统
 | 2 | 正态分布 | 群体初始属性、会话时长、评分噪声 | 键即抽取(消耗两次均匀),无状态 | ⛔ 本页设计 |
 | 3 | 加权表(有放回) | 掉落表、品质 roll | 表在加载期编译;键即抽取 | ✅ R1 已落地(2026-10-10) |
 | 4 | 洗牌 / 无放回加权抽样 | 卡组抽牌、限定池去重、组队抽样 | 键即抽取,无状态 | ✅ R1 已落地(2026-10-10) |
-| 5 | 保底序列(硬/软) | 抽卡、稀有掉落兜底 | **计数器是 actor 确定性状态**;抽取仍走键 | ⛔ 本页设计 |
+| 5 | 保底序列(硬/软) | 抽卡、稀有掉落兜底 | **计数器是 actor 确定性状态**;抽取仍走键 | ✅ R2 已落地(2026-10-10) |
 | 6 | 回放种子 | 复现任意一局 / A/B 同路径 | 键结构即设计;种子即实验标识 | ✅ 已有(docs 06) |
 | 7 | 分布检验(卡方) | 验证 1–4 的实现与配置一致(公示合规) | 纯统计工具,不进仿真路径 | ✅ R1 已落地(2026-10-10) |
 
@@ -91,7 +91,7 @@ rng.sample_weighted(purpose, &xs, &table, k)   # A-Res 键序法,O(n log n)
 - 带权无放回用 A-Res 键序法(Efraimidis & Spirakis 2006:每项算键 u^(1/w) 取前 k 大),一次性流式、与权重尺度无关;
 - 卡组类场景注意:**洗牌结果依赖牌序输入**——牌序进配置(数组序即洗牌前序),键不变则洗牌不变,CRN 成立。
 
-### 5. 保底序列(硬保底 / 软保底)
+### 5. 保底序列(硬保底 / 软保底)✅ R2 已落地
 
 **场景**:抽卡(单抽概率 p、第 N 抽必出、连续未中后概率递增)、稀有掉落兜底。
 
@@ -100,17 +100,19 @@ rng.sample_weighted(purpose, &xs, &table, k)   # A-Res 键序法,O(n log n)
 :::
 
 ```yaml
-gacha:
-  base_rate: 0.02        # 单抽基础概率
-  pity_hard: 50          # 硬保底:第 50 抽必出(0 = 无)
-  pity_soft_start: 0     # 软保底起点抽数(0 = 无)
-  pity_soft_step: 0.0    # 起点后每抽概率增量
+model:
+  gacha:
+    base_rate: 0.02        # 单抽基础概率
+    pity_hard: 50          # 硬保底:第 50 抽必出(0 = 无)
+    pity_soft_start: 0     # 软保底起点抽数(0 = 无)
+    pity_soft_step: 0.0    # 起点后每抽概率增量(0 = 无软保底)
 ```
 
-- 状态机:每 actor 维护 `since_last_hit`;单抽成功率 `p' = min(1, base_rate + max(0, k − pity_soft_start) · pity_soft_step)`,且 `since_last_hit + 1 ≥ pity_hard > 0` 时 `p' = 1`;
-- 三个参数全部 `F64`/`U64` 数值槽:**sweep 可扫保底长度**(它直接改变期望补贴,见下);
-- **验收口径(设计侧 ↔ 仿真侧的对账)**:hello-game numerical/05 的手算账——单抽 2%、无保底期望 50 抽;硬保底 50 抽时期望 ≈ **31.6 抽**(前 49 抽全空概率 0.98⁴⁹ ≈ 37.2%,截断把长尾砍掉)。仿真的机器验收 = 万次抽样均值 ± CI95,落在手算值 ± CI 内即通过;软保底无闭式,万次抽样本身就是验收手段(同页口径);
-- 期望抽数是**新 KPI**:进 `MetricKey`(如 `gacha_pulls_to_hit`),走既有 replicates → `summarize` → CI95 全链,可比较、可 sweep、可推荐。
+- 状态机:每 actor 维护 `since_last_hit`;单抽成功率 `p' = min(1, base_rate + max(0, k − pity_soft_start) · pity_soft_step)`,且 `since_last_hit + 1 ≥ pity_hard > 0` 时 `p' = 1`(实现:`systems::gacha::hit_rate`);
+- 四个参数全部 `F64`/`U64` 数值槽(注册表 `model.gacha.*`):**sweep 可扫保底长度**(它直接改变期望补贴,见下);`base_rate ≤ 0` 在 `validate` 拦截(否则抽卡永不终止);
+- 执行形态:配置了 `model.gacha` 时,每个 actor 在 **tick 0(第 1 天之前)** 调一次"出到即止"会话(`systems::gacha::pull_until_hit`,逐抽消耗 `Purpose::Gacha` 键直到命中)——开号语义,不进任何一天的统计;
+- **验收口径(设计侧 ↔ 仿真侧的对账)**:hello-game numerical/05 的手算账——单抽 2%、无保底期望 50 抽;硬保底 50 抽时期望 ≈ **31.8 抽**(闭式 `E[T] = (1 − (1−p)^H)/p = (1 − 0.98⁵⁰)/0.02 = 31.79`,前 49 抽全空概率 0.98⁴⁹ ≈ 37.2%,截断把长尾砍掉)。仿真的机器验收 = 万次抽样均值 ± CI95,落在闭式值 ± CI 内即通过(核心测试 `抽卡_期望抽数对齐解析解` 用 2000 玩家对账,容差 1.0);软保底无闭式,抽样均值本身就是验收手段(同页口径);
+- 期望抽数是**新 KPI**:`MetricKey::GachaPullsToHit`(`gacha_pulls_to_hit`),走既有 replicates → `summarize` → CI95 全链,可比较、可 sweep、可推荐;未配置 gacha 时为 `None`,`#[serde(skip_serializing_if)]` 不进 JSON(黄金快照逐字节不变)。
 
 ### 6. 回放种子(已有,口径存档)
 
@@ -140,7 +142,7 @@ sandtable disttest weighted <scenario.yaml> chest --samples 100000 --alpha 0.01
 | --- | --- | --- |
 | "均值差多少算显著"(留存/胜率/产出) | replicates → CI95 / A/B 配对差 | ✅ docs 13/11 |
 | "这个参数影响多大" | sweep + OAT 敏感性 + 推荐区间 | ✅ docs 12/14/15 |
-| "掉率倍率对经济的影响" | `loot.rate_mult` / `gacha.*` 进注册表 → sweep 当数值轴 | 设计已给(上文) |
+| "掉率倍率对经济的影响" | `loot.rate_mult` / `gacha.*` 进注册表 → sweep 当数值轴 | ✅ R1/R2 已落地 |
 | "随机实现与配置一致吗" | **卡方分布检验**(原语级) | 本页设计 |
 | "这次 run 可复现吗" | base_seed + 黄金快照 + web_parity | ✅ docs 06/19 |
 
@@ -151,7 +153,7 @@ sandtable disttest weighted <scenario.yaml> chest --samples 100000 --alpha 0.01
 | 阶段 | 内容 | 验收 |
 | --- | --- | --- |
 | R1 ✅ 已落地(2026-10-10) | 加权表(加载期 CDF + YAML 面 + `ParamKind::Table`)+ 洗牌/无放回抽样 + `disttest` 子命令(均匀/加权) | 新 purpose 不动旧键(黄金快照逐位不变);万次采样 χ² 全过;params 表计数 +1(rate_mult) |
-| R2 | 保底状态机(硬/软)+ 期望抽数 KPI + 抽卡案例 yaml | 数值例对账(2%/50 保底 → 期望 ≈31.6 ± CI);sweep 保底长度出推荐区间;公示口径一致性报告 |
+| R2 ✅ 已落地(2026-10-10) | 保底状态机(硬/软)+ 期望抽数 KPI + 抽卡案例 yaml | 数值例对账(2%/50 保底 → 闭式 31.79 ± CI);sweep 保底长度出推荐区间(10 ~ 44.6,上端插值);params 表计数 +4(`model.gacha.*`);黄金快照逐位不变 |
 | R3 | 正态(带 clamp)+ χ² 扩展正态分桶 | 均值/方差的 CI 覆盖;Box–Muller 双消耗的键稳定性测试(A/B 改 μ 不挪键) |
 
 R1/R2/R3 均为内核扩展,动 `rng.rs` 与注册表——**实施前以本页为口径基线,逐阶段走完测试全绿再合入**(每阶段独立提交)。
@@ -162,6 +164,17 @@ R1/R2/R3 均为内核扩展,动 `rng.rs` 与注册表——**实施前以本页�
 - **配置面**:落地形态比设计稿多一层——`model.loot: {rate_mult, tables: {表名: {weights: {...}}}}`。`tables` 走 `ParamKind::Table`(结构参数,不进数值通道),`rate_mult` 是 F64 数值槽(params 表计数 +1:52 → 53)。`loot: Option<LootConfig>` + `skip_serializing_if`(同 training 字段先例),未配置时 config_hash 与旧版逐字节一致。
 - **抽取原语**(`rng.rs`):`WeightedTable`(from_weights 校验 / probabilities / pick 二分)、`Draw::weighted`、`DayRng::weighted` / `draw_stream`(流式,一次推进 n)/ `shuffle`(Fisher–Yates,n−1 抽取)/ `sample`(局部洗牌取前 k)/ `sample_weighted`(A-Res 键序法,`u^(1/w)` 取前 k 大,total_cmp 排序 + 序号 tiebreak)。
 - **分布检验**(`disttest.rs`,不进仿真路径):Pearson χ²、Cochran 桶合并(期望 ≥ 5)、p 值经正则化不完全伽马(级数 + Lentz 连分数,Lanczos ln Γ);CLI `disttest uniform | weighted`,检验失败退出码 1,配置错误 2。
+
+### R2 落地存档(2026-10-10)
+
+- **purpose 键纪律**:`Purpose::Gacha = 7` 继续尾部追加(锁定测试断言 0–7 逐位);黄金快照逐字节通过,`config_hash` 对未配置 gacha 的配置不变。
+- **状态与抽取分离**(铁律的 R2 兑现):保底计数器 `gacha_since_hit`(连同 `gacha_pulls` / `gacha_hits`)是 `Actor` 字段,**不进 RNG 键**;逐抽消耗 `Purpose::Gacha` 键。CRN 测试锁死:只改 `pity_hard` 的 A/B 臂,日统计逐位一致、仅抽卡 KPI 不同。
+- **状态机**(`systems::gacha`):`hit_rate(cfg, k)` = `min(1, base_rate + max(0, k − pity_soft_start)·pity_soft_step)`,硬保底 `k+1 ≥ pity_hard > 0` 时钳 1(软保底只在 `step > 0` 生效);`pull_until_hit` 会话语义 = "出到即止"。`validate` 拦 `base_rate ≤ 0 / > 1` 与负步长(≤ 0 会让会话永不终止)。
+- **执行形态**:`SimEvent::GachaRoll` 调度在 tick 0(Clock 起点,第 1 天之前)——开号会话不进任何一天的日统计;`RunMetrics.gacha_pulls_to_hit = 总抽数/总命中`,`Option` + `skip_serializing_if`(训练字段先例),未配置时 JSON 不变。
+- **KPI 全链接通**:`MetricKey::GachaPullsToHit` 进比较 / sweep / 推荐链;params 表计数 +4(53 → 57,`model.gacha.{base_rate, pity_hard, pity_soft_start, pity_soft_step}`)。CLI simulate 摘要条件输出 gacha 行。
+- **数值对账**:闭式 `E[T] = (1 − (1−p)^H)/p`(截断几何),2%/50 → 31.79(设计稿手算 31.6 系粗估,以闭式为准);核心测试对账容差 1.0(2000 玩家)。无保底退化 `1/p = 50` 同测。
+- **推荐区间验收**:`examples/gacha-pity-sweep.yaml` 扫 `pity_hard ∈ {10..50}`,hard 约束「E[T] ≤ 30」→ 可行段 [10, 44.6](上端点插值;解析交点 H = ln(0.4)/ln(0.98) ≈ 45.7,CI 抖动 ±1 内)。核心测试 `抽卡_扫保底长度出推荐区间` 锁死同口径。
+- **公示口径一致性**(验收第三项的 R2 形态):加权表的"公示 = 实现"由 R1 `disttest weighted` 承担;保底是马尔可夫链结构(抽取间不独立),按本页第 7 节纪律**不做 χ² 单抽频数**,对账走闭式 E[T] ± CI95(上两项)——报告层输出 `gacha_pulls_to_hit` 均值与 CI95 即一致性证据。
 
 ## 来源与分级
 

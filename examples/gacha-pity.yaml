@@ -1,0 +1,20 @@
+# 抽卡保底案例(docs 24 章 R2):单抽 2% + 50 抽硬保底的开号会话仿真。
+# 语义:每玩家在 tick 0(第 1 天之前)抽到即止,KPI = 期望抽数
+# gacha_pulls_to_hit(截断几何闭式 E[T] = (1 − (1−p)^H)/p,p = 0.02、H = 50
+# → ≈ 31.79 抽;无保底 H → ∞ 时退化为几何期望 1/p = 50 抽)。
+# 软保底本例关掉(step 0);要开就把 pity_soft_start / pity_soft_step 给非零,
+# 例如 start 40 / step 0.05 = 第 41 抽起每抽 +5% 命中率(钳到 1)。
+schema_version: '1'
+
+scenario:
+  population: 2000
+  duration: 1d
+  seed: 42
+  population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
+
+model:
+  gacha:
+    base_rate: 0.02
+    pity_hard: 50
+    pity_soft_start: 0
+    pity_soft_step: 0.0
