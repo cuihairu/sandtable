@@ -8,6 +8,7 @@
 //! 无壁钟,无平台库;文件写出由壳层(sandtable-cli)完成。
 
 pub mod config;
+pub mod disttest;
 pub mod experiment;
 pub mod export;
 pub mod formula;

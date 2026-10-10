@@ -239,6 +239,18 @@ const MODEL: &[ParamSpec] = &[
     spec("model.churn.p_base", F64, "0.003", "正常日流失概率"),
     spec("model.churn.p_stall", F64, "0.05", "停滞日流失概率"),
     spec("model.churn.stall_days", U32, "2", "连续无增长天数判停滞"),
+    spec(
+        "model.loot.rate_mult",
+        F64,
+        "1.0",
+        "掉落产出倍率(乘到金币/经验数额,不改变表形状;扫它 = 扫产出强度)",
+    ),
+    spec(
+        "model.loot.tables",
+        Table,
+        "—",
+        "掉落加权表(表名 → 权重;加载期编译为 CDF,结构参数,不进数值通道)",
+    ),
 ];
 
 use ParamKind::{Dur, Expr, Mix, Table, F64, I64, U32, U64};
@@ -309,6 +321,7 @@ const SECTIONS: &[&str] = &[
     "model.progression",
     "model.formulas",
     "model.churn",
+    "model.loot",
 ];
 
 /// 遗留路径:只放行 YAML 加载(serde 侧按遗留语义映射,见
@@ -408,11 +421,13 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.churn.p_base" => Ok(cfg.churn.p_base),
         "model.churn.p_stall" => Ok(cfg.churn.p_stall),
         "model.churn.stall_days" => Ok(cfg.churn.stall_days as f64),
+        "model.loot.rate_mult" => Ok(cfg.loot.as_ref().map(|l| l.rate_mult).unwrap_or(1.0)),
         // 非数值槽:与 apply_numeric 同口径
         "scenario.duration"
         | "model.formulas.xp_needed"
         | "model.dungeon.tier_table"
-        | "model.combat.damage_model" => Err(Error::Config(format!(
+        | "model.combat.damage_model"
+        | "model.loot.tables" => Err(Error::Config(format!(
             "{path}: 该参数不是数值,不可数值读取"
         ))),
         _ => Err(unknown(path)),
@@ -512,12 +527,18 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.churn.stall_days" => {
             cfg.churn.stall_days = unsigned(value, "stall_days")?.round() as u32
         }
+        "model.loot.rate_mult" => {
+            cfg.loot
+                .get_or_insert_with(crate::config::LootConfig::default)
+                .rate_mult = value;
+        }
         // 非数值槽:不可数值扫描(时长是字符串,公式是表达式,逐层表是数组,
-        // 伤害口径是枚举开关)
+        // 伤害口径是枚举开关,掉落表是结构)
         "scenario.duration"
         | "model.formulas.xp_needed"
         | "model.dungeon.tier_table"
-        | "model.combat.damage_model" => {
+        | "model.combat.damage_model"
+        | "model.loot.tables" => {
             return Err(Error::Config(format!(
                 "{path}: 该参数不是数值,不可数值扫描"
             )));

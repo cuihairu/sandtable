@@ -13,7 +13,12 @@
 //! 实现为 SplitMix64 链式混合:把键的各分量依次混入,输出 u64。无共享状态,
 //! 天然并行安全,可按键局部重放。
 
+use crate::Error;
+
 /// 抽取用途,集中注册,防止同名不同义(文档 06 章禁止事项)。
+///
+/// 变体只能**追加**在末尾:新用途不得改动既有编号,否则旧键全变,
+/// 黄金快照与 A/B 可比随机路径同时失效(文档 06 / 24 章)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Purpose {
@@ -23,15 +28,19 @@ pub enum Purpose {
     CombatHit = 1,
     /// 战斗伤害浮动
     CombatDamage = 2,
-    /// 掉落
+    /// 掉落:加权掉落表抽取(文档 24 章 R1)
     Loot = 3,
     /// 流失判定
     Churn = 4,
     /// 初始分群(仅 day=0 初始化用)
     Cohort = 5,
+    /// 洗牌 / 无放回抽样(文档 24 章 R1:Fisher–Yates、局部洗牌、A-Res
+    /// 共用一条流;分布检验台的抽样流也走这里——两者都不进仿真路径,
+    /// 与仿真键空间分立)
+    Shuffle = 6,
 }
 
-pub const PURPOSE_COUNT: usize = 6;
+pub const PURPOSE_COUNT: usize = 7;
 
 /// 单个 u64 键派生:SplitMix64 终结器。
 fn mix(mut x: u64) -> u64 {
@@ -86,6 +95,90 @@ impl Draw {
     }
 }
 
+/// 加权表(文档 24 章 R1):权重 → CDF 前缀和,**加载期编译**,运行期零字符串。
+///
+/// 抽取 = 一次 [0,1) 均匀 + CDF 二分比较,O(log n)。轮盘线性扫是朴素实现,
+/// alias method(Walker 1977;Vose 1991)为热路径优化项,仅当单日百万级引用
+/// 时启用——可读性优先。
+///
+/// 零权重项永不入选:严格小于比较使其不与同前缀的邻居并列。
+#[derive(Debug, Clone)]
+pub struct WeightedTable {
+    /// 项名(按输入序;YAML 侧经 BTreeMap 已保证确定序)
+    names: Vec<String>,
+    /// CDF 前缀和,末项 = 权重总和(非递减)
+    cums: Vec<f64>,
+    /// 权重总和
+    total: f64,
+}
+
+impl WeightedTable {
+    /// 编译权重表并校验:表非空、项名非空、权重为有限非负数、至少一项为正。
+    pub fn from_weights(weights: &[(String, f64)]) -> Result<Self, Error> {
+        if weights.is_empty() {
+            return Err(Error::Config("加权表不能为空".into()));
+        }
+        let mut names = Vec::with_capacity(weights.len());
+        let mut cums = Vec::with_capacity(weights.len());
+        let mut total = 0.0;
+        for (name, w) in weights {
+            if name.is_empty() {
+                return Err(Error::Config("加权表项名不能为空".into()));
+            }
+            if !w.is_finite() || *w < 0.0 {
+                return Err(Error::Config(format!(
+                    "加权表权重必须为有限非负数({name}: {w})"
+                )));
+            }
+            total += w;
+            cums.push(total);
+            names.push(name.clone());
+        }
+        if total <= 0.0 {
+            return Err(Error::Config("加权表至少一项权重为正".into()));
+        }
+        Ok(Self { names, cums, total })
+    }
+
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
+    pub fn len(&self) -> usize {
+        self.names.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    /// 项 i 的权重(由 CDF 差分得,不另存)。
+    pub fn weight(&self, i: usize) -> f64 {
+        let s = if i == 0 { 0.0 } else { self.cums[i - 1] };
+        self.cums[i] - s
+    }
+
+    /// 归一化概率(分布检验的期望计数用):和为 1。
+    pub fn probabilities(&self) -> Vec<f64> {
+        (0..self.names.len())
+            .map(|i| self.weight(i) / self.total)
+            .collect()
+    }
+
+    /// 一次抽取 → 项索引。
+    pub fn pick(&self, draw: Draw) -> usize {
+        let target = draw.f64() * self.total;
+        self.cums.partition_point(|&c| c <= target)
+    }
+}
+
+impl Draw {
+    /// 从加权表抽一项(消耗一次均匀)。
+    pub fn weighted(self, table: &WeightedTable) -> usize {
+        table.pick(self)
+    }
+}
+
 /// 单个 actor 单天的随机数发生器。
 ///
 /// `draw(purpose)` 按 purpose 递增各自的 event_index;`draw_indexed(purpose, i)`
@@ -135,11 +228,345 @@ impl DayRng {
     pub fn chance(&mut self, purpose: Purpose, p: f64) -> bool {
         self.draw(purpose).chance(p)
     }
+
+    /// 便捷:按 purpose 顺序抽一次加权表(文档 24 章 R1)。
+    pub fn weighted(&mut self, purpose: Purpose, table: &WeightedTable) -> usize {
+        self.draw(purpose).weighted(table)
+    }
+
+    /// 取该 purpose 连续 n 次抽取并一次性推进计数器(洗牌 / 无放回抽样)。
+    /// 只动本 purpose 的计数器,其他用途的键空间不受影响。
+    pub fn draw_stream(&mut self, purpose: Purpose, n: usize) -> Vec<Draw> {
+        let base = self.counters[purpose as usize];
+        self.counters[purpose as usize] = base.wrapping_add(n as u32);
+        (0..n as u32)
+            .map(|i| {
+                Draw(derive_u64(
+                    self.seed,
+                    self.actor_id,
+                    self.day,
+                    base.wrapping_add(i),
+                    purpose,
+                ))
+            })
+            .collect()
+    }
+
+    /// Fisher–Yates 洗牌,O(n),消耗 n−1 次抽取(文档 24 章 R1)。
+    /// 结果依赖输入顺序——牌序即配置,键不变则洗牌不变,CRN 成立。
+    pub fn shuffle<T>(&mut self, purpose: Purpose, xs: &mut [T]) {
+        let n = xs.len();
+        if n < 2 {
+            return;
+        }
+        let draws = self.draw_stream(purpose, n - 1);
+        for i in (1..n).rev() {
+            let j = (draws[i - 1].u64() % (i + 1) as u64) as usize;
+            xs.swap(i, j);
+        }
+    }
+
+    /// 无放回均匀抽样 = 局部 Fisher–Yates 前 k 位,O(k)。
+    pub fn sample<T: Clone>(&mut self, purpose: Purpose, xs: &[T], k: usize) -> Vec<T> {
+        let m = xs.len().min(k);
+        if m == 0 {
+            return Vec::new();
+        }
+        let draws = self.draw_stream(purpose, m.saturating_sub(1));
+        let mut out: Vec<T> = xs[..m].to_vec();
+        for i in (1..m).rev() {
+            let j = (draws[i - 1].u64() % (i + 1) as u64) as usize;
+            out.swap(i, j);
+        }
+        out
+    }
+
+    /// 无放回**加权**抽样:A-Res 键序法(Efraimidis & Spirakis 2006),
+    /// 每项算键 `u^(1/w)` 取前 k 大,O(n log k);一次性流式,与权重尺度无关。
+    /// 零权重项键为 0,永不入选。
+    pub fn sample_weighted<T: Clone>(
+        &mut self,
+        purpose: Purpose,
+        xs: &[T],
+        table: &WeightedTable,
+        k: usize,
+    ) -> Result<Vec<T>, Error> {
+        if xs.len() != table.len() {
+            return Err(Error::Config(format!(
+                "无放回加权抽样:项数 {} 与权重表 {} 不一致",
+                xs.len(),
+                table.len()
+            )));
+        }
+        let k = xs.len().min(k);
+        if k == 0 {
+            return Ok(Vec::new());
+        }
+        let draws = self.draw_stream(purpose, xs.len());
+        let mut keyed: Vec<(f64, usize)> = (0..xs.len())
+            .map(|i| (draws[i].f64().powf(1.0 / table.weight(i)), i))
+            .collect();
+        // 键降序;键相同取索引小者,确定性破平
+        keyed.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        Ok(keyed.iter().take(k).map(|(_, i)| xs[*i].clone()).collect())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::disttest;
+
+    /// 新 purpose 只能追加,不得改动既有编号:编号一变旧键全变,
+    /// 黄金快照与 A/B 可比随机路径同时失效(文档 06 / 24 章 R1 验收项)。
+    #[test]
+    fn 用途编号锁定_追加不挪旧键() {
+        let nums: [u8; PURPOSE_COUNT] = [
+            Purpose::Behavior as u8,
+            Purpose::CombatHit as u8,
+            Purpose::CombatDamage as u8,
+            Purpose::Loot as u8,
+            Purpose::Churn as u8,
+            Purpose::Cohort as u8,
+            Purpose::Shuffle as u8,
+        ];
+        assert_eq!(nums, [0, 1, 2, 3, 4, 5, 6]);
+        // 各 purpose 在同一键下取值互不相同(键空间正交)
+        let all = [
+            Purpose::Behavior,
+            Purpose::CombatHit,
+            Purpose::CombatDamage,
+            Purpose::Loot,
+            Purpose::Churn,
+            Purpose::Cohort,
+            Purpose::Shuffle,
+        ];
+        let vals: Vec<u64> = all.iter().map(|p| derive_u64(42, 7, 3, 1, *p)).collect();
+        assert_eq!(
+            vals.iter()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            7
+        );
+    }
+
+    fn table(weights: &[f64]) -> WeightedTable {
+        let names = ["a", "b", "c"];
+        WeightedTable::from_weights(
+            &weights
+                .iter()
+                .enumerate()
+                .map(|(i, &w)| (names[i].to_string(), w))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn 加权表_校验() {
+        assert!(WeightedTable::from_weights(&[]).is_err());
+        assert!(WeightedTable::from_weights(&[("".to_string(), 1.0)])
+            .unwrap_err()
+            .to_string()
+            .contains("项名"));
+        assert!(WeightedTable::from_weights(&[("a".to_string(), -1.0)])
+            .unwrap_err()
+            .to_string()
+            .contains("非负"));
+        assert!(WeightedTable::from_weights(&[("a".to_string(), f64::NAN)])
+            .unwrap_err()
+            .to_string()
+            .contains("非负"));
+        assert!(WeightedTable::from_weights(&[("a".to_string(), 0.0)]).is_err());
+    }
+
+    #[test]
+    fn 加权表_边界与零权重() {
+        let t = WeightedTable::from_weights(&[("a".to_string(), 1.0)]).unwrap();
+        // 单一项:任何抽取都指向它
+        for i in 0..64u32 {
+            let d = Draw(derive_u64(1, 1, 1, i, Purpose::Loot));
+            assert_eq!(d.weighted(&t), 0);
+        }
+        // 零权重项永不入选(严格小于比较使其与邻居不并列)
+        let t = WeightedTable::from_weights(&[
+            ("a".to_string(), 5.0),
+            ("zero".to_string(), 0.0),
+            ("c".to_string(), 5.0),
+        ])
+        .unwrap();
+        assert_eq!(t.len(), 3);
+        for i in 0..2000u32 {
+            let d = Draw(derive_u64(9, 2, 1, i, Purpose::Loot));
+            assert_ne!(d.weighted(&t), 1, "零权重项被抽中");
+        }
+        // 概率和为 1
+        let probs = t.probabilities();
+        assert!((probs.iter().sum::<f64>() - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn 加权表_万次采样卡方() {
+        // R1 验收:万次采样 χ² 全过(70/25/5 三档掉落)
+        let t = table(&[70.0, 25.0, 5.0]);
+        let mut rng = DayRng::new(42, 7, 3);
+        let mut obs = [0.0f64; 3];
+        for _ in 0..100_000 {
+            obs[rng.weighted(Purpose::Loot, &t)] += 1.0;
+        }
+        let exp: Vec<f64> = t.probabilities().iter().map(|p| p * 100_000.0).collect();
+        let (o, e) = disttest::merge_buckets(&obs, &exp, disttest::MIN_EXPECTED);
+        let chi = disttest::chi_square(&o, &e).unwrap();
+        assert!(
+            chi.pass(0.01),
+            "χ² {} p={} 未过 α=0.01",
+            chi.stat,
+            chi.p_value
+        );
+    }
+
+    #[test]
+    fn 万次采样_两档与均匀表() {
+        for weights in [[1.0, 1.0, 1.0], [1.0, 99.0, 0.5]] {
+            let t = table(&weights);
+            let mut rng = DayRng::new(7, 1, 1);
+            let mut obs = [0.0f64; 3];
+            for _ in 0..100_000 {
+                obs[rng.weighted(Purpose::Loot, &t)] += 1.0;
+            }
+            let exp: Vec<f64> = t.probabilities().iter().map(|p| p * 100_000.0).collect();
+            let (o, e) = disttest::merge_buckets(&obs, &exp, disttest::MIN_EXPECTED);
+            assert!(
+                disttest::chi_square(&o, &e).unwrap().pass(0.01),
+                "权重 {weights:?} 未过检验"
+            );
+        }
+    }
+
+    #[test]
+    fn 流抽取_只动本用途计数() {
+        let mut rng = DayRng::new(5, 1, 1);
+        let a = rng.draw_stream(Purpose::Shuffle, 4);
+        assert_eq!(a.len(), 4);
+        // 洗牌之后,Behavior 的第 0 次抽取仍是最初那次(计数器未互扰)
+        assert_eq!(
+            rng.draw(Purpose::Behavior).u64(),
+            derive_u64(5, 1, 1, 0, Purpose::Behavior)
+        );
+        // 流内值 = 按显式序号派生(第 i 项对应 event_index = i)
+        let mut rng2 = DayRng::new(5, 1, 1);
+        let stream = rng2.draw_stream(Purpose::Shuffle, 3);
+        for (i, d) in stream.iter().enumerate() {
+            assert_eq!(d.u64(), rng2.draw_indexed(Purpose::Shuffle, i as u32).u64());
+        }
+        // 推进计数器后再取流,序号接着走
+        let mut rng3 = DayRng::new(5, 1, 1);
+        rng3.draw_stream(Purpose::Shuffle, 2); // 消耗 0,1
+        let c = rng3.draw_stream(Purpose::Shuffle, 2);
+        assert_eq!(c[0].u64(), rng3.draw_indexed(Purpose::Shuffle, 2).u64());
+        assert_eq!(c[1].u64(), rng3.draw_indexed(Purpose::Shuffle, 3).u64());
+    }
+
+    #[test]
+    fn 洗牌_确定性且是排列() {
+        let xs = [0i32, 1, 2, 3, 4, 5, 6, 7];
+        let mut a = DayRng::new(11, 1, 1);
+        let mut x = xs.to_vec();
+        a.shuffle(Purpose::Shuffle, &mut x);
+        let mut b = DayRng::new(11, 1, 1);
+        let mut y = xs.to_vec();
+        b.shuffle(Purpose::Shuffle, &mut y);
+        assert_eq!(x, y, "同种子洗牌必须逐位一致");
+        let mut sorted = x.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, xs.to_vec(), "洗牌必须是不含重复的排列");
+        let mut c = DayRng::new(12, 1, 1);
+        let mut z = xs.to_vec();
+        c.shuffle(Purpose::Shuffle, &mut z);
+        assert_ne!(x, z, "换种子洗牌应不同");
+        // 单元素 / 空数组不消耗抽取
+        let mut rng = DayRng::new(1, 1, 1);
+        let mut one = [42i32];
+        rng.shuffle(Purpose::Shuffle, &mut one);
+        assert_eq!(one, [42]);
+        assert_eq!(
+            rng.draw(Purpose::Shuffle).u64(),
+            derive_u64(1, 1, 1, 0, Purpose::Shuffle)
+        );
+    }
+
+    #[test]
+    fn 无放回抽样_不重复且确定() {
+        let xs: Vec<i32> = (0..20).collect();
+        let a = DayRng::new(3, 1, 1).sample(Purpose::Shuffle, &xs, 7);
+        let b = DayRng::new(3, 1, 1).sample(Purpose::Shuffle, &xs, 7);
+        assert_eq!(a.len(), 7);
+        assert_eq!(a, b);
+        assert!(
+            a.iter().collect::<std::collections::BTreeSet<_>>().len() == 7,
+            "抽样须无重复"
+        );
+        // k 超过长度时按长度截断,不 panic
+        let s = DayRng::new(3, 1, 1).sample(Purpose::Shuffle, &xs, 99);
+        assert_eq!(s.len(), xs.len());
+        assert!(s.iter().collect::<std::collections::BTreeSet<_>>().len() == xs.len());
+        // k = 0 不消耗抽取
+        let mut rng = DayRng::new(3, 1, 1);
+        assert!(rng.sample(Purpose::Shuffle, &xs, 0).is_empty());
+        assert_eq!(
+            rng.draw(Purpose::Shuffle).u64(),
+            derive_u64(3, 1, 1, 0, Purpose::Shuffle)
+        );
+    }
+
+    #[test]
+    fn 无放回加权抽样_频次成比例() {
+        // A-Res:权重 80/15/5 的三项,抽 1 项一万次 → a 占绝对多数
+        let xs = ["a", "b", "c"];
+        let t = table(&[80.0, 15.0, 5.0]);
+        let mut rng = DayRng::new(9, 1, 1);
+        let mut counts = [0usize; 3];
+        for _ in 0..10_000 {
+            let got = rng.sample_weighted(Purpose::Shuffle, &xs, &t, 1).unwrap();
+            assert_eq!(got.len(), 1, "k=1 时须恰好 1 项");
+            counts[got[0].as_bytes()[0] as usize - b'a' as usize] += 1;
+        }
+        assert!(
+            counts[0] > counts[1] && counts[1] > counts[2],
+            "频次 {counts:?} 未按权重降序"
+        );
+        assert!(
+            counts[0] > 7500 && counts[2] < 1000,
+            "频次 {counts:?} 偏离权重 80/15/5"
+        );
+
+        // k = n 时抽全且无重复
+        let all = DayRng::new(4, 1, 1)
+            .sample_weighted(Purpose::Shuffle, &xs, &t, 3)
+            .unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(
+            all.len(),
+            all.iter().collect::<std::collections::BTreeSet<_>>().len()
+        );
+
+        // 项数与权重表不一致 → 配置错误
+        let mut rng = DayRng::new(4, 1, 1);
+        assert!(rng
+            .sample_weighted(Purpose::Shuffle, &[1i32], &t, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("不一致"));
+
+        // 万次全桶 χ² 通过(抽 1 项,期望成比例)
+        let (o, e) = disttest::merge_buckets(
+            &counts.map(|c| c as f64),
+            &[8000.0, 1500.0, 500.0],
+            disttest::MIN_EXPECTED,
+        );
+        assert!(disttest::chi_square(&o, &e).unwrap().pass(0.01));
+    }
 
     #[test]
     fn 同键同值() {

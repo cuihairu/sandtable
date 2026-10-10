@@ -64,6 +64,7 @@ struct ModelSection {
     progression: ProgressionConfig,
     formulas: FormulaConfig,
     churn: ChurnConfig,
+    loot: Option<crate::config::LootConfig>,
 }
 
 impl Default for ModelSection {
@@ -79,6 +80,7 @@ impl Default for ModelSection {
             progression: d.progression,
             formulas: d.formulas,
             churn: d.churn,
+            loot: d.loot,
         }
     }
 }
@@ -426,6 +428,7 @@ impl ScenarioFile {
         cfg.progression = m.progression;
         cfg.formulas = m.formulas;
         cfg.churn = m.churn;
+        cfg.loot = m.loot;
 
         validate(&cfg)?;
         Ok(cfg)
@@ -795,6 +798,82 @@ model:
         )
         .unwrap_err();
         assert!(err.to_string().contains("hp"), "{err}");
+    }
+
+    /// 掉落面(文档 24 章 R1):model.loot YAML 进 cfg,表 / 权重 /
+    /// 倍率完整保留;未配置时为 None(不进 canonical JSON)。
+    #[test]
+    fn loot_yaml_往返() {
+        let cfg = load_str(
+            r#"schema_version: "1"
+scenario:
+  population: 100
+  duration: "3d"
+model:
+  loot:
+    rate_mult: 1.5
+    tables:
+      chest:
+        weights:
+          gold_small: 70
+          gold_mid: 25
+          gem: 5
+      bag:
+        weights:
+          nothing: 99
+          something: 1
+"#,
+        )
+        .unwrap();
+        let loot = cfg.loot.as_ref().expect("loot 应被加载(不得静默丢弃)");
+        assert!((loot.rate_mult - 1.5).abs() < 1e-12);
+        assert_eq!(loot.tables.len(), 2);
+        let chest = &loot.tables["chest"];
+        assert_eq!(chest.weights.len(), 3);
+        assert_eq!(chest.weights["gold_small"], 70.0);
+        assert_eq!(chest.weights["gold_mid"], 25.0);
+        assert_eq!(chest.weights["gem"], 5.0);
+        assert_eq!(loot.tables["bag"].weights["something"], 1.0);
+        // rate_mult 可经数值通道读写(镜像口径)
+        assert_eq!(
+            crate::registry::read_numeric(&cfg, "model.loot.rate_mult").unwrap(),
+            1.5
+        );
+        let mut cfg2 = cfg.clone();
+        crate::registry::apply_numeric(&mut cfg2, "model.loot.rate_mult", 2.0).unwrap();
+        assert_eq!(cfg2.loot.as_ref().unwrap().rate_mult, 2.0);
+
+        // 未配置 loot → None;数值槽读缺省 1.0
+        let plain = load_str(
+            r#"schema_version: "1"
+scenario:
+  population: 100
+  duration: "3d"
+"#,
+        )
+        .unwrap();
+        assert!(plain.loot.is_none());
+        assert_eq!(
+            crate::registry::read_numeric(&plain, "model.loot.rate_mult").unwrap(),
+            1.0
+        );
+
+        // 坏权重(全零)在加载期报错
+        let err = load_str(
+            r#"schema_version: "1"
+scenario:
+  population: 100
+  duration: "3d"
+model:
+  loot:
+    tables:
+      bad:
+        weights:
+          a: 0
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("权重"), "{err}");
     }
 
     /// 实验文件(docs 10/12 章):scenario + model + sweep 三节齐全,

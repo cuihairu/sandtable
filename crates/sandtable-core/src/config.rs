@@ -4,6 +4,8 @@
 //! 的 `Default`(领域默认值,非零值);因此默认值集中在各 `impl Default`,
 //! YAML 省略任何节 / 字段都得到一致的领域默认。
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -220,6 +222,36 @@ impl From<DungeonConfigRaw> for DungeonConfig {
             reward_gold_growth: r.reward_gold_growth.or(legacy).unwrap_or(1.4),
             reward_xp_growth: r.reward_xp_growth.or(legacy).unwrap_or(1.4),
             tier_table: r.tier_table,
+        }
+    }
+}
+
+/// 掉落加权表(文档 24 章 R1):项名 → 权重。
+///
+/// 权重是形状参数:加载期编译为 CDF 前缀和(`crate::rng::WeightedTable`),
+/// 不进数值通道(同 [`DungeonConfig::tier_table`] 先例,改形态走 YAML 编辑)。
+/// 表名与项名走 `BTreeMap`——键序确定,config_hash 稳定。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LootTableConfig {
+    pub weights: BTreeMap<String, f64>,
+}
+
+/// 掉落配置面(文档 24 章 R1)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LootConfig {
+    /// 全局掉率倍率:**乘到掉落产出的量**(金币 / 经验数额),不改变表形状,
+    /// 故分布检验不涉及它;数值槽,可 sweep
+    pub rate_mult: f64,
+    /// 表名 → 权重表
+    pub tables: BTreeMap<String, LootTableConfig>,
+}
+
+impl Default for LootConfig {
+    fn default() -> Self {
+        Self {
+            rate_mult: 1.0,
+            tables: BTreeMap::new(),
         }
     }
 }
@@ -479,6 +511,9 @@ pub struct SimConfig {
     pub progression: ProgressionConfig,
     pub formulas: FormulaConfig,
     pub churn: ChurnConfig,
+    /// 掉落加权表(文档 24 章 R1;缺省 None = 未配置掉落表)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loot: Option<LootConfig>,
 }
 
 impl Default for SimConfig {
@@ -501,6 +536,7 @@ impl Default for SimConfig {
             progression: ProgressionConfig::default(),
             formulas: FormulaConfig::default(),
             churn: ChurnConfig::default(),
+            loot: None,
         }
     }
 }
@@ -540,6 +576,33 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
         }
         if rows.iter().any(|r| r.hp <= 0) {
             return Err(Error::Config("tier_table 每层 hp 必须为正".into()));
+        }
+    }
+    // 掉落加权表:权重非负、至少一项为正、表名非空(编译期校验由
+    // rng::WeightedTable 承担,这里给出带路径的报错)
+    if let Some(loot) = &cfg.loot {
+        if !loot.rate_mult.is_finite() || loot.rate_mult <= 0.0 {
+            return Err(Error::Config(
+                "model.loot.rate_mult 必须为正(≤ 0 会让全部权重失效)".into(),
+            ));
+        }
+        for (name, table) in &loot.tables {
+            if name.is_empty() {
+                return Err(Error::Config("model.loot: 表名不能为空".into()));
+            }
+            if table.weights.is_empty() {
+                return Err(Error::Config(format!(
+                    "model.loot.tables.{name}: 权重表不能为空"
+                )));
+            }
+            let path = format!("model.loot.tables.{name}");
+            let weights: Vec<(String, f64)> =
+                table.weights.iter().map(|(k, v)| (k.clone(), *v)).collect();
+            if crate::rng::WeightedTable::from_weights(&weights).is_err() {
+                return Err(Error::Config(format!(
+                    "{path}: 权重必须为有限非负数且至少一项为正"
+                )));
+            }
         }
     }
     if cfg.churn.p_stall < cfg.churn.p_base {
@@ -730,5 +793,68 @@ mod tests {
         let mut switched = SimConfig::default();
         switched.combat.damage_model = Some(DamageModel::Ratio);
         assert_ne!(config_hash(&switched), config_hash(&legacy));
+    }
+
+    /// 掉落面校验(文档 24 章 R1):rate_mult 非正、空表名、全零权重、
+    /// 非有限负数逐项报错;loot 缺省(None)不进 canonical JSON。
+    #[test]
+    fn validate_掉落面() {
+        fn loot(rate_mult: f64, tables: BTreeMap<String, LootTableConfig>) -> SimConfig {
+            SimConfig {
+                loot: Some(LootConfig { rate_mult, tables }),
+                ..SimConfig::default()
+            }
+        }
+        fn table(weights: BTreeMap<String, f64>) -> BTreeMap<String, LootTableConfig> {
+            [("chest".to_string(), LootTableConfig { weights })]
+                .into_iter()
+                .collect()
+        }
+        fn w(pairs: &[(&str, f64)]) -> BTreeMap<String, f64> {
+            pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+        }
+
+        // rate_mult 非正
+        for rm in [0.0, -1.0] {
+            let msg = validate(&loot(rm, Default::default()))
+                .unwrap_err()
+                .to_string();
+            assert!(msg.contains("rate_mult"), "{msg}");
+        }
+        // 空表名
+        let cfg = loot(
+            1.0,
+            [(
+                "".to_string(),
+                LootTableConfig {
+                    weights: w(&[("a", 1.0)]),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("表名"), "{msg}");
+        // 空表(无权重)
+        let cfg = loot(1.0, table(BTreeMap::new()));
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("chest"), "{msg}");
+        // 全零权重
+        let cfg = loot(1.0, table(w(&[("a", 0.0), ("b", 0.0)])));
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("权重"), "{msg}");
+        // 非有限权重
+        let cfg = loot(1.0, table(w(&[("a", 70.0), ("b", f64::NAN)])));
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("权重"), "{msg}");
+        // 合法表通过
+        let cfg = loot(
+            1.5,
+            table(w(&[("gold_small", 70.0), ("gold_mid", 25.0), ("gem", 5.0)])),
+        );
+        assert!(validate(&cfg).is_ok());
+
+        // loot = None 缺省不进 canonical JSON(训练字段先例)
+        assert!(SimConfig::default().loot.is_none());
     }
 }
