@@ -45,5 +45,5 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 
 ## 后续
 
-- ~~查询面板改为加载随结果携带的 CSV / Parquet 文件~~ **CSV 与项目文件已落地(2026-10-09,a47ad10 + 9edca3f)**:查询面板可载入 `.sandtable`(fflate 本地解包,校验同 CLI `project check`——manifest v1、路径纪律、逐条 sha256 走 WebCrypto、归档集合与清单严格相等)或散装 CSV,产物注册为 DuckDB 内存表直接 SQL;顶部「导入配置文件」支持 `.sandtable`,scenario / experiment 各取路径序首个接进仿真与扫描编辑器(打开项目文件即可复现实验,文档 09 章闭环)。**余项**:Parquet 产物进 DuckDB(需浏览器 parquet 读取器,另行评估)、项目多配置条目的选择器(当前取首个)。仿真按天数据仍同时可查(`days` 表)。
+- ~~查询面板改为加载随结果携带的 CSV / Parquet 文件~~ **CSV 与项目文件已落地(2026-10-09,a47ad10 + 9edca3f)**:查询面板可载入 `.sandtable`(fflate 本地解包,校验同 CLI `project check`——manifest v1、路径纪律、逐条 sha256 走 WebCrypto、归档集合与清单严格相等)或散装 CSV,产物注册为 DuckDB 内存表直接 SQL;顶部「导入配置文件」支持 `.sandtable`,scenario / experiment 各取路径序首个接进仿真与扫描编辑器(打开项目文件即可复现实验,文档 09 章闭环)。**余项均已落地(2026-10-10)**:项目多配置选择器——`.sandtable` 内多个 scenario / experiment 时 toolbar 出下拉切换(默认路径序首个,单个不占位);Parquet 直读——查询面板接受 `.parquet` 散装文件与项目内 Parquet 产物,duckdb-wasm `read_parquet` 装表(读入函数按扩展名二选一,CSV 走 `read_csv_auto` 不变)。仿真按天数据仍同时可查(`days` 表)。
 - ~~扫描的多参数轴联合可行域与 Random 搜索前端化~~ **已完成(2026-10-09,1952308 + 9b75565)**:Random 预设 + 散点图(采样点不连线、刻度抽稀);双轴联合可行域矩阵(SweepMatrix,逐目标三色判定,Random 稀疏格如实留空,单轴取值过多降级提示);单轴推荐带红线不变,≥3 轴仍仅候选表。
