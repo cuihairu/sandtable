@@ -120,7 +120,7 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 ## 后续方向
 
 - 参数优化:Evolutionary 已落地(2026-10-10,`optimize` 子命令,见[参数扫描](./12-parameter-sweep)自动寻优节);Bayesian / Pareto / 多目标待拍板(GP 代理模型选型、多目标支配排序);
-- ~~Parquet-in-browser 依赖评估~~ **已评估(2026-10-10):零新依赖可达成**——浏览器端已有 `@duckdb/duckdb-wasm`(查询层依赖),其原生支持 Parquet 读写:`SELECT * FROM read_parquet(...)` 读入、`COPY (SELECT ...) TO 'x.parquet' (FORMAT PARQUET)` 导出(从 duckdb 文件系统取字节 Blob 下载即可);落地动作只是 QueryPanel 增收 `.parquet` 分支与导出菜单加 Parquet 项,随 [Web 端](./22-web)跟进。备选 [hyparquet](https://github.com/hyparam/hyparquet)(纯 JS 零依赖,只读,289KB unpacked,支持 HTTP range 按列懒读)仅在"不初始化 DuckDB 就预览 Parquet"成为真实需求时按需引入;`parquet-wasm`(Rust→WASM,读写全)与既有两块 wasm(仿真 + DuckDB)相叠,边际价值低,不引入;
+- ~~Parquet-in-browser 依赖评估~~ **已评估(2026-10-10):零新依赖可达成**——浏览器端已有 `@duckdb/duckdb-wasm`(查询层依赖),其原生支持 Parquet 读写:`SELECT * FROM read_parquet(...)` 读入、`COPY (SELECT ...) TO 'x.parquet' (FORMAT PARQUET)` 导出(从 duckdb 文件系统取字节 Blob 下载即可);落地动作只是 QueryPanel 增收 `.parquet` 分支与导出菜单加 Parquet 项,随 [Web 端](./22-web)跟进。**两项均已落地(2026-10-10)**:查询面板收 `.parquet`(read_parquet 装表)、结果导出菜单加 `days.parquet` 项(COPY TO PARQUET 取字节下载)。备选 [hyparquet](https://github.com/hyparam/hyparquet)(纯 JS 零依赖,只读,289KB unpacked,支持 HTTP range 按列懒读)仅在"不初始化 DuckDB 就预览 Parquet"成为真实需求时按需引入;`parquet-wasm`(Rust→WASM,读写全)与既有两块 wasm(仿真 + DuckDB)相叠,边际价值低,不引入;
 - 复杂行为脚本:载体已拍板 Python(rhai 缓议),设计与分期见 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md);
 - Python 绑定:同上,扩展模块(maturin + PyO3)为主路径,另行命名(见[项目结构](./17-project-structure));
 - 随机函数扩展(加权表/保底/正态/卡方):设计与分期见[随机函数与概率系统](./24-random-functions);

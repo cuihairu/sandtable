@@ -14,7 +14,7 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - 按天曲线(日活跃 / 日胜率 / 金币存量 / 升级次数);
 - 分群表(casual / core / whale 的等级、金币、战力、流失);
 - **SQL 查询面板(DuckDB-Wasm)**:仿真产物装入内存表 `days`,任意 SQL 本地执行(结果表 + 按天数值列一键画线)。零外链——worker 与 wasm 都经 vite `?url` 本地打包,不经 CDN;mvp 单线程构建按需加载(39 MB 资产,打开查询才下载)。
-- **结果导出**:`days.csv`(replicate 1,与 CLI `simulate --out` 写盘产物逐字节一致)与 `report.json`(结构同构,`results` 逐值一致)一键下载——放进一个目录即可被 `sandtable report` / `sandtable query` 继续分析([数据输出](./09-data-output) 契约)。
+- **结果导出**:`days.csv`(replicate 1,与 CLI `simulate --out` 写盘产物逐字节一致)、`report.json`(结构同构,`results` 逐值一致)与 `days.parquet`(同一份按天数据经 DuckDB `COPY ... (FORMAT PARQUET)` 落 Parquet,零新依赖)一键下载——放进一个目录即可被 `sandtable report` / `sandtable query` 继续分析([数据输出](./09-data-output) 契约)。
 - **参数扫描(网格 / Random + 推荐带 + 联合可行域)**:实验文件(scenario + model + sweep 三节,[文档 12 章](./12-parameter-sweep))本地扫描——经 YAML 编辑或预设选择器(单轴网格 / 单轴随机 / 双轴网格),JS 逐候选驱动(单线程下候选并行不可用,候选间让出主线程,进度可渲染);出候选 × 指标表(约束判定 PASS / BORDERLINE / FAIL,失败候选标注不静默丢弃)、单轴图(网格折线 / Random 散点,CI95 须、判定着色、推荐带与基线标记)、双轴联合可行域矩阵(逐目标三色判定,Random 稀疏格留空)、OAT 敏感性矩阵与推荐块——与 CLI `sweep` / `recommend` 同源(core 纯函数);预算门:候选 × replicates ≤ 200、players × days ≤ 40 万,超出引导走 CLI。
 
 ## 绑定纪律
