@@ -221,6 +221,8 @@ struct OptimSection {
     parameters: BTreeMap<String, RangeSpec>,
     targets: Vec<TargetYaml>,
     objective: Option<ObjectiveYaml>,
+    /// pareto 多目标(mode: pareto;与 objective 互斥,spec.validate 拦)
+    objectives: Vec<ObjectiveYaml>,
 }
 
 impl Default for OptimSection {
@@ -236,6 +238,7 @@ impl Default for OptimSection {
             parameters: BTreeMap::new(),
             targets: Vec::new(),
             objective: None,
+            objectives: Vec::new(),
         }
     }
 }
@@ -295,6 +298,23 @@ impl OptimSection {
                 })
             }
         };
+        let objectives = self
+            .objectives
+            .into_iter()
+            .map(|o| {
+                let metric = crate::experiment::MetricKey::parse(&o.metric).ok_or_else(|| {
+                    Error::Config(format!(
+                        "optimize.objectives: 未知指标 {:?},可选: {:?}",
+                        o.metric,
+                        crate::experiment::MetricKey::ALL.map(|k| k.name())
+                    ))
+                })?;
+                Ok(Objective {
+                    metric,
+                    direction: o.direction,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
         Ok(OptimSpec {
             mode: self.mode,
             parameters,
@@ -306,6 +326,7 @@ impl OptimSection {
             mutation_rate: self.mutation_rate,
             mutation_scale: self.mutation_scale,
             objective,
+            objectives,
         })
     }
 }
