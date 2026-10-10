@@ -95,6 +95,31 @@ optimize:
 1. **Bayesian 代理模型选型 = 随机森林(RF)**。待拍板点见上(GP / 随机森林),裁定依据项目铁律:① RF 纯离散树、无线性代数依赖,wasm32 兼容好(GP 需稠密矩阵求逆,核心要背数值线性代数代码);② RF 的 bootstrap 与特征采样复用现有 SplitMix64 键派生流,与确定性纪律同构;③ 特征重要性直接回答"哪些参数驱动指标",同"适应度字典序非加权"的可解释性纪律(GP 核长度尺度是黑箱超参);④ 本项目典型 36–152 候选,RF 足够;GP 的优势场景(昂贵评估 + 预测不确定性量化)当前无需求,留作后续评估。
 2. **Pareto / 多目标 = 约束感知非支配排序**(NSGA-II 式:非支配层级 + 拥挤距离破平)。加权求和被适应度设计明确拒绝("字典序,不是加权分");Pareto 前沿本身即答案,不压成单值。裁定后即开工实施(见下节)。
 
+## Pareto 多目标(`mode: pareto`,2026-10-10 落地)
+
+多目标不压成加权单值——前沿本身即答案。第三节换 `objectives`(≥2 个,与 `objective` 互斥):
+
+```yaml
+optimize:
+  mode: pareto
+  objectives:          # ≥2 个
+    - { metric: power_p50, direction: maximize }
+    - { metric: gold_per_player, direction: minimize }
+  targets:             # hard 约束同进化模式
+    - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
+  # population / generations / elite / mutation_* / parameters 同进化模式
+```
+
+**适应度是三级字典序**(可解释性与进化模式同纪律):
+
+1. 主键:hard 约束 pass 数(可行域语义不变——低层但目标全优,仍压不过高层);
+2. 层内非支配排序(NSGA-II 式):所有目标不差且至少一个严格好才算支配;
+3. 同层破平:拥挤距离(每目标归一化间距和,边界点 ∞),保前沿多样性。
+
+精英保留 / 锦标赛 / 末代答案全走同一序。**"最优"= 末代最优层前沿 0 中拥挤距离最大者**(代表点);全前沿落 `opt.json` 的 `front0`(拥挤距离降序),逐代统计带 `front0` 规模,`candidates.csv` 照旧全历史可追溯。配置错误候选层级垫底、不进前沿。RNG 消耗序与进化模式一致(采样流同绑 `base_seed` 派生,两模式同构)。
+
+成本账与进化模式同式(population × (generations + 1) × replicates,精英不重评)。示例:`examples/pokemon-pareto.yaml`(与 `pokemon-optimize.yaml` 同账,双目标张力交给前沿呈现)。
+
 本项目的 Monte Carlo 指**多 seed 复跑**(replicates):同一候选换 seed 跑 R 次,用于估计指标的抽样噪声、给出置信区间。它是一种统计手段,不是参数寻优方法。
 
 ## 网格是离散的,推荐是连续的
