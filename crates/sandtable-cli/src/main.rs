@@ -91,6 +91,12 @@ enum Cmd {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// 随机森林代理:读 sweep 产物训练 / 预测 / 特征重要性(文档 12 章
+    /// 自动寻优;只读产物不进仿真路径)
+    Surrogate {
+        #[command(subcommand)]
+        action: SurrogateAction,
+    },
     /// 校验场景文件 / 参数组合是否合法
     Validate {
         /// YAML 场景文件
@@ -147,6 +153,46 @@ enum Cmd {
         /// 已存在时覆盖
         #[arg(long)]
         force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SurrogateAction {
+    /// 训练:sweep 产物 → 随机森林模型(model.json)
+    Train {
+        /// sweep 输出目录或 sweep.json 路径
+        sweep_json: PathBuf,
+        /// 训练目标指标(retention_d7 | retention_d3 | win_rate | gold_per_player | power_p50 | churn_rate)
+        #[arg(long, default_value = "retention_d7")]
+        metric: String,
+        /// 树数
+        #[arg(long, default_value_t = core::surrogate::DEFAULT_TREES)]
+        trees: u32,
+        /// 最大深度
+        #[arg(long, default_value_t = core::surrogate::DEFAULT_MAX_DEPTH)]
+        max_depth: u32,
+        /// 叶最小样本数
+        #[arg(long, default_value_t = core::surrogate::DEFAULT_MIN_SAMPLES_LEAF)]
+        min_samples_leaf: usize,
+        /// 森林种子(每棵树按序派生,同种子同森林)
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
+        /// 模型输出路径(缺省 ./model.json)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// 预测:模型 + 参数 JSON 对象 → 指标预测(含全树散布)
+    Predict {
+        /// 模型文件(train 产物)
+        model: PathBuf,
+        /// 参数 JSON 对象(键 = 参数路径,须与训练特征集一致)
+        #[arg(long)]
+        params: String,
+    },
+    /// 特征重要性:模型 → 参数重要性排序表
+    Importance {
+        /// 模型文件(train 产物)
+        model: PathBuf,
     },
 }
 
@@ -485,6 +531,13 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
             println!("已写出 {}(opt.json, candidates.csv)", dir.display());
             Ok(std::process::ExitCode::SUCCESS)
         }
+        Cmd::Surrogate { action } => match run_surrogate(&action) {
+            Ok(()) => Ok(std::process::ExitCode::SUCCESS),
+            Err(e) => {
+                eprintln!("配置错误: {e:#}");
+                Ok(std::process::ExitCode::from(2))
+            }
+        },
         Cmd::Validate { scenario, over } => match load_config(scenario.as_deref(), &over) {
             Ok(cfg) => {
                 println!(
@@ -958,6 +1011,137 @@ fn print_table((names, rows): &QueryResult) {
 struct SweepRun {
     spec: core::sweep::SweepSpec,
     results: Vec<core::sweep::CandidateResult>,
+}
+
+/// 随机森林代理子命令(文档 12 章自动寻优增量,2026-10-10 裁定):
+/// sweep 产物 → 森林训练 / 参数预测 / 特征重要性。只读产物不进仿真路径。
+/// 配置错误走退出码 2。
+fn run_surrogate(action: &SurrogateAction) -> anyhow::Result<()> {
+    match action {
+        SurrogateAction::Train {
+            sweep_json,
+            metric,
+            trees,
+            max_depth,
+            min_samples_leaf,
+            seed,
+            out,
+        } => {
+            let json_path = if sweep_json.is_dir() {
+                sweep_json.join("sweep.json")
+            } else {
+                sweep_json.to_path_buf()
+            };
+            let raw = fs::read_to_string(&json_path).with_context(|| {
+                format!("读取 {} 失败(先跑 sandtable sweep)", json_path.display())
+            })?;
+            let run: SweepRun = serde_json::from_str(&raw)
+                .with_context(|| format!("{} 解析失败(sweep 产物)", json_path.display()))?;
+            let key = core::experiment::MetricKey::parse(metric).ok_or_else(|| {
+                anyhow::anyhow!("未知指标 {metric}(可选 retention_d7 | retention_d3 | win_rate | gold_per_player | power_p50 | churn_rate)")
+            })?;
+            let spec = core::surrogate::SurrogateSpec {
+                trees: *trees,
+                max_depth: *max_depth,
+                min_samples_leaf: *min_samples_leaf,
+                seed: *seed,
+            };
+            let model = core::surrogate::RandomForest::fit(&run.results, key, spec)?;
+            // 训练内 MAE:同批 Ok 候选回代
+            let key_name = key.name();
+            let mut n_eval = 0usize;
+            let mut abs_err = 0.0f64;
+            for r in &run.results {
+                if r.metric_stats.iter().any(|(k, _)| k.name() == key_name) {
+                    if let Ok(p) = model.predict(&r.values) {
+                        let y = r
+                            .metric_stats
+                            .iter()
+                            .find(|(k, _)| k.name() == key_name)
+                            .map(|(_, s)| s.mean)
+                            .unwrap_or_default();
+                        abs_err += (p - y).abs();
+                        n_eval += 1;
+                    }
+                }
+            }
+            let mae = if n_eval > 0 {
+                abs_err / n_eval as f64
+            } else {
+                0.0
+            };
+            let mut ranked: Vec<(&String, f64)> = model
+                .features
+                .iter()
+                .zip(model.importance.iter().copied())
+                .collect();
+            ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            println!(
+                "训练完成:样本 {} · 树 {}(深度 ≤ {},叶 ≥ {}) · 训练内 MAE {:.4}",
+                n_eval, model.spec.trees, model.spec.max_depth, model.spec.min_samples_leaf, mae
+            );
+            println!("特征重要性:");
+            for (name, imp) in ranked.iter().take(8) {
+                println!("  {:.4}  {}", imp, name);
+            }
+            let dst = out.clone().unwrap_or_else(|| PathBuf::from("model.json"));
+            fs::write(&dst, serde_json::to_string_pretty(&model)?)
+                .with_context(|| format!("写 {} 失败", dst.display()))?;
+            println!("已写出 {}(metric {})", dst.display(), model.metric);
+            Ok(())
+        }
+        SurrogateAction::Predict { model, params } => {
+            let raw = fs::read_to_string(model)
+                .with_context(|| format!("读取 {} 失败", model.display()))?;
+            let forest: core::surrogate::RandomForest = serde_json::from_str(&raw)
+                .with_context(|| format!("{} 解析失败(代理模型)", model.display()))?;
+            let map: std::collections::BTreeMap<String, f64> = serde_json::from_str(params)
+                .with_context(|| "params 解析失败(须为 JSON 对象,键 = 参数路径)".to_string())?;
+            let row: Vec<f64> = forest
+                .features
+                .iter()
+                .map(|f| {
+                    map.get(f).copied().ok_or_else(|| {
+                        anyhow::anyhow!("缺少特征 {f}(训练特征集:{:?})", forest.features)
+                    })
+                })
+                .collect::<Result<_, _>>()?;
+            let values = forest.tree_values(&row);
+            let mean = values.iter().sum::<f64>() / values.len() as f64;
+            let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            println!(
+                "{} 预测 = {:.4}(全树 min {:.4} / max {:.4},{} 棵)",
+                forest.metric,
+                mean,
+                min,
+                max,
+                values.len()
+            );
+            Ok(())
+        }
+        SurrogateAction::Importance { model } => {
+            let raw = fs::read_to_string(model)
+                .with_context(|| format!("读取 {} 失败", model.display()))?;
+            let forest: core::surrogate::RandomForest = serde_json::from_str(&raw)
+                .with_context(|| format!("{} 解析失败(代理模型)", model.display()))?;
+            let mut ranked: Vec<(&String, f64)> = forest
+                .features
+                .iter()
+                .zip(forest.importance.iter().copied())
+                .collect();
+            ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            println!(
+                "特征重要性(metric {},{} 个特征,方差削减归一):",
+                forest.metric,
+                ranked.len()
+            );
+            for (name, imp) in &ranked {
+                println!("  {:.4}  {}", imp, name);
+            }
+            Ok(())
+        }
+    }
 }
 
 /// 推荐子命令(文档 14/15 章):sweep 产物 + 基线配置 → 敏感性矩阵 +
