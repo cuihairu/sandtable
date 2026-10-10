@@ -78,10 +78,13 @@ export async function loadProjectCsvs(
   const loaded: string[] = []
   for (const f of csvs) {
     const table = tableName(f.name, new Set([...projectTables]))
-    const bufName = `proj-${table}.csv`
+    const isParquet = f.name.toLowerCase().endsWith('.parquet')
+    const bufName = `proj-${table}.${isParquet ? 'parquet' : 'csv'}`
     await db!.registerFileBuffer(bufName, f.bytes as Uint8Array<ArrayBuffer>)
     try {
-      await conn.query(`CREATE TABLE "${table}" AS SELECT * FROM read_csv_auto('${bufName}')`)
+      // 读入函数按扩展名二选一(DuckDB 按文件名探测格式,不可混用)
+      const read = isParquet ? `read_parquet('${bufName}')` : `read_csv_auto('${bufName}')`
+      await conn.query(`CREATE TABLE "${table}" AS SELECT * FROM ${read}`)
     } finally {
       await db!.dropFile(bufName)
     }

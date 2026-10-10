@@ -28,7 +28,7 @@ export default function QueryPanel({
     setError(null)
     try {
       const bytes = new Uint8Array(await f.arrayBuffer())
-      if (f.name.toLowerCase().endsWith('.csv')) {
+      if (f.name.toLowerCase().endsWith('.csv') || f.name.toLowerCase().endsWith('.parquet')) {
         const tables = await loadProjectCsvs([{ name: f.name, bytes }])
         setLoaded(
           tables.length > 0
@@ -39,7 +39,11 @@ export default function QueryPanel({
       }
       const proj = await unpackProject(bytes)
       const csvs = proj.entries
-        .filter((e) => e.kind === 'result' && e.path.endsWith('.csv'))
+        .filter(
+          (e) =>
+            e.kind === 'result' &&
+            (e.path.endsWith('.csv') || e.path.endsWith('.parquet')),
+        )
         .map((e) => ({ name: e.path, bytes: proj.files.get(e.path)! }))
       const tables = await loadProjectCsvs(csvs)
       setLoaded(
