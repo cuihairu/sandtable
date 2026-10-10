@@ -20,6 +20,7 @@ pub mod rng;
 pub mod scenario;
 pub mod sensitivity;
 pub mod sim;
+pub mod surrogate;
 pub mod sweep;
 pub mod systems;
 pub mod world;
