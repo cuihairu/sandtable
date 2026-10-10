@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import LineChart from './components/LineChart'
 import QueryPanel from './components/QueryPanel'
 import SweepPanel from './components/SweepPanel'
-import { loadDayStats, runQuery } from './lib/duck'
+import { exportCsvAsParquet, loadDayStats, runQuery } from './lib/duck'
 import { PRESETS, SWEEP_PRESETS } from './lib/presets'
 import { unpackProject } from './lib/project'
 import type { UnpackedProject } from './lib/project'
@@ -17,8 +17,9 @@ function pct(v: number): string {
 
 // 结果导出(文档 09 章契约):文件名与列结构与 CLI simulate --out 产物一致,
 // 下载后 sandtable report / query 可直接继续分析
-function download(text: string, filename: string, mime: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: mime }))
+function download(data: string | Uint8Array, filename: string, mime: string) {
+  // cast:duckdb-wasm 返回 Uint8Array<ArrayBufferLike>,TS 5.7 的 BlobPart 收窄不含 SharedArrayBuffer 分支
+  const url = URL.createObjectURL(new Blob([data as BlobPart], { type: mime }))
   const a = document.createElement('a')
   a.href = url
   a.download = filename
@@ -253,6 +254,25 @@ export default function App() {
                 }
               >
                 下载 report.json
+              </button>
+              <button
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true)
+                  setError(null)
+                  try {
+                    // Parquet 导出(评估记录 2026-10-10:duckdb COPY,零新依赖):
+                    // 同一份 days 数据,CLI query read_parquet 直接续分析
+                    const buf = await exportCsvAsParquet(out.days_csv, 'days')
+                    download(buf, 'days.parquet', 'application/octet-stream')
+                  } catch (e) {
+                    setError(String(e))
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                下载 days.parquet(replicate 1)
               </button>
               <span className="note">
                 与 CLI simulate --out 产物同构,下载后 sandtable report / query 可继续分析

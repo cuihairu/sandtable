@@ -68,6 +68,26 @@ function tableName(path: string, used: Set<string>): string {
   return name
 }
 
+/** CSV 文本转 Parquet 字节:`COPY (...) TO '<stem>.parquet' (FORMAT PARQUET)`
+ * 再从 DuckDB 文件系统取字节(评估记录 2026-10-10:零新依赖)。导出菜单用,
+ * 产物与 days.csv 同列,CLI `query` 可 `read_parquet` 直接续分析。 */
+export async function exportCsvAsParquet(csv: string, stem: string): Promise<Uint8Array> {
+  const conn = await getConn()
+  await db!.registerFileBuffer(
+    `${stem}.csv`,
+    new TextEncoder().encode(csv) as Uint8Array<ArrayBuffer>,
+  )
+  try {
+    await conn.query(
+      `COPY (SELECT * FROM read_csv_auto('${stem}.csv')) TO '${stem}.parquet' (FORMAT PARQUET)`,
+    )
+    return await db!.copyFileToBuffer(`${stem}.parquet`)
+  } finally {
+    await db!.dropFile(`${stem}.csv`)
+    await db!.dropFile(`${stem}.parquet`)
+  }
+}
+
 /** 把 CSV 产物装进 DuckDB 内存表,返回实际表名(调用方展示给用户)。 */
 export async function loadProjectCsvs(
   csvs: { name: string; bytes: Uint8Array }[],
