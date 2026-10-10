@@ -41,9 +41,12 @@ pub enum Purpose {
     /// 抽卡命中判定(文档 24 章 R2):保底状态机抽取。保底计数器是 actor
     /// 确定性状态,不进键;改保底参数不挪键,CRN 成立。
     Gacha = 7,
+    /// 正态抽样(文档 24 章 R3):Box–Muller,一次逻辑抽取消耗两个均匀值
+    /// (计数器 +2);改 μ/σ 只改变换不改键,双消耗键稳定。
+    Normal = 8,
 }
 
-pub const PURPOSE_COUNT: usize = 8;
+pub const PURPOSE_COUNT: usize = 9;
 
 /// 单个 u64 键派生:SplitMix64 终结器。
 fn mix(mut x: u64) -> u64 {
@@ -61,6 +64,13 @@ pub fn derive_u64(seed: u64, actor_id: u64, day: u32, event_index: u32, purpose:
     h = mix(h ^ (((day as u64) << 32) | event_index as u64));
     h = mix(h ^ (purpose as u64).wrapping_mul(0xff51_afd7_ed55_8ccd));
     h
+}
+
+/// Box–Muller 变换(纯函数,供 [`DayRng::normal`] 与测试复用):
+/// u1 定幅(半径)、u2 定向(角度),`u1 ≤ 0` 钳到 `f64::MIN_POSITIVE`。
+pub fn box_muller(u1: f64, u2: f64, mu: f64, sigma: f64) -> f64 {
+    let u1 = u1.max(f64::MIN_POSITIVE);
+    mu + sigma.abs() * (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
 }
 
 /// 一次抽取得到的随机值句柄,提供常用分布。
@@ -237,6 +247,32 @@ impl DayRng {
         self.draw(purpose).weighted(table)
     }
 
+    /// 正态抽样(Box–Muller 1958,文档 24 章 R3):连续消耗两个带键均匀
+    /// u1, u2 → `mu + sigma·√(−2 ln u1)·cos(2π u2)`。
+    ///
+    /// 键纪律:一次逻辑抽取消耗两个均匀值、计数器 +2——改 μ/σ 只改变换
+    /// 不挪键(A/B 臂同键可比,`u1 = 0` 以 `f64::MIN_POSITIVE` 下限防御,
+    /// 概率 2⁻⁵³)。`sigma < 0` 与 `sigma` 非有限由配置层把关;此处按
+    /// `sigma.abs()` 处理,`sigma = 0` 退化为常值 mu。
+    pub fn normal(&mut self, purpose: Purpose, mu: f64, sigma: f64) -> f64 {
+        let u1 = self.draw(purpose).f64();
+        let u2 = self.draw(purpose).f64();
+        box_muller(u1, u2, mu, sigma)
+    }
+
+    /// 带钳位正态(文档 24 章 R3):正态无界,属性类用途必须 clamp;
+    /// 钳位是确定性后处理,不消耗额外抽取,不破坏键稳定。
+    pub fn normal_clamped(
+        &mut self,
+        purpose: Purpose,
+        mu: f64,
+        sigma: f64,
+        lo: f64,
+        hi: f64,
+    ) -> f64 {
+        self.normal(purpose, mu, sigma).clamp(lo, hi)
+    }
+
     /// 取该 purpose 连续 n 次抽取并一次性推进计数器(洗牌 / 无放回抽样)。
     /// 只动本 purpose 的计数器,其他用途的键空间不受影响。
     pub fn draw_stream(&mut self, purpose: Purpose, n: usize) -> Vec<Draw> {
@@ -333,8 +369,9 @@ mod tests {
             Purpose::Cohort as u8,
             Purpose::Shuffle as u8,
             Purpose::Gacha as u8,
+            Purpose::Normal as u8,
         ];
-        assert_eq!(nums, [0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(nums, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
         // 各 purpose 在同一键下取值互不相同(键空间正交)
         let all = [
             Purpose::Behavior,
@@ -345,6 +382,7 @@ mod tests {
             Purpose::Cohort,
             Purpose::Shuffle,
             Purpose::Gacha,
+            Purpose::Normal,
         ];
         let vals: Vec<u64> = all.iter().map(|p| derive_u64(42, 7, 3, 1, *p)).collect();
         assert_eq!(
@@ -352,7 +390,7 @@ mod tests {
                 .cloned()
                 .collect::<std::collections::BTreeSet<_>>()
                 .len(),
-            8
+            9
         );
     }
 
@@ -622,6 +660,71 @@ mod tests {
         let d = Draw(u64::MAX);
         assert!(!d.chance(0.0));
         assert!(d.chance(1.0));
+    }
+
+    /// R3 验收(文档 24 章):Box–Muller 双消耗键稳定——normal 恰消耗两个
+    /// 均匀、值 = box_muller(u1, u2);**改 μ/σ 不挪键**:A/B 臂同键下,normal
+    /// 之后的下一抽完全一致(两臂消耗了同一对均匀值)。
+    #[test]
+    fn 正态_双消耗键稳定() {
+        let mut a = DayRng::new(42, 7, 3);
+        let mut b = DayRng::new(42, 7, 3);
+        let na = a.normal(Purpose::Normal, 0.0, 1.0);
+        let nb = b.normal(Purpose::Normal, 5.0, 2.0);
+        // 各自等于前两个均匀值的变换
+        let u1 = DayRng::new(42, 7, 3).draw_indexed(Purpose::Normal, 0).f64();
+        let u2 = DayRng::new(42, 7, 3).draw_indexed(Purpose::Normal, 1).f64();
+        assert_eq!(na, box_muller(u1, u2, 0.0, 1.0));
+        assert_eq!(nb, box_muller(u1, u2, 5.0, 2.0));
+        // 改 μ/σ 后,后续抽取仍同键同值(A/B 可比不破)
+        let na2 = a.draw(Purpose::Normal).f64();
+        let nb2 = b.draw(Purpose::Normal).f64();
+        assert_eq!(na2, nb2, "改 μ/σ 只改变换不挪键");
+        assert_ne!(na, nb);
+    }
+
+    /// sigma = 0 退化为常值;clamp 生效;负 sigma 取绝对值。
+    #[test]
+    fn 正态_clamp与退化() {
+        let mut rng = DayRng::new(42, 7, 3);
+        assert_eq!(rng.normal(Purpose::Normal, 3.5, 0.0), 3.5);
+        let mut rng2 = DayRng::new(42, 7, 3);
+        let v = rng2.normal_clamped(Purpose::Normal, 0.0, 1.0, -0.5, 0.5);
+        assert!((-0.5..=0.5).contains(&v), "钳位后应落在界内:{v}");
+        // 负 sigma 与正 sigma 同分布(取绝对值):同键同值
+        let mut rng3 = DayRng::new(42, 7, 3);
+        let mut rng4 = DayRng::new(42, 7, 3);
+        assert_eq!(
+            rng3.normal(Purpose::Normal, 0.0, -1.0),
+            rng4.normal(Purpose::Normal, 0.0, 1.0)
+        );
+    }
+
+    /// 均值/方差对齐解析解(R3 验收:CI 覆盖):10 万样本,均值容差
+    /// 4·σ/√N,方差容差 4·√(2/N) 相对偏差(χ² 分布的方差近似)。
+    #[test]
+    fn 正态_均值方差对齐解析解() {
+        let n = 100_000usize;
+        let (mu, sigma) = (7.0, 2.5);
+        let mut rng = DayRng::new(2026, 1, 0);
+        let sum: f64 = (0..n).map(|_| rng.normal(Purpose::Normal, mu, sigma)).sum();
+        let mean = sum / n as f64;
+        let sq_sum: f64 = (0..n)
+            .map(|_| rng.normal(Purpose::Normal, mu, sigma))
+            .map(|x| (x - mean) * (x - mean))
+            .sum();
+        let var = sq_sum / (n - 1) as f64;
+        assert!(
+            (mean - mu).abs() < 4.0 * sigma / (n as f64).sqrt(),
+            "均值 {mean} 应在 {mu} ± {} 内",
+            4.0 * sigma / (n as f64).sqrt()
+        );
+        let rel = (var - sigma * sigma).abs() / (sigma * sigma);
+        assert!(
+            rel < 4.0 * (2.0 / n as f64).sqrt(),
+            "方差 {var} 相对偏差 {rel} 应 < {}",
+            4.0 * (2.0 / n as f64).sqrt()
+        );
     }
 
     #[test]

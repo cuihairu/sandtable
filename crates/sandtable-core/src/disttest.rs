@@ -98,6 +98,67 @@ pub fn p_value(stat: f64, df: usize) -> f64 {
     gammq(df as f64 / 2.0, stat / 2.0)
 }
 
+/// 标准正态 CDF Φ(x),经正则化不完全伽马在 a = ½ 处取:
+/// x ≥ 0 → ½·(1 + P(½, x²/2));x < 0 → ½·(1 − P(½, x²/2))。
+/// 复用同一段级数 / 连分数,**零新增近似**(误差同 ln Γ 量级)。
+pub fn normal_cdf(x: f64) -> f64 {
+    let p = gammp(0.5, 0.5 * x * x);
+    if x >= 0.0 {
+        0.5 * (1.0 + p)
+    } else {
+        0.5 * (1.0 - p)
+    }
+}
+
+/// 正态分桶(文档 24 章 R3):以 [μ − spread·σ, μ + spread·σ] 为界均分
+/// `buckets` 桶,区间外样本并入首尾桶(尾部质量进期望,不漏算);
+/// 期望计数 = n·(Φ(bᵢ) − Φ(bᵢ₋₁))。返回 (observed, expected),
+/// 按 Cochran 合并后直接喂 [`chi_square`]。
+pub fn normal_buckets(
+    samples: &[f64],
+    mu: f64,
+    sigma: f64,
+    buckets: usize,
+    spread: f64,
+) -> Result<(Vec<f64>, Vec<f64>), Error> {
+    if buckets < 2 {
+        return Err(Error::Config("正态分桶至少 2 桶".into()));
+    }
+    if !mu.is_finite() || !sigma.is_finite() || sigma <= 0.0 || !spread.is_finite() || spread <= 0.0
+    {
+        return Err(Error::Config(
+            "正态分桶需要有限 mu、正 sigma 与正 spread(σ 的倍数)".into(),
+        ));
+    }
+    let lo = mu - spread * sigma;
+    let hi = mu + spread * sigma;
+    let step = (hi - lo) / buckets as f64;
+    let mut observed = vec![0.0f64; buckets];
+    for &x in samples {
+        if x <= lo {
+            observed[0] += 1.0;
+        } else if x >= hi {
+            observed[buckets - 1] += 1.0;
+        } else {
+            let i = ((x - lo) / step).floor() as usize;
+            observed[i.min(buckets - 1)] += 1.0;
+        }
+    }
+    let n = samples.len() as f64;
+    let mut edges = vec![normal_cdf((lo - mu) / sigma)];
+    for i in 1..=buckets {
+        edges.push(normal_cdf((lo + i as f64 * step - mu) / sigma));
+    }
+    let mut expected: Vec<f64> = (0..buckets)
+        .map(|i| n * (edges[i + 1] - edges[i]))
+        .collect();
+    // 首尾桶吃进 ±∞ 尾部质量(与观测侧"区间外并入首尾桶"对齐,
+    // 期望和 = n,χ² 才无系统偏差)
+    expected[0] = n * edges[1];
+    expected[buckets - 1] = n * (1.0 - edges[buckets - 1]);
+    Ok((observed, expected))
+}
+
 /// Q(a, x) = 1 − P(a, x):x < a+1 用级数(P),否则用连分数(Q)。
 fn gammq(a: f64, x: f64) -> f64 {
     if x < a + 1.0 {
@@ -273,5 +334,76 @@ mod tests {
         let (o, e) = merge_buckets(&obs, &exp, MIN_EXPECTED);
         let chi = chi_square(&o, &e).unwrap();
         assert!(!chi.pass(0.01), "有偏分布应失败: p={}", chi.p_value);
+    }
+
+    /// Φ 对照标准表:Φ(0)=0.5、Φ(1)≈0.8413、Φ(2)≈0.9772、
+    /// Φ(1.96)=0.975、Φ(−1.96)=0.025(对称)。
+    #[test]
+    fn 正态cdf_对照标准表() {
+        assert_eq!(normal_cdf(0.0), 0.5);
+        assert!(
+            (normal_cdf(1.0) - 0.8413).abs() < 1e-4,
+            "{}",
+            normal_cdf(1.0)
+        );
+        assert!(
+            (normal_cdf(2.0) - 0.9772).abs() < 1e-4,
+            "{}",
+            normal_cdf(2.0)
+        );
+        assert!((normal_cdf(1.96) - 0.975).abs() < 1e-4);
+        assert!((normal_cdf(-1.96) - 0.025).abs() < 1e-4);
+        assert!((normal_cdf(-3.0) - 0.00135).abs() < 1e-5);
+    }
+
+    /// 正态分桶校验:桶数、sigma、spread 非法逐项报错。
+    #[test]
+    fn 正态分桶_输入校验() {
+        let xs = [0.0f64; 10];
+        assert!(normal_buckets(&xs, 0.0, 1.0, 1, 3.0).is_err(), "单桶");
+        assert!(normal_buckets(&xs, 0.0, 0.0, 10, 3.0).is_err(), "sigma 0");
+        assert!(normal_buckets(&xs, 0.0, -1.0, 10, 3.0).is_err(), "负 sigma");
+        assert!(normal_buckets(&xs, 0.0, 1.0, 10, 0.0).is_err(), "spread 0");
+        assert!(normal_buckets(&xs, f64::NAN, 1.0, 10, 3.0).is_err());
+        // 合法输入:期望和 = n,观测和 = n
+        let xs: Vec<f64> = (0..1000).map(|i| i as f64 * 0.01).collect();
+        let (o, e) = normal_buckets(&xs, 5.0, 1.0, 20, 3.0).unwrap();
+        assert!((o.iter().sum::<f64>() - 1000.0).abs() < 1e-9);
+        assert!((e.iter().sum::<f64>() - 1000.0).abs() < 1e-9);
+    }
+
+    /// R3 验收:10 万次正态采样,20 桶(±3σ)χ² 全过;区间外样本并入
+    /// 首尾桶,期望含尾部质量。
+    #[test]
+    fn 正态_十万次采样_卡方通过() {
+        use crate::rng::{DayRng, Purpose};
+        let (mu, sigma) = (7.0, 2.5);
+        let mut rng = DayRng::new(2026, 1, 0);
+        let samples: Vec<f64> = (0..100_000)
+            .map(|_| rng.normal(Purpose::Normal, mu, sigma))
+            .collect();
+        let (o, e) = normal_buckets(&samples, mu, sigma, 20, 3.0).unwrap();
+        let (o, e) = merge_buckets(&o, &e, MIN_EXPECTED);
+        let chi = chi_square(&o, &e).unwrap();
+        assert!(chi.pass(0.01), "正态 χ² {} p={}", chi.stat, chi.p_value);
+    }
+
+    /// 均匀样本喂正态期望:中心桶观测翻倍量级,α=0.01 必抓。
+    #[test]
+    fn 正态_均匀样本_卡方失败() {
+        use crate::rng::{DayRng, Purpose};
+        let (mu, sigma) = (0.0, 1.0);
+        let mut rng = DayRng::new(42, 7, 3);
+        let samples: Vec<f64> = (0..100_000)
+            .map(|_| (rng.draw(Purpose::Shuffle).f64() - 0.5) * 6.0)
+            .collect();
+        let (o, e) = normal_buckets(&samples, mu, sigma, 20, 3.0).unwrap();
+        let (o, e) = merge_buckets(&o, &e, MIN_EXPECTED);
+        let chi = chi_square(&o, &e).unwrap();
+        assert!(
+            !chi.pass(0.01),
+            "均匀样本喂正态期望应失败: p={}",
+            chi.p_value
+        );
     }
 }
