@@ -20,11 +20,11 @@ title: 24 · 随机函数与概率系统
 | --- | --- | --- | --- | --- |
 | 1 | 均匀 / 伯努利 | 命中、伤害浮动、日常掷骰 | 键即抽取,无状态 | ✅ 已有 |
 | 2 | 正态分布 | 群体初始属性、会话时长、评分噪声 | 键即抽取(消耗两次均匀),无状态 | ⛔ 本页设计 |
-| 3 | 加权表(有放回) | 掉落表、品质 roll | 表在加载期编译;键即抽取 | ⛔ 本页设计 |
-| 4 | 洗牌 / 无放回加权抽样 | 卡组抽牌、限定池去重、组队抽样 | 键即抽取,无状态 | ⛔ 本页设计 |
+| 3 | 加权表(有放回) | 掉落表、品质 roll | 表在加载期编译;键即抽取 | ✅ R1 已落地(2026-10-10) |
+| 4 | 洗牌 / 无放回加权抽样 | 卡组抽牌、限定池去重、组队抽样 | 键即抽取,无状态 | ✅ R1 已落地(2026-10-10) |
 | 5 | 保底序列(硬/软) | 抽卡、稀有掉落兜底 | **计数器是 actor 确定性状态**;抽取仍走键 | ⛔ 本页设计 |
 | 6 | 回放种子 | 复现任意一局 / A/B 同路径 | 键结构即设计;种子即实验标识 | ✅ 已有(docs 06) |
-| 7 | 分布检验(卡方) | 验证 1–4 的实现与配置一致(公示合规) | 纯统计工具,不进仿真路径 | ⛔ 本页设计 |
+| 7 | 分布检验(卡方) | 验证 1–4 的实现与配置一致(公示合规) | 纯统计工具,不进仿真路径 | ✅ R1 已落地(2026-10-10) |
 
 ## 各能力 API 设计
 
@@ -49,35 +49,43 @@ rng.normal(mu, sigma) -> f64     # Box–Muller:两次带键均匀 → 一次正
 - 正态无界,属性类用途必须配 `clamp`,钳位边界进注册表;文档与报告里如实标注"截断正态";
 - 参考实现口径:[NumPy Generator.normal](https://numpy.org/doc/stable/reference/random/generator.html)(语义对照,非实现依赖)。
 
-### 3. 加权表 WeightedTable(有放回)
+### 3. 加权表 WeightedTable(有放回)✅ R1 已落地
 
 **场景**:掉落表(70/25/5 三档)、品质 roll、NPC 行为分支。
 
 ```yaml
-# 配置面(加载期校验:权重非负、至少一项为正)
-loot:
-  chest:
-    weights: { gold_small: 70, gold_mid: 25, gem: 5 }
+# 配置面(落地形态:表挂 model.loot.tables 下;加载期校验:权重非负、至少一项为正)
+model:
+  loot:
+    rate_mult: 1.0        # 全局掉率倍率(数值槽,可 sweep;乘到掉落产出量,不改表形状)
+    tables:
+      chest:
+        weights: { gold_small: 70, gold_mid: 25, gem: 5 }
 ```
 
 ```text
-加载期:weights → CDF 前缀和(与公式引擎同纪律:加载期编译,运行期零字符串)
-运行期:rng.weighted(&table) -> 项索引   # 均匀一次 + CDF 二分,O(log n)
+加载期:weights → WeightedTable{names, cums, total}(CDF 前缀和,加载期编译)
+运行期:rng.weighted(Purpose::Loot, &table) -> 项索引   # 均匀一次 + CDF 二分,O(log n)
 ```
 
 - 轮盘线性扫 O(n) 是朴素实现;alias method(Walker 1977;Vose 1991 给出 O(n) 构造 / O(1) 采样)为**热路径优化项**,构造成本一次性,仅当表被单日百万级引用时启用——MVP 用 CDF 二分,可读性优先;
-- 表条目的**权重**不进数值通道(`ParamKind::Table`,同 `tier_table` 先例:改形态走 YAML 编辑);但可另开一个"全局掉率倍率"数值参数(`loot.rate_mult`,扫它 = 扫产出强度);
+- 表条目的**权重**不进数值通道(`model.loot.tables` 走 `ParamKind::Table`,同 `tier_table` 先例:改形态走 YAML 编辑);"全局掉率倍率"落为数值参数 `model.loot.rate_mult`(**扫它 = 扫产出强度**;分布检验不涉及它——倍率乘量不改分布形状);
 - 权重非概率:期望占比 = wᵢ/Σw,报告层负责换算成"每百次期望次数"给策划看。
 
-### 4. 洗牌与无放回抽样
+### 4. 洗牌与无放回抽样 ✅ R1 已落地
 
 **场景**:卡组抽牌(无放回)、限定池去重掉落(无放回加权)、组队随机抽样。
 
 ```text
-rng.shuffle(&mut xs)                          # Fisher–Yates,O(n)
-rng.sample(&xs, k) -> Vec<T>                  # 局部 Fisher–Yates,只洗前 k 位,O(k)
-rng.sample_weighted(&xs, weights, k)          # Efraimidis–Spirakis 键序法,O(n log k)
+rng.shuffle(purpose, &mut xs)                  # Fisher–Yates,O(n),消耗 n−1 抽取
+rng.sample(purpose, &xs, k) -> Vec<T>          # 局部 Fisher–Yates,只洗前 k 位,O(k)
+rng.sample_weighted(purpose, &xs, &table, k)   # A-Res 键序法,O(n log n)
 ```
+
+- Fisher–Yates(经典,见 Knuth TAOCP 卷 2)为均匀洗牌标准解;**局部洗牌**抽 k 项天然等价无放回均匀;
+- 带权无放回用 A-Res 键序法(Efraimidis & Spirakis 2006:每项算键 u^(1/w) 取前 k 大),一次性流式、与权重尺度无关;
+- 洗牌 / 抽样走独立 purpose `Shuffle`(追加在枚举尾,不挪旧键)与流式抽取 `draw_stream`(一次读计数器、推进 n、按 `base+i` 派生)——批量抽取只动本 purpose 计数器,其他用途键空间不受影响;
+- 卡组类场景注意:**洗牌结果依赖牌序输入**——牌序进配置(数组序即洗牌前序),键不变则洗牌不变,CRN 成立。
 
 - Fisher–Yates(经典,见 Knuth TAOCP 卷 2)为均匀洗牌标准解;**局部洗牌**抽 k 项天然等价无放回均匀;
 - 带权无放回用 A-Res 键序法(Efraimidis & Spirakis 2006:每项算键 u^(1/w) 取前 k 大),一次性流式、与权重尺度无关;
@@ -108,7 +116,7 @@ gacha:
 
 `base_seed + r`(第 r 个 replicate)即回放机制:同 seed 同配置 → results 逐位一致(`web_parity` / 黄金快照锁死,见[测试策略](./19-testing))。本页只补一条设计约定:**实验报告必须落 `base_seed`**(已落在 report.json / sweep.json 的 meta),使任何一次 run 可被 `--seed` 复跑——"回放"不需要新机制,需要的是报告可追溯(已满足)。
 
-### 7. 分布检验(卡方)
+### 7. 分布检验(卡方)✅ R1 已落地
 
 ::: tip 定位红线
 分布检验是**随机原语的测试台**,不进仿真路径(与 DuckDB 同纪律:事后验证)。
@@ -117,8 +125,9 @@ gacha:
 **场景**:验证加权表实现与配置一致(公示口径合规:hello-game numerical/05 的红线——"公示的概率就是玩家会拿来做决策的概率")、验证均匀/正态的统计正确性。
 
 ```text
-sandtable disttest --purpose loot --samples 100000 --alpha 0.01
-# 或(core API):chi_square(&observed, &expected) -> (χ², df, p)
+sandtable disttest uniform --samples 100000 --buckets 10 --alpha 0.01
+sandtable disttest weighted <scenario.yaml> chest --samples 100000 --alpha 0.01
+# 或(core API):chi_square(&observed, &expected) -> (stat, df, p);merge_buckets 做 Cochran 合并
 ```
 
 - 口径:Pearson χ² = Σ(Oᵢ−Eᵢ)²/Eᵢ,df = 独立桶数 − 1;p ≥ α 通过。参考语义:[SciPy `stats.chisquare`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.chisquare.html)(交叉验证用,非运行时依赖);
@@ -141,11 +150,18 @@ sandtable disttest --purpose loot --samples 100000 --alpha 0.01
 
 | 阶段 | 内容 | 验收 |
 | --- | --- | --- |
-| R1 | 加权表(加载期 CDF + YAML 面 + `ParamKind::Table`)+ 洗牌/无放回抽样 + `disttest` 子命令(均匀/加权) | 新 purpose 不动旧键(黄金快照逐位不变);万次采样 χ² 全过;params 表计数 +1(rate_mult) |
+| R1 ✅ 已落地(2026-10-10) | 加权表(加载期 CDF + YAML 面 + `ParamKind::Table`)+ 洗牌/无放回抽样 + `disttest` 子命令(均匀/加权) | 新 purpose 不动旧键(黄金快照逐位不变);万次采样 χ² 全过;params 表计数 +1(rate_mult) |
 | R2 | 保底状态机(硬/软)+ 期望抽数 KPI + 抽卡案例 yaml | 数值例对账(2%/50 保底 → 期望 ≈31.6 ± CI);sweep 保底长度出推荐区间;公示口径一致性报告 |
 | R3 | 正态(带 clamp)+ χ² 扩展正态分桶 | 均值/方差的 CI 覆盖;Box–Muller 双消耗的键稳定性测试(A/B 改 μ 不挪键) |
 
 R1/R2/R3 均为内核扩展,动 `rng.rs` 与注册表——**实施前以本页为口径基线,逐阶段走完测试全绿再合入**(每阶段独立提交)。
+
+### R1 落地存档(2026-10-10)
+
+- **purpose 键纪律**:`Purpose::Shuffle = 6` 追加在枚举尾(锁定测试断言 0–6 逐位不变);加权表抽取复用既有空置的 `Purpose::Loot = 3`,R2/R3 用途届时继续尾部追加。黄金快照(`tests/golden.rs`)逐字节通过,`config_hash` 不变。
+- **配置面**:落地形态比设计稿多一层——`model.loot: {rate_mult, tables: {表名: {weights: {...}}}}`。`tables` 走 `ParamKind::Table`(结构参数,不进数值通道),`rate_mult` 是 F64 数值槽(params 表计数 +1:52 → 53)。`loot: Option<LootConfig>` + `skip_serializing_if`(同 training 字段先例),未配置时 config_hash 与旧版逐字节一致。
+- **抽取原语**(`rng.rs`):`WeightedTable`(from_weights 校验 / probabilities / pick 二分)、`Draw::weighted`、`DayRng::weighted` / `draw_stream`(流式,一次推进 n)/ `shuffle`(Fisher–Yates,n−1 抽取)/ `sample`(局部洗牌取前 k)/ `sample_weighted`(A-Res 键序法,`u^(1/w)` 取前 k 大,total_cmp 排序 + 序号 tiebreak)。
+- **分布检验**(`disttest.rs`,不进仿真路径):Pearson χ²、Cochran 桶合并(期望 ≥ 5)、p 值经正则化不完全伽马(级数 + Lentz 连分数,Lanczos ln Γ);CLI `disttest uniform | weighted`,检验失败退出码 1,配置错误 2。
 
 ## 来源与分级
 
