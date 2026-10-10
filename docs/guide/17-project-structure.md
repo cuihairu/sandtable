@@ -28,7 +28,7 @@ sandtable/
 │
 ├── apps/
 │   ├── web/                  # React + TS + Vite(已落地:配置编辑 → 本地仿真 → KPI/曲线/分群表,零图表库;项目多配置选择器已落地)
-│   └── desktop/              # Tauri 2 壳(Phase 7,已起步:src-tauri + core path 直连,命令面最小可跑;Linux 本机先行)
+│   └── desktop/              # Tauri 2 壳(Phase 7:src-tauri + core path 直连,命令面 6 个全接线,native query 已入 UI;Linux 本机先行)
 │
 ├── examples/
 │   └── minimal-rpg/          # MVP 最小 RPG 实验配置与说明
