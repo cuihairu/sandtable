@@ -1,7 +1,7 @@
 // SQL 查询面板(DuckDB-Wasm):查询结果表 + 选中数值列画折线;
 // 可载入项目文件(.sandtable,解包校验同 CLI project check)或散装 CSV,
 // CSV 产物注册为 DuckDB 表后直接 SQL(文档 22 章)。
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import LineChart from './LineChart'
 import { loadProjectCsvs } from '../lib/duck'
 import { unpackProject } from '../lib/project'
@@ -11,11 +11,20 @@ const MAX_ROWS = 100
 
 export default function QueryPanel({
   run,
+  loader,
+  hint,
+  initialSql,
 }: {
   run: (sql: string) => Promise<QueryColumn[]>
+  /** 文件选择控件:默认「载入项目 / CSV」(浏览器 duckdb-wasm 内存表),
+   *  桌面传本地文件选择器(native 命令读磁盘产物) */
+  loader?: ReactNode
+  /** 选择器旁的说明文字 */
+  hint?: string
+  initialSql?: string
 }) {
   const [sql, setSql] = useState(
-    'SELECT day, active, win_rate, gold_supply FROM days ORDER BY day',
+    initialSql ?? 'SELECT day, active, win_rate, gold_supply FROM days ORDER BY day',
   )
   const [cols, setCols] = useState<QueryColumn[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -113,21 +122,23 @@ export default function QueryPanel({
         </button>
       </div>
       <div className="toolbar" style={{ margin: '8px 0' }}>
-        <label className="reps">
-          载入项目 / CSV
-          <input
-            type="file"
-            accept=".sandtable,.csv"
-            disabled={busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) void loadFile(f)
-              e.target.value = ''
-            }}
-          />
-        </label>
+        {loader ?? (
+          <label className="reps">
+            载入项目 / CSV
+            <input
+              type="file"
+              accept=".sandtable,.csv"
+              disabled={busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void loadFile(f)
+                e.target.value = ''
+              }}
+            />
+          </label>
+        )}
         <span className="note">
-          .sandtable 解包校验同 CLI project check;CSV 产物进 DuckDB 表
+          {hint ?? '.sandtable 解包校验同 CLI project check;CSV 产物进 DuckDB 表'}
         </span>
         {loaded && <span className="note">{loaded}</span>}
       </div>

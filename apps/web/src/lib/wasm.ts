@@ -12,13 +12,16 @@ import init, {
 import { invoke } from '@tauri-apps/api/core'
 import type {
   CandidateResult,
+  LocalQueryResult,
   SimOutput,
   SweepPlan,
   SweepRecOutput,
   ValidateInfo,
 } from './types'
 
-const isDesktop =
+// 桌面壳(Tauri)运行中:前端按此决定走 native 命令面还是浏览器 wasm。
+// 导出供面板级判断用(本地文件查询只有桌面能用)。
+export const isDesktop =
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 let ready: Promise<unknown> | null = null
@@ -83,4 +86,15 @@ export async function recommendSweep(
   return JSON.parse(
     sweepRecommendBinding(yaml, JSON.stringify(results)) as unknown as string,
   ) as SweepRecOutput
+}
+
+// —— 本地文件查询(仅桌面)——
+// 会话内按天数据走 duckdb-wasm 内存表;CLI / 桌面产物在磁盘上,浏览器拿不到
+// 本机路径,只有桌面壳的 query 命令(duckdb-rs,与 CLI query 同源)能只读打开。
+export async function queryLocal(
+  inputs: string[],
+  sql: string,
+): Promise<LocalQueryResult> {
+  if (!isDesktop) throw new Error('本地文件查询仅在桌面端可用')
+  return invoke('query', { inputs, sql })
 }

@@ -130,3 +130,11 @@ export interface SweepRecOutput {
   elasticities: Elasticity[]
   recommendation: Recommendation
 }
+
+// —— 桌面 native 查询(apps/desktop `query` 命令,duckdb-rs 只读)——
+
+/** 与 CLI `query` 输出同构:列名 + 行单元格(全部按显示文本返回) */
+export interface LocalQueryResult {
+  columns: string[]
+  rows: string[][]
+}

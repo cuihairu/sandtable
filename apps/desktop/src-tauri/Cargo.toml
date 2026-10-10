@@ -13,9 +13,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 sandtable-core = { path = "../../../crates/sandtable-core" }
 serde_json = "1"
 tauri = { version = "2", features = [] }
+# 前端「本地结果文件分析」面板经 dialog 插件选文件(官方一等插件,同 2.x 线)
+tauri-plugin-dialog = "2"
 # 本地分析层(拍板 2026-10-10 复用 duckdb-rs):只读结果数据集,
 # 与 CLI query 子命令同源;前端查询层继续 duckdb-wasm(同一前端零改动)
 duckdb = { version = "1", default-features = false, features = ["bundled", "parquet"] }
+
+[dev-dependencies]
+# 桌面等价验收:与 wasm 绑定同配置同 seed 逐值一致(web_parity 已锁 wasm↔CLI)
+sandtable-wasm = { path = "../../../crates/sandtable-wasm" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

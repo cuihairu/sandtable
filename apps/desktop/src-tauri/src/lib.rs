@@ -7,6 +7,7 @@
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             validate_config,
             run_simulation,
@@ -297,6 +298,24 @@ mod tests {
         );
         assert!(sweep_candidate(EXP_YAML.into(), 0, values.into()).is_err());
         assert!(sweep_recommend("no sweep".into(), "[]".into()).is_err());
+    }
+
+    #[test]
+    fn 运行_与wasm绑定同配置同seed逐值一致() {
+        // 三角口径(文档 18 章 Phase 7 验收):web_parity 已锁 wasm↔CLI
+        // 逐值一致,本测试锁 desktop↔wasm——两条腿合起来,桌面与 CLI
+        // 同配置同 seed 产物等价(同一内核的三个入口)。配置用宝可梦案例,
+        // 与 web_parity 同源,覆盖 dungeon / progression 真实形状。
+        let yaml = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../examples/pokemon.yaml"
+        ))
+        .unwrap();
+        let v = run_simulation(yaml.clone(), 2).unwrap();
+        let w = sandtable_wasm::run_simulation_native(&yaml, 2).unwrap();
+        assert_eq!(v["results"], w["results"], "results 逐值一致");
+        assert_eq!(v["config_hash"], w["config_hash"], "config_hash 一致");
+        assert_eq!(v["days_csv"], w["days_csv"], "days_csv 逐字节一致");
     }
 
     #[test]

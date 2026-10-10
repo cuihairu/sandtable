@@ -2,6 +2,7 @@
 // 配置在浏览器编辑,WASM 内核本地执行,结果只在内存里出图。
 import { useMemo, useRef, useState } from 'react'
 import LineChart from './components/LineChart'
+import LocalQuery from './components/LocalQuery'
 import QueryPanel from './components/QueryPanel'
 import SweepPanel from './components/SweepPanel'
 import { exportCsvAsParquet, loadDayStats, runQuery } from './lib/duck'
@@ -9,7 +10,7 @@ import { PRESETS, SWEEP_PRESETS } from './lib/presets'
 import { unpackProject } from './lib/project'
 import type { UnpackedProject } from './lib/project'
 import type { RunMetrics, SimOutput } from './lib/types'
-import { runSimulation } from './lib/wasm'
+import { isDesktop, runSimulation } from './lib/wasm'
 
 function pct(v: number): string {
   return `${(v * 100).toFixed(2)}%`
@@ -331,6 +332,18 @@ export default function App() {
       )}
 
       <SweepPanel yaml={sweepYaml} onYamlChange={setSweepYaml} />
+
+      {isDesktop && (
+        <section className="panel">
+          <h2>本地结果文件分析(桌面,native DuckDB)</h2>
+          <p className="note">
+            桌面独有:duckdb-rs 只读打开本机 CSV / Parquet 产物(与 CLI query
+            同源,不进仿真路径);上方查询面板是会话内按天数据(duckdb-wasm
+            内存表)。
+          </p>
+          <LocalQuery />
+        </section>
+      )}
 
       <footer>
         <span>
