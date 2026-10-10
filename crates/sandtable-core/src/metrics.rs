@@ -104,6 +104,10 @@ pub struct RunMetrics {
     pub inflation_last: f64,
     /// 日 sink_ratio 序列均值
     pub sink_ratio_mean: f64,
+    /// 抽卡 KPI(文档 24 章 R2):期望抽数 E[T] = 总抽数 / 总命中(每 actor
+    /// 一次"出到即止"会话);gacha 未配置时为 None,不进 JSON(黄金快照不变)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gacha_pulls_to_hit: Option<f64>,
     pub power_snapshots: Vec<PowerSnapshot>,
     pub cohort_stats: Vec<CohortStat>,
     pub day_stats: Vec<DayStat>,
@@ -165,6 +169,8 @@ pub struct RunAggregator {
     inflation_sum: f64,
     inflation_days: u64,
     inflation_last: f64,
+    gacha_pulls_total: u64,
+    gacha_hits_total: u64,
 }
 
 impl RunAggregator {
@@ -189,6 +195,8 @@ impl RunAggregator {
             inflation_sum: 0.0,
             inflation_days: 0,
             inflation_last: 0.0,
+            gacha_pulls_total: 0,
+            gacha_hits_total: 0,
         }
     }
 
@@ -240,6 +248,13 @@ impl RunAggregator {
     pub fn record_churn(&mut self) {
         self.cur.new_churned += 1;
         self.churn_total += 1;
+    }
+
+    /// 抽卡会话结算(文档 24 章 R2):累计抽数与命中数,不进日统计
+    /// (抽卡在 tick 0 的开号会话,不属于任何一天)。
+    pub fn record_gacha(&mut self, pulls: u64, hits: u64) {
+        self.gacha_pulls_total += pulls;
+        self.gacha_hits_total += hits;
     }
 
     pub fn observe_power(&mut self, power: i64) {
@@ -345,6 +360,11 @@ impl RunAggregator {
             },
             inflation_last: self.inflation_last,
             sink_ratio_mean: self.sink_ratio_sum / self.days.max(1) as f64,
+            gacha_pulls_to_hit: if self.gacha_hits_total > 0 {
+                Some(self.gacha_pulls_total as f64 / self.gacha_hits_total as f64)
+            } else {
+                None
+            },
             power_snapshots: self.power_snapshots,
             cohort_stats: self.final_cohort_stats.unwrap_or_default(),
             day_stats: self.day_stats,

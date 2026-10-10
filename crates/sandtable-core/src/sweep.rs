@@ -671,6 +671,77 @@ mod tests {
         );
     }
 
+    /// R2 验收(文档 24 章):sweep 保底长度出推荐区间——扫
+    /// model.gacha.pity_hard ∈ {10..50},hard 约束「期望抽数 ≤ 30」。
+    /// E[T](H) = (1 − 0.98^H)/0.02:H = 40 → 27.7 全过,H = 50 → 31.8 不过,
+    /// 解析交点 H ≈ 45.7 → 上端点应插值落在 40–50 之间且贴近 45.7。
+    #[test]
+    fn 抽卡_扫保底长度出推荐区间() {
+        let base = SimConfig {
+            players: 2000,
+            days: 1,
+            gacha: Some(crate::config::GachaConfig {
+                base_rate: 0.02,
+                pity_hard: 50,
+                pity_soft_start: 0,
+                pity_soft_step: 0.0,
+            }),
+            ..SimConfig::default()
+        };
+        let spec = SweepSpec {
+            mode: SweepMode::Grid,
+            parameters: vec![ParamRange {
+                path: "model.gacha.pity_hard".into(),
+                min: 10.0,
+                max: 50.0,
+                step: 10.0,
+            }],
+            replicates: 4,
+            samples: 0,
+            targets: vec![Target {
+                metric: MetricKey::GachaPullsToHit,
+                min: None,
+                max: Some(30.0),
+                kind: TargetKind::Hard,
+            }],
+        };
+        let cands = spec.plan(7).unwrap();
+        assert_eq!(cands.len(), 5);
+        let results: Vec<CandidateResult> = cands
+            .iter()
+            .map(|c| run_candidate(&base, &spec, c))
+            .collect();
+        // 解析对账:E[T](H) = (1 − 0.98^H)/0.02(截断几何闭式)
+        let et_at = |h: f64| (1.0 - 0.98_f64.powf(h)) / 0.02;
+        assert!((et_at(50.0) - 31.79).abs() < 0.01);
+        // H = 10 与 50 的候选点应各在一侧(低保底轻松达标,50 抽必超)
+        let stat_at_h = |h: f64| -> f64 {
+            results
+                .iter()
+                .find(|r| r.values["model.gacha.pity_hard"] == h)
+                .and_then(|r| {
+                    r.metric_stats
+                        .iter()
+                        .find(|(k, _)| *k == MetricKey::GachaPullsToHit)
+                })
+                .map(|(_, s)| s.mean)
+                .expect("gacha 指标应随候选汇总")
+        };
+        assert!(stat_at_h(10.0) < 30.0);
+        assert!(stat_at_h(50.0) > 30.0);
+        let rec = crate::recommend::recommend_axis(&spec, &base, &results, 0);
+        let (lo, hi) = rec.interval.expect("约束下应有可行区间");
+        assert_eq!(lo, 10.0, "轴下端低保底全过,区间下端 = 格点 10");
+        assert!(
+            (40.0..=50.0).contains(&hi),
+            "上端点应插值在 40–50 之间:{hi}"
+        );
+        assert!(
+            (43.0..=48.5).contains(&hi),
+            "上端点应贴近解析交点 45.7(端点插值):{hi}"
+        );
+    }
+
     #[test]
     fn 运行候选_ok_全指标汇总与判定() {
         let base = SimConfig {
@@ -689,7 +760,9 @@ mod tests {
         let cands = spec.plan(1).unwrap();
         let r = run_candidate(&base, &spec, &cands[0]);
         assert!(matches!(r.status, CandidateStatus::Ok));
-        assert_eq!(r.metric_stats.len(), MetricKey::ALL.len());
+        // 全部指标进汇总;gacha_pulls_to_hit 在未配置 gacha 时 extract 为
+        // None,被 filter_map 跳过(每键 +1 个 None 槽即 −1 条汇总)
+        assert_eq!(r.metric_stats.len(), MetricKey::ALL.len() - 1);
         let win = r
             .metric_stats
             .iter()

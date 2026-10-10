@@ -29,6 +29,13 @@ pub struct Actor {
     pub in_day1_cohort: bool,
     /// 连续活跃日无战力增长(停滞计数,文档 13 章流失机制)
     pub idle_streak: u32,
+    /// 抽卡状态(文档 24 章 R2):距上次命中连续未中抽数(保底计数器,
+    /// actor 确定性状态、不进 RNG 键——CRN 不因保底参数漂移而挪键)
+    pub gacha_since_hit: u64,
+    /// 累计抽数
+    pub gacha_pulls: u64,
+    /// 累计命中数
+    pub gacha_hits: u64,
 }
 
 impl Actor {
@@ -86,6 +93,9 @@ impl World {
                 churned: false,
                 in_day1_cohort: false,
                 idle_streak: 0,
+                gacha_since_hit: 0,
+                gacha_pulls: 0,
+                gacha_hits: 0,
             };
             actor.recompute_power();
             actors.push(actor);

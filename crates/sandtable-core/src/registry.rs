@@ -251,6 +251,30 @@ const MODEL: &[ParamSpec] = &[
         "—",
         "掉落加权表(表名 → 权重;加载期编译为 CDF,结构参数,不进数值通道)",
     ),
+    spec(
+        "model.gacha.base_rate",
+        F64,
+        "0.02",
+        "抽卡单抽基础命中率(0, 1];扫它 = 扫出货概率强度)",
+    ),
+    spec(
+        "model.gacha.pity_hard",
+        U64,
+        "0",
+        "硬保底抽数(第 N 抽必中;0 = 无保底)",
+    ),
+    spec(
+        "model.gacha.pity_soft_start",
+        U64,
+        "0",
+        "软保底起点抽数(从第 N 抽起每抽 +step)",
+    ),
+    spec(
+        "model.gacha.pity_soft_step",
+        F64,
+        "0.0",
+        "软保底起点后每抽概率增量(0 = 无软保底)",
+    ),
 ];
 
 use ParamKind::{Dur, Expr, Mix, Table, F64, I64, U32, U64};
@@ -322,6 +346,7 @@ const SECTIONS: &[&str] = &[
     "model.formulas",
     "model.churn",
     "model.loot",
+    "model.gacha",
 ];
 
 /// 遗留路径:只放行 YAML 加载(serde 侧按遗留语义映射,见
@@ -422,6 +447,14 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.churn.p_stall" => Ok(cfg.churn.p_stall),
         "model.churn.stall_days" => Ok(cfg.churn.stall_days as f64),
         "model.loot.rate_mult" => Ok(cfg.loot.as_ref().map(|l| l.rate_mult).unwrap_or(1.0)),
+        "model.gacha.base_rate" => Ok(cfg.gacha.as_ref().map(|g| g.base_rate).unwrap_or(0.02)),
+        "model.gacha.pity_hard" => Ok(cfg.gacha.as_ref().map(|g| g.pity_hard).unwrap_or(0) as f64),
+        "model.gacha.pity_soft_start" => {
+            Ok(cfg.gacha.as_ref().map(|g| g.pity_soft_start).unwrap_or(0) as f64)
+        }
+        "model.gacha.pity_soft_step" => {
+            Ok(cfg.gacha.as_ref().map(|g| g.pity_soft_step).unwrap_or(0.0))
+        }
         // 非数值槽:与 apply_numeric 同口径
         "scenario.duration"
         | "model.formulas.xp_needed"
@@ -531,6 +564,26 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
             cfg.loot
                 .get_or_insert_with(crate::config::LootConfig::default)
                 .rate_mult = value;
+        }
+        "model.gacha.base_rate" => {
+            cfg.gacha
+                .get_or_insert_with(crate::config::GachaConfig::default)
+                .base_rate = value;
+        }
+        "model.gacha.pity_hard" => {
+            cfg.gacha
+                .get_or_insert_with(crate::config::GachaConfig::default)
+                .pity_hard = unsigned(value, "pity_hard")?.round() as u64;
+        }
+        "model.gacha.pity_soft_start" => {
+            cfg.gacha
+                .get_or_insert_with(crate::config::GachaConfig::default)
+                .pity_soft_start = unsigned(value, "pity_soft_start")?.round() as u64;
+        }
+        "model.gacha.pity_soft_step" => {
+            cfg.gacha
+                .get_or_insert_with(crate::config::GachaConfig::default)
+                .pity_soft_step = unsigned(value, "pity_soft_step")?;
         }
         // 非数值槽:不可数值扫描(时长是字符串,公式是表达式,逐层表是数组,
         // 伤害口径是枚举开关,掉落表是结构)

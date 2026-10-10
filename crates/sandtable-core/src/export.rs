@@ -102,6 +102,13 @@ pub fn summary_text(m: &RunMetrics) -> String {
         "whale_gold_share{:.4}  (MVP 无付费语义)",
         m.whale_gold_share
     );
+    if let Some(et) = m.gacha_pulls_to_hit {
+        let _ = writeln!(
+            s,
+            "gacha_pulls_to_hit{:.2}  抽(出到即止会话,文档 24 章)",
+            et
+        );
+    }
     if let Some(last) = m.power_snapshots.last() {
         let _ = writeln!(
             s,

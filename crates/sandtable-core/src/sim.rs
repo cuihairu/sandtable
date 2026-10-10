@@ -20,7 +20,7 @@ use crate::metrics::{cohort_slice, RunMetrics, SNAPSHOT_DAYS};
 use crate::rng::{DayRng, Purpose};
 use crate::systems::{
     behavior::{self, Action},
-    churn, combat, progression,
+    churn, combat, gacha, progression,
 };
 use crate::world::World;
 
@@ -33,6 +33,8 @@ enum SimEvent {
     PlayerDay { actor_id: u64, day: u32 },
     /// 日结:存量 G(d)、Power 观测、快照日分布
     DayClose { day: u32 },
+    /// 抽卡会话(文档 24 章 R2):开号"出到即止",tick 0(第 1 天之前)
+    GachaRoll { actor_id: u64 },
 }
 
 /// 运行第 `replicate` 个 replicate(0 起),返回该次运行的完整指标。
@@ -49,8 +51,14 @@ pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
     let mut world = World::new(run_cfg);
 
     // 一次性调度全部事件;(tick, seq) 全序保证出队序 = 逐日 id 升序的
-    // 老双层循环序(浮点聚合顺序不变,指标逐位一致)。
+    // 老双层循环序(浮点聚合顺序不变,指标逐位一致)。抽卡会话排在 tick 0
+    // (Clock 起点,先于第 1 天):开号行为,不属于任何一天。
     let mut queue = EventQueue::new();
+    if cfg.gacha.is_some() {
+        for id in 0..u64::from(cfg.players) {
+            queue.push(0, SimEvent::GachaRoll { actor_id: id });
+        }
+    }
     for day in 1..=cfg.days {
         queue.push(u64::from(day), SimEvent::DayOpen { day });
         for id in 0..u64::from(cfg.players) {
@@ -67,6 +75,7 @@ pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
             xp_formula: &xp_needed_formula,
         }),
         Box::new(DayCloseSystem { cfg }),
+        Box::new(GachaRollSystem { cfg, seed }),
     ];
 
     let mut clock = Clock::start();
@@ -214,6 +223,37 @@ impl System<World, SimEvent> for PlayerDaySystem<'_> {
             actor.churned = true;
             agg.record_churn();
         }
+    }
+}
+
+/// 抽卡会话系统(文档 24 章 R2):每个玩家一次"出到即止"会话,逐抽
+/// 消耗 Purpose::Gacha 事件直到命中;命中数计入 E[T] 分母。
+struct GachaRollSystem<'a> {
+    cfg: &'a SimConfig,
+    seed: u64,
+}
+
+impl System<World, SimEvent> for GachaRollSystem<'_> {
+    fn name(&self) -> &'static str {
+        "gacha_roll"
+    }
+
+    fn subscribed(&self, event: &SimEvent) -> bool {
+        matches!(event, SimEvent::GachaRoll { .. })
+    }
+
+    fn update(&mut self, world: &mut World, _tick: u64, event: SimEvent) {
+        let SimEvent::GachaRoll { actor_id } = event else {
+            unreachable!("subscribed 已过滤非 GachaRoll 事件")
+        };
+        let Some(gc) = self.cfg.gacha.as_ref() else {
+            return; // 未配置抽卡不会调度本事件,防御性跳过
+        };
+        let seed = self.seed;
+        let actor = &mut world.actors[actor_id as usize];
+        let mut rng = DayRng::new(seed, actor_id, 0);
+        let pulls = gacha::pull_until_hit(&mut rng, actor, gc);
+        world.agg.record_gacha(pulls, 1);
     }
 }
 
@@ -462,6 +502,99 @@ mod tests {
         assert_eq!(a.seed, b.seed);
         assert_eq!(a.day1_cohort, b.day1_cohort);
         assert_ne!(a.config_hash, b.config_hash);
+    }
+
+    /// 抽卡 KPI(文档 24 章 R2):2%/50 硬保底下 E[T] 对齐解析解
+    /// Σ t·0.98^(t−1)·0.02 + 50·0.98^49 ≈ 31.79;未配置 gacha 时
+    /// gacha_pulls_to_hit 为 None(不进 JSON,黄金快照不变)。
+    #[test]
+    fn 抽卡_期望抽数对齐解析解() {
+        let cfg = SimConfig {
+            players: 2000,
+            days: 1,
+            gacha: Some(crate::config::GachaConfig {
+                base_rate: 0.02,
+                pity_hard: 50,
+                pity_soft_start: 0,
+                pity_soft_step: 0.0,
+            }),
+            ..SimConfig::default()
+        };
+        let m = run(&cfg, 0);
+        let et = m.gacha_pulls_to_hit.expect("配置了 gacha 应有 E[T]");
+        let p: f64 = 0.02;
+        let analytic: f64 = (1..=49)
+            .map(|t| t as f64 * (1.0 - p).powi(t - 1) * p)
+            .sum::<f64>()
+            + 50.0 * (1.0 - p).powi(49);
+        assert!(
+            (et - analytic).abs() < 1.0,
+            "E[T] 解析 {analytic} vs 实测 {et}"
+        );
+
+        let plain = SimConfig {
+            players: 10,
+            days: 1,
+            ..SimConfig::default()
+        };
+        assert!(run(&plain, 0).gacha_pulls_to_hit.is_none());
+    }
+
+    /// 硬保底方向:保底越近 E[T] 越小(10 抽保底 ≈ 9.15 < 50 抽保底 ≈ 31.79)。
+    #[test]
+    fn 抽卡_硬保底越近抽数越少() {
+        let base = SimConfig {
+            players: 2000,
+            days: 1,
+            gacha: Some(crate::config::GachaConfig {
+                base_rate: 0.02,
+                pity_hard: 50,
+                pity_soft_start: 0,
+                pity_soft_step: 0.0,
+            }),
+            ..SimConfig::default()
+        };
+        let mut near = base.clone();
+        near.gacha.as_mut().unwrap().pity_hard = 10;
+        let a = run(&base, 0);
+        let b = run(&near, 0);
+        let ea = a.gacha_pulls_to_hit.unwrap();
+        let eb = b.gacha_pulls_to_hit.unwrap();
+        assert!(eb < ea, "10 抽保底 E[T]={eb} 应 < 50 抽保底 E[T]={ea}");
+        assert!((eb - 9.15).abs() < 1.0, "10 抽保底 E[T] ≈ 9.15,实测 {eb}");
+    }
+
+    /// 保底参数不进 RNG 键(CRN):只改 pity_hard 的 A/B 臂,日统计与
+    /// 分群逐位一致(键未挪),仅抽卡 KPI 不同。
+    #[test]
+    fn 抽卡_改保底不挪键() {
+        let base = SimConfig {
+            players: 300,
+            days: 5,
+            gacha: Some(crate::config::GachaConfig {
+                base_rate: 0.02,
+                pity_hard: 50,
+                pity_soft_start: 0,
+                pity_soft_step: 0.0,
+            }),
+            ..SimConfig::default()
+        };
+        let mut arm_b = base.clone();
+        arm_b.gacha.as_mut().unwrap().pity_hard = 10;
+        let a = run(&base, 2);
+        let b = run(&arm_b, 2);
+        assert_eq!(a.seed, b.seed);
+        assert_eq!(a.day1_cohort, b.day1_cohort);
+        assert_eq!(
+            serde_json::to_string(&a.day_stats).unwrap(),
+            serde_json::to_string(&b.day_stats).unwrap(),
+            "保底参数不挪键:日统计应逐位一致"
+        );
+        assert_ne!(a.config_hash, b.config_hash);
+        assert!(
+            b.gacha_pulls_to_hit.unwrap() < a.gacha_pulls_to_hit.unwrap(),
+            "B 臂保底更近,E[T] 应更小"
+        );
     }
 
     /// A/B 方向:攻击大幅提升 → 金币产出严格增加(CRN 配对下逐 replicate 同向)。

@@ -71,6 +71,9 @@ mod tests {
             churned: false,
             in_day1_cohort: false,
             idle_streak: 0,
+            gacha_since_hit: 0,
+            gacha_pulls: 0,
+            gacha_hits: 0,
         };
         a.recompute_power();
         a

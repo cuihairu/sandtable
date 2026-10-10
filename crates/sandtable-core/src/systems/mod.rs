@@ -7,4 +7,5 @@
 pub mod behavior;
 pub mod churn;
 pub mod combat;
+pub mod gacha;
 pub mod progression;

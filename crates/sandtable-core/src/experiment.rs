@@ -167,16 +167,19 @@ pub enum MetricKey {
     PowerP50Final,
     /// 累计流失率
     ChurnRate,
+    /// 抽卡期望抽数 E[T](gacha 未配置时为 None,不进比较)
+    GachaPullsToHit,
 }
 
 impl MetricKey {
-    pub const ALL: [MetricKey; 6] = [
+    pub const ALL: [MetricKey; 7] = [
         MetricKey::RetentionD7,
         MetricKey::RetentionD3,
         MetricKey::WinRate,
         MetricKey::GoldPerPlayer,
         MetricKey::PowerP50Final,
         MetricKey::ChurnRate,
+        MetricKey::GachaPullsToHit,
     ];
 
     pub fn parse(s: &str) -> Option<Self> {
@@ -187,6 +190,7 @@ impl MetricKey {
             "gold_per_player" => MetricKey::GoldPerPlayer,
             "power_p50" => MetricKey::PowerP50Final,
             "churn_rate" => MetricKey::ChurnRate,
+            "gacha_pulls_to_hit" => MetricKey::GachaPullsToHit,
             _ => return None,
         })
     }
@@ -199,6 +203,7 @@ impl MetricKey {
             MetricKey::GoldPerPlayer => "gold_per_player",
             MetricKey::PowerP50Final => "power_p50",
             MetricKey::ChurnRate => "churn_rate",
+            MetricKey::GachaPullsToHit => "gacha_pulls_to_hit",
         }
     }
 
@@ -210,6 +215,7 @@ impl MetricKey {
             MetricKey::GoldPerPlayer => Some(m.gold_earned_total as f64 / m.players.max(1) as f64),
             MetricKey::PowerP50Final => m.power_snapshots.last().map(|s| s.p50),
             MetricKey::ChurnRate => Some(m.churn_rate_total),
+            MetricKey::GachaPullsToHit => m.gacha_pulls_to_hit,
         }
     }
 }
@@ -312,12 +318,18 @@ mod tests {
             inflation_daily_mean: 0.0,
             inflation_last: 0.0,
             sink_ratio_mean: 0.0,
+            gacha_pulls_to_hit: Some(31.0),
             power_snapshots: vec![],
             cohort_stats: vec![],
             day_stats: vec![],
         };
         assert_eq!(MetricKey::RetentionD7.extract(&m), Some(0.8));
         assert_eq!(MetricKey::GoldPerPlayer.extract(&m), Some(5000.0));
+        assert_eq!(MetricKey::GachaPullsToHit.extract(&m), Some(31.0));
+        assert_eq!(
+            MetricKey::parse("gacha_pulls_to_hit"),
+            Some(MetricKey::GachaPullsToHit)
+        );
     }
 
     /// 单 replicate:CI 退化为点估计(df=0 的 t 值是 ∞,须绕开 ∞·0 = NaN)

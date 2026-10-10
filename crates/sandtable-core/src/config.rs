@@ -256,6 +256,33 @@ impl Default for LootConfig {
     }
 }
 
+/// 抽卡保底配置面(文档 24 章 R2)。状态机语义:
+/// 单抽成功率 `p' = min(1, base_rate + max(0, k − pity_soft_start)·pity_soft_step)`,
+/// 且 `k + 1 ≥ pity_hard > 0` 时 `p' = 1`(k = 连续未中抽数)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GachaConfig {
+    /// 单抽基础命中率(0, 1]
+    pub base_rate: f64,
+    /// 硬保底:第 pity_hard 抽必中(0 = 无)
+    pub pity_hard: u64,
+    /// 软保底起点抽数(pity_soft_step ≤ 0 时软保底整体不生效)
+    pub pity_soft_start: u64,
+    /// 起点后每抽概率增量(0 = 无软保底)
+    pub pity_soft_step: f64,
+}
+
+impl Default for GachaConfig {
+    fn default() -> Self {
+        Self {
+            base_rate: 0.02,
+            pity_hard: 0,
+            pity_soft_start: 0,
+            pity_soft_step: 0.0,
+        }
+    }
+}
+
 /// 单个分群的行为概率(文档 03 章 Actor 行为模型,MVP 形态)。
 ///
 /// `Default` 为 casual 档默认;core / whale 的默认在 [`BehaviorConfig::default`]
@@ -514,6 +541,9 @@ pub struct SimConfig {
     /// 掉落加权表(文档 24 章 R1;缺省 None = 未配置掉落表)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub loot: Option<LootConfig>,
+    /// 抽卡保底(文档 24 章 R2;缺省 None = 无抽卡系统)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gacha: Option<GachaConfig>,
 }
 
 impl Default for SimConfig {
@@ -537,6 +567,7 @@ impl Default for SimConfig {
             formulas: FormulaConfig::default(),
             churn: ChurnConfig::default(),
             loot: None,
+            gacha: None,
         }
     }
 }
@@ -603,6 +634,18 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
                     "{path}: 权重必须为有限非负数且至少一项为正"
                 )));
             }
+        }
+    }
+    if let Some(gacha) = &cfg.gacha {
+        if !gacha.base_rate.is_finite() || gacha.base_rate <= 0.0 || gacha.base_rate > 1.0 {
+            return Err(Error::Config(
+                "model.gacha.base_rate 必须在 (0, 1] 区间(≤ 0 会让抽卡永不终止)".into(),
+            ));
+        }
+        if !gacha.pity_soft_step.is_finite() || gacha.pity_soft_step < 0.0 {
+            return Err(Error::Config(
+                "model.gacha.pity_soft_step 必须为非负有限数".into(),
+            ));
         }
     }
     if cfg.churn.p_stall < cfg.churn.p_base {
@@ -856,5 +899,38 @@ mod tests {
 
         // loot = None 缺省不进 canonical JSON(训练字段先例)
         assert!(SimConfig::default().loot.is_none());
+    }
+
+    /// 抽卡面校验(文档 24 章 R2):base_rate 必须在 (0, 1](≤ 0 永不终止、
+    /// > 1 概率非法);pity_soft_step 非负有限;gacha 缺省(None)不进 canonical JSON。
+    #[test]
+    fn validate_抽卡面() {
+        fn gacha(base_rate: f64, pity_soft_step: f64) -> SimConfig {
+            SimConfig {
+                gacha: Some(GachaConfig {
+                    base_rate,
+                    pity_hard: 50,
+                    pity_soft_start: 0,
+                    pity_soft_step,
+                }),
+                ..SimConfig::default()
+            }
+        }
+
+        // base_rate 越界:0 / 负数 / > 1 / NaN 逐项报错
+        for br in [0.0, -0.5, 1.5, f64::NAN] {
+            let msg = validate(&gacha(br, 0.0)).unwrap_err().to_string();
+            assert!(msg.contains("base_rate"), "{msg}");
+        }
+        // pity_soft_step 非负有限
+        for step in [-0.01, f64::NAN] {
+            let msg = validate(&gacha(0.02, step)).unwrap_err().to_string();
+            assert!(msg.contains("pity_soft_step"), "{msg}");
+        }
+        // 合法配置通过:纯硬保底 / 软硬混合 / 无保底(步长 0)
+        assert!(validate(&gacha(0.02, 0.0)).is_ok());
+        assert!(validate(&gacha(1.0, 0.1)).is_ok());
+        // gacha = None 缺省不进 canonical JSON(训练字段先例)
+        assert!(SimConfig::default().gacha.is_none());
     }
 }

@@ -65,6 +65,7 @@ struct ModelSection {
     formulas: FormulaConfig,
     churn: ChurnConfig,
     loot: Option<crate::config::LootConfig>,
+    gacha: Option<crate::config::GachaConfig>,
 }
 
 impl Default for ModelSection {
@@ -81,6 +82,7 @@ impl Default for ModelSection {
             formulas: d.formulas,
             churn: d.churn,
             loot: d.loot,
+            gacha: d.gacha,
         }
     }
 }
@@ -429,6 +431,7 @@ impl ScenarioFile {
         cfg.formulas = m.formulas;
         cfg.churn = m.churn;
         cfg.loot = m.loot;
+        cfg.gacha = m.gacha;
 
         validate(&cfg)?;
         Ok(cfg)
@@ -874,6 +877,71 @@ model:
         )
         .unwrap_err();
         assert!(err.to_string().contains("权重"), "{err}");
+    }
+
+    /// 抽卡面(文档 24 章 R2):model.gacha YAML 进 cfg,四个保底参数
+    /// 完整保留;未配置时为 None;base_rate 可经数值通道读写(镜像口径)。
+    #[test]
+    fn gacha_yaml_往返() {
+        let cfg = load_str(
+            r#"schema_version: "1"
+scenario:
+  population: 100
+  duration: "3d"
+model:
+  gacha:
+    base_rate: 0.02
+    pity_hard: 50
+    pity_soft_start: 40
+    pity_soft_step: 0.05
+"#,
+        )
+        .unwrap();
+        let g = cfg.gacha.as_ref().expect("gacha 应被加载(不得静默丢弃)");
+        assert_eq!(g.base_rate, 0.02);
+        assert_eq!(g.pity_hard, 50);
+        assert_eq!(g.pity_soft_start, 40);
+        assert_eq!(g.pity_soft_step, 0.05);
+        // 数值通道读写(镜像口径)
+        assert_eq!(
+            crate::registry::read_numeric(&cfg, "model.gacha.pity_hard").unwrap(),
+            50.0
+        );
+        let mut cfg2 = cfg.clone();
+        crate::registry::apply_numeric(&mut cfg2, "model.gacha.pity_hard", 90.0).unwrap();
+        assert_eq!(cfg2.gacha.as_ref().unwrap().pity_hard, 90);
+        // 未配置 gacha 的场景也允许 apply(槽位 get_or_insert)
+        crate::registry::apply_numeric(&mut cfg2, "model.gacha.pity_soft_start", 70.0).unwrap();
+        assert_eq!(cfg2.gacha.as_ref().unwrap().pity_soft_start, 70);
+
+        // 未配置 gacha → None;数值槽读缺省
+        let plain = load_str(
+            r#"schema_version: "1"
+scenario:
+  population: 100
+  duration: "3d"
+"#,
+        )
+        .unwrap();
+        assert!(plain.gacha.is_none());
+        assert_eq!(
+            crate::registry::read_numeric(&plain, "model.gacha.base_rate").unwrap(),
+            0.02
+        );
+
+        // base_rate ≤ 0 在加载期报错(防永不终止)
+        let err = load_str(
+            r#"schema_version: "1"
+scenario:
+  population: 100
+  duration: "3d"
+model:
+  gacha:
+    base_rate: 0
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("base_rate"), "{err}");
     }
 
     /// 实验文件(docs 10/12 章):scenario + model + sweep 三节齐全,

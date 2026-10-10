@@ -38,9 +38,12 @@ pub enum Purpose {
     /// 共用一条流;分布检验台的抽样流也走这里——两者都不进仿真路径,
     /// 与仿真键空间分立)
     Shuffle = 6,
+    /// 抽卡命中判定(文档 24 章 R2):保底状态机抽取。保底计数器是 actor
+    /// 确定性状态,不进键;改保底参数不挪键,CRN 成立。
+    Gacha = 7,
 }
 
-pub const PURPOSE_COUNT: usize = 7;
+pub const PURPOSE_COUNT: usize = 8;
 
 /// 单个 u64 键派生:SplitMix64 终结器。
 fn mix(mut x: u64) -> u64 {
@@ -329,8 +332,9 @@ mod tests {
             Purpose::Churn as u8,
             Purpose::Cohort as u8,
             Purpose::Shuffle as u8,
+            Purpose::Gacha as u8,
         ];
-        assert_eq!(nums, [0, 1, 2, 3, 4, 5, 6]);
+        assert_eq!(nums, [0, 1, 2, 3, 4, 5, 6, 7]);
         // 各 purpose 在同一键下取值互不相同(键空间正交)
         let all = [
             Purpose::Behavior,
@@ -340,6 +344,7 @@ mod tests {
             Purpose::Churn,
             Purpose::Cohort,
             Purpose::Shuffle,
+            Purpose::Gacha,
         ];
         let vals: Vec<u64> = all.iter().map(|p| derive_u64(42, 7, 3, 1, *p)).collect();
         assert_eq!(
@@ -347,7 +352,7 @@ mod tests {
                 .cloned()
                 .collect::<std::collections::BTreeSet<_>>()
                 .len(),
-            7
+            8
         );
     }
 
