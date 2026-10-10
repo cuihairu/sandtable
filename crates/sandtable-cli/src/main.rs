@@ -240,6 +240,30 @@ enum DisttestAction {
         #[arg(long, default_value_t = 42)]
         seed: u64,
     },
+    /// 正态检验:Normal(μ, σ) 采样 → [μ±k·σ] 均分桶 χ² 检验(尾部并入首尾桶)
+    Normal {
+        /// 采样次数
+        #[arg(long, default_value_t = 100_000)]
+        samples: u64,
+        /// 桶数
+        #[arg(long, default_value_t = 20)]
+        buckets: usize,
+        /// 半宽(σ 的倍数,区间 [μ−k·σ, μ+k·σ])
+        #[arg(long, default_value_t = 3.0)]
+        spread: f64,
+        /// 均值 μ
+        #[arg(long, default_value_t = 0.0)]
+        mu: f64,
+        /// 标准差 σ
+        #[arg(long, default_value_t = 1.0)]
+        sigma: f64,
+        /// 显著性水平 α
+        #[arg(long, default_value_t = 0.01)]
+        alpha: f64,
+        /// 随机种子
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1260,6 +1284,45 @@ fn run_disttest(action: &DisttestAction) -> anyhow::Result<std::process::ExitCod
                 obs[i] += 1.0;
             }
             let p = print_chi_square(&format!("weighted table '{}'", table), &obs, &exp, *alpha);
+            Ok(exit_from_p(p, *alpha))
+        }
+        DisttestAction::Normal {
+            samples,
+            buckets,
+            spread,
+            mu,
+            sigma,
+            alpha,
+            seed,
+        } => {
+            if *sigma <= 0.0 || !sigma.is_finite() {
+                anyhow::bail!("σ 须为正有限数");
+            }
+            if *spread <= 0.0 || !spread.is_finite() {
+                anyhow::bail!("spread 须为正有限数(σ 的倍数)");
+            }
+            if *alpha <= 0.0 || *alpha >= 1.0 {
+                anyhow::bail!("α 须在 (0, 1) 区间内");
+            }
+            let mut rng = core::rng::DayRng::new(*seed, 1, 1);
+            let xs: Vec<f64> = (0..*samples)
+                .map(|_| rng.normal(core::rng::Purpose::Normal, *mu, *sigma))
+                .collect();
+            let n = xs.len() as f64;
+            let mean = xs.iter().sum::<f64>() / n;
+            let var = xs.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / (n - 1.0).max(1.0);
+            println!("=== normal N({}, {}²) 抽样面 ===", mu, sigma);
+            println!(
+                "  实测均值 {mean:.4}(μ = {mu})· 实测方差 {var:.4}(σ² = {:.4})",
+                sigma * sigma
+            );
+            let (obs, exp) = core::disttest::normal_buckets(&xs, *mu, *sigma, *buckets, *spread)?;
+            let p = print_chi_square(
+                &format!("normal N({}, {}), ±{}σ", mu, sigma, spread),
+                &obs,
+                &exp,
+                *alpha,
+            );
             Ok(exit_from_p(p, *alpha))
         }
     }
