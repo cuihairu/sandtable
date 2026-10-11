@@ -9,3 +9,10 @@ docs/.vitepress/cache/
 
 # wasm-pack 产物(构建生成,不进 git)
 crates/sandtable-wasm/pkg/
+
+# Python(脚本层阶段 1 的 pytest 产物与 maturin 构建缓存)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+*.egg-info/
