@@ -650,4 +650,46 @@ mod tests {
         };
         assert!(mean_level(&b) > mean_level(&a));
     }
+
+    /// 金币守恒(文档 19 章测试面补强):经济面恰好三个流——战斗产出、
+    /// 练级产出、升级消耗,每处记账与 actor.gold 增减同源(world 初始化
+    /// gold = 0,期初存量为 0)。零流失下逐日闭合:
+    /// supply(d) − supply(d−1) = earned(d) − spent(d)。
+    /// 流失携金离场不记账,守恒式以 new_churned == 0 为前提;未来若要求
+    /// 流失口径入账,先给 DayStat 加字段再放宽本测试。
+    #[test]
+    fn gold_conservation_zero_churn_daily() {
+        let mut cfg = SimConfig {
+            players: 200,
+            days: 10,
+            ..SimConfig::default()
+        };
+        cfg.churn.p_base = 0.0;
+        cfg.churn.p_stall = 0.0;
+        let m = run(&cfg, 0);
+
+        let mut prev = 0i64; // 期初存量
+        for d in &m.day_stats {
+            assert_eq!(d.new_churned, 0, "day {}: 前提是零流失", d.day);
+            assert_eq!(
+                d.gold_supply - prev,
+                d.gold_earned as i64 - d.gold_spent as i64,
+                "day {}: 期末 {} − 前日 {} 应等于产出 {} − 消耗 {}",
+                d.day,
+                d.gold_supply,
+                prev,
+                d.gold_earned,
+                d.gold_spent
+            );
+            prev = d.gold_supply;
+        }
+        // 汇总面同闭合
+        let earned: u64 = m.day_stats.iter().map(|d| d.gold_earned).sum();
+        let spent: u64 = m.day_stats.iter().map(|d| d.gold_spent).sum();
+        assert_eq!(earned, m.gold_earned_total);
+        assert_eq!(spent, m.gold_spent_total);
+        // 两个方向都真实发生,防止恒等式在全 0 下空转
+        assert!(m.gold_earned_total > 0);
+        assert!(m.gold_spent_total > 0);
+    }
 }
