@@ -78,6 +78,7 @@ export default withMermaid(
             items: [
               { text: '23 · 游戏类型 × 仿真函数清单', link: '/guide/23-genre-simulation' },
               { text: '24 · 随机函数与概率系统', link: '/guide/24-random-functions' },
+              { text: '25 · 常用函数与曲线', link: '/guide/25-formulas-and-curves' },
               { text: '脚本层设计(Python,定稿待实施)', link: 'https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md' }
             ]
           }

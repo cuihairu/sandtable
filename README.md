@@ -53,7 +53,7 @@ A single run of 10k players × 30 days takes about 0.5 s (release build). The fu
 
 ## Documentation structure
 
-The original plan was a single monolithic document (archived at `docs/计划-原始.md`), later split into 20 chapters, with four more chapters added for the Pokémon case study, the Web form, the genre matrix and the random-function extension. The mapping from chapters to the original plan:
+The original plan was a single monolithic document (archived at `docs/计划-原始.md`), later split into 20 chapters, with five more chapters added for the Pokémon case study, the Web form, the genre matrix, the random-function extension and the formula-curve reference. The mapping from chapters to the original plan:
 
 | Chapter | Contents | Original plan |
 | --- | --- | --- |
@@ -81,6 +81,7 @@ The original plan was a single monolithic document (archived at `docs/计划-原
 | [22 Web](docs/guide/22-web.md) | Browser form, scale boundaries, query and export | — |
 | [23 Genre × simulation functions](docs/guide/23-genre-simulation.md) | Six genre families vs. generic blocks / genre-specific gaps | — |
 | [24 Random functions](docs/guide/24-random-functions.md) | Weighted tables, pity, normals, chi-square and staging | — |
+| [25 Common functions and curves](docs/guide/25-formulas-and-curves.md) | Built-in function reference and evaluator-generated curve library | — |
 
 ## License
 
