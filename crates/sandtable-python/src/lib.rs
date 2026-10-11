@@ -12,6 +12,10 @@
 //!
 //! 对设计文档 §6 草图的偏离(轮记录 2026-10-11):`days` 以 `days_csv`
 //! 字符串交付(与 CLI 逐字节同源),Arrow 零拷贝留阶段 2。
+//!
+//! 阶段 3(2026-10-11)读态日钩子:`run_with_day_hook` / `run_str_with_day_hook`
+//! 每日回调一次 Python callable,批量交接逐玩家平行数组,只读不改结果,
+//! 实测依据 scripts/scripting-perf-report.md(事件级回调仍红线)。
 
 use pyo3::conversion::IntoPyObjectExt;
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -42,6 +46,88 @@ fn run_simulation_native(yaml: &str, replicates: u32) -> Result<Value, String> {
     let cfg = load_config(yaml)?;
     let results: Vec<core::metrics::RunMetrics> =
         (0..replicates).map(|r| core::sim::run(&cfg, r)).collect();
+    Ok(json!({
+        "meta": {
+            "schema_version": core::SCHEMA_VERSION,
+            "model_version": core::MODEL_VERSION,
+        },
+        "config_hash": core::config::config_hash(&cfg),
+        "days_csv": core::export::day_csv(&results[0]),
+        "results": results,
+    }))
+}
+
+/// Python 侧日钩子:把 [`core::sim::DayHook`] 桥到 Python callable。
+/// 批量交接通道 = 逐玩家平行数组(每日一次),成本见
+/// scripts/scripting-perf-report.md(5 列 × 30 天 ≈ 20% 基线,原型定位)。
+/// 首次回调异常存入 `error` 后跳过后续回调,run 结束上报——不在 GIL 内 panic。
+struct PyDayHook {
+    callback: Py<PyAny>,
+    replicate: u32,
+    error: Option<String>,
+}
+
+impl core::sim::DayHook for PyDayHook {
+    fn on_day(&mut self, world: &core::world::World, day: u32) {
+        if self.error.is_some() {
+            return;
+        }
+        // 先取态(批量数组),再一次性过 GIL 交接
+        let mut cohort = Vec::with_capacity(world.actors.len());
+        let mut level = Vec::with_capacity(world.actors.len());
+        let mut power = Vec::with_capacity(world.actors.len());
+        let mut gold = Vec::with_capacity(world.actors.len());
+        let mut churned = Vec::with_capacity(world.actors.len());
+        for a in &world.actors {
+            cohort.push(u32::try_from(a.cohort.index()).unwrap());
+            level.push(a.level);
+            power.push(a.power);
+            gold.push(a.gold);
+            churned.push(a.churned);
+        }
+        let result = Python::attach(|py| -> PyResult<()> {
+            let payload = PyDict::new(py);
+            payload.set_item("replicate", self.replicate)?;
+            payload.set_item("day", day)?;
+            payload.set_item("cohort_names", ["casual", "core", "whale"])?;
+            payload.set_item("cohort", (&cohort).into_py_any(py)?)?;
+            payload.set_item("level", (&level).into_py_any(py)?)?;
+            payload.set_item("power", (&power).into_py_any(py)?)?;
+            payload.set_item("gold", (&gold).into_py_any(py)?)?;
+            payload.set_item("churned", (&churned).into_py_any(py)?)?;
+            self.callback.bind(py).call1((payload,))?;
+            Ok(())
+        });
+        if let Err(e) = result {
+            self.error = Some(format!("日钩子回调失败(day {day}): {e}"));
+        }
+    }
+}
+
+/// 带日钩子的运行(native 纯函数):形状与 [`run_simulation_native`] 同构
+/// (逐 replicate 依次带钩子跑,顺序语义同扫描);任一日钩子回调异常即整次报错。
+fn run_with_day_hook_native(
+    yaml: &str,
+    replicates: u32,
+    callback: &Bound<'_, PyAny>,
+) -> Result<Value, String> {
+    if replicates == 0 {
+        return Err("参数错误: replicates 至少为 1".into());
+    }
+    let cfg = load_config(yaml)?;
+    let mut results = Vec::with_capacity(replicates as usize);
+    for replicate in 0..replicates {
+        let mut hook = PyDayHook {
+            callback: callback.clone().unbind(),
+            replicate,
+            error: None,
+        };
+        let metrics = core::sim::run_with_day_hook(&cfg, replicate, &mut hook);
+        if let Some(e) = hook.error {
+            return Err(e);
+        }
+        results.push(metrics);
+    }
     Ok(json!({
         "meta": {
             "schema_version": core::SCHEMA_VERSION,
@@ -261,6 +347,37 @@ fn run_str<'py>(py: Python<'py>, yaml: &str, replicates: u32) -> PyResult<Bound<
     value_to_py(py, &v)
 }
 
+/// 运行仿真并逐日回调日钩子 → dict,形状与 [`run`] 同构。`day_callback`
+/// 收 payload dict:{replicate, day, cohort_names, cohort, level, power,
+/// gold, churned}(后五者为逐玩家平行数组);只读语义,不改仿真结果。
+#[pyfunction]
+#[pyo3(signature = (cfg, day_callback, replicates = 1))]
+fn run_with_day_hook<'py>(
+    py: Python<'py>,
+    cfg: PyRef<'py, Config>,
+    day_callback: Bound<'py, PyAny>,
+    replicates: u32,
+) -> PyResult<Bound<'py, PyAny>> {
+    let yaml = cfg.yaml.clone();
+    let v = run_with_day_hook_native(&yaml, replicates, &day_callback)
+        .map_err(PyValueError::new_err)?;
+    value_to_py(py, &v)
+}
+
+/// 日钩子运行的 YAML 文本入口,形状同 [`run_str_with_day_hook`] 语义。
+#[pyfunction]
+#[pyo3(signature = (yaml, day_callback, replicates = 1))]
+fn run_str_with_day_hook<'py>(
+    py: Python<'py>,
+    yaml: &str,
+    day_callback: Bound<'py, PyAny>,
+    replicates: u32,
+) -> PyResult<Bound<'py, PyAny>> {
+    let v =
+        run_with_day_hook_native(yaml, replicates, &day_callback).map_err(PyValueError::new_err)?;
+    value_to_py(py, &v)
+}
+
 /// 全量扫描实验文件 → dict `{config_hash, players, days, base_seed,
 /// replicates, mode, axes, candidates, targets, sims, results}`。
 /// `replicates=0` 表示不覆盖(用 YAML 里的 sweep.replicates)。
@@ -312,6 +429,8 @@ fn sandtable_sim(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(load_str, m)?)?;
     m.add_function(wrap_pyfunction!(run, m)?)?;
     m.add_function(wrap_pyfunction!(run_str, m)?)?;
+    m.add_function(wrap_pyfunction!(run_with_day_hook, m)?)?;
+    m.add_function(wrap_pyfunction!(run_str_with_day_hook, m)?)?;
     m.add_function(wrap_pyfunction!(sweep, m)?)?;
     m.add_function(wrap_pyfunction!(recommend, m)?)?;
     m.add_function(wrap_pyfunction!(params, m)?)?;
@@ -480,6 +599,85 @@ mod tests {
             for key in ["path", "kind", "default", "desc"] {
                 assert!(dict.get_item(key).unwrap().is_some(), "{key} 缺失");
             }
+        });
+    }
+
+    #[test]
+    fn day_hook_payload_matches_day_stats() {
+        Python::initialize();
+        Python::attach(|py| {
+            let seen = PyList::empty(py);
+            let locals = PyDict::new(py);
+            locals.set_item("seen", &seen).unwrap();
+            let cb = py
+                .eval(c"(lambda p: seen.append(p))", Some(&locals), None)
+                .unwrap();
+
+            let v = run_with_day_hook_native(YAML, 2, cb.as_any()).unwrap();
+
+            // 只读:结果与不带钩子的 run 逐值一致
+            let base = run_simulation_native(YAML, 2).unwrap();
+            assert_eq!(v["results"], base["results"], "日钩子不得改变结果");
+
+            let cfg = core::scenario::load_str(YAML).unwrap();
+            for payload in seen.iter() {
+                let p = payload.cast::<PyDict>().unwrap();
+                let replicate: u32 = p.get_item("replicate").unwrap().unwrap().extract().unwrap();
+                let day: u32 = p.get_item("day").unwrap().unwrap().extract().unwrap();
+                assert_eq!(
+                    p.get_item("cohort_names").unwrap().unwrap().to_string(),
+                    "['casual', 'core', 'whale']"
+                );
+                let gold: Vec<i64> = p.get_item("gold").unwrap().unwrap().extract().unwrap();
+                assert_eq!(gold.len(), cfg.players as usize, "逐玩家一条");
+                let supply: i64 = v["results"][replicate as usize]["day_stats"][(day - 1) as usize]
+                    ["gold_supply"]
+                    .as_i64()
+                    .unwrap();
+                assert_eq!(
+                    gold.iter().sum::<i64>(),
+                    supply,
+                    "rep {replicate} day {day} 金币守恒对账"
+                );
+            }
+            // 逐 replicate 天序 1..=days,共 replicates × days 次
+            let n = cfg.days as usize;
+            let mut order = Vec::new();
+            for payload in seen.iter() {
+                let p = payload.cast::<PyDict>().unwrap();
+                order.push((
+                    p.get_item("replicate")
+                        .unwrap()
+                        .unwrap()
+                        .extract::<u32>()
+                        .unwrap(),
+                    p.get_item("day")
+                        .unwrap()
+                        .unwrap()
+                        .extract::<u32>()
+                        .unwrap(),
+                ));
+            }
+            let want: Vec<(u32, u32)> = (0..2u32)
+                .flat_map(|r| (1..=cfg.days).map(move |d| (r, d)))
+                .collect();
+            assert_eq!(order, want);
+            assert_eq!(seen.len(), 2 * n);
+        });
+    }
+
+    #[test]
+    fn day_hook_callback_error_surfaces() {
+        Python::initialize();
+        Python::attach(|py| {
+            let cb = py.eval(c"(lambda p: 1 / 0)", None, None).unwrap();
+            let e = run_with_day_hook_native(YAML, 1, cb.as_any()).unwrap_err();
+            assert!(e.contains("日钩子回调失败"), "{e}");
+            assert!(e.contains("ZeroDivisionError"), "{e}");
+            assert!(
+                run_with_day_hook_native(YAML, 0, cb.as_any()).is_err(),
+                "replicates 0 拒绝"
+            );
         });
     }
 }

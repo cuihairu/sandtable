@@ -36,11 +36,26 @@ print(out["results"][0]["win_rate"])
 | `load_str` | `(yaml) -> Config` | 从 YAML 文本加载配置 |
 | `run` | `(cfg, replicates = 1) -> dict` | 运行仿真 → `{meta, config_hash, days_csv, results}` |
 | `run_str` | `(yaml, replicates = 1) -> dict` | 同 `run`,YAML 文本入口 |
+| `run_with_day_hook` | `(cfg, day_callback, replicates = 1) -> dict` | 同 `run`,每日日结后回调 `day_callback(payload)`;只读,不改 results |
+| `run_str_with_day_hook` | `(yaml, day_callback, replicates = 1) -> dict` | 同 `run_with_day_hook`,YAML 文本入口 |
 | `sweep` | `(path, replicates = 0) -> dict` | 扫描实验;`replicates=0` 表示用 YAML 内值 |
 | `recommend` | `(path, results) -> dict` | 单轴弹性与推荐 → `{elasticities, recommendation}` |
 | `params` | `() -> list[dict]` | 参数注册表 `{path, kind, default, desc}`(只读) |
 
 `Config` 对象属性:`yaml`(原文)、`config_hash`(SHA-256 hex)、`players`、`days`。
+
+### 日钩子(阶段 3,批处理粒度)
+
+```python
+seen = []
+st.run_str_with_day_hook(yaml, lambda p: seen.append(p))
+# p = {replicate, day, cohort_names: ["casual","core","whale"],
+#      cohort/level/power/gold/churned: 逐玩家平行数组}
+```
+
+每日 `DayClose` 记账完成后回调一次,**只读**——同配置同 seed 结果与 `run_str`
+逐值一致(pytest 锁死)。成本见 [scripts/scripting-perf-report.md](../../../scripts/scripting-perf-report.md)
+(默认 5 列观测面 30 天 ≈20% 基线,原型/分析定位);事件级回调是设计红线,不提供。
 
 ## 错误语义
 
