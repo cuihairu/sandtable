@@ -125,6 +125,7 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 - Python 绑定:扩展模块(maturin + PyO3)主路径已落地(阶段 1–2,`crates/sandtable-python`,`import sandtable_sim`,编排模板见 `scripts/templates/`,发布前按[项目结构](./17-project-structure)命名纪律再核);
 - 随机函数扩展(加权表/保底/正态/卡方):设计与分期见[随机函数与概率系统](./24-random-functions);**R1 已落地(2026-10-10):加权表(加载期 CDF + `model.loot.tables` YAML 面 + `ParamKind::Table`)+ 洗牌/无放回加权抽样(A-Res 键序法,Fisher–Yates 带键)+ `disttest` 子命令(均匀/加权 χ²,Cochran 桶合并);新 purpose `Shuffle` 追加在尾不挪旧键,黄金快照逐位不变,params 表 +1(rate_mult)**;**R2 已落地(2026-10-10):保底状态机(硬/软,`Purpose::Gacha = 7` 尾部追加,计数器是 actor 状态不进键)+ 期望抽数 KPI `gacha_pulls_to_hit` 全链接通(比较/sweep/推荐)+ 抽卡案例 yaml(`examples/gacha-pity*.yaml`);闭式对账 2%/50 → 31.79,params 表 +4(53 → 57),黄金快照逐位不变**;**R3 已落地(2026-10-10):正态 Box–Muller(`Purpose::Normal = 8` 尾部追加,双消耗键稳定:改 μ/σ 不挪键)+ `normal_clamped` + χ² 正态分桶(`normal_buckets` 尾部质量并首尾桶,`normal_cdf` 经不完全伽马)+ `disttest normal`;均值/方差 CI 对账,10 万采样 20 桶 χ² 全过,黄金快照逐位不变**;至此 24 章能力清单 7 项全部落地;
 - ~~项目导入 / 导出格式定型~~ **格式与 CLI 已定型落地(2026-10-09,manifest v1 + `project pack/unpack/check`,见[数据输出](./09-data-output))**;Web 侧加载项目文件随[Web 端](./22-web)跟进;
+- **可信度注记(2026-10-11 拍板,三项一次裁完)**:①「统计 CI 只在模型内有效」立小阶段,**已落地**——措辞沿用[01 章](./01-positioning)立场,落点两处:`sandtable report` 页首一行**模型边界注记**(单文件自包含纪律不破,报告端到端测试锁死其存在),`comparison.json` 的脚本消费面 `scripts/templates/ab_summary.py` 表格尾打同一口径;PNG 不带注记(图内标签英文纪律不变),模板侧验收 = py_compile 门 + 本批对真实 compare 产物跑通;②**真实案例二期与模型校准挂起不立项**——需真实运营数据与对标基准,属用户侧输入,登记待触发;③**桌面端投入维持挂闸门后**(实验流 GUI 人工开窗验收未做,见 Phase 7 状态)。
 - 游戏引擎 Adapter;Web API(仅当出现真实的服务端需求,local-first 不预设)。
 
 ## 节奏约束
