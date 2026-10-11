@@ -13,14 +13,24 @@ sandtable/
 ├── crates/
 │   ├── sandtable-core/
 │   │   └── src/
-│   │       ├── model/        # 配置编译为不可变 Model
-│   │       ├── config/       # 加载、校验、注册表、规范化、config_hash
-│   │       ├── rng/          # 带键随机数派生
-│   │       ├── time/         # Clock 与事件调度
-│   │       ├── world/        # World、实体存储、事件队列
-│   │       ├── systems/      # 内置游戏系统(MVP:最小 RPG 硬编码)
-│   │       ├── metrics/      # 在线聚合器与指标定义
-│   │       ├── experiment/   # 运行编排、replicates、比较
+│   │       ├── config.rs      # 配置加载 / 校验 / 规范化 / config_hash
+│   │       ├── registry.rs    # 参数注册表(path / kind / default / desc)
+│   │       ├── scenario.rs    # YAML 场景与实验文件加载(scenario+model/sweep/optimize 节)
+│   │       ├── formula.rs     # 有界表达式求值器(加载期编译)
+│   │       ├── rng.rs         # 带键随机数派生(SplitMix64)
+│   │       ├── kernel.rs      # Clock / EventQueue / System trait(离散事件骨架)
+│   │       ├── world.rs       # World 与实体存储
+│   │       ├── systems/       # 内置游戏系统(behavior / combat / progression / churn / gacha)
+│   │       ├── metrics.rs     # RunMetrics 与在线聚合
+│   │       ├── sim.rs         # 仿真主循环(事件驱动)
+│   │       ├── experiment.rs  # replicates、CRN 配对比较、统计
+│   │       ├── sweep.rs       # 网格 / 随机 / LHS 扫描引擎
+│   │       ├── sensitivity.rs # OAT 弹性
+│   │       ├── recommend.rs   # 单轴插值推荐
+│   │       ├── optimize.rs    # 进化 + Pareto 寻优
+│   │       ├── surrogate.rs   # 随机森林代理(只读 sweep 产物)
+│   │       ├── disttest.rs    # χ² 分布检验(disttest 子命令数据面)
+│   │       ├── export.rs      # 输出渲染(JSON / CSV / 人类可读;Arrow 在 export/arrow.rs)
 │   │       └── lib.rs
 │   ├── sandtable-cli/
 │   │   └── src/main.rs       # clap 子命令,薄封装 core(MVP)
@@ -46,7 +56,8 @@ sandtable-cli     ─┐
 sandtable-wasm    ─┼→ sandtable-core
 sandtable-python  ─┤
 apps/desktop      ─┘
-core 内部:experiment → systems → world/kernel;config/model 被各层依赖
+core 内部:experiment / sweep / optimize → sim → systems → world/kernel
+config / scenario / registry / formula 被各层依赖
 分析层(DuckDB / Arrow)只被壳层调用,不进 core
 ```
 
@@ -64,13 +75,13 @@ core 不依赖任何壳;systems 不依赖 experiment;kernel 不依赖任何上�
 
 | 模块 | 职责 | 关键约束 |
 | --- | --- | --- |
-| model | 配置编译产物,不可变 | 无运行时状态 |
-| config | 注册表 / 规范化 / hash | 同语义配置同 hash |
+| config / scenario | YAML 装载、校验、规范化、config_hash | 同语义配置同 hash |
+| registry / formula | 参数注册表、公式求值 | 未知路径给编辑距离建议 |
 | rng | (seed, actor_id, day, event_index, purpose) 派生 | 纯函数,无共享状态 |
-| time / world | 离散事件队列、实体存储 | 有序容器(BTreeMap / IndexMap) |
-| systems | 战斗 / 经济 / 成长 / 奖励 / 行为 | 确定性;带键随机消费 |
+| kernel / world | 离散事件队列、实体存储 | 有序容器(BTreeMap / IndexMap) |
+| systems | 战斗 / 经济 / 成长 / 奖励 / 行为 / 保底 | 确定性;带键随机消费 |
 | metrics | 在线聚合(直方图 / 草图 / Welford) | 不落个体明细 |
-| experiment | 编排与比较 | 统计单位 = replicate |
+| experiment / sweep / optimize | 编排、比较、扫描与寻优 | 统计单位 = replicate |
 
 ## 命名核查结论(2026-10)
 
