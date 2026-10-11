@@ -240,7 +240,9 @@ fn load_str(yaml: &str) -> PyResult<Config> {
 }
 
 /// 运行仿真 → dict `{meta, config_hash, days_csv, results}`。
+/// `replicates` 缺省 1(同 CLI `simulate --replicates` 默认)。
 #[pyfunction]
+#[pyo3(signature = (cfg, replicates = 1))]
 fn run<'py>(
     py: Python<'py>,
     cfg: PyRef<'py, Config>,
@@ -251,8 +253,9 @@ fn run<'py>(
     value_to_py(py, &v)
 }
 
-/// 运行仿真(YAML 文本入口)→ dict,形状同 [`run`]。
+/// 运行仿真(YAML 文本入口)→ dict,形状同 [`run`];`replicates` 缺省 1。
 #[pyfunction]
+#[pyo3(signature = (yaml, replicates = 1))]
 fn run_str<'py>(py: Python<'py>, yaml: &str, replicates: u32) -> PyResult<Bound<'py, PyAny>> {
     let v = run_simulation_native(yaml, replicates).map_err(PyValueError::new_err)?;
     value_to_py(py, &v)

@@ -83,6 +83,13 @@ def test_replicates_zero_rejected():
         st.run_str(YAML, 0)
 
 
+def test_replicates_default_is_one():
+    # replicates 缺省 1(同 CLI simulate --replicates 默认)
+    assert len(st.run_str(YAML)["results"]) == 1
+    assert len(st.run(st.load_str(YAML))["results"]) == 1
+    assert st.run_str(YAML)["results"][0]["replicate"] == 0
+
+
 def test_sweep_all_candidates(tmp_path):
     p = tmp_path / "exp.yaml"
     p.write_text(EXP_YAML, encoding="utf-8")
