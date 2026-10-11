@@ -41,5 +41,6 @@ python3 examples/python/parquet_analysis.py  # parquet → 批次表 + 分群画
   三条硬规则见设计文档 §5——示例脚本进仓库即受其约束(CI 跑固定脚本);
 - 阶段 1 绑定 API **已落地**(2026-10-11,方案 B,pyo3 + maturin:maturin build 出
   wheel → `pip install` 后 `import sandtable_sim`;构建与测试见
-  `crates/sandtable-python/`,pytest 含与 CLI 的 py_parity 逐值对照);本目录保持外挂模式
-  示例,作为零依赖回退路径的活文档(设计文档 §2)。
+  `crates/sandtable-python/`,pytest 含与 CLI 的 py_parity 逐值对照);
+  阶段 2 编排模板见 `scripts/templates/`;本目录保持外挂模式示例,作为零依赖
+  回退路径的活文档(设计文档 §2)。

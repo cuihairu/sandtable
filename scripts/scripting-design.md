@@ -1,6 +1,6 @@
 # sandtable 脚本层设计(Python 载体)
 
-状态:**阶段 0–1 已落地(阶段 0:2026-10-08;阶段 1:2026-10-11),阶段 2 起未实施**(分期计划见文末;每期实施前按本文件为口径基线)。
+状态:**阶段 0–2 已落地(阶段 0:2026-10-08;阶段 1:2026-10-11;阶段 2:2026-10-11),阶段 3(远期)未启动**(分期计划见文末;每期实施前按本文件为口径基线)。
 拍板:**脚本语言定为 Python**(2026-10-08,理由:简单库多、仿真分析生态成熟——numpy / pandas / scipy / matplotlib 一线贯通)。本文档回答:嵌入形态怎么选、与 CLI / Web / WASM 三形态的边界、性能红线、脚本不被信任时怎么办。
 
 ## 0. 定位(承既有架构口径)
@@ -81,7 +81,7 @@ rec = st.recommend("examples/pokemon-sweep.yaml", sw.results)
 | --- | --- | --- |
 | 0(零开发)✅ **已落地** | 外挂模式规范(本文档 §5)+ `examples/python/`:三个示例脚本(`kpi_report.py` 消费 report.json 出 KPI 汇总表、`daily_curves.py` 消费 days.csv 出按天四联图、`parquet_analysis.py` 消费三个 Parquet 批次出分群画像)+ README 依赖与运行记录 | 已验收(2026-10-08):三脚本本地跑通出 1 表 + 2 图(python 3.14 / pandas 3.0.6 / pyarrow 25.0.1 / matplotlib 3.10.7);零 Rust 改动 |
 | 1 | `sandtable-python` crate(pyo3 feature 门)+ maturin 构建 + load / run / sweep / recommend / params 只读绑定 | `maturin build` 出 wheel;pytest 冒烟;`py_parity` 逐值一致;wasm 门不回归;**✅ 已落地(2026-10-11)** |
-| 2 | 编排 API:批量实验、A/B/扫描结果聚合、matplotlib 出图示例;`scripts/` 下官方模板 | 阶段 1 用例 ×N;CI 加 wheel 构建 job(可选发布) |
+| 2 | 编排 API:批量实验、A/B/扫描结果聚合、matplotlib 出图示例;`scripts/` 下官方模板 | 阶段 1 用例 ×N;CI 加 wheel 构建 job(可选发布);**✅ 已落地(2026-10-11,模板三件 + 验收跑通;CI wheel job 按拍板④延期)** |
 | 3(远期,需再拍板) | 批处理粒度的 Python System 回调(day-level chunk;GIL 侧依赖子解释器 [PEP 684](https://peps.python.org/pep-0684/) 与 free-threading [PEP 703](https://peps.python.org/pep-0703/) 的成熟度)、Pyodide Web 实验 | 先出性能实测报告再拍板,不预设结论 |
 
 阶段 0 可与本设计文档同一批落地(纯示例);阶段 1 起动 Rust 侧,按"文档先行、每阶段独立提交、测试全绿再合"推进。
@@ -92,6 +92,7 @@ rec = st.recommend("examples/pokemon-sweep.yaml", sw.results)
 - **2026-10-11 阶段 1 拍板:设计通过,开工实施**(点火来源:巡检 11 轮,授权按原计划与台账自行拍板)。对照核查三项:①原计划 §6.1「配置描述数据,代码/脚本描述复杂行为」「复杂行为应该通过脚本/扩展机制完成」即本设计的合法性来源,§0 定位(编排 + 分析,不把 YAML 变成编程语言)与其一致;②台账一致性:阶段 0 已验收,本设计 2026-10-08 定稿后无搁置事由;③技术红线实证:pyo3 进独立 crate `sandtable-python`,core 依赖树零改动,CI wasm 门为 `-p sandtable-core` 包级不受影响;本机 Python 3.14.4 + 头文件 + `libpython3.14.so` 在位,pyo3 0.29.3 / maturin 1.15.0 现行稳定;CI `cargo test --workspace` 覆盖新 crate 需 python3-dev(已加)。**实施口径**:绑定照抄 wasm 双层结构(`*_native` 纯函数 + 薄封装)但独立实现、不链 sandtable-wasm(wasm-bindgen 不进 native crate);core 唯一真源,三份独立薄转发由 pairwise 等价测试锁死(web_parity: wasm↔CLI;py_parity: py↔CLI;desktop: desktop↔wasm);Python 侧无 Web 的 64 replicates / 200 预算门(原生形态,同 CLI)。**对 §6 草图的两点偏离**:①`out.days.to_pandas()`(Arrow 零拷贝)不进阶段 1,days 以 `days_csv` 字符串交付(与 CLI 逐字节同源,`pd.read_csv(io.StringIO(...))` 即得 DataFrame),Arrow C Data Interface 留阶段 2 编排 API 一并做;②sweep 为一次全量调用(plan + 顺序跑全部候选,同 CLI 语义;wasm 的 plan/candidate 分解是为让出浏览器主线程,Python 无此约束)。
 - **2026-10-11 阶段 1 落地**(与拍板同日连续实施,三批提交):`crates/sandtable-python/`(pyo3 0.29.3,crate-type `cdylib` + `rlib`:前者供 maturin 出 wheel,后者供 `cargo test --workspace` 直跑)+ `pyproject.toml`(maturin,发行名 `sandtable-sim`,导入名 `sandtable_sim`)+ pytest 两文件(冒烟 13 例 + `py_parity` 3 例)。**验收列全过**:`maturin build --release` 出 wheel(CPython 3.14,manylinux_2_34);pytest 16/16 绿(含 simulate / sweep / recommend 与 CLI 产物逐值一致、`days_csv` 与 CLI `days.csv` 逐字节一致);`cargo test --workspace` 含新 crate 7 例全绿,wasm 门不回归;CI 门补 `python3-dev`。**落地口径存档**:replicates 门与 CLI 同义(≥ 1,0 即 ValueError);候选 `status` 两形态("ok" 字符串 / `{"config_error": ...}` 对象)在 Python 侧照实透传,调用方按 `isinstance(str)` 分派;报告 `meta` 含时间戳不参与确定性,py_parity 只比 `results` / `elasticities` / `recommendation`。
 - **2026-10-11 阶段 2 拍板:设计通过,开工实施**(点火来源:巡检 11 轮同一续批令「连续推进直到全清」;基线:本文件 §7 分期计划 + §1 需求场景 2「一个脚本批量生成配置变体、循环跑 sweep、聚合多实验产出」)。**四项设计口径**:①编排在 Python 侧脚本完成、**零 Rust 改动**——绑定面(阶段 1 的 load / run / sweep / recommend / params)已覆盖编排所需,把编排函数做进绑定等于把编排语义搬进 Rust,违背 §6「绑定层是薄转发,不放编排逻辑」纪律;交付落点 `scripts/templates/`(§7 表内「官方模板」)。②A/B 走外挂(A)通道:绑定面无 compare,模板消费 CLI `compare --out` 的 comparison.json;§2 已拍板「B 落地后 A 仍是零依赖回退路径」,两通道叠加是设计内行为,Python 侧 A/B 编排成为高频需求时再拍板 compare 进绑定。③**Arrow 零拷贝延期(修订阶段 1 轮记录「留阶段 2 一并做」的暂记)**:绑定当前最大交接面是日聚合表(O(days) 行,30 天 ≈ 30 行,`io.StringIO` → DataFrame 开销 µs 级),C Data Interface 的收益对象是分群 / 战力快照级明细(Parquet 规模),该面 Python 侧暂无真实消费需求;按 docs 17「有真实需求再拆,不预设」延后,触发条件 = Python 侧出现大表分析或 Parquet 模板的交接瓶颈。④CI wheel 构建 job 延期(§7 表标注「可选发布」):无下游消费者(未发布 PyPI),平台矩阵成本先行;触发条件 = 发布决定(与 docs 17 命名再核同批)。
+- **2026-10-11 阶段 2 落地**(与拍板同日,`2b277a5`):`scripts/templates/` 三模板(batch_sweep / ab_summary / sweep_curves)+ README(依赖 / 运行 / 口径纪律)。**验收跑通**:batch_sweep 走绑定通道,pokemon + gacha-pity ×4 replicates 出 KPI 汇总表(窗口不足指标如实记 "-",零方差退点估计);ab_summary 双 comparison.json 出配对差表 + PNG(攻击覆盖不触及抽卡指标 → diff 精确 0,CRN 语义自检通过);sweep_curves 消费 pokemon-sweep 产物(6 候选,churn_rate 约束带 [0, 0.2] 全 pass,含 `--plot` 约束带渲染)+ 双轴如实拒绝;表格模式与多轴拒绝均验证。两条纪律:绘图标签英文(不依赖 CJK 字形,任意机器出图一致,同阶段 0 示例);CI95 为 ±1.96·SE 正态近似、权威口径归 CLI(模板头与 README 注明)。§7 表「CI 加 wheel 构建 job」与 Arrow 零拷贝按拍板③④延期,触发条件已记录。
 
 ## 8. 来源与分级
 
