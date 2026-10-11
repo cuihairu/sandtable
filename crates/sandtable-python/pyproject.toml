@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "sandtable-sim"
+version = "0.1.0"
+description = "Sandtable 仿真内核的 Python 绑定(脚本层阶段 1)"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+
+[tool.maturin]
+# Cargo 包名 sandtable-python → 模块名 sandtable_sim(docs 17 命名纪律)
+module-name = "sandtable_sim"
