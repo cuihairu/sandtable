@@ -1,19 +1,23 @@
 # TODO
 
-> 生成于 2026-10-11（无 todo 文件，来源：docs/guide/18-roadmap.md「后续方向」+ 依赖告警）。
+> 生成于 2026-10-11(无 todo 文件,来源:docs/guide/18-roadmap.md「后续方向」+ 依赖告警)。
+> 2026-10-11 账面复核:依赖告警两项关闭(一项落地、一项评估完毕 parked),挂闸项与方向项维持,解除条件逐条写明。
 
-## 挂闸项（需用户拍板才开工）
-- [ ] 复杂行为脚本 阶段 3（Python 载体，rhai 缓议；阶段 0-2 已落地 2026-10-11）
-- [ ] 真实案例二期 + 模型校准（已裁「挂起不立项」——需真实运营数据与对标基准，属用户侧输入，待触发）
-- [ ] 桌面端投入（维持挂闸门后）：实验流 GUI **人工开窗验收未做**（Phase 7 状态）
-- [ ] 随机函数扩展后续（24 章 7 项已全部落地，后续增量按需）
+## 挂闸项(需用户拍板才开工)
 
-## 方向性（无期限，出现真实需求再启）
+- [ ] 复杂行为脚本 阶段 3(Python 载体,rhai 缓议;阶段 0-2 已落地 2026-10-11)。解除条件:用户对阶段 3 范围再拍板
+- [ ] 真实案例二期 + 模型校准(已裁「挂起不立项」)。解除条件:用户提供真实运营数据与对标基准(属用户侧输入,待触发)
+- [ ] 桌面端投入(维持挂闸门后)。解除条件:实验流 GUI **人工开窗验收完成**(Phase 7 状态)
+- [ ] 随机函数扩展后续(24 章 7 项已全部落地,后续增量按需)。解除条件:出现真实品类需求
+
+## 方向性(无期限,出现真实需求再启)
+
 - [ ] 游戏引擎 Adapter
-- [ ] Web API（仅当出现真实服务端需求，local-first 不预设）
+- [ ] Web API(仅当出现真实服务端需求,local-first 不预设)
 
-## 依赖告警（dependabot）
-- [ ] pnpm 侧 overrides：vite → 6.4.3、katex → 0.18.2、esbuild → 0.25.0（三者均由 vitepress/mermaid 传递引入）
-- [ ] cargo 侧 glib 0.18.5 → 0.20.0（需评估 gtk 栈整体抬升与 tauri 关系，抬不动如实报方案）
+## 依赖告警(dependabot)
 
-验收：改动后 `pnpm docs:build` 过 / `cargo check` 过；测试绿才 push。
+- [x] pnpm 侧 overrides:vite → 6.4.3、katex → 0.18.2、esbuild → 0.25.0(三者均由 vitepress/mermaid 传递引入)——**已生效并复验(2026-10-11,`3b5528e`)**:package.json `pnpm.overrides` 三 pin 在位,锁解析图只含 pin 版(store 内 vite@5.4.21 / katex@0.16.47 / esbuild@0.21.5 为历史残留,不在锁文件),`pnpm install --frozen-lockfile` + `pnpm docs:build` 绿;Dependabot #3/#4/#5 随 pin 转 fixed
+- [x] cargo 侧 glib 0.18.5 → 0.20.0(需评估 gtk 栈整体抬升与 tauri 关系,抬不动如实报方案)——**评估完毕:抬不动,parked(2026-10-11)**:`cargo update -p glib --precise 0.20.0` 被 cargo 拒——`gtk 0.18.2 ← tauri 2.12.2 ← sandtable-desktop` 要求 `glib ^0.18`,tauri 2.x 线依赖面封顶 `gtk ^0.18`(stable 顶格 2.12.2,3.0 仍 alpha.4);方案 = tauri 3.0 stable 且依赖面出现 gtk 0.20 栈时随桌面大版本一并抬;Dependabot #7(medium)维持 open,不 force 抬升
+
+验收:改动后 `pnpm docs:build` 过 / `cargo check` 过;测试绿才 push。
