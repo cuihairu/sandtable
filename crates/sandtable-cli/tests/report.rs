@@ -137,6 +137,12 @@ fn report_merges_sources_single_file() {
     assert!(html.contains("Confidence"), "推荐块");
     assert!(html.contains("<svg"), "内联 SVG 图");
     assert!(html.contains("PASS"), "约束判定列");
+    // 模型边界注记(2026-10-11 拍板):CI 与判定只在模型内有效
+    assert!(html.contains("模型边界"), "页首模型边界注记");
+    assert!(
+        html.contains("相对比较与平衡探索"),
+        "注记措辞按文档 01 立场"
+    );
     // 自包含:无外部资源、占位符已替换
     assert!(
         !html.contains("http://") && !html.contains("https://"),

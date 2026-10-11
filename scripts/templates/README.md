@@ -29,4 +29,5 @@ python3 scripts/templates/sweep_curves.py sweep-out/sweep.json --metric win_rate
 - 模板内 CI95 为 ±1.96·SE 正态近似(分析速览);权威口径(t 分布、配对差、
   CI 判定)在 CLI `compare` / `sweep` / `recommend`(同阶段 0 纪律);
 - 模板是**起步样板**而非库:按需改写,不追求参数面齐全;
+- `ab_summary.py` 表格尾带**模型边界注记**(CI 与判定仅在仿真模型内有效,口径同 `sandtable report` 页首,2026-10-11 拍板);PNG 不带该注记——图内标签维持英文、不依赖 CJK 字形的纪律不变;
 - 脚本不被信任时的执行策略(永不自动执行、显式执行前审查)见设计文档 §5。

@@ -142,6 +142,7 @@ footer{margin-top:44px;border-top:1px solid var(--line);padding-top:10px;font-si
 <body>
 <h1>Sandtable 报告</h1>
 <p class="mut">读取:{sources} · 只读产物,未重新仿真</p>
+<p class="mut"><b>模型边界</b>:置信区间与差值判定仅在仿真模型内有效——行为概率为人为设定,结论用于相对比较与平衡探索,不预测真实玩家的绝对行为(见文档 01)</p>
 {body}
 <footer>sandtable · 报告由已落盘产物渲染,数据口径见文档 9 / 10 章</footer>
 </body>
