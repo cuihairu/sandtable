@@ -89,7 +89,7 @@ rec = st.recommend("examples/pokemon-sweep.yaml", sw.results)
 ### 轮记录
 
 - **2026-10-08 阶段 0 落地**(点火来源:巡检续批;依据:上表阶段 0 为纯示例、可随时开工,故拍板记录"直接开工,不等过目"):`examples/python/` 三示例 + README(依赖/运行/口径纪律,`sim-out/` 已 gitignore);验收列全过——三脚本消费 report.json / days.csv / Parquet 各自跑通,KPI 表与两张 PNG 本地产出。两点口径存档:①示例 CI95 用 ±1.96·SE 正态近似,权威 t 分布口径仍归 CLI(脚本头与 README 均注明);②本批零 Rust 改动,内核 / wasm / CI 门不涉及。
-- **阶段 1 起(动 Rust 侧)继续冻结**,待设计过目后按上表验收逐期推进。
+- **2026-10-11 阶段 1 拍板:设计通过,开工实施**(点火来源:巡检 11 轮,授权按原计划与台账自行拍板)。对照核查三项:①原计划 §6.1「配置描述数据,代码/脚本描述复杂行为」「复杂行为应该通过脚本/扩展机制完成」即本设计的合法性来源,§0 定位(编排 + 分析,不把 YAML 变成编程语言)与其一致;②台账一致性:阶段 0 已验收,本设计 2026-10-08 定稿后无搁置事由;③技术红线实证:pyo3 进独立 crate `sandtable-python`,core 依赖树零改动,CI wasm 门为 `-p sandtable-core` 包级不受影响;本机 Python 3.14.4 + 头文件 + `libpython3.14.so` 在位,pyo3 0.29.3 / maturin 1.15.0 现行稳定;CI `cargo test --workspace` 覆盖新 crate 需 python3-dev(已加)。**实施口径**:绑定照抄 wasm 双层结构(`*_native` 纯函数 + 薄封装)但独立实现、不链 sandtable-wasm(wasm-bindgen 不进 native crate);core 唯一真源,三份独立薄转发由 pairwise 等价测试锁死(web_parity: wasm↔CLI;py_parity: py↔CLI;desktop: desktop↔wasm);Python 侧无 Web 的 64 replicates / 200 预算门(原生形态,同 CLI)。**对 §6 草图的两点偏离**:①`out.days.to_pandas()`(Arrow 零拷贝)不进阶段 1,days 以 `days_csv` 字符串交付(与 CLI 逐字节同源,`pd.read_csv(io.StringIO(...))` 即得 DataFrame),Arrow C Data Interface 留阶段 2 编排 API 一并做;②sweep 为一次全量调用(plan + 顺序跑全部候选,同 CLI 语义;wasm 的 plan/candidate 分解是为让出浏览器主线程,Python 无此约束)。
 
 ## 8. 来源与分级
 
