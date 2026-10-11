@@ -581,7 +581,7 @@ mod tests {
     const FULL: &str = include_str!("../tests/fixtures/scenario_full.yaml");
 
     #[test]
-    fn 键序与注释不影响_hash() {
+    fn key_order_and_comments_do_not_affect_hash() {
         let a = load_str(FULL).unwrap();
         // 同一配置:键序打乱 + 注释与空白不同
         let b = load_str(
@@ -602,13 +602,13 @@ schema_version: "1"
     }
 
     #[test]
-    fn 完整模板与默认配置等价() {
+    fn full_template_equals_default() {
         let cfg = load_str(FULL).unwrap();
         assert_eq!(config_hash(&cfg), config_hash(&SimConfig::default()));
     }
 
     #[test]
-    fn 部分覆盖_其余回退默认() {
+    fn partial_override_rest_defaults() {
         let cfg = load_str(
             r#"schema_version: "1"
 scenario:
@@ -627,13 +627,13 @@ model:
     }
 
     #[test]
-    fn 缺少_schema_version_报错() {
+    fn missing_schema_version_rejected() {
         let err = load_str("scenario:\n  population: 10\n").unwrap_err();
         assert!(err.to_string().contains("schema_version"));
     }
 
     #[test]
-    fn duration_格式() {
+    fn duration_formats() {
         assert_eq!(parse_duration("30d").unwrap(), 30);
         assert!(parse_duration("30").is_err());
         assert!(parse_duration("1w").is_err());
@@ -641,7 +641,7 @@ model:
     }
 
     #[test]
-    fn mix_非法值报错() {
+    fn mix_invalid_value_rejected() {
         let err = load_str(
             r#"schema_version: "1"
 scenario:
@@ -661,7 +661,7 @@ scenario:
     }
 
     #[test]
-    fn behavior_按分群命名覆盖() {
+    fn behavior_named_cohort_overrides() {
         let cfg = load_str(
             r#"schema_version: "1"
 model:
@@ -681,7 +681,7 @@ model:
 
     /// 公式槽:YAML 覆盖进入配置;非法表达式在加载期(validate)报槽名。
     #[test]
-    fn 公式覆盖与非法公式报错() {
+    fn formula_override_and_invalid_rejected() {
         let cfg = load_str(
             r#"schema_version: "1"
 model:
@@ -721,7 +721,7 @@ model:
 
     /// init 模板本身必须是合法场景(默认值模板可直接运行)。
     #[test]
-    fn 示例模板可加载() {
+    fn example_templates_load() {
         let cfg = load_str(&example_yaml()).unwrap();
         assert_eq!(config_hash(&cfg), config_hash(&SimConfig::default()));
     }
@@ -730,7 +730,7 @@ model:
     /// 填入 gold / xp 两个新字段(旧配置语义不变);新字段显式给出时优先;
     /// 遗留字段不进注册表数值通道。
     #[test]
-    fn 遗留_reward_growth_映射双增长率() {
+    fn legacy_reward_growth_maps_two_rates() {
         let cfg = load_str(
             r#"schema_version: "1"
 model:
@@ -760,7 +760,7 @@ model:
     /// 逐层数组(文档 21 阻力 #3):三维逐格覆盖几何推导;产出缺省回退几何;
     /// 层数与数组长度必须一致,hp 须为正。
     #[test]
-    fn tier_table_逐层覆盖与校验() {
+    fn tier_table_override_and_validation() {
         let yaml = |tiers: u32| {
             format!(
                 r#"schema_version: "1"
@@ -806,7 +806,7 @@ model:
     /// 掉落面(文档 24 章 R1):model.loot YAML 进 cfg,表 / 权重 /
     /// 倍率完整保留;未配置时为 None(不进 canonical JSON)。
     #[test]
-    fn loot_yaml_往返() {
+    fn loot_yaml_roundtrip() {
         let cfg = load_str(
             r#"schema_version: "1"
 scenario:
@@ -882,7 +882,7 @@ model:
     /// 抽卡面(文档 24 章 R2):model.gacha YAML 进 cfg,四个保底参数
     /// 完整保留;未配置时为 None;base_rate 可经数值通道读写(镜像口径)。
     #[test]
-    fn gacha_yaml_往返() {
+    fn gacha_yaml_roundtrip() {
         let cfg = load_str(
             r#"schema_version: "1"
 scenario:
@@ -947,7 +947,7 @@ model:
     /// 实验文件(docs 10/12 章):scenario + model + sweep 三节齐全,
     /// sweep 节不进注册表树校验,但参数路径经 spec 校验查注册表。
     #[test]
-    fn 实验文件_三节齐全_网格候选与覆盖生效() {
+    fn experiment_full_sections_grid_and_overrides() {
         let (cfg, spec) = load_experiment_str(
             r#"schema_version: "1"
 scenario:
@@ -979,7 +979,7 @@ sweep:
     }
 
     #[test]
-    fn 实验文件_缺_sweep_节报错() {
+    fn experiment_missing_sweep_rejected() {
         let e = load_experiment_str("schema_version: \"1\"\nscenario:\n  population: 100\n")
             .unwrap_err();
         assert!(e.to_string().contains("sweep"), "{e}");
@@ -988,7 +988,7 @@ sweep:
     /// 寻优实验(docs 12 章自动寻优):scenario + model + optimize 三节,
     /// 字段缺省值与 objective 方向缺省 maximize;与 sweep 节互斥。
     #[test]
-    fn 实验文件_寻优节加载与互斥() {
+    fn experiment_optimize_section_exclusive() {
         let (cfg, spec) = load_optimize_str(
             r#"schema_version: "1"
 scenario:
@@ -1058,7 +1058,7 @@ optimize:
     }
 
     #[test]
-    fn 实验文件_参数路径未知_报错附建议() {
+    fn experiment_unknown_path_suggests() {
         let e = load_experiment_str(
             r#"schema_version: "1"
 sweep:
@@ -1074,7 +1074,7 @@ sweep:
     }
 
     #[test]
-    fn 实验文件_未知指标报错列可选值() {
+    fn experiment_unknown_metric_lists_options() {
         let e = load_experiment_str(
             r#"schema_version: "1"
 sweep:
@@ -1091,7 +1091,7 @@ sweep:
     }
 
     #[test]
-    fn 实验文件_随机模式_默认与覆盖() {
+    fn experiment_random_mode_defaults_and_override() {
         let (_, spec) = load_experiment_str(
             r#"schema_version: "1"
 sweep:
@@ -1110,7 +1110,7 @@ sweep:
     /// sweep 节内部形状错误(min/max/step 缺失)要清晰报错,
     /// 不能串到 scenario/model 的错误信息上。
     #[test]
-    fn 实验文件_范围缺_step_报错() {
+    fn experiment_range_missing_step_rejected() {
         let e = load_experiment_str(
             r#"schema_version: "1"
 sweep:

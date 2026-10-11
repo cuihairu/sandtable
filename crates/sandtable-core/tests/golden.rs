@@ -26,7 +26,7 @@ fn render_golden() -> String {
 }
 
 #[test]
-fn 黄金快照_字节级一致() {
+fn golden_snapshot_byte_identical() {
     let json = render_golden();
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_report.json");
     if std::env::var_os("SANDTABLE_WRITE_GOLDEN").is_some() {

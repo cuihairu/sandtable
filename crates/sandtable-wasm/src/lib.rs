@@ -235,7 +235,7 @@ mod tests {
     );
 
     #[test]
-    fn 校验_有效与无效() {
+    fn validate_valid_and_invalid() {
         let v = validate_config_native(YAML).unwrap();
         assert_eq!(v["players"], 40);
         assert_eq!(v["days"], 3);
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn 运行_与core直跑逐值一致() {
+    fn run_matches_core_values() {
         let cfg = core::scenario::load_str(YAML).unwrap();
         let v = run_simulation_native(YAML, 2).unwrap();
         let want: Vec<serde_json::Value> = (0..2u32)
@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn 运行_输出附days_csv与core渲染同字节() {
+    fn run_days_csv_byte_identical() {
         let cfg = core::scenario::load_str(YAML).unwrap();
         let v = run_simulation_native(YAML, 2).unwrap();
         let want = core::export::day_csv(&core::sim::run(&cfg, 0));
@@ -280,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    fn 运行_参数边界拒绝() {
+    fn run_rejects_param_bounds() {
         assert!(run_simulation_native(YAML, 0).is_err());
         let e = run_simulation_native(YAML, MAX_REPLICATES + 1).unwrap_err();
         assert!(e.contains("上限"), "{e}");
@@ -300,7 +300,7 @@ mod tests {
     );
 
     #[test]
-    fn 扫描_plan_候选与replicates覆盖() {
+    fn sweep_plan_candidates_and_replicates() {
         let v = sweep_plan_native(EXP_YAML, 0).unwrap();
         assert_eq!(v["candidates"].as_array().unwrap().len(), 3);
         assert_eq!(v["sims"], 6);
@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn 扫描_plan_预算拒绝() {
+    fn sweep_plan_budget_rejected() {
         let big = concat!(
             "schema_version: '1'\n",
             "scenario: {population: 40, duration: '3d', seed: 7}\n",
@@ -351,7 +351,7 @@ mod tests {
     );
 
     #[test]
-    fn 扫描_plan_random_采样数与可复现() {
+    fn sweep_plan_random_count_reproducible() {
         let v = sweep_plan_native(EXP_YAML_RANDOM, 0).unwrap();
         assert_eq!(v["mode"], "random");
         let cands = v["candidates"].as_array().unwrap();
@@ -372,7 +372,7 @@ mod tests {
     // 双轴网格:笛卡尔积 = 3×3 = 9 候选(Web 联合可行域矩阵的数据源,
     // docs 22 后续项)。
     #[test]
-    fn 扫描_plan_双轴网格_笛卡尔积() {
+    fn sweep_plan_two_axis_cartesian() {
         let yaml2 = concat!(
             "schema_version: '1'\n",
             "scenario: {population: 40, duration: '3d', seed: 7}\n",
@@ -413,7 +413,7 @@ mod tests {
     // Latin Hypercube(文档 12 章):serde 名 latin_hypercube,采样数 =
     // samples,与 Random 同走 wasm 透传(plan 纯转发不改写候选)。
     #[test]
-    fn 扫描_plan_lhs_透传() {
+    fn sweep_plan_lhs_passthrough() {
         let yaml = concat!(
             "schema_version: '1'\n",
             "scenario: {population: 40, duration: '3d', seed: 7}\n",
@@ -441,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn 扫描_candidate_与core直跑逐值一致() {
+    fn sweep_candidate_matches_core() {
         let values = r#"{"model.warrior.attack": 100.0}"#;
         let v = sweep_candidate_native(EXP_YAML, 2, values).unwrap();
         let (cfg, spec) = core::scenario::load_experiment_str(EXP_YAML).unwrap();
@@ -466,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn 扫描_recommend_敏感性加单轴区间() {
+    fn sweep_recommend_sensitivity_and_interval() {
         let mut results = Vec::new();
         let (cfg, spec) = core::scenario::load_experiment_str(EXP_YAML).unwrap();
         for values in spec.plan(cfg.base_seed).unwrap() {

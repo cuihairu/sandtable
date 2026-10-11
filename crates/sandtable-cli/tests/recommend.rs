@@ -30,7 +30,7 @@ fn run_sweep(dir: &std::path::Path, yaml: &std::path::Path) {
 }
 
 #[test]
-fn 推荐_单轴矩阵与推荐块() {
+fn recommend_single_axis_matrix() {
     let dir = temp_dir("1d");
     fs::create_dir_all(&dir).unwrap();
     let yaml = dir.join("experiment.yaml");
@@ -95,7 +95,7 @@ fn 推荐_单轴矩阵与推荐块() {
 }
 
 #[test]
-fn 推荐_多参数轴_退出码2() {
+fn recommend_multi_axis_exit2() {
     let dir = temp_dir("2d");
     fs::create_dir_all(&dir).unwrap();
     let yaml = dir.join("experiment.yaml");
@@ -133,7 +133,7 @@ fn 推荐_多参数轴_退出码2() {
 }
 
 #[test]
-fn 推荐_sweep产物缺失_退出码2() {
+fn recommend_missing_sweep_exit2() {
     let dir = temp_dir("missing");
     fs::create_dir_all(&dir).unwrap();
     let yaml = dir.join("experiment.yaml");

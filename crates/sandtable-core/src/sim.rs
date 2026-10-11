@@ -314,7 +314,7 @@ mod tests {
     /// 固定伤害、必中、怪物不还手的解析战斗有闭式解:
     /// 轮数 = ceil(hp / (attack − defense)),伤害 = 轮数 × (attack − defense)。
     #[test]
-    fn 解析战斗_闭式解() {
+    fn analytic_battle_closed_form() {
         let mut cfg = SimConfig::default();
         cfg.combat.p_hit = 1.0;
         cfg.combat.p_hit_monster = 0.0;
@@ -333,7 +333,7 @@ mod tests {
 
     /// 超时判负:磨不死 = 战败。
     #[test]
-    fn 解析战斗_超时判负() {
+    fn analytic_battle_timeout_losses() {
         let mut cfg = SimConfig::default();
         cfg.combat.p_hit = 1.0;
         cfg.combat.p_hit_monster = 0.0;
@@ -351,7 +351,7 @@ mod tests {
     /// 比值口径闭式解(文档 21 阻力 #1):必中零浮动下
     /// dmg = floor(k·attack/(attack+defense)),轮数 = ceil(hp / dmg)。
     #[test]
-    fn 比值战斗_闭式解() {
+    fn ratio_battle_closed_form() {
         let mut cfg = SimConfig::default();
         cfg.combat.p_hit = 1.0;
         cfg.combat.p_hit_monster = 0.0;
@@ -371,7 +371,7 @@ mod tests {
     /// 比值口径的平滑性(阻力 #1 根因):attack ≪ defense 时差值口径钳到 1
     /// 磨不死(见超时判负测试),比值口径按比例仍有伤害、有限轮内可胜。
     #[test]
-    fn 比值战斗_弱打强不钳底() {
+    fn ratio_battle_no_floor_clamp() {
         let mut cfg = SimConfig::default();
         cfg.combat.p_hit = 1.0;
         cfg.combat.p_hit_monster = 0.0;
@@ -390,7 +390,7 @@ mod tests {
     /// 练级产出面(阻力 #4):p_training 满概率时全分群只练级——金币经验
     /// 入账、升级推进;战斗计数与胜率不动(练级不是战斗,不虚增胜率)。
     #[test]
-    fn 练级产出_入账且不进战斗统计() {
+    fn training_income_booked_not_in_battle() {
         let mut cfg = SimConfig {
             players: 1,
             days: 1,
@@ -419,7 +419,7 @@ mod tests {
     /// 确定收入:必中、零浮动、全分群只打副本,单日金币收入 = 会话数 ×
     /// 对应层产出,与种子无关(随机性被关掉后逐玩家可手算)。
     #[test]
-    fn 确定收入_单日() {
+    fn deterministic_income_single_day() {
         let mut cfg = SimConfig {
             players: 1,
             days: 1,
@@ -452,7 +452,7 @@ mod tests {
 
     /// 流失机制:把流失概率拉满,第 1 天全活跃、第 2 天全流失。
     #[test]
-    fn 流失_拉满概率() {
+    fn churn_max_probability() {
         let cfg = SimConfig {
             players: 50,
             days: 5,
@@ -472,7 +472,7 @@ mod tests {
 
     /// 确定性:同配置同 replicate 两次运行,指标完全一致。
     #[test]
-    fn 确定性_两次运行一致() {
+    fn determinism_two_runs_identical() {
         let cfg = SimConfig {
             players: 200,
             days: 10,
@@ -489,7 +489,7 @@ mod tests {
 
     /// CRN:A/B 两臂同 replicate 的种子与分群一致(配对比较的前提)。
     #[test]
-    fn crn_两臂同键() {
+    fn crn_both_arms_same_keys() {
         let base = SimConfig {
             players: 100,
             days: 5,
@@ -508,7 +508,7 @@ mod tests {
     /// Σ t·0.98^(t−1)·0.02 + 50·0.98^49 ≈ 31.79;未配置 gacha 时
     /// gacha_pulls_to_hit 为 None(不进 JSON,黄金快照不变)。
     #[test]
-    fn 抽卡_期望抽数对齐解析解() {
+    fn gacha_pulls_match_closed_form() {
         let cfg = SimConfig {
             players: 2000,
             days: 1,
@@ -542,7 +542,7 @@ mod tests {
 
     /// 硬保底方向:保底越近 E[T] 越小(10 抽保底 ≈ 9.15 < 50 抽保底 ≈ 31.79)。
     #[test]
-    fn 抽卡_硬保底越近抽数越少() {
+    fn gacha_hard_pity_reduces_pulls() {
         let base = SimConfig {
             players: 2000,
             days: 1,
@@ -567,7 +567,7 @@ mod tests {
     /// 保底参数不进 RNG 键(CRN):只改 pity_hard 的 A/B 臂,日统计与
     /// 分群逐位一致(键未挪),仅抽卡 KPI 不同。
     #[test]
-    fn 抽卡_改保底不挪键() {
+    fn gacha_pity_change_keeps_keys() {
         let base = SimConfig {
             players: 300,
             days: 5,
@@ -599,7 +599,7 @@ mod tests {
 
     /// A/B 方向:攻击大幅提升 → 金币产出严格增加(CRN 配对下逐 replicate 同向)。
     #[test]
-    fn ab_攻击提升收益增加() {
+    fn ab_attack_up_income_up() {
         let base = SimConfig {
             players: 300,
             days: 10,
@@ -622,7 +622,7 @@ mod tests {
     /// 公式槽接入执行循环(文档 07 章):只改配置里的公式、不改代码,
     /// 实验行为随之改变——升级更便宜 → 升级数严格更多、期末等级更高。
     #[test]
-    fn 自定义公式_改配置改变行为() {
+    fn custom_formula_changes_behavior() {
         let base = SimConfig {
             players: 200,
             days: 10,

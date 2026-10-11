@@ -388,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn 森林同种子逐位一致() {
+    fn forest_same_seed_identical() {
         let rows = synth_rows();
         let a = RandomForest::train(
             "win_rate",
@@ -411,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn 森林换种子不同() {
+    fn forest_different_seed_differs() {
         let rows = synth_rows();
         let a = RandomForest::train(
             "win_rate",
@@ -434,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn 线性关系拟合与重要性主导() {
+    fn linear_fit_importance_dominates() {
         let rows = synth_rows();
         let model = RandomForest::train(
             "win_rate",
@@ -460,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn 常数目标退化为单叶() {
+    fn constant_target_single_leaf() {
         let rows: Vec<(Vec<f64>, f64)> = (0..8).map(|i| (vec![i as f64], 7.0)).collect();
         let model =
             RandomForest::train("win_rate", vec!["x".into()], rows, SurrogateSpec::new(3)).unwrap();
@@ -472,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn 训练行过滤配置错误并校验一致性() {
+    fn training_rows_filter_and_validation() {
         let results = vec![
             cand(&[("a", 1.0), ("b", 2.0)], 0.5),
             CandidateResult {
@@ -513,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn 预测缺特征报错且模型可序列化回读() {
+    fn predict_missing_feature_model_roundtrip() {
         let model = RandomForest::train(
             "win_rate",
             vec!["a".into(), "b".into()],
@@ -534,7 +534,7 @@ mod tests {
     }
 
     #[test]
-    fn 超参校验() {
+    fn hyperparam_validation() {
         let mut spec = SurrogateSpec::new(1);
         spec.trees = 0;
         assert!(spec.validate().is_err());

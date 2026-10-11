@@ -21,7 +21,7 @@ fn run_small() -> core::metrics::RunMetrics {
 }
 
 #[test]
-fn parquet_写出后原样读回() {
+fn parquet_roundtrip() {
     let m = run_small();
     let dir = std::env::temp_dir().join(format!("sandtable-parquet-test-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();

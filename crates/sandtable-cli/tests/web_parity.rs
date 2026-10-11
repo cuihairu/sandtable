@@ -6,7 +6,7 @@ use std::fs;
 use std::process::Command;
 
 #[test]
-fn web绑定与cli同配置同seed逐值一致() {
+fn web_binding_matches_cli_values() {
     let dir = std::env::temp_dir().join(format!(
         "st-parity-{}-{}",
         std::process::id(),

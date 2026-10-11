@@ -60,7 +60,7 @@ mod tests {
     /// 软保底从起点后线性爬升并钳到 1;软硬同时命中取硬(= 1);
     /// step = 0 时软保底整体不生效。
     #[test]
-    fn 命中率_状态机逐点() {
+    fn hit_rate_state_machine_points() {
         let c = cfg(0.02, 0, 0, 0.0);
         for k in [0u64, 5, 100, 1000] {
             assert_eq!(hit_rate(&c, k), 0.02, "无保底 k={k}");
@@ -90,7 +90,7 @@ mod tests {
     /// 会话语义:pull_until_hit 恰好一次命中、计数自洽
     /// (pulls = since_hit 累计 + 1;命中即清零 since_hit)。
     #[test]
-    fn 会话_恰好一次命中() {
+    fn session_exactly_one_hit() {
         for i in 0..50u64 {
             let mut rng = DayRng::new(7, i, 0);
             let mut a = new_actor(i);
@@ -110,7 +110,7 @@ mod tests {
     /// 保底计数器跨会话接力:命中后 since_hit 清零,下一会话从基础率重新爬坡
     /// (同 actor 复用同一 rng 流,Gacha 计数器顺序推进)。
     #[test]
-    fn 会话_命中后计数器清零重爬() {
+    fn session_counter_resets_after_hit() {
         let c = cfg(0.02, 60, 0, 0.0);
         let mut rng = DayRng::new(7, 3, 0);
         let mut a = new_actor(3);
@@ -128,7 +128,7 @@ mod tests {
 
     /// 软保底方向(CRN):同键流下,爬坡概率面的平均抽数严格小于无保底基线。
     #[test]
-    fn 软保底_降抽数方向() {
+    fn soft_pity_reduces_pulls() {
         let base = cfg(0.02, 0, 0, 0.0);
         let soft = cfg(0.02, 0, 10, 0.05);
         let mean = |c: &GachaConfig| -> f64 {
@@ -150,7 +150,7 @@ mod tests {
 
     /// 无保底几何分布期望:E[T] = 1/p。基线 p=0.02 → 50 抽,CI 内核对。
     #[test]
-    fn 无保底_期望抽数对齐解析解() {
+    fn no_pity_pulls_match_closed_form() {
         let c = cfg(0.02, 0, 0, 0.0);
         let n = 2000u64;
         let mean: f64 = (0..n)
@@ -169,7 +169,7 @@ mod tests {
     /// 硬保底解析解:E[T] = Σ_{t=1..H-1} t·(1−p)^{t−1}·p + H·(1−p)^{H−1}。
     /// p=0.02, H=50 → ≈ 31.79(文档 24 章 R2 验收数)。
     #[test]
-    fn 硬保底_期望抽数对齐解析解() {
+    fn hard_pity_pulls_match_closed_form() {
         let c = cfg(0.02, 50, 0, 0.0);
         let n = 2000u64;
         let mean: f64 = (0..n)

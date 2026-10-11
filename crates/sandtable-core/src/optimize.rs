@@ -830,7 +830,7 @@ mod tests {
     }
 
     #[test]
-    fn 进化寻优_找到可行点并推向目标方向() {
+    fn evolve_finds_feasible_and_moves_toward_target() {
         let base = base();
         let s = spec();
         let r = optimize(&base, &s).unwrap();
@@ -850,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn 进化寻优_同种子同结果() {
+    fn evolve_same_seed_same_result() {
         let base = base();
         let s = spec();
         let a = optimize(&base, &s).unwrap();
@@ -862,7 +862,7 @@ mod tests {
     }
 
     #[test]
-    fn 进化寻优_配置错误候选垫底不崩溃() {
+    fn evolve_config_error_candidates_ranked_last() {
         let base = base();
         let mut s = spec();
         // reward_gold 范围含负值 → 部分候选被 validate 拦截为配置错误
@@ -881,7 +881,7 @@ mod tests {
     }
 
     #[test]
-    fn 寻优定义校验_预算与形状() {
+    fn optimize_spec_budget_and_shape() {
         let mut s = spec();
         s.population = 1;
         assert!(s.validate().is_err(), "population ≥ 2");
@@ -913,7 +913,7 @@ mod tests {
     }
 
     #[test]
-    fn 适应度_字典序与方向() {
+    fn fitness_lexicographic_and_direction() {
         use crate::experiment::SampleStats;
         let stat = |m: f64| SampleStats {
             n: 2,
@@ -1043,7 +1043,7 @@ mod tests {
     }
 
     #[test]
-    fn pareto_支配与非支配层级() {
+    fn pareto_dominance_and_fronts() {
         // maximize power(折算原值)/ minimize gold(折算取负)
         let objs = pareto_spec().objectives;
         // A(1500, 800) 与 B(1600, 900) 互不支配(power↑gold↓同涨,折算后
@@ -1059,7 +1059,7 @@ mod tests {
     }
 
     #[test]
-    fn pareto_层内排序_硬约束分层优先() {
+    fn pareto_sort_hard_constraint_tiers_first() {
         let objs = pareto_spec().objectives;
         // hard_pass 0 但目标值全优,仍不得压过 hard_pass 1
         let great_infeasible = cand2(0, 5000.0, 10.0);
@@ -1075,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn pareto_拥挤距离_边界无穷() {
+    fn pareto_crowding_distance_boundary_infinite() {
         let objs = pareto_spec().objectives;
         // 三点单层:两个边界(∞)夹一个内部点(有限)
         let results = vec![
@@ -1097,7 +1097,7 @@ mod tests {
     }
 
     #[test]
-    fn pareto_寻优_末代前沿与确定性() {
+    fn pareto_final_front_deterministic() {
         let base = base();
         let s = pareto_spec();
         let a = optimize(&base, &s).unwrap();
@@ -1137,7 +1137,7 @@ mod tests {
     }
 
     #[test]
-    fn pareto_寻优_配置错误候选不进前沿() {
+    fn pareto_config_error_candidates_excluded() {
         let base = base();
         let mut s = pareto_spec();
         s.parameters.push(ParamRange {
@@ -1157,7 +1157,7 @@ mod tests {
     }
 
     #[test]
-    fn 寻优定义校验_模式与目标互斥() {
+    fn optimize_spec_mode_objective_exclusive() {
         let mut s = pareto_spec();
         s.objectives = vec![s.objectives[0].clone()];
         assert!(s.validate().is_err(), "pareto 至少 2 个目标");
@@ -1189,7 +1189,7 @@ mod tests {
     }
 
     #[test]
-    fn pareto_yaml_加载() {
+    fn pareto_yaml_loading() {
         let yaml = concat!(
             "schema_version: '1'\n",
             "scenario: {population: 200, duration: '10d'}\n",

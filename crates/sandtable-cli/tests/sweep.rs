@@ -13,7 +13,7 @@ fn temp_dir(tag: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn sweep_端到端_候选与汇总落盘() {
+fn sweep_end_to_end_candidates_and_summary() {
     let dir = temp_dir("e2e");
     fs::create_dir_all(&dir).unwrap();
     let exp = dir.join("exp.yaml");
@@ -76,7 +76,7 @@ sweep:
 }
 
 #[test]
-fn sweep_失败候选标注_不静默() {
+fn sweep_failed_candidates_annotated() {
     let dir = temp_dir("bad-cand");
     fs::create_dir_all(&dir).unwrap();
     let exp = dir.join("bad.yaml");
@@ -111,7 +111,7 @@ sweep:
 }
 
 #[test]
-fn sweep_实验文件配置错误_退出码2() {
+fn sweep_config_error_exit2() {
     let dir = temp_dir("cfg-err");
     fs::create_dir_all(&dir).unwrap();
     let exp = dir.join("no-sweep.yaml");

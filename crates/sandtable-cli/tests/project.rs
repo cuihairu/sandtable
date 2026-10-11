@@ -53,7 +53,7 @@ fn hand_zip(dst: &std::path::Path, entries: &[(&str, String)]) {
 }
 
 #[test]
-fn 打包_校验_展开_往返与确定性() {
+fn project_pack_unpack_roundtrip_deterministic() {
     let dir = temp_dir("roundtrip");
     let proj = dir.join("myproj");
     fixture(&proj);
@@ -129,7 +129,7 @@ fn 打包_校验_展开_往返与确定性() {
 }
 
 #[test]
-fn 篡改哈希与清单外条目被拒() {
+fn project_rejects_tampered_hash_and_extra_files() {
     let dir = temp_dir("tamper");
     fs::create_dir_all(&dir).unwrap();
 
@@ -169,7 +169,7 @@ fn 篡改哈希与清单外条目被拒() {
 }
 
 #[test]
-fn 路径纪律与schema_version被拒() {
+fn project_rejects_bad_paths_and_schema() {
     let dir = temp_dir("paths");
     fs::create_dir_all(&dir).unwrap();
 
@@ -196,7 +196,7 @@ fn 路径纪律与schema_version被拒() {
 }
 
 #[test]
-fn 打包目录约定被拒() {
+fn project_rejects_directory_input() {
     let dir = temp_dir("convention");
     fs::create_dir_all(&dir).unwrap();
 

@@ -43,7 +43,7 @@ optimize:
 }
 
 #[test]
-fn optimize_端到端_最优与逐代统计落盘() {
+fn optimize_end_to_end_best_and_generations() {
     let dir = temp_dir("e2e");
     fs::create_dir_all(&dir).unwrap();
     let exp = dir.join("exp.yaml");
@@ -95,7 +95,7 @@ fn optimize_端到端_最优与逐代统计落盘() {
 }
 
 #[test]
-fn optimize_与_sweep_节互斥_退出码2() {
+fn optimize_sweep_sections_exclusive_exit2() {
     let dir = temp_dir("mutex");
     fs::create_dir_all(&dir).unwrap();
     let exp = dir.join("exp.yaml");
@@ -120,7 +120,7 @@ optimize:
 }
 
 #[test]
-fn optimize_缺_optimize_节_退出码2() {
+fn optimize_missing_section_exit2() {
     let dir = temp_dir("nosec");
     fs::create_dir_all(&dir).unwrap();
     let exp = dir.join("exp.yaml");

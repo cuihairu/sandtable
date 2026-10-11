@@ -135,7 +135,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 事件队列_按tick与入队序全序出队() {
+    fn event_queue_total_order_by_tick_and_seq() {
         let mut q = EventQueue::new();
         q.push(2, "late");
         q.push(1, "c");
@@ -147,7 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn 事件队列_同tick先到先出() {
+    fn event_queue_same_tick_fifo() {
         let mut q = EventQueue::new();
         for day in 1..=3u64 {
             q.push(day, format!("close-{day}"));
@@ -160,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn 时钟_单调推进() {
+    fn clock_monotonic() {
         let mut c = Clock::start();
         assert_eq!(c.tick(), 0);
         c.advance_to(3);
@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "时钟回拨")]
-    fn 时钟_回拨拦截() {
+    fn clock_rejects_rollback() {
         let mut c = Clock::start();
         c.advance_to(5);
         c.advance_to(1);

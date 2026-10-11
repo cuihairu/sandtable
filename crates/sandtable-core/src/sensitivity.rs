@@ -305,7 +305,7 @@ mod tests {
     /// 线性指标 Y = 2p 的弹性闭式解:E = 1。
     /// 基线 100,δ=5%:探针 95/105 → 两侧最近格点 90/110,δ_eff = 20/200 = 0.1。
     #[test]
-    fn 弹性_线性指标闭式解() {
+    fn elasticity_linear_metric_closed_form() {
         let spec = spec_1d();
         let base = SimConfig::default(); // attack = 100
         let results: Vec<CandidateResult> = [90.0, 100.0, 110.0]
@@ -325,7 +325,7 @@ mod tests {
 
     /// 区间跨零 → 不显著(文档 14 章)。
     #[test]
-    fn 弹性_区间跨零不显著() {
+    fn elasticity_interval_crosses_zero() {
         let spec = spec_1d();
         let base = SimConfig::default();
         let results: Vec<CandidateResult> = [90.0, 100.0, 110.0]
@@ -339,7 +339,7 @@ mod tests {
 
     /// 基线在网格下边缘:无下侧格点 → NoBracket。
     #[test]
-    fn 弹性_边缘无包夹() {
+    fn elasticity_edge_not_bracketed() {
         let mut spec = spec_1d();
         spec.parameters[0].min = 100.0;
         spec.parameters[0].max = 120.0;
@@ -355,7 +355,7 @@ mod tests {
 
     /// 双维网格但另一维没有基线值:切片为空 → NotIsolated。
     #[test]
-    fn 弹性_其他维不在基线_不可分() {
+    fn elasticity_other_dim_off_baseline_not_separable() {
         let mut spec = spec_1d();
         spec.parameters.push(ParamRange {
             path: "model.warrior.defense".into(),
@@ -380,7 +380,7 @@ mod tests {
 
     /// 另一维恰在基线上:切片可分,弹性照常算出。
     #[test]
-    fn 弹性_其他维在基线_可分() {
+    fn elasticity_other_dim_at_baseline_separable() {
         let mut spec = spec_1d();
         spec.parameters.push(ParamRange {
             path: "model.warrior.defense".into(),
@@ -406,7 +406,7 @@ mod tests {
 
     /// 指标基线为 0:相对弹性无定义,如实标注。
     #[test]
-    fn 弹性_零基线标注() {
+    fn elasticity_zero_baseline_flagged() {
         let spec = spec_1d();
         let base = SimConfig::default();
         let results: Vec<CandidateResult> = [90.0, 100.0, 110.0]
@@ -419,7 +419,7 @@ mod tests {
 
     /// δ 显式传入:格点恰好落在探针上时 δ_eff == δ。
     #[test]
-    fn 弹性_格点落在探针上() {
+    fn elasticity_grid_on_probe() {
         // p0 = 100,δ = 0.1 → 探针 90/110,正是格点
         let spec = spec_1d();
         let base = SimConfig::default();

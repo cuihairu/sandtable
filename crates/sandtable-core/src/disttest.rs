@@ -242,7 +242,7 @@ mod tests {
     /// 卡方临界值对照(标准 χ² 表):stat=3.8415/df=1 → p≈0.05;
     /// stat=10.828/df=1 → p≈0.001。p 值口径与 scipy chisquare 一致。
     #[test]
-    fn p值_临界值对照() {
+    fn p_value_against_critical_table() {
         let p1 = p_value(3.8415, 1);
         assert!((p1 - 0.05).abs() < 1e-3, "p = {p1}");
         let p2 = p_value(10.828, 1);
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn 卡方_均匀通过_偏离失败() {
+    fn chi_square_uniform_passes_deviation_fails() {
         // 完美均匀 → p = 1
         let chi = chi_square(&[500.0; 4], &[500.0; 4]).unwrap();
         assert!((chi.stat - 0.0).abs() < 1e-12);
@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn 桶合并_期望不足则合并() {
+    fn bucket_merging_when_expected_low() {
         // 期望 2.0(< 5)的桶与左邻合并
         let (o, e) = merge_buckets(
             &[10.0, 10.0, 2.0, 20.0],
@@ -292,7 +292,7 @@ mod tests {
     }
 
     #[test]
-    fn 卡方_输入校验() {
+    fn chi_square_input_validation() {
         assert!(chi_square(&[1.0], &[1.0]).is_err(), "单桶不可检验");
         assert!(chi_square(&[1.0, 2.0], &[1.0, 2.0, 3.0]).is_err(), "不等长");
         assert!(chi_square(&[1.0, 2.0], &[1.0, 0.0]).is_err(), "零期望");
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn 万次均匀采样_检验通过() {
+    fn uniform_10k_samples_pass() {
         // R1 验收:万次均匀采样 χ² 全过(10 桶)
         use crate::rng::{DayRng, Purpose};
         let buckets = 10usize;
@@ -318,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn 偏离分布_万次采样_检验失败() {
+    fn deviating_distribution_10k_fails() {
         // 有偏采样(前 5 桶翻倍)应被 α=0.01 抓出
         use crate::rng::{DayRng, Purpose};
         let buckets = 10usize;
@@ -339,7 +339,7 @@ mod tests {
     /// Φ 对照标准表:Φ(0)=0.5、Φ(1)≈0.8413、Φ(2)≈0.9772、
     /// Φ(1.96)=0.975、Φ(−1.96)=0.025(对称)。
     #[test]
-    fn 正态cdf_对照标准表() {
+    fn normal_cdf_against_standard_table() {
         assert_eq!(normal_cdf(0.0), 0.5);
         assert!(
             (normal_cdf(1.0) - 0.8413).abs() < 1e-4,
@@ -358,7 +358,7 @@ mod tests {
 
     /// 正态分桶校验:桶数、sigma、spread 非法逐项报错。
     #[test]
-    fn 正态分桶_输入校验() {
+    fn normal_buckets_input_validation() {
         let xs = [0.0f64; 10];
         assert!(normal_buckets(&xs, 0.0, 1.0, 1, 3.0).is_err(), "单桶");
         assert!(normal_buckets(&xs, 0.0, 0.0, 10, 3.0).is_err(), "sigma 0");
@@ -375,7 +375,7 @@ mod tests {
     /// R3 验收:10 万次正态采样,20 桶(±3σ)χ² 全过;区间外样本并入
     /// 首尾桶,期望含尾部质量。
     #[test]
-    fn 正态_十万次采样_卡方通过() {
+    fn normal_100k_samples_pass() {
         use crate::rng::{DayRng, Purpose};
         let (mu, sigma) = (7.0, 2.5);
         let mut rng = DayRng::new(2026, 1, 0);
@@ -390,7 +390,7 @@ mod tests {
 
     /// 均匀样本喂正态期望:中心桶观测翻倍量级,α=0.01 必抓。
     #[test]
-    fn 正态_均匀样本_卡方失败() {
+    fn normal_chi_square_rejects_uniform() {
         use crate::rng::{DayRng, Purpose};
         let (mu, sigma) = (0.0, 1.0);
         let mut rng = DayRng::new(42, 7, 3);

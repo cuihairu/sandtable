@@ -162,7 +162,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn csv_表头与行数一致() {
+    fn day_csv_header_and_rows() {
         let cfg = crate::config::SimConfig {
             players: 20,
             days: 4,
@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn json_往返字段完整() {
+    fn json_roundtrip_fields_complete() {
         let cfg = crate::config::SimConfig {
             players: 20,
             days: 3,

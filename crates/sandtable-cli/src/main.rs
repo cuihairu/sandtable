@@ -1593,7 +1593,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
-    fn csv_字段转义() {
+    fn csv_field_escaping() {
         assert_eq!(csv_field("plain"), "plain");
         assert_eq!(csv_field("a,b"), "\"a,b\"");
         assert_eq!(csv_field("说\"话\""), "\"说\"\"话\"\"\"");
@@ -1612,7 +1612,7 @@ mod tests {
     /// 汇总表列序:candidate/status/error/参数列/6 指标×3 列/t 判定列;
     /// 失败候选标注错误,指标与判定留空。
     #[test]
-    fn 汇总表_列结构与失败候选标注() {
+    fn summary_table_columns_and_failed_candidates() {
         let spec = SweepSpec {
             mode: SweepMode::Grid,
             parameters: vec![ParamRange {
@@ -1678,7 +1678,7 @@ mod tests {
 
     /// target_outcomes 与 spec.targets 的消费式对位:判定缺口记 n/a。
     #[test]
-    fn 汇总表_判定缺口记_na() {
+    fn summary_table_na_for_missing_verdict() {
         let spec = SweepSpec {
             mode: SweepMode::Grid,
             parameters: vec![ParamRange {

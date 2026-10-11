@@ -406,7 +406,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 分位数_插值() {
+    fn percentile_interpolation() {
         let v = vec![10, 20, 30, 40];
         assert_eq!(percentile(&v, 0.0), 10.0);
         assert_eq!(percentile(&v, 100.0), 40.0);
@@ -415,13 +415,13 @@ mod tests {
     }
 
     #[test]
-    fn 分位数_空与单点() {
+    fn percentile_empty_and_single() {
         assert_eq!(percentile(&[], 50.0), 0.0);
         assert_eq!(percentile(&[7], 99.0), 7.0);
     }
 
     #[test]
-    fn 汇总_留存分母是_day1_cohort() {
+    fn summary_retention_denominator_day1_cohort() {
         let cfg = SimConfig {
             players: 4,
             days: 7,

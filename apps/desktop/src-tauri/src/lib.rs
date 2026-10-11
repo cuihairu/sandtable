@@ -246,7 +246,7 @@ mod tests {
     );
 
     #[test]
-    fn 校验_有效与无效() {
+    fn validate_valid_and_invalid() {
         let v = validate_config(YAML.into()).unwrap();
         assert_eq!(v["players"], 40);
         assert_eq!(v["days"], 3);
@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn 运行_与wasm同构() {
+    fn run_matches_wasm() {
         let v = run_simulation(YAML.into(), 2).unwrap();
         let results = v["results"].as_array().unwrap();
         assert_eq!(results.len(), 2);
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn 扫描_plan_candidate_recommend_与core直跑一致() {
+    fn sweep_plan_candidate_recommend_match_core() {
         let plan = sweep_plan(EXP_YAML.into(), 0).unwrap();
         assert_eq!(plan["candidates"].as_array().unwrap().len(), 3);
         assert_eq!(plan["sims"], 6);
@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn 运行_与wasm绑定同配置同seed逐值一致() {
+    fn run_wasm_parity_same_config_seed() {
         // 三角口径(文档 18 章 Phase 7 验收):web_parity 已锁 wasm↔CLI
         // 逐值一致,本测试锁 desktop↔wasm——两条腿合起来,桌面与 CLI
         // 同配置同 seed 产物等价(同一内核的三个入口)。配置用宝可梦案例,
@@ -319,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn 查询_csv视图() {
+    fn query_csv_view() {
         let dir = std::env::temp_dir().join(format!("st-desktop-query-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("summary.csv");

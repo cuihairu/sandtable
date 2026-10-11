@@ -189,7 +189,7 @@ mod tests {
 
     /// 数据契约(文档 09 章):Arrow 批次的列名与列序必须与 CSV 表头一致。
     #[test]
-    fn arrow_日序列列名与csv契约一致() {
+    fn arrow_day_columns_match_csv() {
         let m = small_run();
         let batch = day_stats_batch(&m).unwrap();
         let schema = batch.schema();
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn arrow_日序列行数与数值对应() {
+    fn arrow_day_rows_match_values() {
         let m = small_run();
         let batch = day_stats_batch(&m).unwrap();
         assert_eq!(batch.num_rows(), m.day_stats.len());
@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn arrow_快照与cohort批次行数() {
+    fn arrow_snapshot_and_cohort_rows() {
         let m = small_run();
         let ps = power_snapshots_batch(&m).unwrap();
         assert_eq!(ps.num_rows(), m.power_snapshots.len());

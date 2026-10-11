@@ -81,7 +81,7 @@ mod tests {
 
     /// 金线:默认公式必须复现硬编码时代的闭式实现(公式化不改结果)。
     #[test]
-    fn 默认公式与闭式实现逐位一致() {
+    fn default_formula_matches_closed_form() {
         let cfg = SimConfig::default();
         let f = formula::compile(&cfg.formulas.xp_needed, formula::XP_NEEDED_VARS).unwrap();
         for level in 1..200u32 {
@@ -97,7 +97,7 @@ mod tests {
 
     /// 改公式不改代码即可改变成长节奏(文档 07 章公式引擎的动机)。
     #[test]
-    fn 自定义公式改变升级节奏() {
+    fn custom_formula_changes_upgrade_pace() {
         let cfg = SimConfig::default();
         let f = formula::compile("level * 10", formula::XP_NEEDED_VARS).unwrap();
         let mut a = actor();

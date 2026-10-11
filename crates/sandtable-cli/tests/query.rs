@@ -15,7 +15,7 @@ fn temp_dir(tag: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn query_csv_过滤与表格输出() {
+fn query_csv_filter_and_table() {
     let dir = temp_dir("csv");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -44,7 +44,7 @@ fn query_csv_过滤与表格输出() {
 }
 
 #[test]
-fn query_结果以_csv_落盘() {
+fn query_output_to_csv() {
     let dir = temp_dir("out-csv");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -78,7 +78,7 @@ fn query_结果以_csv_落盘() {
 }
 
 #[test]
-fn query_非法视图名_退出非零() {
+fn query_unknown_view_exits_nonzero() {
     let dir = temp_dir("bad-view");
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("bad-name.csv"), "a\n1\n").unwrap();
@@ -100,7 +100,7 @@ fn query_非法视图名_退出非零() {
 /// (文档 09 章数据流:Simulation → 结果数据集 → DuckDB)。
 #[cfg(feature = "parquet")]
 #[test]
-fn query_parquet_仿真到分析全链() {
+fn query_parquet_full_chain() {
     let dir = temp_dir("parquet");
     fs::create_dir_all(&dir).unwrap();
     let yaml = dir.join("s.yaml");

@@ -11,7 +11,7 @@ fn bin(args: &[&str]) -> std::process::Output {
 }
 
 #[test]
-fn 宝可梦案例_校验仿真与分层梯度() {
+fn pokemon_case_validate_simulate_and_tiers() {
     let yaml = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/pokemon.yaml");
 
     let out = bin(&["validate", yaml]);

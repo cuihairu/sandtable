@@ -579,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn 优先级_加减乘除() {
+    fn operator_precedence_arithmetic() {
         assert_eq!(eval_str("2+3*4"), 14.0);
         assert_eq!(eval_str("10-2-3"), 5.0); // 左结合
         assert_eq!(eval_str("(2+3)*4"), 20.0);
@@ -589,7 +589,7 @@ mod tests {
     }
 
     #[test]
-    fn 幂_右结合与一元负号() {
+    fn power_right_assoc_and_unary_minus() {
         assert_eq!(eval_str("2^3^2"), 512.0);
         assert_eq!(eval_str("-2^2"), -4.0); // 幂优先于负号
         assert_eq!(eval_str("(-2)^2"), 4.0);
@@ -597,7 +597,7 @@ mod tests {
     }
 
     #[test]
-    fn 比较与布尔() {
+    fn comparison_and_boolean_ops() {
         assert_eq!(eval_str("1+1 == 2"), 1.0);
         assert_eq!(eval_str("xp_base != 60"), 0.0);
         assert_eq!(eval_str("level >= 3"), 1.0);
@@ -607,7 +607,7 @@ mod tests {
     }
 
     #[test]
-    fn 三元_短路语义() {
+    fn ternary_short_circuit() {
         assert_eq!(eval_str("level > 2 ? 10 : 20"), 10.0);
         assert_eq!(eval_str("1 ? 2 ? 3 : 4 : 5"), 3.0); // 嵌套
         assert_eq!(eval_str("1 ? 2 : 3 ? 4 : 5"), 2.0); // else 右结合
@@ -617,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn 内置函数() {
+    fn builtin_functions() {
         assert_eq!(eval_str("min(3, 4)"), 3.0);
         assert_eq!(eval_str("max(3, 4)"), 4.0);
         assert_eq!(eval_str("clamp(5, 1, 3)"), 3.0);
@@ -630,14 +630,14 @@ mod tests {
     }
 
     #[test]
-    fn 变量按白名单索引取值() {
+    fn variables_indexed_by_whitelist() {
         let f = compile("xp_base * level", XP_NEEDED_VARS).unwrap();
         assert_eq!(f.eval(&[2.0, 60.0, 1.3]), 120.0);
         assert_eq!(f.eval(&[5.0, 10.0, 1.3]), 50.0);
     }
 
     #[test]
-    fn 默认公式与历史闭式实现逐位一致() {
+    fn default_formulas_match_closed_form() {
         // 金线:默认公式 "xp_base * level ^ xp_pow" 必须复现
         // (xp_base as f64 * (level as f64).powf(xp_pow)) as i64 的每一比特
         for level in 1..200u32 {
@@ -651,14 +651,14 @@ mod tests {
     }
 
     #[test]
-    fn 除零与取模零返回零() {
+    fn div_by_zero_returns_zero() {
         assert_eq!(eval_str("1/0"), 0.0);
         assert_eq!(eval_str("5%0"), 0.0);
         assert_eq!(eval_str("1/0 + 5"), 5.0);
     }
 
     #[test]
-    fn 未知变量报错_带位置与可用变量() {
+    fn unknown_variable_error_with_suggestions() {
         let e = compile("xp_base * atk", XP_NEEDED_VARS).unwrap_err();
         assert!(e.contains("未知变量"), "{e}");
         assert!(e.contains("atk"), "{e}");
@@ -667,7 +667,7 @@ mod tests {
     }
 
     #[test]
-    fn 未知函数与实参个数报错() {
+    fn unknown_function_and_arity_error() {
         let e = compile("foo(1)", XP_NEEDED_VARS).unwrap_err();
         assert!(e.contains("未知函数"), "{e}");
         let e = compile("min(1)", XP_NEEDED_VARS).unwrap_err();
@@ -677,7 +677,7 @@ mod tests {
     }
 
     #[test]
-    fn 括号不闭合与悬空符号报错() {
+    fn unbalanced_paren_and_dangling_token_error() {
         assert!(compile("1 +", XP_NEEDED_VARS).is_err());
         assert!(compile("(1 + 2", XP_NEEDED_VARS)
             .unwrap_err()
@@ -696,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn 深度与长度有界() {
+    fn depth_and_length_bounded() {
         let deep = format!(
             "{}1{}",
             "(".repeat(MAX_DEPTH as usize + 1),
@@ -718,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn 非法数字报错() {
+    fn invalid_number_error() {
         assert!(compile("1.2.3", XP_NEEDED_VARS)
             .unwrap_err()
             .contains("意外的字符"));
@@ -732,7 +732,7 @@ mod tests {
     }
 
     #[test]
-    fn 同一公式重复求值确定() {
+    fn repeated_eval_deterministic() {
         let f = compile("xp_base * level ^ xp_pow", XP_NEEDED_VARS).unwrap();
         let env = [7.0, 60.0, 1.3];
         let a = f.eval(&env);

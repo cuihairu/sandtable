@@ -20,7 +20,7 @@ fn bin(args: &[&str]) -> std::process::Output {
 }
 
 #[test]
-fn 报告_多源合并单文件_无外部资源() {
+fn report_merges_sources_single_file() {
     let dir = temp_dir("multi");
     fs::create_dir_all(&dir).unwrap();
     let scenario = dir.join("scenario.yaml");
@@ -149,7 +149,7 @@ fn 报告_多源合并单文件_无外部资源() {
 }
 
 #[test]
-fn 报告_无源_退出码2() {
+fn report_missing_sources_exit2() {
     let dir = temp_dir("empty");
     fs::create_dir_all(&dir).unwrap();
     let out = bin(&["report", dir.to_str().unwrap()]);

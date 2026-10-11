@@ -426,7 +426,7 @@ mod tests {
     /// 线性可行段插值:目标 [0.46, 0.54] → 区间 (92.02, 107.98),端点插值,
     /// 弹性显著且无 BORDERLINE → High。
     #[test]
-    fn 推荐_线性插值端点与高置信() {
+    fn recommend_linear_endpoints_high_confidence() {
         let (mut spec, base, results) = setup();
         spec.targets = vec![target(0.46, 0.54)];
         let rec = recommend_axis(&spec, &base, &results, 0);
@@ -445,7 +445,7 @@ mod tests {
 
     /// 无可行点 → 区间 None + Low。
     #[test]
-    fn 推荐_无可行点_低置信() {
+    fn recommend_no_feasible_low_confidence() {
         let (mut spec, base, results) = setup();
         spec.targets = vec![target(0.9, 1.0)];
         let rec = recommend_axis(&spec, &base, &results, 0);
@@ -456,7 +456,7 @@ mod tests {
 
     /// 有 BORDERLINE 格点 → Medium(区间仍可行)。
     #[test]
-    fn 推荐_borderline_降为中置信() {
+    fn recommend_borderline_medium_confidence() {
         let (mut spec, base, results) = setup();
         // min = 0.47505:格点 95 的 CI [0.4749, 0.4751] 与下界相交 → BORDERLINE
         spec.targets = vec![target(0.47505, 0.6)];
@@ -471,7 +471,7 @@ mod tests {
 
     /// soft 目标不参与可行域(即使它无处可行)。
     #[test]
-    fn 推荐_soft_不参与可行域() {
+    fn recommend_soft_constraints_excluded() {
         let (mut spec, base, results) = setup();
         let mut soft = target(0.9, 1.0);
         soft.kind = TargetKind::Soft;
@@ -483,7 +483,7 @@ mod tests {
 
     /// 两条 hard 约束可行段不相交 → 交集为空 → Low。
     #[test]
-    fn 推荐_交集为空_低置信() {
+    fn recommend_empty_intersection_low_confidence() {
         let (mut spec, base, results) = setup();
         // t1 可行段 ≈ [90, 95.98],t2 可行段 ≈ [104.02, 110]
         spec.targets = vec![target(0.0, 0.48), target(0.52, 1.0)];
@@ -495,7 +495,7 @@ mod tests {
 
     /// 单侧约束(max 侧)插值:目标 [无下界, 0.48] → 上端插值、下端轴边。
     #[test]
-    fn 推荐_单侧约束_端点混合() {
+    fn recommend_one_sided_constraints_mixed() {
         let (mut spec, base, results) = setup();
         spec.targets = vec![Target {
             metric: MetricKey::WinRate,

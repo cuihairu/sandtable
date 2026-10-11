@@ -359,7 +359,7 @@ mod tests {
     /// 新 purpose 只能追加,不得改动既有编号:编号一变旧键全变,
     /// 黄金快照与 A/B 可比随机路径同时失效(文档 06 / 24 章 R1 验收项)。
     #[test]
-    fn 用途编号锁定_追加不挪旧键() {
+    fn purpose_ids_frozen_appending_keeps_keys() {
         let nums: [u8; PURPOSE_COUNT] = [
             Purpose::Behavior as u8,
             Purpose::CombatHit as u8,
@@ -407,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn 加权表_校验() {
+    fn weighted_table_validation() {
         assert!(WeightedTable::from_weights(&[]).is_err());
         assert!(WeightedTable::from_weights(&[("".to_string(), 1.0)])
             .unwrap_err()
@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn 加权表_边界与零权重() {
+    fn weighted_table_edges_and_zero_weights() {
         let t = WeightedTable::from_weights(&[("a".to_string(), 1.0)]).unwrap();
         // 单一项:任何抽取都指向它
         for i in 0..64u32 {
@@ -450,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    fn 加权表_万次采样卡方() {
+    fn weighted_table_10k_chi_square() {
         // R1 验收:万次采样 χ² 全过(70/25/5 三档掉落)
         let t = table(&[70.0, 25.0, 5.0]);
         let mut rng = DayRng::new(42, 7, 3);
@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn 万次采样_两档与均匀表() {
+    fn uniform_10k_two_tier_table() {
         for weights in [[1.0, 1.0, 1.0], [1.0, 99.0, 0.5]] {
             let t = table(&weights);
             let mut rng = DayRng::new(7, 1, 1);
@@ -488,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn 流抽取_只动本用途计数() {
+    fn stream_draw_advances_own_counter_only() {
         let mut rng = DayRng::new(5, 1, 1);
         let a = rng.draw_stream(Purpose::Shuffle, 4);
         assert_eq!(a.len(), 4);
@@ -512,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn 洗牌_确定性且是排列() {
+    fn shuffle_deterministic_permutation() {
         let xs = [0i32, 1, 2, 3, 4, 5, 6, 7];
         let mut a = DayRng::new(11, 1, 1);
         let mut x = xs.to_vec();
@@ -540,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn 无放回抽样_不重复且确定() {
+    fn sample_without_replacement_unique() {
         let xs: Vec<i32> = (0..20).collect();
         let a = DayRng::new(3, 1, 1).sample(Purpose::Shuffle, &xs, 7);
         let b = DayRng::new(3, 1, 1).sample(Purpose::Shuffle, &xs, 7);
@@ -564,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn 无放回加权抽样_频次成比例() {
+    fn weighted_sample_without_replacement_proportional() {
         // A-Res:权重 80/15/5 的三项,抽 1 项一万次 → a 占绝对多数
         let xs = ["a", "b", "c"];
         let t = table(&[80.0, 15.0, 5.0]);
@@ -612,14 +612,14 @@ mod tests {
     }
 
     #[test]
-    fn 同键同值() {
+    fn same_key_same_value() {
         let a = derive_u64(42, 7, 3, 1, Purpose::CombatHit);
         let b = derive_u64(42, 7, 3, 1, Purpose::CombatHit);
         assert_eq!(a, b);
     }
 
     #[test]
-    fn 键任一分量变化则值变化() {
+    fn key_component_change_changes_value() {
         let base = derive_u64(42, 7, 3, 1, Purpose::CombatHit);
         assert_ne!(base, derive_u64(43, 7, 3, 1, Purpose::CombatHit));
         assert_ne!(base, derive_u64(42, 8, 3, 1, Purpose::CombatHit));
@@ -629,7 +629,7 @@ mod tests {
     }
 
     #[test]
-    fn 抽取顺序无关() {
+    fn draw_order_independent() {
         // 值由 (purpose, event_index) 决定,与调用先后无关:
         // draw() 按序分配 0、1、2…;draw_indexed(i) 恒等于第 i 次顺序抽取
         let mut a = DayRng::new(9, 1, 1);
@@ -646,7 +646,7 @@ mod tests {
     }
 
     #[test]
-    fn draw_indexed_不推进计数器() {
+    fn draw_indexed_does_not_advance_counter() {
         let mut rng = DayRng::new(9, 1, 1);
         let x = rng.draw_indexed(Purpose::CombatHit, 5);
         let _ = x;
@@ -656,7 +656,7 @@ mod tests {
     }
 
     #[test]
-    fn chance_边界() {
+    fn chance_boundaries() {
         let d = Draw(u64::MAX);
         assert!(!d.chance(0.0));
         assert!(d.chance(1.0));
@@ -666,7 +666,7 @@ mod tests {
     /// 均匀、值 = box_muller(u1, u2);**改 μ/σ 不挪键**:A/B 臂同键下,normal
     /// 之后的下一抽完全一致(两臂消耗了同一对均匀值)。
     #[test]
-    fn 正态_双消耗键稳定() {
+    fn normal_two_consumes_key_stable() {
         let mut a = DayRng::new(42, 7, 3);
         let mut b = DayRng::new(42, 7, 3);
         let na = a.normal(Purpose::Normal, 0.0, 1.0);
@@ -685,7 +685,7 @@ mod tests {
 
     /// sigma = 0 退化为常值;clamp 生效;负 sigma 取绝对值。
     #[test]
-    fn 正态_clamp与退化() {
+    fn normal_clamp_and_degenerate() {
         let mut rng = DayRng::new(42, 7, 3);
         assert_eq!(rng.normal(Purpose::Normal, 3.5, 0.0), 3.5);
         let mut rng2 = DayRng::new(42, 7, 3);
@@ -703,7 +703,7 @@ mod tests {
     /// 均值/方差对齐解析解(R3 验收:CI 覆盖):10 万样本,均值容差
     /// 4·σ/√N,方差容差 4·√(2/N) 相对偏差(χ² 分布的方差近似)。
     #[test]
-    fn 正态_均值方差对齐解析解() {
+    fn normal_mean_variance_matches_closed_form() {
         let n = 100_000usize;
         let (mu, sigma) = (7.0, 2.5);
         let mut rng = DayRng::new(2026, 1, 0);
@@ -728,7 +728,7 @@ mod tests {
     }
 
     #[test]
-    fn range_闭区间() {
+    fn range_inclusive() {
         assert_eq!(Draw(0).range_i64(3, 7), 3); // 余 0 → lo
         assert_eq!(Draw(4).range_i64(3, 7), 7); // 余 4 → hi
         assert_eq!(Draw(5).range_i64(5, 5), 5); // 单点区间

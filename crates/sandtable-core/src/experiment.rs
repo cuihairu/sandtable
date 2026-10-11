@@ -247,7 +247,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn t表_查值() {
+    fn t_table_lookup() {
         assert_eq!(t_critical_975(1), 12.706);
         assert_eq!(t_critical_975(30), 2.042);
         assert_eq!(t_critical_975(100), 1.96);
@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn 摘要_常数序列区间退化为点() {
+    fn summary_constant_series_point_interval() {
         let s = summarize(&[5.0; 8]);
         assert_eq!(s.mean, 5.0);
         assert_eq!(s.sd, 0.0);
@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn 摘要_样本越大区间越窄() {
+    fn summary_larger_sample_narrower_interval() {
         let w1 = summarize(&[1.0, 3.0, 2.0, 4.0, 2.5, 3.5]);
         let w2 = summarize(&[
             1.0, 3.0, 2.0, 4.0, 2.5, 3.5, 2.2, 3.1, 2.8, 3.3, 1.9, 3.7, 2.6, 3.0, 2.4, 3.2,
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     #[allow(non_snake_case)]
-    fn 比较_B_全胜判_BHigher() {
+    fn compare_b_wins_all_verdict_bhigher() {
         let a = [10.0, 10.5, 9.8, 10.2];
         let b = [12.0, 12.5, 11.8, 12.2];
         let c = compare("m", &a, &b);
@@ -284,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn 比较_交叉噪声判_无显著差异() {
+    fn compare_crossing_noise_no_difference() {
         let a = [10.0, 12.0, 9.0, 13.0, 11.0, 10.5, 12.5, 9.5];
         let b = [10.5, 11.5, 9.5, 12.5, 10.8, 11.0, 12.0, 10.0];
         let c = compare("m", &a, &b);
@@ -292,7 +292,7 @@ mod tests {
     }
 
     #[test]
-    fn 指标键_解析与提取() {
+    fn metric_key_parse_and_extract() {
         assert_eq!(MetricKey::parse("d7"), Some(MetricKey::RetentionD7));
         assert_eq!(MetricKey::parse("nope"), None);
         let m = crate::metrics::RunMetrics {
@@ -334,7 +334,7 @@ mod tests {
 
     /// 单 replicate:CI 退化为点估计(df=0 的 t 值是 ∞,须绕开 ∞·0 = NaN)
     #[test]
-    fn 单_replicate_ci_退化为点估计() {
+    fn single_replicate_ci_point_estimate() {
         let s = summarize(&[0.7]);
         assert_eq!(s.n, 1);
         assert_eq!(s.sd, 0.0);

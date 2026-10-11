@@ -20,7 +20,7 @@ fn bin(args: &[&str]) -> std::process::Output {
 }
 
 #[test]
-fn 导出_改值_回导_合并可直接仿真() {
+fn params_export_edit_roundtrip() {
     let dir = temp_dir("roundtrip");
     fs::create_dir_all(&dir).unwrap();
 
@@ -108,7 +108,7 @@ fn 导出_改值_回导_合并可直接仿真() {
 }
 
 #[test]
-fn 导入_坏行逐行标注_退出码2() {
+fn params_import_bad_rows_annotated_exit2() {
     let dir = temp_dir("bad");
     fs::create_dir_all(&dir).unwrap();
     let bad = dir.join("bad.csv");
@@ -136,7 +136,7 @@ fn 导入_坏行逐行标注_退出码2() {
 }
 
 #[test]
-fn 导入_表头错误_退出码2() {
+fn params_import_bad_header_exit2() {
     let dir = temp_dir("header");
     fs::create_dir_all(&dir).unwrap();
     let bad = dir.join("bad.csv");
@@ -148,7 +148,7 @@ fn 导入_表头错误_退出码2() {
 }
 
 #[test]
-fn 注释与空行跳过() {
+fn params_import_skips_comments_and_blank() {
     let dir = temp_dir("comments");
     fs::create_dir_all(&dir).unwrap();
     let csv = dir.join("params.csv");

@@ -337,7 +337,7 @@ mod tests {
     );
 
     #[test]
-    fn 载入_有效与无效() {
+    fn load_valid_and_invalid() {
         let cfg = make_config(YAML).unwrap();
         assert_eq!(cfg.players, 40);
         assert_eq!(cfg.days, 3);
@@ -353,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    fn 运行_与core直跑逐值一致() {
+    fn run_matches_core_values() {
         let cfg = core::scenario::load_str(YAML).unwrap();
         let v = run_simulation_native(YAML, 2).unwrap();
         let want: Vec<Value> = (0..2u32)
@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn 扫描_全量候选与replicates覆盖() {
+    fn sweep_full_candidates_and_replicates() {
         let v = sweep_run_native(EXP_YAML, 0).unwrap();
         assert_eq!(v["candidates"].as_array().unwrap().len(), 3);
         assert_eq!(v["results"].as_array().unwrap().len(), 3, "全量:每候选一条");
@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn 推荐_单轴区间与双轴拒绝() {
+    fn recommend_single_axis_multi_rejected() {
         let v = sweep_run_native(EXP_YAML, 0).unwrap();
         let out = sweep_recommend_native(EXP_YAML, &v["results"]).unwrap();
         let rec = &out["recommendation"];
@@ -439,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn 转换器_value到python再回value往返一致() {
+    fn converter_value_python_roundtrip() {
         Python::initialize();
         Python::attach(|py| {
             let v = json!({"a": 1, "big": 18446744073709551615u64, "f": 1.5,
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn 转换器_非法输入拒绝() {
+    fn converter_rejects_invalid_input() {
         Python::initialize();
         Python::attach(|py| {
             // 非字符串键
@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn 参数表_非空且字段齐() {
+    fn params_nonempty_with_fields() {
         Python::initialize();
         Python::attach(|py| {
             let list = params(py).unwrap();

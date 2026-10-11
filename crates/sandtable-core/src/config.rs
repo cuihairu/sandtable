@@ -746,7 +746,7 @@ mod tests {
     /// 公式槽在 validate 编译(文档 07 章:加载期编译):语法 / 白名单
     /// 错误报出槽名与原因,默认公式必须通过。
     #[test]
-    fn validate_公式槽编译报错() {
+    fn validate_formula_slot_compile_error() {
         let mut cfg = SimConfig::default();
         cfg.formulas.xp_needed = "xp_base *".into();
         let msg = validate(&cfg).unwrap_err().to_string();
@@ -766,7 +766,7 @@ mod tests {
     /// 比值口径约束(阻力 #1 显式性):ratio_k 只在 damage_model: ratio 下
     /// 生效;口径未切时给出即报错,k 非正报错;缺省配置保持合法。
     #[test]
-    fn validate_比值口径约束() {
+    fn validate_ratio_model_constraint() {
         let mut cfg = SimConfig::default();
         cfg.combat.ratio_k = 260.0;
         let msg = validate(&cfg).unwrap_err().to_string();
@@ -782,7 +782,7 @@ mod tests {
 
     /// 练级环耦合(阻力 #4 显式性):产出面与行为带互相咬合,单边给出报错。
     #[test]
-    fn validate_练级环耦合() {
+    fn validate_training_loop_coupling() {
         let mut cfg = SimConfig {
             training: Some(TrainingConfig { xp: 100, gold: 10 }),
             ..SimConfig::default()
@@ -829,7 +829,7 @@ mod tests {
     /// 新口径字段缺省不进 canonical JSON:旧配置(无字段)与缺省配置
     /// config_hash 逐字节一致——加字段不改存量语义。
     #[test]
-    fn config_hash_口径字段缺省不变() {
+    fn config_hash_stable_when_optional_absent() {
         let legacy = SimConfig::default();
         assert!(legacy.combat.damage_model.is_none());
         assert_eq!(legacy.combat.ratio_k, 1.0);
@@ -841,7 +841,7 @@ mod tests {
     /// 掉落面校验(文档 24 章 R1):rate_mult 非正、空表名、全零权重、
     /// 非有限负数逐项报错;loot 缺省(None)不进 canonical JSON。
     #[test]
-    fn validate_掉落面() {
+    fn validate_loot_section() {
         fn loot(rate_mult: f64, tables: BTreeMap<String, LootTableConfig>) -> SimConfig {
             SimConfig {
                 loot: Some(LootConfig { rate_mult, tables }),
@@ -904,7 +904,7 @@ mod tests {
     /// 抽卡面校验(文档 24 章 R2):base_rate 必须在 (0, 1](≤ 0 永不终止、
     /// > 1 概率非法);pity_soft_step 非负有限;gacha 缺省(None)不进 canonical JSON。
     #[test]
-    fn validate_抽卡面() {
+    fn validate_gacha_section() {
         fn gacha(base_rate: f64, pity_soft_step: f64) -> SimConfig {
             SimConfig {
                 gacha: Some(GachaConfig {

@@ -454,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn 网格点_步长与不补尾点() {
+    fn grid_points_step_no_tail_pad() {
         let p = ParamRange {
             path: "model.warrior.attack".into(),
             min: 90.0,
@@ -488,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn 计划_grid_笛卡尔积() {
+    fn plan_grid_cartesian() {
         let cands = grid_spec().plan(1).unwrap();
         assert_eq!(cands.len(), 3 * 3);
         let first = &cands[0];
@@ -500,7 +500,7 @@ mod tests {
     }
 
     #[test]
-    fn 计划_grid_规模上限兜底() {
+    fn plan_grid_cap() {
         let mut spec = SweepSpec {
             mode: SweepMode::Grid,
             parameters: vec![
@@ -540,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn 计划_random_采样确定且有界() {
+    fn plan_random_deterministic_bounded() {
         let mut spec = grid_spec();
         spec.mode = SweepMode::Random;
         spec.samples = 7;
@@ -558,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn 计划_lhs_分层确定且有界() {
+    fn plan_lhs_stratified_deterministic() {
         let mut spec = grid_spec();
         spec.mode = SweepMode::LatinHypercube;
         spec.samples = 12;
@@ -591,7 +591,7 @@ mod tests {
     }
 
     #[test]
-    fn 计划_未知路径报错附建议() {
+    fn plan_unknown_path_suggests() {
         let mut spec = grid_spec();
         spec.parameters[0].path = "model.warrior.atk".into();
         let e = spec.plan(1).unwrap_err().to_string();
@@ -602,7 +602,7 @@ mod tests {
     }
 
     #[test]
-    fn 判定_三态看_ci_与区间位置() {
+    fn verdict_three_states_from_ci() {
         let t = Target {
             metric: MetricKey::WinRate,
             min: Some(0.0),
@@ -676,7 +676,7 @@ mod tests {
     /// E[T](H) = (1 − 0.98^H)/0.02:H = 40 → 27.7 全过,H = 50 → 31.8 不过,
     /// 解析交点 H ≈ 45.7 → 上端点应插值落在 40–50 之间且贴近 45.7。
     #[test]
-    fn 抽卡_扫保底长度出推荐区间() {
+    fn gacha_sweep_pity_recommends_interval() {
         let base = SimConfig {
             players: 2000,
             days: 1,
@@ -743,7 +743,7 @@ mod tests {
     }
 
     #[test]
-    fn 运行候选_ok_全指标汇总与判定() {
+    fn run_candidate_ok_full_summary() {
         let base = SimConfig {
             players: 100,
             days: 10,
@@ -776,7 +776,7 @@ mod tests {
     }
 
     #[test]
-    fn 运行候选_配置错误_照常上报不静默() {
+    fn run_candidate_config_error_reported() {
         let base = SimConfig {
             players: 50,
             days: 5,
@@ -801,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn 采样流_均匀覆盖与确定() {
+    fn sampling_streams_uniform_and_deterministic() {
         let mut rng = SweepRng::new(7);
         let a: Vec<f64> = (0..100).map(|_| rng.next_f64()).collect();
         let mut rng = SweepRng::new(7);

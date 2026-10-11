@@ -626,7 +626,7 @@ mod tests {
     use serde_yaml_ng::from_str;
 
     #[test]
-    fn 注册表路径唯一且非空() {
+    fn registry_paths_unique_and_nonempty() {
         let mut paths: Vec<&str> = all().map(|s| s.path).collect();
         let n = paths.len();
         paths.sort_unstable();
@@ -636,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn 未知路径给出建议() {
+    fn unknown_path_suggests_alternatives() {
         let yaml = "schema_version: \"1\"\nmodel:\n  warrior:\n    atk: 100\n";
         let root: Value = from_str(yaml).unwrap();
         let err = check_tree(&root).unwrap_err();
@@ -646,7 +646,7 @@ mod tests {
     }
 
     #[test]
-    fn 合法树通过() {
+    fn valid_tree_passes() {
         let yaml = "schema_version: \"1\"\nscenario:\n  population: 100\ndungeon_stub: 1\n";
         // dungeon_stub 是未知根键,应报错
         let root: Value = from_str(yaml).unwrap();
@@ -658,7 +658,7 @@ mod tests {
     }
 
     #[test]
-    fn 编辑距离_基础() {
+    fn edit_distance_basics() {
         assert_eq!(edit_distance("abc", "abc"), 0);
         assert_eq!(edit_distance("atk", "attack"), 3);
         assert_eq!(edit_distance("", "ab"), 2);
@@ -667,7 +667,7 @@ mod tests {
     /// read_numeric 与 apply_numeric 互为镜像:全部数值路径读出 → 写回 →
     /// 读出不变;非数值路径读必报错。新增注册表路径漏写读臂在此红。
     #[test]
-    fn 读值与写值_全数值路径互为镜像() {
+    fn get_set_mirror_all_numeric_paths() {
         let cfg = crate::config::SimConfig::default();
         for sp in all() {
             match sp.kind {
