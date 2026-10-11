@@ -35,7 +35,7 @@ sandtable/
 │   ├── sandtable-cli/
 │   │   └── src/main.rs       # clap 子命令,薄封装 core(MVP)
 │   ├── sandtable-wasm/       # wasm-bindgen 薄绑定(已落地:validate_config / run_simulation;native 纯函数承逻辑,wasm 层只包装,与 CLI 等价有测试锁死)
-│   └── sandtable-python/     # pyo3 薄绑定(已落地:load / run / sweep / recommend / params 只读面;同 wasm 双层结构独立实现,maturin 出 wheel,py_parity 与 CLI 锁死)
+│   └── sandtable-python/     # pyo3 薄绑定(已落地:load / run / sweep / recommend / params 只读面 + 阶段 3 日粒度读态回调 run_with_day_hook;同 wasm 双层结构独立实现,maturin 出 wheel,py_parity 与 CLI 锁死)
 │
 ├── apps/
 │   ├── web/                  # React + TS + Vite(已落地:配置编辑 → 本地仿真 → KPI/曲线/分群表,零图表库;项目多配置选择器已落地)
@@ -44,7 +44,7 @@ sandtable/
 ├── examples/                 # 场景与实验 YAML(pokemon / gacha-pity / pokemon-sweep 等)
 │   └── python/               # 外挂模式示例(阶段 0:kpi_report / daily_curves / parquet_analysis;零 Rust 依赖回退路径)
 ├── docs/                     # 本文档站(VitePress)
-├── scripts/                  # scripting-design.md + templates/(阶段 2 官方编排模板)
+├── scripts/                  # scripting-design.md + scripting-perf-report.md(阶段 3 实测)+ templates/(阶段 2 官方编排模板)
 ├── .github/workflows/        # CI(含 wasm32 门禁)与 Pages 部署
 └── README.md
 ```
