@@ -37,7 +37,7 @@
 - 随机函数扩展:加权表(加载期 CDF)、洗牌与无放回加权抽样、保底状态机、Box–Muller 正态、χ² 分布检验(`disttest`)
 - 报告与交换:单文件 HTML 报告、`.sandtable` 项目归档、双向 CSV 参数表、Arrow / Parquet(feature flag)
 - 测试:解析解对照、同 seed 逐字节确定性、黄金快照,以及把 CLI ↔ Web(WASM)↔ 桌面锁到同一内核的等价测试
-- Python 绑定:pyo3 + maturin 扩展模块(`sandtable-sim` wheel;load / run / sweep / recommend / params 只读面),py_parity 把 Python ↔ CLI 锁到同一内核
+- Python 绑定:pyo3 + maturin 扩展模块(`sandtable-sim` wheel;load / run / sweep / recommend / params 只读面),py_parity 把 Python ↔ CLI 锁到同一内核——[crate README](crates/sandtable-python/README.md)
 
 ```bash
 cargo install --path crates/sandtable-cli
