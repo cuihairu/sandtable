@@ -39,6 +39,24 @@ enum SimEvent {
 
 /// 运行第 `replicate` 个 replicate(0 起),返回该次运行的完整指标。
 pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
+    run_impl(cfg, replicate, None)
+}
+
+/// 日粒度批量观测钩子(脚本层阶段 3,实测依据 scripts/scripting-perf-report.md):
+/// 每日 [`SimEvent::DayClose`] 记账完成后调用一次,拿到当天日结的世界状态。
+/// **只读契约**——实现不得改动 World,同配置同 seed 结果与 [`run`] 逐位一致
+/// (测试锁死)。粒度红线(设计稿 §4):本通道 = 每天一次,事件级 Python
+/// 回调仍禁止(10⁷ 事件 × ns 级调用即超基线,实测报告有数据)。
+pub trait DayHook {
+    fn on_day(&mut self, world: &World, day: u32);
+}
+
+/// 带日观测钩子的运行:除逐日回调外,语义与 [`run`] 完全一致。
+pub fn run_with_day_hook(cfg: &SimConfig, replicate: u32, hook: &mut dyn DayHook) -> RunMetrics {
+    run_impl(cfg, replicate, Some(hook))
+}
+
+fn run_impl(cfg: &SimConfig, replicate: u32, mut hook: Option<&mut dyn DayHook>) -> RunMetrics {
     let seed = crate::config::replicate_seed(cfg.base_seed, replicate);
     // 公式槽在 run 开始编译一次(文档 07 章加载期编译);非法公式已在
     // config::validate 拦截,这里直接假定可编译。
@@ -87,6 +105,11 @@ pub fn run(cfg: &SimConfig, replicate: u32) -> RunMetrics {
                 sys.update(&mut world, tick, event);
                 break;
             }
+        }
+        // 日粒度观测钩子:DayClose 系统记账完成后的世界状态,只读(阶段 3;
+        // None 时零分支成本路径外的纯检查,黄金快照不受影响)
+        if let (SimEvent::DayClose { day }, Some(h)) = (event, hook.as_deref_mut()) {
+            h.on_day(&world, day);
         }
     }
 
@@ -310,6 +333,59 @@ mod tests {
     use super::*;
     use crate::rng::DayRng;
     use crate::systems::combat::{monster_of, settle_battle};
+
+    /// 日粒度观测钩子(阶段 3 通道):收集逐日 {存活数, 非流失金币存量,
+    /// 流失数},与 DayClose 记账对账。
+    struct CollectHook {
+        days: Vec<(u64, i64, u64)>,
+    }
+
+    impl DayHook for CollectHook {
+        fn on_day(&mut self, world: &World, day: u32) {
+            let mut alive = 0u64;
+            let mut gold = 0i64;
+            let mut churned = 0u64;
+            for a in &world.actors {
+                if a.churned {
+                    churned += 1;
+                } else {
+                    alive += 1;
+                    gold += a.gold;
+                }
+            }
+            self.days.push((u64::from(day), gold, churned));
+            let _ = alive;
+        }
+    }
+
+    /// 钩子只读:带钩子与不带钩子同配置同 seed 逐位一致(零行为变化);
+    /// 逐日观测的金币存量与 DayClose 记账的 gold_supply 同源;天序 1..=days。
+    #[test]
+    fn day_hook_readonly_and_matches_day_stats() {
+        let cfg = SimConfig {
+            players: 60,
+            days: 8,
+            ..SimConfig::default()
+        };
+        let baseline = run(&cfg, 3);
+        let mut hook = CollectHook { days: Vec::new() };
+        let with_hook = run_with_day_hook(&cfg, 3, &mut hook);
+        assert_eq!(
+            serde_json::to_string(&baseline).unwrap(),
+            serde_json::to_string(&with_hook).unwrap(),
+            "只读钩子不得改变任何结果"
+        );
+        assert_eq!(hook.days.len(), usize::try_from(cfg.days).unwrap());
+        for (i, d) in with_hook.day_stats.iter().enumerate() {
+            let (day, gold, _churned) = hook.days[i];
+            assert_eq!(day, u64::from(d.day), "钩子按天序 1..=days 回调");
+            assert_eq!(
+                gold, d.gold_supply,
+                "day {}: 钩子看到的非流失金币存量应与 DayClose 记账同源",
+                d.day
+            );
+        }
+    }
 
     /// 固定伤害、必中、怪物不还手的解析战斗有闭式解:
     /// 轮数 = ceil(hp / (attack − defense)),伤害 = 轮数 × (attack − defense)。
