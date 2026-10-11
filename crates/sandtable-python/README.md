@@ -55,7 +55,7 @@ python3 -m pytest tests/
 ```
 
 - `test_smoke.py`:模块功能冒烟(模块未安装时整文件跳过,不影响 cargo 测试门);
-- `test_parity.py`:py_parity,Python 输出与 CLI 逐字节比对(`days_csv`),需要本机 `cargo` 可用(CI 在 test job 内执行)。
+- `test_parity.py`:py_parity,Python 输出与 CLI 逐字节比对(`days_csv`),需要本机 `cargo` 可用;CI 暂不跑 pytest(wheel/pytest 任务按[拍板④](../../scripts/scripting-design.md)挂起,触发条件=发布决定)。
 
 ## 相关
 
