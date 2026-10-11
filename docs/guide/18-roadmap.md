@@ -100,6 +100,21 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 - **拍板结论(2026-10-10)**:① 平台优先级 **Linux 本机先行**(壳在本机开发验收,Windows/macOS 后置);② **暂不引入自动更新器**(验证通道先行手动安装,更新器二期);③ 签名证书**留到发布时再定**;④ 开工顺序:壳 + core path 直连最小可跑 → 前端接入 → 实验流对齐 CLI 验收。
 - **进度**:壳已起步并接入前端(2026-10-10)——`apps/desktop/src-tauri`(tauri 2.12 + tauri-build 2.7,workspace member);命令面 6 个(`validate_config` / `run_simulation` / `sweep_plan` / `sweep_candidate` / `sweep_recommend` / `query`)与 wasm 绑定逐字段同构、core 直连不经 wasm 边界、错误前缀同源,native 无 WASM 的 64 replicates / 200 预算门;duckdb-rs(bundled + parquet)已接进 `query` 命令——本地结果文件按词根注册视图跑 SQL,与 CLI `query` 同源(只读结果红线、is_ident 拦注入、DESCRIBE 取列名);`apps/web` 经 `lib/wasm.ts` 桌面分支(`__TAURI_INTERNALS__` 检测 → `invoke`)零改动复用全部 React UI(仿真 + 扫描 + 查询),桌面下走 native 命令面,web 构建产物经 `frontendDist` 内联;**实验流 GUI 四步接线齐(2026-10-11)**:simulate → `run_simulation`、sweep → `sweep_plan` / `sweep_candidate`、recommend → `sweep_recommend` 均已接,`query` 补齐——native 命令接入 UI,新增「本地结果文件分析」面板(tauri-plugin-dialog 选 CSV / Parquet,duckdb-rs 只读按词根注册视图,与 CLI `query` 同源;QueryPanel 加 `loader` / `hint` 扩展点复用表格渲染,与会话内 duckdb-wasm 查询面板分工);桌面等价断言补齐:desktop 与 wasm 绑定同配置同 seed 逐值一致(宝可梦案例,与 web_parity 同口径,desktop↔wasm↔CLI 三角闭合;tsc / 构建 / clippy / 全 workspace 测试过)。**剩余外部验收**:用户本机开窗人工跑通 simulate → sweep → recommend → query 全链(需本机 GUI 环境,自动化断言已尽,不代做)。
 
+**人工开窗验收清单(2026-10-12 备,照表执行即可;逐项过了在根目录 todo.md 勾掉桌面端条)**:
+
+启动:仓库根 `cd apps/web && npm run build`,回仓库根 `cargo run -p sandtable-desktop --release`(产物内联 `web/dist`;改前端调试用 `npm run dev` + `cargo run` 走 devUrl)。
+
+| # | 操作 | 预期 |
+| --- | --- | --- |
+| 1 | 开窗后选「宝可梦」预设,运行仿真 | KPI 表 / 按天曲线 / 分群表渲染,无白屏无 panic(等价已由 desktop↔wasm↔CLI 测试锁死,此处看渲染与交互) |
+| 2 | 切扫描面板,选单轴网格预设,运行 | 进度逐候选可见;候选表 + 单轴折线(CI95 须、判定三色、推荐带)出图 |
+| 3 | 读推荐块 | 推荐区间 + Confidence 出现,与 CLI `recommend` 同配置口径一致 |
+| 4 | 查询面板(会话内 days 表)跑一条 SQL(如 `SELECT day, gold_supply FROM days ORDER BY day`) | 表格渲染,数值列可画折线 |
+| 5 | 「本地结果文件分析」面板 → 选 CLI 产物(先 `cargo run -p sandtable-cli --release -- simulate examples/pokemon.yaml --out sim-out` 产 `sim-out/report.json` 与 `sim-out/days.csv`(Parquet 批次另加 `--features parquet` 且尾随 `--parquet`,需要时再建)) → SQL | 按文件词根注册视图,查询出结果 |
+| 6 | 结果导出菜单下载 days.csv / days.parquet;项目文件打包 `.sandtable` → 重新导入 | 下载成功,导入后配置与结果可复现 |
+
+失败处置:记下步骤号 + 现象(截图),回仓开修;全过则 Phase 7 验收收口,桌面端条转可解。
+
 ## 已立项:Report / Web UI 深化(原计划 Phase 7,2026-10-08)
 
 ::: note 编号澄清
