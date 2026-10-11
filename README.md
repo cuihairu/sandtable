@@ -27,13 +27,16 @@
 
 ## Current status
 
-**The Phase 1 minimal loop is implemented** (crates: `sandtable-core` + `sandtable-cli`; the kernel has zero platform dependencies and continuously passes the `wasm32-unknown-unknown` compile gate):
+**The planned slices through Phase 8 are implemented** (crates: `sandtable-core` + `sandtable-cli`; all three forms — CLI, Web (Rust→WASM + React) and a Linux-first Desktop shell (Tauri 2) — link the same kernel, which has zero platform dependencies and continuously passes the `wasm32-unknown-unknown` compile gate):
 
 - Keyed RNG: derived directly from `(seed, actor_id, day, event_index, purpose)`; combat uses explicit sequence keys so that A/B arms share keys and remain comparable (CRN)
-- A hard-coded minimal RPG loop: behavior → resolved combat → rewards → progression → stagnation → churn, advancing as day-granularity discrete events
-- Online metric aggregation: retention / win rate / inflation (daily growth rate of the stock) / sink_ratio / power percentile snapshots, sliced by cohort
+- A YAML-configured RPG loop: behavior → resolved combat → rewards → progression → stagnation → churn, advancing as day-granularity discrete events
 - Experiment statistics: the replicate is the statistical unit; t-distribution CI₉₅, paired differences + effect size d, and CI verdicts under the PASS/BORDERLINE/FAIL convention
-- Testing: closed-form cross-checks (fixed-damage closed-form solution, churn driven to its maximum), byte-for-byte determinism under the same seed, golden snapshots
+- Experiment layer: grid / random / Latin-hypercube sweeps, OAT sensitivity, interpolated single-axis recommendations, and optimization (evolutionary and Pareto multi-objective) backed by a random-forest surrogate model
+- Online metric aggregation: retention / win rate / inflation / sink_ratio / power percentile snapshots, sliced by cohort; pulls-to-hit for pity-driven gacha
+- Random-function extension: weighted tables (compile-time CDF), shuffling and weighted sampling without replacement, pity state machines, Box–Muller normals, and a chi-square `disttest` for distribution checks
+- Reporting and exchange: single-file HTML reports, `.sandtable` project archives, a two-way CSV parameter table, and Arrow / Parquet behind a feature flag
+- Testing: closed-form cross-checks, byte-for-byte determinism under the same seed, golden snapshots, and equivalence tests locking CLI ↔ Web (WASM) ↔ Desktop to one kernel
 
 ```bash
 cargo install --path crates/sandtable-cli
@@ -49,7 +52,7 @@ A single run of 10k players × 30 days takes about 0.5 s (release build). The fu
 
 ## Documentation structure
 
-The original plan was a single monolithic document (archived at `docs/计划-原始.md`) and is now split into 20 chapters. The mapping from chapters to the original plan:
+The original plan was a single monolithic document (archived at `docs/计划-原始.md`), later split into 20 chapters, with four more chapters added for the Pokémon case study, the Web form, the genre matrix and the random-function extension. The mapping from chapters to the original plan:
 
 | Chapter | Contents | Original plan |
 | --- | --- | --- |
@@ -73,6 +76,10 @@ The original plan was a single monolithic document (archived at `docs/计划-原
 | [18 Roadmap](docs/guide/18-roadmap.md) | Vertical slices + verification nodes | §19 |
 | [19 Testing strategy](docs/guide/19-testing.md) | Layered: closed-form checks, snapshots, statistical regression | §20 |
 | [20 Design principles and vision](docs/guide/20-principles-vision.md) | Principles, product forms, vision | §22–§25 |
+| [21 Real-configuration validation](docs/guide/21-pokemon-case.md) | Pokémon (Gen 1 Kanto) case study and the friction list | — |
+| [22 Web](docs/guide/22-web.md) | Browser form, scale boundaries, query and export | — |
+| [23 Genre × simulation functions](docs/guide/23-genre-simulation.md) | Six genre families vs. generic blocks / genre-specific gaps | — |
+| [24 Random functions](docs/guide/24-random-functions.md) | Weighted tables, pity, normals, chi-square and staging | — |
 
 ## License
 

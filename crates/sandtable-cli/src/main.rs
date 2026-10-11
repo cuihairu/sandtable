@@ -97,7 +97,7 @@ enum Cmd {
         #[command(subcommand)]
         action: SurrogateAction,
     },
-    /// 分布检验:均匀 / 加权 χ² 检验(文档 24 章 R1;测试台,不进仿真路径)
+    /// 分布检验:均匀 / 加权 / 正态 χ² 检验(文档 24 章 R1/R3;测试台,不进仿真路径)
     Disttest {
         #[command(subcommand)]
         action: DisttestAction,

@@ -7,7 +7,7 @@
 
 - [配置与公式引擎](../docs/guide/07-config-formula.md)的原则不变:**配置描述数据,代码描述复杂行为**。脚本不是把 YAML 变成编程语言,而是承载 YAML 表达不了的两类东西:**实验编排**(批量跑、自定义分析)与**复杂行为原型**(远期)。
 - [时间模型](../docs/guide/05-time-model.md)的量级红线不变:单次仿真事件量 10⁷ 级,仿真热路径永远在 Rust;Python 出现在**实验粒度**(per-run / per-candidate),不出现在**事件粒度**。
-- 三形态分工(文档 [09](../docs/guide/09-data-output.md)/[22](../docs/guide/22-web.md)):CLI 是主力实验形态;Web 定位小中型交互;桌面未立项。脚本层依附于 native 形态,Web 不做(见 §3)。
+- 三形态分工(文档 [09](../docs/guide/09-data-output.md)/[22](../docs/guide/22-web.md)):CLI 是主力实验形态;Web 定位小中型交互;桌面已立项并落地 Tauri 2 壳(2026-10,文档 18 Phase 7)。脚本层依附于 native 形态,Web 不做(见 §3)。
 
 ## 1. 需求场景(按优先级)
 
@@ -35,7 +35,7 @@ B 与 A 叠加不冲突:B 落地后 A 仍是零依赖回退路径(没装 wheel �
 | --- | --- | --- |
 | CLI(native) | **主载体**(A 与 B) | 编排、分析、场景生成都挂这里 |
 | Web(WASM) | **不支持** | CPython 编译 wasm 会把核心 wasm 体积与依赖纪律一起拖垮(核心 wasm 当前 ~2.6 MB,docs 22 规模定位);若将来有需求,Pyodide 属**前端独立实验**,不进 core、不承诺 |
-| 桌面(Tauri 2,未立项) | 立项时另定 | 候选:sidecar 系统 Python(方案 A 语义)或随包分发 wheel 的 venv(方案 B 语义) |
+| 桌面(Tauri 2,壳已落地 2026-10) | 载体待定(Phase 7 后续再拍板) | 候选:sidecar 系统 Python(方案 A 语义)或随包分发 wheel 的 venv(方案 B 语义) |
 
 core 纪律不变:PyO3 依赖进**独立 crate**(`sandtable-python`,绑定壳层),core 本体依赖树保持无平台库(docs 04 边界),`wasm32` 门与现有 feature 门不受影响(同 `arrow` / `parquet` 的 feature 纪律)。
 

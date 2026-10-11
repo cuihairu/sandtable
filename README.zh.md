@@ -27,13 +27,16 @@
 
 ## 当前状态
 
-**Phase 1 最小闭环已实现**(crate:`sandtable-core` + `sandtable-cli`,内核零平台依赖,持续通过 `wasm32-unknown-unknown` 编译门):
+**计划内纵向切片至 Phase 8 已实现**(crate:`sandtable-core` + `sandtable-cli`;CLI、Web(Rust→WASM + React)与 Linux 先行的桌面壳(Tauri 2)三种形态链接同一内核,内核零平台依赖,持续通过 `wasm32-unknown-unknown` 编译门):
 
 - 带键随机数:`(seed, actor_id, day, event_index, purpose)` 直接派生,战斗用显式序号键,A/B 同键可比(CRN)
-- 硬编码最小 RPG 闭环:行为 → 解析战斗 → 奖励 → 成长 → 停滞 → 流失,天粒度离散事件推进
-- 指标在线聚合:留存 / 胜率 / 通胀(存量日增长率)/ sink_ratio / Power 分位快照,按 cohort 切片
+- YAML 配置驱动的 RPG 闭环:行为 → 解析战斗 → 奖励 → 成长 → 停滞 → 流失,天粒度离散事件推进
 - 实验统计:replicate 为统计单位,t 分布 CI₉₅,配对差值 + 效应量 d,CI 判定 PASS/BORDERLINE/FAIL 口径
-- 测试:解析解对照(固定伤害闭式解、拉满流失)、同 seed 逐字节确定性、黄金快照
+- 实验层:网格 / 随机 / 拉丁超立方扫描,OAT 敏感性,单轴插值推荐,自动寻优(进化 + Pareto 多目标)+ 随机森林代理
+- 指标在线聚合:留存 / 胜率 / 通胀 / sink_ratio / Power 分位快照,按 cohort 切片;保底抽卡的期望抽数
+- 随机函数扩展:加权表(加载期 CDF)、洗牌与无放回加权抽样、保底状态机、Box–Muller 正态、χ² 分布检验(`disttest`)
+- 报告与交换:单文件 HTML 报告、`.sandtable` 项目归档、双向 CSV 参数表、Arrow / Parquet(feature flag)
+- 测试:解析解对照、同 seed 逐字节确定性、黄金快照,以及把 CLI ↔ Web(WASM)↔ 桌面锁到同一内核的等价测试
 
 ```bash
 cargo install --path crates/sandtable-cli
@@ -49,7 +52,7 @@ sandtable validate --days 30                                # 校验参数
 
 ## 文档结构
 
-计划原文为单体文档(存档于 `docs/计划-原始.md`),现拆分为 20 章。章节与原计划的对应关系:
+计划原文为单体文档(存档于 `docs/计划-原始.md`),先拆分为 20 章,后增补宝可梦案例、Web 端、类型矩阵与随机函数四章。章节与原计划的对应关系:
 
 | 章节 | 内容 | 原计划 |
 | --- | --- | --- |
@@ -73,6 +76,10 @@ sandtable validate --days 30                                # 校验参数
 | [18 路线图](docs/guide/18-roadmap.md) | 纵向切片 + 验证节点 | §19 |
 | [19 测试策略](docs/guide/19-testing.md) | 解析解对照、快照与统计回归分层 | §20 |
 | [20 设计原则与愿景](docs/guide/20-principles-vision.md) | 原则、产品形态、愿景 | §22–§25 |
+| [21 真实配置验证](docs/guide/21-pokemon-case.md) | 宝可梦(第一世代关都)案例接入与阻力清单 | — |
+| [22 Web 端](docs/guide/22-web.md) | 浏览器形态、规模边界、查询与导出 | — |
+| [23 游戏类型 × 仿真函数清单](docs/guide/23-genre-simulation.md) | 六族 × 仿真函数:通用积木与类型缺口 | — |
+| [24 随机函数与概率系统](docs/guide/24-random-functions.md) | 加权表、保底、正态、卡方与分期 | — |
 
 ## 许可证
 

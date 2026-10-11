@@ -20,6 +20,11 @@ title: 10 · CLI
 | `sandtable params` | 数值参数表导出 / 导入(扁平 CSV) | Phase 5 |
 | `sandtable report` | 生成 HTML 报告 | Phase 5 |
 | `sandtable project` | 项目打包 pack / unpack / check(`.sandtable`) | 2026-10 |
+| `sandtable optimize` | 自动寻优实验(进化 / Pareto 多目标) | Phase 8 |
+| `sandtable surrogate` | 随机森林代理模型 train / predict / importance | Phase 8 |
+| `sandtable disttest` | 分布检验(均匀 / 加权 / 正态 χ²,测试台不进仿真路径) | 随机函数(24 章) |
+
+寻优与代理的口径见[参数扫描](./12-parameter-sweep)自动寻优节与[平衡推荐](./15-recommendation)代理节;分布检验的能力清单、分期与验收见[随机函数与概率系统](./24-random-functions)。
 
 ## 用法
 
@@ -32,6 +37,9 @@ sandtable recommend experiment.yaml sweep-out/
 sandtable params export --scenario scenario.yaml --out params.csv
 sandtable project pack myproj --out myproj.sandtable
 sandtable report experiment/
+sandtable optimize opt-exp.yaml --out opt-out/
+sandtable surrogate train sweep-out/ --metric retention_d7
+sandtable disttest normal --samples 100000 --buckets 20
 ```
 
 ### query(Phase 3,feature `duckdb`)
