@@ -64,6 +64,10 @@ jobs:
           cargo check -p sandtable-cli --features duckdb
           cargo test -p sandtable-cli --features duckdb,parquet
 
+      # 脚本层阶段 2(scripts/scripting-design.md):编排模板语法门(不建 wheel,拍板④维持挂起)
+      - name: Python 模板语法检查
+        run: python3 -m py_compile scripts/templates/*.py
+
       - name: 冒烟(1 万玩家 × 30 天 + A/B + 扫描 + 推荐 + 报告)
         run: |
           cargo build --release
