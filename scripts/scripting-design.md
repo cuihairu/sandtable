@@ -1,6 +1,6 @@
 # sandtable 脚本层设计(Python 载体)
 
-状态:**阶段 0–2 已落地(阶段 0:2026-10-08;阶段 1:2026-10-11;阶段 2:2026-10-11),阶段 3(远期)未启动**(分期计划见文末;每期实施前按本文件为口径基线)。
+状态:**阶段 0–2 已落地(阶段 0:2026-10-08;阶段 1:2026-10-11;阶段 2:2026-10-11),阶段 3 已拍板开工(2026-10-11,用户授权自行拍板),第一批已落地——性能实测报告([scripting-perf-report.md](scripting-perf-report.md)):日粒度批量 chunk 回调 GO(30 天挂满 ≈3% 基线,固定成本 ns 级),事件级红线被数据反向证实维持;第二批 = 读态日钩子接线;rhai 缓议,Pyodide 不承诺**(分期计划见文末;每期实施前按本文件为口径基线)。
 拍板:**脚本语言定为 Python**(2026-10-08,理由:简单库多、仿真分析生态成熟——numpy / pandas / scipy / matplotlib 一线贯通)。本文档回答:嵌入形态怎么选、与 CLI / Web / WASM 三形态的边界、性能红线、脚本不被信任时怎么办。
 
 ## 0. 定位(承既有架构口径)
@@ -82,7 +82,7 @@ rec = st.recommend("examples/pokemon-sweep.yaml", sw.results)
 | 0(零开发)✅ **已落地** | 外挂模式规范(本文档 §5)+ `examples/python/`:三个示例脚本(`kpi_report.py` 消费 report.json 出 KPI 汇总表、`daily_curves.py` 消费 days.csv 出按天四联图、`parquet_analysis.py` 消费三个 Parquet 批次出分群画像)+ README 依赖与运行记录 | 已验收(2026-10-08):三脚本本地跑通出 1 表 + 2 图(python 3.14 / pandas 3.0.6 / pyarrow 25.0.1 / matplotlib 3.10.7);零 Rust 改动 |
 | 1 | `sandtable-python` crate(pyo3 feature 门)+ maturin 构建 + load / run / sweep / recommend / params 只读绑定 | `maturin build` 出 wheel;pytest 冒烟;`py_parity` 逐值一致;wasm 门不回归;**✅ 已落地(2026-10-11)** |
 | 2 | 编排 API:批量实验、A/B/扫描结果聚合、matplotlib 出图示例;`scripts/` 下官方模板 | 阶段 1 用例 ×N;CI 加 wheel 构建 job(可选发布);**✅ 已落地(2026-10-11,模板三件 + 验收跑通;CI wheel job 按拍板④延期)** |
-| 3(远期,需再拍板) | 批处理粒度的 Python System 回调(day-level chunk;GIL 侧依赖子解释器 [PEP 684](https://peps.python.org/pep-0684/) 与 free-threading [PEP 703](https://peps.python.org/pep-0703/) 的成熟度)、Pyodide Web 实验 | 先出性能实测报告再拍板,不预设结论 |
+| 3(**已拍板开工 2026-10-11**) | 批处理粒度的 Python System 回调(day-level chunk;GIL 侧依赖子解释器 [PEP 684](https://peps.python.org/pep-0684/) 与 free-threading [PEP 703](https://peps.python.org/pep-0703/) 的成熟度)、Pyodide Web 实验 | 先出性能实测报告再拍板,不预设结论。**第一批已落地(2026-10-11)**:[scripting-perf-report.md](scripting-perf-report.md)(基准 `crates/sandtable-python/examples/perf_chunk.rs`)——**日粒度 chunk GO**(逐玩家全量观测面每日一次,30 天挂满 ≈3% 基线;固定成本 attach+调用 ≈86 ns 可忽略),**事件级红线被数据反向证实**(10⁷ × 86 ns ≈ 0.86 s > 10k×30 基线 0.70 s,§4 维持不松);第二批 = 读态日钩子接线(缺省 None 零行为变化)。rhai 缓议;Pyodide 维持 §3「前端独立实验,不承诺」不动 |
 
 阶段 0 可与本设计文档同一批落地(纯示例);阶段 1 起动 Rust 侧,按"文档先行、每阶段独立提交、测试全绿再合"推进。
 
