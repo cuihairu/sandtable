@@ -37,6 +37,7 @@
 - Random-function extension: weighted tables (compile-time CDF), shuffling and weighted sampling without replacement, pity state machines, Box–Muller normals, and a chi-square `disttest` for distribution checks
 - Reporting and exchange: single-file HTML reports, `.sandtable` project archives, a two-way CSV parameter table, and Arrow / Parquet behind a feature flag
 - Testing: closed-form cross-checks, byte-for-byte determinism under the same seed, golden snapshots, and equivalence tests locking CLI ↔ Web (WASM) ↔ Desktop to one kernel
+- Python bindings: a pyo3 + maturin extension module (`sandtable-sim` wheel; load / run / sweep / recommend / params), with parity tests locking Python ↔ CLI to one kernel
 
 ```bash
 cargo install --path crates/sandtable-cli

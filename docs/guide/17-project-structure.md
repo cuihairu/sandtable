@@ -24,14 +24,16 @@ sandtable/
 │   │       └── lib.rs
 │   ├── sandtable-cli/
 │   │   └── src/main.rs       # clap 子命令,薄封装 core(MVP)
-│   └── sandtable-wasm/       # wasm-bindgen 薄绑定(已落地:validate_config / run_simulation;native 纯函数承逻辑,wasm 层只包装,与 CLI 等价有测试锁死)
+│   ├── sandtable-wasm/       # wasm-bindgen 薄绑定(已落地:validate_config / run_simulation;native 纯函数承逻辑,wasm 层只包装,与 CLI 等价有测试锁死)
+│   └── sandtable-python/     # pyo3 薄绑定(已落地:load / run / sweep / recommend / params 只读面;同 wasm 双层结构独立实现,maturin 出 wheel,py_parity 与 CLI 锁死)
 │
 ├── apps/
 │   ├── web/                  # React + TS + Vite(已落地:配置编辑 → 本地仿真 → KPI/曲线/分群表,零图表库;项目多配置选择器已落地)
 │   └── desktop/              # Tauri 2 壳(Phase 7:src-tauri + core path 直连,命令面 6 个全接线,native query 已入 UI;Linux 本机先行)
 │
 ├── examples/
-│   └── minimal-rpg/          # MVP 最小 RPG 实验配置与说明
+│   ├── minimal-rpg/          # MVP 最小 RPG 实验配置与说明
+│   └── python/               # 外挂模式示例(阶段 0:kpi_report / daily_curves / parquet_analysis;零 Rust 依赖回退路径)
 ├── docs/                     # 本文档站(VitePress)
 ├── .github/workflows/        # CI(含 wasm32 门禁)与 Pages 部署
 └── README.md
@@ -40,9 +42,10 @@ sandtable/
 ## 依赖方向
 
 ```text
-sandtable-cli ─┐
-sandtable-wasm ─┼→ sandtable-core
-apps/desktop ──┘
+sandtable-cli     ─┐
+sandtable-wasm    ─┼→ sandtable-core
+sandtable-python  ─┤
+apps/desktop      ─┘
 core 内部:experiment → systems → world/kernel;config/model 被各层依赖
 分析层(DuckDB / Arrow)只被壳层调用,不进 core
 ```
@@ -75,7 +78,7 @@ core 不依赖任何壳;systems 不依赖 experiment;kernel 不依赖任何上�
 | --- | --- |
 | GitHub | `cuihairu/sandtable` 无冲突(本仓库) |
 | crates.io | `sandtable` 前缀暂无冲突记录;**正式发布前需再核一次** |
-| PyPI | `sandtable` 已被占用;将来 Python 绑定**另行命名**,不占用 sandtable 名(设计文档暂记候选 `sandtable_sim`,发布前按本章纪律再核)——载体与分期见 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md) |
+| PyPI | `sandtable` 已被占用;Python 绑定**另行命名已落地**(2026-10-11 阶段 1:发行名 `sandtable-sim`,导入名 `sandtable_sim`,不占用 sandtable 名;**正式发布前按本章纪律再核一次**)——载体与分期见 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md) |
 
 内置系统模块命名 `systems`;若未来独立成 crate 用 `sandtable-systems`,不用 `sandtable-model`(避免与概念 Model 混淆,见[技术栈](./08-tech-stack))。
 

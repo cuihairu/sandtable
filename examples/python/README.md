@@ -39,5 +39,7 @@ python3 examples/python/parquet_analysis.py  # parquet → 批次表 + 分群画
   t 分布、配对差)以 `sandtable report` / report 子命令为准(文档 11/13 章);
 - 本机跑自己写的脚本属**可信**场景,无附加限制;「项目文件携带脚本永不自动执行」等
   三条硬规则见设计文档 §5——示例脚本进仓库即受其约束(CI 跑固定脚本);
-- 阶段 1 起另有绑定 API(方案 B,pip wheel + Arrow 零拷贝)入口;本目录保持外挂模式
+- 阶段 1 绑定 API **已落地**(2026-10-11,方案 B,pyo3 + maturin:maturin build 出
+  wheel → `pip install` 后 `import sandtable_sim`;构建与测试见
+  `crates/sandtable-python/`,pytest 含与 CLI 的 py_parity 逐值对照);本目录保持外挂模式
   示例,作为零依赖回退路径的活文档(设计文档 §2)。

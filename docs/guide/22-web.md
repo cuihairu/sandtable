@@ -32,6 +32,8 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 
 路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。
 
+脚本层阶段 1(2026-10-11)补齐第三条边:`crates/sandtable-python/tests/test_parity.py` 以同一范式锁 py↔CLI(simulate / sweep / recommend 逐值一致,`days_csv` 与 CLI `days.csv` 逐字节一致)——core 唯一真源、三份独立薄转发的 pairwise 等价闭环(web_parity + py_parity + 桌面等价测试)完成。
+
 ## CI 门
 
 `.github/workflows/ci.yml` 两个入口都盖到 wasm 面:

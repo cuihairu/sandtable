@@ -1,6 +1,6 @@
 # sandtable 脚本层设计(Python 载体)
 
-状态:**阶段 0 已落地(2026-10-08),阶段 1 起未实施**(分期计划见文末;每期实施前按本文件为口径基线)。
+状态:**阶段 0–1 已落地(阶段 0:2026-10-08;阶段 1:2026-10-11),阶段 2 起未实施**(分期计划见文末;每期实施前按本文件为口径基线)。
 拍板:**脚本语言定为 Python**(2026-10-08,理由:简单库多、仿真分析生态成熟——numpy / pandas / scipy / matplotlib 一线贯通)。本文档回答:嵌入形态怎么选、与 CLI / Web / WASM 三形态的边界、性能红线、脚本不被信任时怎么办。
 
 ## 0. 定位(承既有架构口径)
@@ -80,7 +80,7 @@ rec = st.recommend("examples/pokemon-sweep.yaml", sw.results)
 | 阶段 | 交付 | 验收 |
 | --- | --- | --- |
 | 0(零开发)✅ **已落地** | 外挂模式规范(本文档 §5)+ `examples/python/`:三个示例脚本(`kpi_report.py` 消费 report.json 出 KPI 汇总表、`daily_curves.py` 消费 days.csv 出按天四联图、`parquet_analysis.py` 消费三个 Parquet 批次出分群画像)+ README 依赖与运行记录 | 已验收(2026-10-08):三脚本本地跑通出 1 表 + 2 图(python 3.14 / pandas 3.0.6 / pyarrow 25.0.1 / matplotlib 3.10.7);零 Rust 改动 |
-| 1 | `sandtable-python` crate(pyo3 feature 门)+ maturin 构建 + load / run / sweep / recommend / params 只读绑定 | `maturin build` 出 wheel;pytest 冒烟;`py_parity` 逐值一致;wasm 门不回归 |
+| 1 | `sandtable-python` crate(pyo3 feature 门)+ maturin 构建 + load / run / sweep / recommend / params 只读绑定 | `maturin build` 出 wheel;pytest 冒烟;`py_parity` 逐值一致;wasm 门不回归;**✅ 已落地(2026-10-11)** |
 | 2 | 编排 API:批量实验、A/B/扫描结果聚合、matplotlib 出图示例;`scripts/` 下官方模板 | 阶段 1 用例 ×N;CI 加 wheel 构建 job(可选发布) |
 | 3(远期,需再拍板) | 批处理粒度的 Python System 回调(day-level chunk;GIL 侧依赖子解释器 [PEP 684](https://peps.python.org/pep-0684/) 与 free-threading [PEP 703](https://peps.python.org/pep-0703/) 的成熟度)、Pyodide Web 实验 | 先出性能实测报告再拍板,不预设结论 |
 
@@ -90,6 +90,7 @@ rec = st.recommend("examples/pokemon-sweep.yaml", sw.results)
 
 - **2026-10-08 阶段 0 落地**(点火来源:巡检续批;依据:上表阶段 0 为纯示例、可随时开工,故拍板记录"直接开工,不等过目"):`examples/python/` 三示例 + README(依赖/运行/口径纪律,`sim-out/` 已 gitignore);验收列全过——三脚本消费 report.json / days.csv / Parquet 各自跑通,KPI 表与两张 PNG 本地产出。两点口径存档:①示例 CI95 用 ±1.96·SE 正态近似,权威 t 分布口径仍归 CLI(脚本头与 README 均注明);②本批零 Rust 改动,内核 / wasm / CI 门不涉及。
 - **2026-10-11 阶段 1 拍板:设计通过,开工实施**(点火来源:巡检 11 轮,授权按原计划与台账自行拍板)。对照核查三项:①原计划 §6.1「配置描述数据,代码/脚本描述复杂行为」「复杂行为应该通过脚本/扩展机制完成」即本设计的合法性来源,§0 定位(编排 + 分析,不把 YAML 变成编程语言)与其一致;②台账一致性:阶段 0 已验收,本设计 2026-10-08 定稿后无搁置事由;③技术红线实证:pyo3 进独立 crate `sandtable-python`,core 依赖树零改动,CI wasm 门为 `-p sandtable-core` 包级不受影响;本机 Python 3.14.4 + 头文件 + `libpython3.14.so` 在位,pyo3 0.29.3 / maturin 1.15.0 现行稳定;CI `cargo test --workspace` 覆盖新 crate 需 python3-dev(已加)。**实施口径**:绑定照抄 wasm 双层结构(`*_native` 纯函数 + 薄封装)但独立实现、不链 sandtable-wasm(wasm-bindgen 不进 native crate);core 唯一真源,三份独立薄转发由 pairwise 等价测试锁死(web_parity: wasm↔CLI;py_parity: py↔CLI;desktop: desktop↔wasm);Python 侧无 Web 的 64 replicates / 200 预算门(原生形态,同 CLI)。**对 §6 草图的两点偏离**:①`out.days.to_pandas()`(Arrow 零拷贝)不进阶段 1,days 以 `days_csv` 字符串交付(与 CLI 逐字节同源,`pd.read_csv(io.StringIO(...))` 即得 DataFrame),Arrow C Data Interface 留阶段 2 编排 API 一并做;②sweep 为一次全量调用(plan + 顺序跑全部候选,同 CLI 语义;wasm 的 plan/candidate 分解是为让出浏览器主线程,Python 无此约束)。
+- **2026-10-11 阶段 1 落地**(与拍板同日连续实施,三批提交):`crates/sandtable-python/`(pyo3 0.29.3,crate-type `cdylib` + `rlib`:前者供 maturin 出 wheel,后者供 `cargo test --workspace` 直跑)+ `pyproject.toml`(maturin,发行名 `sandtable-sim`,导入名 `sandtable_sim`)+ pytest 两文件(冒烟 13 例 + `py_parity` 3 例)。**验收列全过**:`maturin build --release` 出 wheel(CPython 3.14,manylinux_2_34);pytest 16/16 绿(含 simulate / sweep / recommend 与 CLI 产物逐值一致、`days_csv` 与 CLI `days.csv` 逐字节一致);`cargo test --workspace` 含新 crate 7 例全绿,wasm 门不回归;CI 门补 `python3-dev`。**落地口径存档**:replicates 门与 CLI 同义(≥ 1,0 即 ValueError);候选 `status` 两形态("ok" 字符串 / `{"config_error": ...}` 对象)在 Python 侧照实透传,调用方按 `isinstance(str)` 分派;报告 `meta` 含时间戳不参与确定性,py_parity 只比 `results` / `elasticities` / `recommendation`。
 
 ## 8. 来源与分级
 
