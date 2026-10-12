@@ -108,7 +108,12 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 **无头冒烟证据(2026-10-12)**:进程存活 + 窗口 class=sandtable + 截屏 1 583 色,目检确认完整 UI(预设按钮 / YAML 编辑器 / 参数扫描区 / 桌面独有「本地结果文件分析」面板)——启动链与资产内联通道实证通过;表内六步仍需人工开窗(交互/功能语义不代做)。
 
-**无头点击走查证据(2026-10-13)**:xdotool 点击「宝可梦案例」→「运行仿真」(Xvfb :96 + openbox,同冒烟配方),**抓到真 bug**:Web 内置宝可梦 SIM 预设缺 `behavior` 块(1752a26 落练级产出面时只更了扫描预设),一键即报「model.training 产出已配置但各分群 p_training 均为 0」。已修(`apps/web/src/lib/presets.ts` 补 behavior + upgrade_* 与 examples/pokemon.yaml 同源)并立守卫:`apps/web/tests/presets.test.mjs`(node --test + pkg-node,TS 内置全部仿真/扫描预设过真实内核 validate/sweep_plan,CI web job 接入)。修复后重编壳复点:KPI 面板渲染(D7 留存 97.60% / 总流失率 11.57% / config_hash 与守卫一致),**清单第 1 步已无头实证**,2-6 步仍需人工。坑:改前端后必须重编桌面壳(资产编译期内嵌,`npm run build` 不重编壳则窗口跑旧 UI)。
+**无头点击走查证据(2026-10-13)**:xdotool 点击走查(Xvfb :96 + openbox,同冒烟配方)推进到清单 **1-4 步全部无头实证**:
+- **第 1 步**:抓到真 bug——Web 内置宝可梦 SIM 预设缺 `behavior` 块(1752a26 落练级产出面时只更了扫描预设),一键即报「model.training 产出已配置但各分群 p_training 均为 0」;已修(`apps/web/src/lib/presets.ts` 补 behavior + upgrade_* 与 examples/pokemon.yaml 同源)并立守卫 `apps/web/tests/presets.test.mjs`(node --test + pkg-node,全部 TS 内置预设过真实内核 validate/sweep_plan,CI web job 接入);复点 KPI 渲染,config_hash 与守卫一致。
+- **第 2+3 步**:扫描面板展开点「运行扫描」,进度逐候选可见(候选 5/6 · 24 次),候选表(6 attack × churn_rate/retention_d7 ±CI95 + PASS 徽章)、单轴折线(CI95 须、绿带推荐区间、基线虚线)、推荐块(推荐区间 [20,220] · Confidence Medium + OAT 敏感性表)全渲染,config_hash 同源一致。
+- **第 4 步**:抓到**白屏真 bug 链**——点「查询」整页白屏(进程存活、resize 不恢复);先补顶层 ErrorBoundary(`apps/web/src/components/ErrorBoundary.tsx`,渲染期 throw 不再卸整树,白屏变错误文案+重载按钮)后复现查询,兜出根因 `Invalid argument type in ToBigInt operation`:read_json_auto 把整数列推断成 BIGINT,Arrow Int64 向量在 WebKit(JSC)下 toArray() 即 throw。修法两处:`lib/duck.ts` days 表建表整列转 DOUBLE(DayStat 全数值,2^53 内无损,列名取首行键防漂移)+ toColumns 序列化边界 BigInt 归一 number;复跑查询结果表 30 行渲染、「画折线」下拉默认出图。
+- **坑**:桌面壳资产编译期内嵌,改前端必须重编壳(`npm run build` 不重编壳=窗口跑旧 UI);xdotool 点击偶发丢失(对比像素差判定点击是否生效,丢了就重点);select/textarea 会吃滚轮事件(页面滚动把鼠标放面板外)。
+- 第 5 步(native 文件对话框)与第 6 步(下载/项目包)仍需人工开窗;另:CSV 载入表(read_csv_auto 推断整型列)查询同样可能触发 ToBigInt,待第 5 步人工验收时复核,如实测复现再按 days 表同法处理。
 
 | # | 操作 | 预期 |
 | --- | --- | --- |

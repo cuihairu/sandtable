@@ -27,7 +27,13 @@ function toColumns(table: {
 }): QueryColumn[] {
   return table.schema.fields.map((f) => ({
     name: f.name,
-    values: (table.getChild(f.name)?.toArray() ?? []) as (string | number | null)[],
+    // Arrow Int64 列 toArray() 出 BigInt 值;WebKit(JSC)下流向 React 渲染
+    // 会 throw「Invalid argument type in ToBigInt operation」(2026-10-13 无头
+    // 走查,ErrorBoundary 把白屏换成了这条文案才定位到)。指标值域在 2^53 内,
+    // 序列化边界统一归一 number,浏览器/壳两端行为一致。
+    values: ((table.getChild(f.name)?.toArray() ?? []) as unknown[]).map((v) =>
+      typeof v === 'bigint' ? Number(v) : (v as string | number | null),
+    ),
   }))
 }
 
@@ -40,8 +46,16 @@ export async function loadDayStats(hash: string, rows: DayStat[]): Promise<void>
   const name = `days-${hash.slice(0, 8)}.json`
   const buf = new TextEncoder().encode(JSON.stringify(rows))
   await db!.registerFileBuffer(name, buf)
+  // 全数值列转 DOUBLE:read_json_auto 把整数列推断成 BIGINT,Arrow Int64
+  // 向量 toArray() 在 WebKit(JSC)下 throw「Invalid argument type in
+  // ToBigInt operation」(2026-10-13 无头走查,ErrorBoundary 兜出文案才定位);
+  // 指标值域 2^53 内 DOUBLE 无损。列名取自 DayStat 首行键,不写死防漂移。
+  const cols = Object.keys(rows[0] ?? {}).map(
+    (k) => `CAST("${k}" AS DOUBLE) AS "${k}"`,
+  )
+  const projection = cols.length > 0 ? cols.join(', ') : '*'
   await conn.query(
-    `CREATE TABLE days AS SELECT * FROM read_json_auto('${name}')`,
+    `CREATE TABLE days AS SELECT ${projection} FROM read_json_auto('${name}')`,
   )
   await db!.dropFile(name)
   loadedHash = hash
