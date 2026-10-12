@@ -108,6 +108,8 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 **无头冒烟证据(2026-10-12)**:进程存活 + 窗口 class=sandtable + 截屏 1 583 色,目检确认完整 UI(预设按钮 / YAML 编辑器 / 参数扫描区 / 桌面独有「本地结果文件分析」面板)——启动链与资产内联通道实证通过;表内六步仍需人工开窗(交互/功能语义不代做)。
 
+**无头点击走查证据(2026-10-13)**:xdotool 点击「宝可梦案例」→「运行仿真」(Xvfb :96 + openbox,同冒烟配方),**抓到真 bug**:Web 内置宝可梦 SIM 预设缺 `behavior` 块(1752a26 落练级产出面时只更了扫描预设),一键即报「model.training 产出已配置但各分群 p_training 均为 0」。已修(`apps/web/src/lib/presets.ts` 补 behavior + upgrade_* 与 examples/pokemon.yaml 同源)并立守卫:`apps/web/tests/presets.test.mjs`(node --test + pkg-node,TS 内置全部仿真/扫描预设过真实内核 validate/sweep_plan,CI web job 接入)。修复后重编壳复点:KPI 面板渲染(D7 留存 97.60% / 总流失率 11.57% / config_hash 与守卫一致),**清单第 1 步已无头实证**,2-6 步仍需人工。坑:改前端后必须重编桌面壳(资产编译期内嵌,`npm run build` 不重编壳则窗口跑旧 UI)。
+
 | # | 操作 | 预期 |
 | --- | --- | --- |
 | 1 | 开窗后选「宝可梦」预设,运行仿真 | KPI 表 / 按天曲线 / 分群表渲染,无白屏无 panic(等价已由 desktop↔wasm↔CLI 测试锁死,此处看渲染与交互) |

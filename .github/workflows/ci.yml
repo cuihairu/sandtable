@@ -125,3 +125,10 @@ jobs:
           npm ci
           npm run build
           ls dist/assets/*.wasm >/dev/null
+
+      # 预设守卫(2026-10-13 宝可梦预设漂移):TS 内置预设必须过真实内核
+      # validate——node 侧跑(pkg-node 自带 .gitignore,不入库)
+      - name: 预设守卫(node --test)
+        run: |
+          wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
+          node --test apps/web/tests/presets.test.mjs

@@ -30,6 +30,10 @@ model:
   training:
     xp: 300
     gold: 100
+  behavior:
+    casual: { p_dungeon: 0.3, p_upgrade: 0.2, p_training: 0.5, sessions_frac: 0.5, sessions_int: 1 }
+    core: { p_dungeon: 0.5, p_upgrade: 0.3, p_training: 0.2, sessions_frac: 0.5, sessions_int: 2 }
+    whale: { p_dungeon: 0.6, p_upgrade: 0.3, p_training: 0.1, sessions_frac: 0, sessions_int: 5 }
   dungeon:
     tiers: 8
     m_hp: 165
@@ -55,6 +59,10 @@ model:
     level_attack_gain: 8
     level_defense_gain: 8
     level_hp_gain: 13
+    upgrade_cost_base: 50
+    upgrade_cost_num: 5
+    upgrade_cost_den: 4
+    upgrade_attack_gain: 2
   churn: { p_base: 0.003, p_stall: 0.02, stall_days: 3 }
 `,
   },
