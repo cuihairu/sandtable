@@ -4,6 +4,12 @@ import { AsyncDuckDB, ConsoleLogger } from '@duckdb/duckdb-wasm'
 import duckdb_mvp_worker from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url'
 import duckdb_wasm from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url'
 import type { DayStat } from './types'
+import { tableName, toColumns } from './columns'
+import type { QueryColumn } from './columns'
+
+// 列式化与视图命名抽到 columns.ts(纯函数,node 守卫可直 import;
+// 本模块顶层带 vite `?url` 导入,node 解析不了)。类型面保持原导出。
+export type { QueryColumn } from './columns'
 
 let db: AsyncDuckDB | null = null
 let connPromise: Promise<import('@duckdb/duckdb-wasm').AsyncDuckDBConnection> | null = null
@@ -17,24 +23,6 @@ async function getConn() {
   }
   connPromise ??= db.connect()
   return connPromise
-}
-
-export type QueryColumn = { name: string; values: (string | number | null)[] }
-
-function toColumns(table: {
-  schema: { fields: { name: string }[] }
-  getChild: (name: string) => { toArray: () => unknown[] } | null
-}): QueryColumn[] {
-  return table.schema.fields.map((f) => ({
-    name: f.name,
-    // Arrow Int64 列 toArray() 出 BigInt 值;WebKit(JSC)下流向 React 渲染
-    // 会 throw「Invalid argument type in ToBigInt operation」(2026-10-13 无头
-    // 走查,ErrorBoundary 把白屏换成了这条文案才定位到)。指标值域在 2^53 内,
-    // 序列化边界统一归一 number,浏览器/壳两端行为一致。
-    values: ((table.getChild(f.name)?.toArray() ?? []) as unknown[]).map((v) =>
-      typeof v === 'bigint' ? Number(v) : (v as string | number | null),
-    ),
-  }))
 }
 
 /** 把最近一次仿真的按天数据装进内存表 days(重复调用按 config_hash 幂等)。 */
@@ -69,18 +57,8 @@ export async function runQuery(sql: string): Promise<QueryColumn[]> {
 }
 
 // 项目 / CSV 载入(文档 22 章):results 里的 CSV 产物注册为内存表,
-// 表名 = 文件名去扩展名(非法字符转 _,冲突加序号);再次载入先清旧表。
+// 表名规则见 columns.ts 的 tableName;再次载入先清旧表。
 const projectTables: string[] = []
-
-function tableName(path: string, used: Set<string>): string {
-  const base = path.split('/').pop() ?? 'file'
-  const stem = base.replace(/\.[^.]*$/, '').replace(/[^a-zA-Z0-9_]/g, '_')
-  const safe = /^[A-Za-z_]/.test(stem) ? stem : `t_${stem}`
-  let name = safe
-  let i = 2
-  while (used.has(name)) name = `${safe}_${i++}`
-  return name
-}
 
 /** CSV 文本转 Parquet 字节:`COPY (...) TO '<stem>.parquet' (FORMAT PARQUET)`
  * 再从 DuckDB 文件系统取字节(评估记录 2026-10-10:零新依赖)。导出菜单用,
