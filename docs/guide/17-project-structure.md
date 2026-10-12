@@ -44,7 +44,7 @@ sandtable/
 ├── examples/                 # 场景与实验 YAML(pokemon / gacha-pity / pokemon-sweep 等)
 │   └── python/               # 外挂模式示例(阶段 0:kpi_report / daily_curves / parquet_analysis;零 Rust 依赖回退路径)
 ├── docs/                     # 本文档站(VitePress)
-├── scripts/                  # scripting-design.md + scripting-perf-report.md(阶段 3 实测)+ templates/(阶段 2 官方编排模板)
+├── scripts/                  # scripting-design.md + scripting-perf-report.md(阶段 3 实测)+ templates/(阶段 2 官方编排模板)+ desktop_smoke.sh(桌面无头冒烟,CI desktop-smoke job 同配方)
 ├── .github/workflows/        # CI(含 wasm32 门禁)与 Pages 部署
 └── README.md
 ```
