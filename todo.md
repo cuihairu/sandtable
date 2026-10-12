@@ -8,7 +8,7 @@
 
 - [x] 复杂行为脚本 阶段 3(Python 载体,rhai 缓议;阶段 0-2 已落地 2026-10-11)——**全批落地(2026-10-11)**:第一批 = 性能实测报告([scripting-perf-report.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-perf-report.md):日粒度 chunk GO,30 天挂满单列 ≈3%/五列 ≈20% 基线;事件级红线数据反向证实维持);第二批 = 读态日钩子接线(core `DayHook` + Python `run_with_day_hook`,只读不改结果,pytest 对账锁死)。边界:事件级回调红线维持;Pyodide 维持「前端独立实验,不承诺」;numpy/Arrow 零拷贝留按需;rhai 维持缓议
 - [ ] 真实案例二期 + 模型校准(已裁「挂起不立项」)。解除条件:用户提供真实运营数据与对标基准(属用户侧输入,待触发)
-- [ ] 桌面端投入(维持挂闸门后)。解除条件:实验流 GUI **人工开窗验收完成**(Phase 7 状态;验收清单已备 2026-10-12,docs 18 Phase 7 六步照表执行)
+- [ ] 桌面端投入(维持挂闸门后)。解除条件:实验流 GUI **人工开窗验收完成**(Phase 7 状态;验收清单已备 2026-10-12,docs 18 Phase 7 六步照表执行;无头冒烟已过 2026-10-12——`bash scripts/desktop_smoke.sh`,启动链 + UI 渲染实证,顺带修掉清单原启动命令的 devUrl 坑)
 - [ ] 随机函数扩展后续(24 章 7 项已全部落地,后续增量按需)。解除条件:出现真实品类需求
 
 ## 方向性(无期限,出现真实需求再启)

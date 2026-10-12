@@ -102,7 +102,11 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 **人工开窗验收清单(2026-10-12 备,照表执行即可;逐项过了在根目录 todo.md 勾掉桌面端条)**:
 
-启动:仓库根 `cd apps/web && npm run build`,回仓库根 `cargo run -p sandtable-desktop --release`(产物内联 `web/dist`;改前端调试用 `npm run dev` + `cargo run` 走 devUrl)。
+第 0 步(先跑可复跑的无头冒烟):仓库根 `bash scripts/desktop_smoke.sh`——带 `custom-protocol` 构建 + Xvfb 无头拉起 + 截屏判定 UI 渲染,过了再开窗做下表(少踩环境坑)。
+
+启动(开窗):仓库根 `cd apps/web && npm run build`,回仓库根 `cargo run --release -p sandtable-desktop --features custom-protocol`。**坑(2026-10-12 实测)**:不带 `custom-protocol` 的 `cargo build` 是开发形态——窗口加载 `build.devUrl`(localhost:5173),独立运行只显示 "Could not connect to localhost";该 feature 别名本批补进 `apps/desktop/src-tauri/Cargo.toml`(Tauri 2 模板标配)。改前端调试才用 `npm run dev` + `cargo run`(走 devUrl)。
+
+**无头冒烟证据(2026-10-12)**:进程存活 + 窗口 class=sandtable + 截屏 1 583 色,目检确认完整 UI(预设按钮 / YAML 编辑器 / 参数扫描区 / 桌面独有「本地结果文件分析」面板)——启动链与资产内联通道实证通过;表内六步仍需人工开窗(交互/功能语义不代做)。
 
 | # | 操作 | 预期 |
 | --- | --- | --- |
