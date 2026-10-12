@@ -133,3 +133,42 @@ jobs:
           node --test apps/web/tests/columns.test.mjs
           wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
           node --test apps/web/tests/presets.test.mjs
+
+  # 桌面启动链守卫(2026-10-13 接入):无 custom-protocol 的构建是开发形态——窗口
+  # 加载 build.devUrl(localhost:5173),独立运行只显示错误页;这个坑此前只被
+  # 人工验收清单挡过,无自动化门。scripts/desktop_smoke.sh 在本机实测的配方
+  # (Xvfb + openbox + 关 DMABUF/合成渲染器 + resize 重试)升为 CI 门:进程存活
+  # 且截屏色数达标(空白窗 <100 色即 fail),debug 构建提速。
+  desktop-smoke:
+    name: 桌面无头冒烟(启动链)
+    runs-on: ubuntu-24.04  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      # webkit2gtk dev 包一并带来运行库(与 test job 同一镜像已验过);
+      # xvfb/openbox/xdotool/imagemagick 为冒烟配方依赖
+      - name: 安装桌面依赖与冒烟工具
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+            xvfb openbox xdotool imagemagick
+
+      # custom-protocol 在编译期内嵌 frontendDist=web/dist,前端产物须先行
+      - name: 前端产物(npm run build)
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build
+
+      - name: 无头冒烟(构建 + Xvfb 拉起 + 截屏判定)
+        run: ST_SMOKE_PROFILE=debug bash scripts/desktop_smoke.sh

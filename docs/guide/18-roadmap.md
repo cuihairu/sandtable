@@ -102,7 +102,7 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 **人工开窗验收清单(2026-10-12 备,照表执行即可;逐项过了在根目录 todo.md 勾掉桌面端条)**:
 
-第 0 步(先跑可复跑的无头冒烟):仓库根 `bash scripts/desktop_smoke.sh`——带 `custom-protocol` 构建 + Xvfb 无头拉起 + 截屏判定 UI 渲染,过了再开窗做下表(少踩环境坑)。
+第 0 步(先跑可复跑的无头冒烟):仓库根 `bash scripts/desktop_smoke.sh`——带 `custom-protocol` 构建 + Xvfb 无头拉起 + 截屏判定 UI 渲染,过了再开窗做下表(少踩环境坑)。**已升为 CI 门(2026-10-13)**:`desktop-smoke` job(debug 构建 + 同配方截屏判定,空白窗 <100 色即 fail)——devUrl/custom-protocol 坑(不带 feature 的构建独立运行即错误页)此前只被人工清单挡过,现启动链回归 CI 直接红;本机 release/debug 双配方复验过(1 582/1 584 色)。
 
 启动(开窗):仓库根 `cd apps/web && npm run build`,回仓库根 `cargo run --release -p sandtable-desktop --features custom-protocol`。**坑(2026-10-12 实测)**:不带 `custom-protocol` 的 `cargo build` 是开发形态——窗口加载 `build.devUrl`(localhost:5173),独立运行只显示 "Could not connect to localhost";该 feature 别名本批补进 `apps/desktop/src-tauri/Cargo.toml`(Tauri 2 模板标配)。改前端调试才用 `npm run dev` + `cargo run`(走 devUrl)。
 

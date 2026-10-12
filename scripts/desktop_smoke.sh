@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 桌面端无头启动冒烟(docs 18 Phase 7 人工验收清单的第 0 步,可复跑):
+# 桌面端无头启动冒烟(docs 18 Phase 7 人工验收清单的第 0 步,可复跑;已接入
+# CI desktop-smoke job,2026-10-13):
 # 带 custom-protocol 构建 → Xvfb + openbox 拉起 → 截屏判定 UI 是否渲染。
 # 三个实测过的坑(2026-10-12,配方均在本机验证):
 # 1. 不带 custom-protocol 的 cargo build 是开发形态:窗口加载 build.devUrl
@@ -10,15 +11,27 @@
 # 3. 初帧可能不画,resize 触发 GTK 重排后稳定出画(脚本内重试环已处理)。
 # 依赖:Xvfb、openbox、imagemagick(import/convert)、xdotool。
 # 用法:仓库根 bash scripts/desktop_smoke.sh;截图落 /tmp,末行打印路径供目检。
+# CI 提速用 ST_SMOKE_PROFILE=debug 走调试构建(同样内嵌资产);默认 release 同旧配方。
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+PROFILE="${ST_SMOKE_PROFILE:-release}"
+case "$PROFILE" in
+  release|debug) ;;
+  *) echo "ST_SMOKE_PROFILE 仅支持 release|debug,收到: $PROFILE"; exit 2 ;;
+esac
 
 for tool in Xvfb openbox import convert xdotool; do
   command -v "$tool" >/dev/null || { echo "缺依赖: $tool"; exit 2; }
 done
 
-cargo build --release -p sandtable-desktop --features custom-protocol
-BIN=target/release/sandtable-desktop
+# cargo build 无 --debug 旗标(默认即 debug),仅 release 显式加
+if [ "$PROFILE" = "release" ]; then
+  cargo build --release -p sandtable-desktop --features custom-protocol
+else
+  cargo build -p sandtable-desktop --features custom-protocol
+fi
+BIN="target/$PROFILE/sandtable-desktop"
 
 Xvfb :97 -screen 0 1280x800x24 >/dev/null 2>&1 & XVFB=$!
 cleanup() { kill "${APP:-0}" "${WM:-0}" "$XVFB" 2>/dev/null || true; }
