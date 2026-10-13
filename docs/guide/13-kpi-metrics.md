@@ -9,7 +9,9 @@ title: 13 · KPI 与指标
 ## 指标类型
 
 ```text
-Scalar · Time Series · Distribution · Histogram · Percentile · Cohort · Correlation
+留存(D1 / D3 / D7 / D14 / D30)· 胜率 · 流失率
+通胀 · sink_ratio · 金币(产出 / 消耗 / 存量 / 人均)
+战力(日均值 + 快照日 P50 / P90 / P99)· 升级次数 · 抽卡期望抽数(配置抽卡时)
 ```
 
 ## 采集架构:在线聚合
@@ -18,12 +20,12 @@ Scalar · Time Series · Distribution · Histogram · Percentile · Cohort · Co
 
 | 结构 | 用途 |
 | --- | --- |
-| 固定分箱直方图 | 分布(Power、金币存量),分箱在编译期定 |
-| 分位数草图(t-digest 或 P²) | P50 / P90 / P99,内存有界 |
-| Welford 增量均值 / 方差 | 均值类指标,数值稳定 |
-| 整数计数器 | 次数类(战斗数、胜利数、流失数)——金币等可数资源用整数,不用浮点 |
+| 整数计数器 | 次数类(战斗数、胜利数、流失数、升级数)——金币等可数资源用整数,不用浮点 |
+| 增量累计 | 通胀、sink_ratio 的按天求和(日粒度) |
+| 快照日全量排序 + 线性插值 | 固定快照日(D1 / D3 / D7 / D14 / D30)的 Power P50 / P90 / P99 |
+| 双遍均值 / 方差 + t 分布 CI | replicate 层统计(实验层 `summarize`,非 Welford) |
 
-内存量级:每指标 KB 级 × 指标数 × cohort 数,与玩家数量无关。
+内存量级:计数器与累计量与玩家数量无关;快照日仅存当日 Power 全量(仅 5 天),量级受控。
 
 ## 指标定义(公式)
 
@@ -124,17 +126,15 @@ targets:
   - metric: combat.win_rate
     min: 0.48
     max: 0.52
-    type: hard
+    kind: hard          # 缺省 hard,可省;soft 不参与可行域
   - metric: economy.inflation
     max: 0.05
-    type: hard
   - metric: progression.day_7_power
-    target: 12000
-    tolerance: 0.10
-    type: soft
+    min: 10000          # 只支持区间;target/tolerance 是 Rust 侧
+    max: 15000          # Target::centered 构造器,不进 YAML 面
 ```
 
-支持:`min / max / range / target / tolerance / weight`,以及 `hard`(一票否决)与 `soft`(加权计分)。判定输出示例:
+支持:`min / max`(两侧缺省即不设界)与 `kind`(缺省 `hard`);`hard` 一票否决,`soft` 不参与可行域(加权排序属后续阶段,见[平衡推荐](./15-recommendation))。判定输出示例:
 
 ```text
 Candidate A    Win Rate PASS · Inflation FAIL · D7 Power PASS

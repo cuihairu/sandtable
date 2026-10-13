@@ -85,7 +85,7 @@ actor:
 
 Cohort 与 Actor 分开:
 
-- **Cohort** 是一类玩家的统计 / 行为模型(Casual、Core、Whale、Returning、Churn Risk);
+- **Cohort** 是一类玩家的统计 / 行为模型(MVP 内置 Casual、Core、Whale 三群;更多分群属扩展方向);
 - **Actor** 是模拟运行过程中产生的具体玩家实例。
 
 ```text
@@ -139,7 +139,7 @@ Model 描述游戏本身,Scenario 描述实验环境,**二者必须分离**。�
 Metric 描述"如何判断系统运行得好不好"。支持:
 
 ```text
-Scalar · Time Series · Distribution · Histogram · Percentile · Cohort · Correlation
+Scalar(胜率、流失率、通胀……)· Time Series(按天序列)· Distribution(固定快照日 P50 / P90 / P99)· Cohort(切片)
 ```
 
 ```yaml
@@ -164,4 +164,4 @@ Experiment 描述"如何改变参数并比较结果":
 Parameter Space → Simulation → Metrics → Constraints → Ranking → Recommendation
 ```
 
-第一阶段支持 Grid Search、Random Search、Monte Carlo、Parameter Sweep;Latin Hypercube 已落地(2026-10-09,`mode: latin_hypercube`,见[参数扫描](./12-parameter-sweep));后续支持 Bayesian / Evolutionary / Pareto Optimization。实验是核心模型,不是 CLI 外面的脚本([实验管线](./11-experiment-pipeline))。
+第一阶段支持 Grid Search、Random Search、Monte Carlo、Parameter Sweep;Latin Hypercube 已落地(2026-10-09,`mode: latin_hypercube`,见[参数扫描](./12-parameter-sweep));Evolutionary / Pareto 优化(`optimize` 子命令)与随机森林代理(`surrogate` 子命令)已落地,Bayesian / GP 留按需。实验是核心模型,不是 CLI 外面的脚本([实验管线](./11-experiment-pipeline))。

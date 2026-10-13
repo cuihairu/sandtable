@@ -14,22 +14,22 @@ title: 09 · 数据输出
 | CSV | 人工查看与交换 | 指标时间序列(按天)、群体分布、cohort 切片、A/B 比较表——策划可直接用 Excel 打开 |
 
 ::: tip MVP 的 CSV / JSON 列设计就是 Arrow 契约
-列名、列序、类型从 MVP 起按"可直接映射为 Arrow RecordBatch"设计(首列天索引、明确 NaN 表示、整数计数、UTF-8)。Phase 2 增加 Arrow / Parquet 载体时只是**换包装,不改语义**,已有消费者不破坏。
+列名、列序、类型从 MVP 起按"可直接映射为 Arrow RecordBatch"设计(首列天索引、明确 NaN 表示、整数计数、UTF-8)。Phase 2 加的 Arrow / Parquet 载体只是**换包装,不改语义**,已有消费者不破坏。
 :::
 
-每次运行的输出目录约定:
+每次运行的输出目录约定(`simulate --out` 直写、无 run-NNNN 子目录):
 
 ```text
-experiment/
-├── run-0001/
-│   ├── meta.json        # 实验标识、配置快照、运行环境
-│   ├── metrics.csv      # 按天指标(均值、分位数)
-│   └── summary.json     # 汇总指标 + 置信区间 + 约束判定
-├── run-0002/
-└── compare.json         # 候选比较与差值(多 run 时)
+out/
+├── report.json          # meta + config_hash + results(replicate 指标、约束判定)
+├── days.csv             # 按天指标序列
+├── comparison.json      # compare 子命令:A/B 均值 / 配对差 CI / 效应量
+├── day_stats.parquet    # ┐ parquet feature 追加
+├── power_snapshots.parquet # ├ 取第 1 个 replicate 的三个批次
+└── cohort.parquet       # ┘
 ```
 
-`meta.json` 中的字段由运行环境生成(时间戳、路径、机器信息),**不参与**结果摘要的确定性哈希——同 seed 重跑的 `summary.json` 应当逐位一致(见[测试策略](./19-testing))。
+`report.json` 的 `meta` 字段由运行环境生成(`generated_at_unix` / `git_sha` / `schema_version` / `model_version`),**不参与**结果摘要的确定性哈希——同 seed 重跑的 `results` 与 `days.csv` 应当逐位一致(见[测试策略](./19-testing))。
 
 Web 端([Web 端](./22-web),Phase 6)按同一契约导出:`days.csv` 与 CLI `simulate --out` 写盘产物**逐字节一致**(由 Rust 渲染直出,`web_parity` 测试锁死),`report.json` 结构同构、`results` 逐值一致——浏览器下载的两个文件放进一个目录,`sandtable report` / `sandtable query` 即可直接继续分析。
 
@@ -55,19 +55,19 @@ Parquet  DuckDB   DuckDB-Wasm / polars / pandas
 **DuckDB 只读结果数据集,不进仿真路径。** 仿真状态是 Rust 结构体,指标走在线聚合([KPI 与指标](./13-kpi-metrics));把每个事件 INSERT 进 DuckDB 等于把分析数据库变成运行时数据库,10⁷ 量级事件下既慢又没必要。
 :::
 
-它承担的是**事后探索**——实验产出的是典型分析型数据(`player_id / day / cohort / level / power / gold / win / reward`),SQL 是比自建 Aggregator 家族更强的查询层:
+它承担的是**事后探索**——实验产出的是按天聚合的指标序列(`day_stats` 批次,列与 `days.csv` 表头一一对应),SQL 是比自建 Aggregator 家族更强的查询层:
 
 ```sql
--- 分 cohort 的 D7 战力
-SELECT cohort, avg(power),
-       percentile_cont(0.5) WITHIN GROUP (ORDER BY power)
-FROM player_daily WHERE day = 7 GROUP BY cohort;
+-- 按天胜率与流失(day_stats 视图,列名同 days.csv)
+SELECT day, win_rate, churn_rate, inflation
+FROM day_stats WHERE day <= 7 ORDER BY day;
 
--- 分 cohort 的经济收支差
-SELECT cohort, avg(gold_income), avg(gold_spending),
-       avg(gold_income - gold_spending)
-FROM economy_daily GROUP BY cohort;
+-- 经济收支差与 sink
+SELECT day, gold_earned, gold_spent, sink_ratio
+FROM day_stats ORDER BY day;
 ```
+
+注意:仿真**不产出玩家级明细**(在线聚合纪律,见[在线聚合](./13-kpi-metrics)),`day_stats` / `power_snapshots` / `cohort` 三个批次是全部数据集;分 cohort 明细切片在 `cohort` 批次。
 
 - **native**(Phase 3,CLI / 桌面):duckdb-rs,内存或文件库,直接读 Parquet / CSV;
 - **浏览器**(Phase 6,Web):DuckDB-Wasm 读随结果携带的 Parquet / CSV,SQL 完全在本地执行。

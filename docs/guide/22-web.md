@@ -39,7 +39,7 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 `.github/workflows/ci.yml` 三个入口都盖到 wasm 面:
 
 - `test` job:WASM 编译门(core,wasm32)+ WASM 绑定构建门(wasm-pack `--dev` 出 pkg);
-- `web` job:wasm-pack `--release` 出 pkg → `npm ci` → `npm run build`(类型检查 + 打包,断言产物含 .wasm);
+- `web` job:wasm-pack `--release` 出 pkg → `npm ci` → `npm run build`(类型检查 + 打包,断言产物含 .wasm)→ **`node --test` 前端守卫**(`tests/columns.test.mjs` 列归一含 BigInt、`tests/presets.test.mjs` 预设过真实 wasm 内核,需 pkg-node);
 - `desktop-smoke` job(2026-10-13):wasm-pack `--target web --dev` 出 pkg(桌面壳 custom-protocol 编译期内嵌 `web/dist`,tsc 也要解析 file:pkg 类型)→ 前端构建 → Xvfb 无头拉起壳截屏判定(启动链门,配方见 `scripts/desktop_smoke.sh`)。
 
 ## 本地运行

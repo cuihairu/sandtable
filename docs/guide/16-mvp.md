@@ -46,11 +46,12 @@ Casual 60% · Core 30% · Whale 10%(Whale = 高活跃 + 成长倍率,见指标�
 全部采用 [KPI 与指标](./13-kpi-metrics)定义的公式:
 
 ```text
-Win Rate · Death Rate · Level / Power 分布(D1~D30)
+Win Rate · Churn Rate
+Retention(D1 / D3 / D7 / D14 / D30)
 Gold 存量 · Income / Spending
 Inflation(存量日增长率)· Sink Ratio
-Retention(D1 / D7 / D14 / D30)· Churn Rate
-Dungeon Progress
+Power 日均 + 快照日 P50 / P90 / P99(D1~D30)· 升级次数
+抽卡期望抽数(配置抽卡时)
 ```
 
 ## A/B 对比

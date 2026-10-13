@@ -80,7 +80,7 @@ core 不依赖任何壳;systems 不依赖 experiment;kernel 不依赖任何上�
 | rng | (seed, actor_id, day, event_index, purpose) 派生 | 纯函数,无共享状态 |
 | kernel / world | 离散事件队列、实体存储 | 有序容器(BTreeMap / IndexMap) |
 | systems | 战斗 / 经济 / 成长 / 奖励 / 行为 / 保底 | 确定性;带键随机消费 |
-| metrics | 在线聚合(直方图 / 草图 / Welford) | 不落个体明细 |
+| metrics | 在线聚合(日粒度计数器 / 快照日分位) | 不落个体明细 |
 | experiment / sweep / optimize | 编排、比较、扫描与寻优 | 统计单位 = replicate |
 
 ## 命名核查结论(2026-10)

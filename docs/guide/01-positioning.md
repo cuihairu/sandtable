@@ -57,4 +57,4 @@ Sandtable 的产品定位是**辅助相对比较与平衡探索**,不是预测�
 
 ## 文档导读
 
-本站共 20 章:[核心概念](./03-concepts)与[仿真内核](./04-kernel)定义"仿真什么";[时间模型](./05-time-model)与[确定性随机数](./06-deterministic-rng)定义"如何可复现地推进";[实验管线](./11-experiment-pipeline)到[平衡推荐](./15-recommendation)定义"如何做实验并得出结论";[MVP](./16-mvp)与[路线图](./18-roadmap)定义"先做什么、后做什么"。
+本站共 25 章:[核心概念](./03-concepts)与[仿真内核](./04-kernel)定义"仿真什么";[时间模型](./05-time-model)与[确定性随机数](./06-deterministic-rng)定义"如何可复现地推进";[实验管线](./11-experiment-pipeline)到[平衡推荐](./15-recommendation)定义"如何做实验并得出结论";[MVP](./16-mvp)与[路线图](./18-roadmap)定义"先做什么、后做什么"。

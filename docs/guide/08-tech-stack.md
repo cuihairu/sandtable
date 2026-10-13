@@ -25,7 +25,7 @@ flowchart TD
     WASM --> WEB["apps/web<br>(React + TS + Vite)"]
     CORE --> TAURI["桌面壳<br>(Tauri 2)"]
     TAURI --> APP["apps/desktop"]
-    WEB --> VIZ["ECharts / React Flow"]
+    WEB --> VIZ["前端 UI<br>(手绘 SVG 图表)"]
     APP --> VIZ
     CORE --> RES["实验结果数据集<br>(Arrow / Parquet)"]
     RES --> DDB["DuckDB<br>(native,Phase 3)"]
@@ -49,17 +49,17 @@ flowchart TD
 | 序列化 | serde + serde_json | MVP |
 | 配置(YAML) | serde_yaml_ng(选型理由见[配置与公式引擎](./07-config-formula)) | MVP |
 | 错误处理 | thiserror(core)/ anyhow(cli) | MVP |
-| 随机数 | rand_core 兼容的带键派生(见[确定性随机数](./06-deterministic-rng)) | MVP |
+| 随机数 | 自实现带键派生(SplitMix64 混合,**无 rand 依赖**;见[确定性随机数](./06-deterministic-rng)) | MVP |
 | 并行 | rayon(feature 开关;仅实验级并行,WASM 下退化串行,行为不变) | MVP |
 | 表达式求值 | 内置最小求值器(加载期编译) | MVP |
 | 数据输出 | JSON + CSV | MVP |
 | 测试 | Rust 内置 test + 快照 | MVP |
-| Benchmark | criterion | MVP 起,按需 |
+| Benchmark | criterion(**未引入**,属计划项) | 按需 |
 | CI | GitHub Actions(含 wasm32 门禁) | MVP |
-| 图表 | ECharts | Phase 5+ |
-| 系统图 | React Flow | 后续 |
+| 图表 | 零图表库:前端手绘 SVG、HTML 报告内联 SVG;**ECharts 未引入** | 已落地(Phase 5) |
+| 系统图 | React Flow(未引入) | 后续 |
 | 脚本扩展候选 | rhai(评估项,未定) | 后续 |
-| Python 绑定 | 另行命名(PyPI `sandtable` 已被占用) | 后续 |
+| Python 绑定 | sandtable-sim(pyo3 + maturin,导入名 `sandtable_sim`;PyPI `sandtable` 已占用故另行命名) | 已落地(脚本层阶段 1–3) |
 | Web API | Axum(**默认不需要**:local-first;仅在确需服务端时随 tokio 引入) | 按需 |
 
 ## 依赖纪律
