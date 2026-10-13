@@ -158,6 +158,8 @@ sandtable disttest weighted <scenario.yaml> chest --samples 100000 --alpha 0.01
 
 R1/R2/R3 均为内核扩展,动 `rng.rs` 与注册表——**实施前以本页为口径基线,逐阶段走完测试全绿再合入**(每阶段独立提交)。
 
+**后续候选(未立项,2026-10-14 对账登记)**:[23 章](./23-genre-simulation) 的 NPC 顾客行为缺口点名到达过程(Poisson),是当前已记录的唯一随机原语候选——它同时需要「顾客 System」配合,不是单点原语;是否立项归根目录 todo.md「随机函数扩展后续」(出现真实品类需求再启),本页不排期。
+
 ### R1 落地存档(2026-10-10)
 
 - **purpose 键纪律**:`Purpose::Shuffle = 6` 追加在枚举尾(锁定测试断言 0–6 逐位不变);加权表抽取复用既有空置的 `Purpose::Loot = 3`,R2/R3 用途届时继续尾部追加。黄金快照(`tests/golden.rs`)逐字节通过,`config_hash` 不变。
