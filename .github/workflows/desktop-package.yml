@@ -5,6 +5,9 @@ name: 桌面安装包
 # 用户手动给出并触发,验收测试未通过的二进制不作正式版本对外。Linux 腿一并跑,目的不是
 # 产出 Linux 包,而是用同一 bundler 代码路径(图标/清单配置)在本腿快速兜住配置错误,
 # 不必等 Windows / macOS 腿编译完才发现 tauri.conf.json 写错。
+# 冒烟链:上传制品 → 裸产物 20s 进程存活 → 安装产物再跑 20s(验证安装包本身而非
+# 裸二进制:Windows msiexec / macOS dmg 挂载拷贝 / Linux dpkg -i)。制品先上传是因为
+# 冒烟失败也要能取到安装包排障(制品不是 Release,红线见上)。
 on:
   workflow_dispatch:
 
@@ -80,41 +83,8 @@ jobs:
         with:
           args: --features custom-protocol
 
-      # 启动冒烟(Windows / macOS 腿):装的是同一个二进制,直接拉起裸产物判「没死在
-      # 启动链」——WebView2 / WKWebView 运行库缺失或窗口创建 panic 在此兜住;Linux 腿
-      # 不跑(desktop-smoke job 已有带截屏判定的完整启动链门)。产物名见 deb 清单:
-      # 二进制是 sandtable-desktop,productName 只命名安装包不命名二进制
-      - name: 启动冒烟(20s 进程存活)
-        if: startsWith(matrix.os, 'windows')
-        shell: pwsh
-        run: |
-          $p = Start-Process -FilePath "target\release\sandtable-desktop.exe" -PassThru `
-            -RedirectStandardError st-err.log -RedirectStandardOutput st-out.log
-          Start-Sleep -Seconds 20
-          if ($p.HasExited) {
-            Write-Host "app exited early, code=$($p.ExitCode)"
-            Get-Content st-err.log -ErrorAction SilentlyContinue
-            Get-Content st-out.log -ErrorAction SilentlyContinue
-            exit 1
-          }
-          Write-Host "alive after 20s, pid=$($p.Id); killing"
-          Stop-Process -Id $p.Id -Force
-
-      - name: 启动冒烟(20s 进程存活)
-        if: startsWith(matrix.os, 'macos')
-        shell: bash
-        run: |
-          set -e
-          target/release/sandtable-desktop >/tmp/st-out.log 2>&1 &
-          pid=$!
-          sleep 20
-          if ! kill -0 "$pid" 2>/dev/null; then
-            echo "app exited early"; cat /tmp/st-out.log; exit 1
-          fi
-          echo "alive after 20s, pid=$pid; killing"
-          kill "$pid"
-
-      # 制品而非 Release:未验收的二进制不进 Releases 页面
+      # 制品而非 Release:未验收的二进制不进 Releases 页面。先于冒烟上传,
+      # 冒烟失败也要能取到安装包排障
       - name: 上传安装包制品
         uses: actions/upload-artifact@v4
         with:
@@ -127,3 +97,133 @@ jobs:
             target/release/bundle/macos/*.app
             target/release/bundle/deb/*.deb
           if-no-files-found: error
+
+      # 冒烟一 · 裸产物(Windows / macOS 腿):直接拉起 target/release 里的二进制判
+      # 「没死在启动链」——WebView2 / WKWebView 运行库缺失或窗口创建 panic 在此兜住;
+      # Linux 腿不跑(desktop-smoke job 已有带截屏判定的完整启动链门,且下步 deb 冒烟
+      # 直接覆盖)。二进制名见 deb 清单:sandtable-desktop(productName 只命名安装包)
+      - name: 启动冒烟(裸产物 20s 进程存活)
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "target\release\sandtable-desktop.exe" -PassThru `
+            -RedirectStandardError st-err.log -RedirectStandardOutput st-out.log
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) {
+            Write-Host "app exited early, code=$($p.ExitCode)"
+            Get-Content st-err.log -ErrorAction SilentlyContinue
+            Get-Content st-out.log -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Write-Host "raw binary alive after 20s, pid=$($p.Id); killing"
+          Stop-Process -Id $p.Id -Force
+
+      - name: 启动冒烟(裸产物 20s 进程存活)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          set -e
+          target/release/sandtable-desktop >/tmp/st-out.log 2>&1 &
+          pid=$!
+          sleep 20
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "app exited early"; cat /tmp/st-out.log; exit 1
+          fi
+          echo "raw binary alive after 20s, pid=$pid; killing"
+          kill "$pid"
+
+      # 冒烟二 · 安装产物再跑(三平台):验证「安装包本身」而非只验证裸二进制——安装器
+      # 解析失败 / 打包缺文件 / 安装后缺依赖在此兜住,与裸产物冒烟互为两段。
+      - name: 安装包冒烟(安装后 20s 进程存活)
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem "target\release\bundle\msi\*.msi" -ErrorAction SilentlyContinue `
+            | Select-Object -First 1).FullName
+          if (-not $msi) { Write-Host "no msi found"; exit 1 }
+          Write-Host "installing $msi"
+          msiexec.exe /i "$msi" /quiet /norestart
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "msi install failed, code=$LASTEXITCODE"; exit 1
+          }
+          # 装目录优先读卸载注册表,退而搜 Programs 每用户安装根
+          $exe = $null
+          $entry = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" `
+            -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like "*sandtable*" } | Select-Object -First 1
+          if ($entry -and $entry.InstallLocation) {
+            $candidate = Join-Path $entry.InstallLocation "sandtable-desktop.exe"
+            if (Test-Path $candidate) { $exe = $candidate }
+          }
+          if (-not $exe) {
+            $exe = (Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse `
+              -Filter "sandtable-desktop.exe" -ErrorAction SilentlyContinue |
+              Select-Object -First 1).FullName
+          }
+          if (-not $exe) {
+            Write-Host "installed exe not found; Programs tree:"
+            Get-ChildItem "$env:LOCALAPPDATA\Programs" -Directory -Recurse `
+              -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+            exit 1
+          }
+          Write-Host "installed at $exe"
+          $p = Start-Process -FilePath $exe -PassThru `
+            -RedirectStandardError st2-err.log -RedirectStandardOutput st2-out.log
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) {
+            Write-Host "installed app exited early, code=$($p.ExitCode)"
+            Get-Content st2-err.log -ErrorAction SilentlyContinue
+            Get-Content st2-out.log -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Write-Host "installed app alive after 20s, pid=$($p.Id); killing"
+          Stop-Process -Id $p.Id -Force
+
+      - name: 安装包冒烟(安装后 20s 进程存活)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          set -eo pipefail
+          dmg=$(ls target/release/bundle/dmg/*.dmg | head -1)
+          [ -n "$dmg" ] || { echo "no dmg found"; exit 1; }
+          echo "attaching $dmg"
+          mnt=$(hdiutil attach "$dmg" -nobrowse -quiet | tail -1 | awk '{print $NF}')
+          echo "mounted at $mnt"
+          mkdir -p /tmp/st-install
+          cp -a "$mnt"/*.app /tmp/st-install/
+          hdiutil detach "$mnt" -quiet
+          app=$(ls -d /tmp/st-install/*.app | head -1)
+          [ -n "$app" ] || { echo "no .app in dmg"; exit 1; }
+          bin=$(find "$app/Contents/MacOS" -maxdepth 1 -type f -perm -u+x | head -1)
+          [ -n "$bin" ] || { echo "no executable in $app"; exit 1; }
+          echo "running installed $bin"
+          "$bin" >/tmp/st2-out.log 2>&1 &
+          pid=$!
+          sleep 20
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "installed app exited early"; cat /tmp/st2-out.log; exit 1
+          fi
+          echo "installed app alive after 20s, pid=$pid; killing"
+          kill "$pid"
+
+      - name: 安装包冒烟(安装后 20s 进程存活)
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          set -e
+          deb=$(ls target/release/bundle/deb/*.deb | head -1)
+          [ -n "$deb" ] || { echo "no deb found"; exit 1; }
+          pkg=$(dpkg-deb -f "$deb" Package)
+          echo "installing $deb (package $pkg)"
+          sudo dpkg -i "$deb"
+          bin=$(dpkg -L "$pkg" | grep -m1 '/sandtable-desktop$')
+          [ -n "$bin" ] || { echo "sandtable-desktop not in deb contents"; exit 1; }
+          echo "running installed $bin"
+          "$bin" >/tmp/st2-out.log 2>&1 &
+          pid=$!
+          sleep 20
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "installed app exited early"; cat /tmp/st2-out.log; exit 1
+          fi
+          echo "installed app alive after 20s, pid=$pid; killing"
+          kill "$pid"
