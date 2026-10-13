@@ -1,8 +1,8 @@
-// 项目文件解包(文档 09 章 `.sandtable` 契约的浏览器侧):manifest v1
+// 项目文件打包 / 解包(文档 09 章 `.sandtable` 契约的浏览器侧):manifest v1
 // 校验与 CLI `project check` 同规——路径纪律、逐条 sha256(WebCrypto)、
 // 归档文件集合与清单严格相等。scenario / experiment 的 YAML 加载校验留在
-// CLI / wasm 侧,这里保证打包层完好;zip 解包用 fflate(本地打包,零外链)。
-import { unzipSync } from 'fflate'
+// CLI / wasm 侧,这里保证打包层完好;zip 打包 / 解包用 fflate(本地打包,零外链)。
+import { unzipSync, zipSync } from 'fflate'
 
 export type EntryKind = 'scenario' | 'experiment' | 'result'
 
@@ -104,4 +104,52 @@ export async function unpackProject(data: Uint8Array): Promise<UnpackedProject> 
   }
   if (errors.length > 0) throw new Error(`项目校验失败:\n${errors.join('\n')}`)
   return { name, entries, files }
+}
+
+/** 打包输入:两个编辑器内容 + 当前结果(可选)。路径段名固定,不与项目文件混。 */
+export interface PackInput {
+  name: string
+  scenario?: string
+  experiment?: string
+  results?: Record<string, string | Uint8Array>
+}
+
+/**
+ * 打包为 `.sandtable` 归档(与 CLI `project pack` 同格式):manifest v1 +
+ * 逐条 sha256 + 条目按路径排序 + 固定归档时间戳 1980-01-01——同内容两次
+ * 打包字节一致,`sandtable project check / unpack` 可直接读。
+ */
+export async function packProject(input: PackInput): Promise<Uint8Array> {
+  const name = input.name.trim()
+  if (name === '') throw new Error('项目名不能为空')
+  const raw: Record<string, Uint8Array> = {}
+  const enc = (s: string) => new TextEncoder().encode(s)
+  if (input.scenario) raw['scenarios/scenario.yaml'] = enc(input.scenario)
+  if (input.experiment) raw['experiments/experiment.yaml'] = enc(input.experiment)
+  for (const [file, data] of Object.entries(input.results ?? {})) {
+    raw[`results/${file}`] = typeof data === 'string' ? enc(data) : data
+  }
+  const paths = Object.keys(raw).sort()
+  const entries: ProjectEntry[] = []
+  for (const path of paths) {
+    const kind: EntryKind = path.startsWith('scenarios/')
+      ? 'scenario'
+      : path.startsWith('experiments/')
+        ? 'experiment'
+        : 'result'
+    const bad = checkEntryPath(path, kind)
+    if (bad) throw new Error(bad)
+    entries.push({ path, kind, sha256: await sha256Hex(raw[path]) })
+  }
+  if (entries.length === 0) {
+    throw new Error('至少需要一个 scenario 或 experiment 才能打包')
+  }
+  const zip: Record<string, [Uint8Array, { mtime: Date }]> = {
+    'manifest.json': [
+      enc(JSON.stringify({ schema_version: '1', name, entries }, null, 2)),
+      { mtime: new Date(1980, 0, 1) },
+    ],
+  }
+  for (const path of paths) zip[path] = [raw[path], { mtime: new Date(1980, 0, 1) }]
+  return zipSync(zip)
 }

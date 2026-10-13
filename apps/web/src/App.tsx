@@ -7,7 +7,7 @@ import QueryPanel from './components/QueryPanel'
 import SweepPanel from './components/SweepPanel'
 import { exportCsvAsParquet, loadDayStats, runQuery } from './lib/duck'
 import { PRESETS, SWEEP_PRESETS } from './lib/presets'
-import { unpackProject } from './lib/project'
+import { packProject, unpackProject } from './lib/project'
 import type { UnpackedProject } from './lib/project'
 import type { RunMetrics, SimOutput } from './lib/types'
 import { isDesktop, runSimulation } from './lib/wasm'
@@ -30,6 +30,25 @@ function download(data: string | Uint8Array, filename: string, mime: string) {
 
 function dayMetric(m: RunMetrics, key: 'active' | 'win_rate' | 'gold_supply' | 'levelups' | 'churn_rate'): number[] {
   return m.day_stats.map((d) => d[key])
+}
+
+// report.json 内容(文档 09 章契约):环境字段 + 结果,与 CLI report 产物同构
+function reportJson(out: SimOutput): string {
+  return JSON.stringify(
+    {
+      meta: {
+        // 环境字段(文档 22 绑定纪律):时间戳取导出时刻,
+        // git_sha 由构建注入(VITE_GIT_SHA),未注入回退 unknown(与 CLI 同)
+        generated_at_unix: Math.floor(Date.now() / 1000),
+        git_sha: import.meta.env.VITE_GIT_SHA ?? 'unknown',
+        schema_version: out.meta.schema_version,
+        model_version: out.meta.model_version,
+      },
+      results: out.results,
+    },
+    null,
+    2,
+  )
 }
 
 export default function App() {
@@ -56,6 +75,28 @@ export default function App() {
     } catch (e) {
       setError(String(e))
       setOut(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 打包项目(.sandtable):两个编辑器内容 + 当前结果,与 CLI project pack
+  // 同格式;重新导入走既有 unpackProject 校验,配置与结果闭环
+  async function pack() {
+    setBusy(true)
+    setError(null)
+    try {
+      const bytes = await packProject({
+        name: 'sandtable-web',
+        scenario: yaml,
+        experiment: sweepYaml,
+        ...(out
+          ? { results: { 'report.json': reportJson(out), 'days.csv': out.days_csv } }
+          : {}),
+      })
+      download(bytes, 'sandtable-web.sandtable', 'application/zip')
+    } catch (e) {
+      setError(String(e))
     } finally {
       setBusy(false)
     }
@@ -194,6 +235,9 @@ export default function App() {
           <button className="primary" disabled={busy} onClick={run}>
             {busy ? '运行中…' : '运行仿真'}
           </button>
+          <button disabled={busy} onClick={pack}>
+            打包项目(.sandtable)
+          </button>
         </div>
         <textarea
           value={yaml}
@@ -232,27 +276,7 @@ export default function App() {
                 下载 days.csv(replicate 1)
               </button>
               <button
-                onClick={() =>
-                  download(
-                    JSON.stringify(
-                      {
-                        meta: {
-                          // 环境字段(文档 22 绑定纪律):时间戳取导出时刻,
-                          // git_sha 由构建注入(VITE_GIT_SHA),未注入回退 unknown(与 CLI 同)
-                          generated_at_unix: Math.floor(Date.now() / 1000),
-                          git_sha: import.meta.env.VITE_GIT_SHA ?? 'unknown',
-                          schema_version: out.meta.schema_version,
-                          model_version: out.meta.model_version,
-                        },
-                        results: out.results,
-                      },
-                      null,
-                      2,
-                    ),
-                    'report.json',
-                    'application/json',
-                  )
-                }
+                onClick={() => download(reportJson(out), 'report.json', 'application/json')}
               >
                 下载 report.json
               </button>
@@ -342,6 +366,10 @@ export default function App() {
             内存表)。
           </p>
           <LocalQuery />
+          <p className="note">
+            桌面下载统一落 ~/Downloads(同名自动加 (n) 后缀);上方导出按钮与
+            打包项目均走此目录。
+          </p>
         </section>
       )}
 
