@@ -80,6 +80,40 @@ jobs:
         with:
           args: --features custom-protocol
 
+      # 启动冒烟(Windows / macOS 腿):装的是同一个二进制,直接拉起裸产物判「没死在
+      # 启动链」——WebView2 / WKWebView 运行库缺失或窗口创建 panic 在此兜住;Linux 腿
+      # 不跑(desktop-smoke job 已有带截屏判定的完整启动链门)。产物名见 deb 清单:
+      # 二进制是 sandtable-desktop,productName 只命名安装包不命名二进制
+      - name: 启动冒烟(20s 进程存活)
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "target\release\sandtable-desktop.exe" -PassThru `
+            -RedirectStandardError st-err.log -RedirectStandardOutput st-out.log
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) {
+            Write-Host "app exited early, code=$($p.ExitCode)"
+            Get-Content st-err.log -ErrorAction SilentlyContinue
+            Get-Content st-out.log -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Write-Host "alive after 20s, pid=$($p.Id); killing"
+          Stop-Process -Id $p.Id -Force
+
+      - name: 启动冒烟(20s 进程存活)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          set -e
+          target/release/sandtable-desktop >/tmp/st-out.log 2>&1 &
+          pid=$!
+          sleep 20
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "app exited early"; cat /tmp/st-out.log; exit 1
+          fi
+          echo "alive after 20s, pid=$pid; killing"
+          kill "$pid"
+
       # 制品而非 Release:未验收的二进制不进 Releases 页面
       - name: 上传安装包制品
         uses: actions/upload-artifact@v4
