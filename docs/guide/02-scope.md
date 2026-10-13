@@ -39,7 +39,7 @@ Sandtable 规划三种运行形态,共用**同一个 Rust Core**,不存在 JS �
 
 ## 后续方向
 
-- 真实游戏引擎 Adapter
+- 真实游戏引擎 Adapter(方案待拍板,选型与决策点见 [引擎 Adapter 设计](../engine-adapter-design.md))
 - CI 平衡回归
 - 可视化系统图与策划工作流
 - Bayesian / GP 优化(按需;Evolutionary / Pareto 与随机森林代理已落地,见[参数扫描](./12-parameter-sweep))
