@@ -163,7 +163,15 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
             xvfb openbox xdotool imagemagick
 
-      # custom-protocol 在编译期内嵌 frontendDist=web/dist,前端产物须先行
+      # custom-protocol 在编译期内嵌 frontendDist=web/dist,前端产物须先行;
+      # tsc 要解析 sandtable-wasm 的 file:pkg 类型声明,须先出 pkg(首跑 2026-10-13
+      # 翻红即漏了这步:Cannot find module 'sandtable-wasm')
+      - name: 安装 wasm-pack(官方预编译)
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: 构建 wasm pkg(dev,smoke 不走 wasm 路径,类型与打包够用)
+        run: wasm-pack build crates/sandtable-wasm --target web --dev
+
       - name: 前端产物(npm run build)
         working-directory: apps/web
         run: |
@@ -172,3 +180,14 @@ jobs:
 
       - name: 无头冒烟(构建 + Xvfb 拉起 + 截屏判定)
         run: ST_SMOKE_PROFILE=debug bash scripts/desktop_smoke.sh
+
+      # 冒烟翻红时把现场(截图/启动日志)带走,色数与白屏问题没图没法诊断
+      - name: 上传冒烟现场(仅失败时)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-evidence
+          path: |
+            /tmp/sandtable_desktop_smoke.png
+            /tmp/sandtable_desktop_smoke.log
+          if-no-files-found: ignore

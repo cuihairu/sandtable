@@ -3,7 +3,7 @@
 > 生成于 2026-10-11(无 todo 文件,来源:docs/guide/18-roadmap.md「后续方向」+ 依赖告警)。
 > 2026-10-11 账面复核:依赖告警两项关闭(一项落地、一项评估完毕 parked),挂闸项与方向项维持,解除条件逐条写明。
 > 2026-10-12 巡检复核:五项未完触发条件均未出现——真实案例无用户侧运营数据入仓、桌面端 GUI 人工开窗未执行(验收清单已备,见 docs 18 Phase 7 照表执行)、无真实品类需求(随机函数)、无真实服务端需求(Adapter/Web API);维持挂闸。
-> 2026-10-13 巡检增量:桌面端第 1-4 步已无头点击实证(1 仿真/2+3 扫描与推荐/4 会话内 SQL),抓到并修掉三个真 bug:Web 宝可梦 SIM 预设缺 behavior 块(补齐+预设守卫入 CI)、查询面板渲染期异常整页白屏(补顶层 ErrorBoundary)、WebKit 下 Arrow Int64 列 ToBigInt throw(days 建表整列转 DOUBLE);ToBigInt 边界补纯函数守卫(columns.ts 抽出 + node --test 入 CI,项目 CSV 载入同款风险一并关闭);无头冒烟升 CI 门(desktop-smoke job,启动链回归直接红);5-6 步(native 文件对话框/下载项目包)卡点实证——GTK file chooser 无头自动化不可行(ctrl+l 不生效/键盘事件不投递/对话框 unmap/windowfocus BadMatch),底层 DuckDB 已有单测,需人工开窗验收。
+> 2026-10-13 巡检增量:桌面端第 1-4 步已无头点击实证(1 仿真/2+3 扫描与推荐/4 会话内 SQL),抓到并修掉三个真 bug:Web 宝可梦 SIM 预设缺 behavior 块(补齐+预设守卫入 CI)、查询面板渲染期异常整页白屏(补顶层 ErrorBoundary)、WebKit 下 Arrow Int64 列 ToBigInt throw(days 建表整列转 DOUBLE);ToBigInt 边界补纯函数守卫(columns.ts 抽出 + node --test 入 CI,项目 CSV 载入同款风险一并关闭);无头冒烟升 CI 门(desktop-smoke job,启动链回归直接红;首跑抓到 job 漏 wasm-pack 先行步,已补+失败传 artifact);5-6 步(native 文件对话框/下载项目包)卡点实证——GTK file chooser 无头自动化不可行(ctrl+l 不生效/键盘事件不投递/对话框 unmap/windowfocus BadMatch),底层 DuckDB 已有单测,需人工开窗验收。
 
 ## 挂闸项(需用户拍板才开工)
 
