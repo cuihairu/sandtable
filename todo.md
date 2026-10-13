@@ -5,7 +5,7 @@
 ## 待办(挂闸,需用户拍板才开工)
 
 - [ ] 真实案例二期 + 模型校准。解除条件:用户提供真实运营数据与对标基准
-- [ ] 桌面端投入。剩余:native 文件对话框 GUI 与三平台安装包的人工开窗验收(六步无头实证过;安装包构建链已就绪 desktop-package.yml + 本机 deb 实证,待 Windows / macOS 运行态,证据 docs 18 Phase 7)
+- [ ] 桌面端投入。剩余:native 文件对话框 GUI 人工开窗验收 + Windows / macOS 安装包运行态验收(构建链三腿已实证绿 run 38420221169:Windows msi+nsis / macOS dmg+app / Linux deb 制品齐,证据 docs 18 Phase 7)
 - [ ] 随机函数扩展后续。解除条件:出现真实品类需求
 
 ## 方向性(无期限,出现真实需求再启)
