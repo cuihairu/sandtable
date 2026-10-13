@@ -106,6 +106,8 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 启动(开窗):仓库根 `cd apps/web && npm run build`,回仓库根 `cargo run --release -p sandtable-desktop --features custom-protocol`。**坑(2026-10-12 实测)**:不带 `custom-protocol` 的 `cargo build` 是开发形态——窗口加载 `build.devUrl`(localhost:5173),独立运行只显示 "Could not connect to localhost";该 feature 别名本批补进 `apps/desktop/src-tauri/Cargo.toml`(Tauri 2 模板标配)。改前端调试才用 `npm run dev` + `cargo run`(走 devUrl)。
 
+**首次打开指引(Windows / macOS 未签名构建的预期提示,非故障)**:安装器装完首次启动会撞签名门——Windows 出 SmartScreen 蓝屏「Windows 已保护你的电脑」→ 点「更多信息」→「仍要运行」(或右键 exe → 属性 → 勾选「解除锁定」);macOS 被 Gatekeeper 拦下(「无法打开,因为无法验证开发者」)→ 在「应用程序」里右键(或 Control+点)该 app → 「打开」→ 确认弹窗再点「打开」(或 系统设置 → 隐私与安全性 → 底部「仍要打开」)。两处均为未签名构建的预期行为(签名证书按拍板留到发布时再定),过掉即不再出现;Linux deb 无此门。验收记录「按指引跳过、应用正常起来」即可,不需当 bug 提。
+
 **无头冒烟证据(2026-10-12)**:进程存活 + 窗口 class=sandtable + 截屏 1 583 色,目检确认完整 UI(预设按钮 / YAML 编辑器 / 参数扫描区 / 桌面独有「本地结果文件分析」面板)——启动链与资产内联通道实证通过;表内六步当时仍需人工开窗,后于 2026-10-13 无头点击走查全部实证(1-4 步见下,5-6 步经手输路径与下载接线绕行 native 对话框,见「第 5-6 步卡点与解卡」)。
 
 **无头点击走查证据(2026-10-13)**:xdotool 点击走查(Xvfb :96 + openbox,同冒烟配方)推进到清单 **1-4 步全部无头实证**:
