@@ -106,14 +106,14 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 启动(开窗):仓库根 `cd apps/web && npm run build`,回仓库根 `cargo run --release -p sandtable-desktop --features custom-protocol`。**坑(2026-10-12 实测)**:不带 `custom-protocol` 的 `cargo build` 是开发形态——窗口加载 `build.devUrl`(localhost:5173),独立运行只显示 "Could not connect to localhost";该 feature 别名本批补进 `apps/desktop/src-tauri/Cargo.toml`(Tauri 2 模板标配)。改前端调试才用 `npm run dev` + `cargo run`(走 devUrl)。
 
-**无头冒烟证据(2026-10-12)**:进程存活 + 窗口 class=sandtable + 截屏 1 583 色,目检确认完整 UI(预设按钮 / YAML 编辑器 / 参数扫描区 / 桌面独有「本地结果文件分析」面板)——启动链与资产内联通道实证通过;表内六步仍需人工开窗(交互/功能语义不代做)。
+**无头冒烟证据(2026-10-12)**:进程存活 + 窗口 class=sandtable + 截屏 1 583 色,目检确认完整 UI(预设按钮 / YAML 编辑器 / 参数扫描区 / 桌面独有「本地结果文件分析」面板)——启动链与资产内联通道实证通过;表内六步当时仍需人工开窗,后于 2026-10-13 无头点击走查全部实证(1-4 步见下,5-6 步经手输路径与下载接线绕行 native 对话框,见「第 5-6 步卡点与解卡」)。
 
 **无头点击走查证据(2026-10-13)**:xdotool 点击走查(Xvfb :96 + openbox,同冒烟配方)推进到清单 **1-4 步全部无头实证**:
 - **第 1 步**:抓到真 bug——Web 内置宝可梦 SIM 预设缺 `behavior` 块(1752a26 落练级产出面时只更了扫描预设),一键即报「model.training 产出已配置但各分群 p_training 均为 0」;已修(`apps/web/src/lib/presets.ts` 补 behavior + upgrade_* 与 examples/pokemon.yaml 同源)并立守卫 `apps/web/tests/presets.test.mjs`(node --test + pkg-node,全部 TS 内置预设过真实内核 validate/sweep_plan,CI web job 接入);复点 KPI 渲染,config_hash 与守卫一致。
 - **第 2+3 步**:扫描面板展开点「运行扫描」,进度逐候选可见(候选 5/6 · 24 次),候选表(6 attack × churn_rate/retention_d7 ±CI95 + PASS 徽章)、单轴折线(CI95 须、绿带推荐区间、基线虚线)、推荐块(推荐区间 [20,220] · Confidence Medium + OAT 敏感性表)全渲染,config_hash 同源一致。
 - **第 4 步**:抓到**白屏真 bug 链**——点「查询」整页白屏(进程存活、resize 不恢复);先补顶层 ErrorBoundary(`apps/web/src/components/ErrorBoundary.tsx`,渲染期 throw 不再卸整树,白屏变错误文案+重载按钮)后复现查询,兜出根因 `Invalid argument type in ToBigInt operation`:read_json_auto 把整数列推断成 BIGINT,Arrow Int64 向量在 WebKit(JSC)下 toArray() 即 throw。修法两处:`lib/duck.ts` days 表建表整列转 DOUBLE(DayStat 全数值,2^53 内无损,列名取首行键防漂移)+ toColumns 序列化边界 BigInt 归一 number;复跑查询结果表 30 行渲染、「画折线」下拉默认出图。**边界守卫(2026-10-13 二批)**:toColumns/tableName 抽纯函数模块 `lib/columns.ts`,`tests/columns.test.mjs` node --test 锁死 BigInt 归一(CI web job「前端守卫」step)——该边界同时盖住项目 CSV/Parquet 载入表(read_csv_auto 推断整型列)的同款风险,原「待第 5 步人工复核」的 wasm 侧风险就此关闭;桌面 native 路径(LocalQuery)单元格为字符串不经此边界。
 - **坑**:桌面壳资产编译期内嵌,改前端必须重编壳(`npm run build` 不重编壳=窗口跑旧 UI);xdotool 点击偶发丢失(对比像素差判定点击是否生效,丢了就重点);select/textarea 会吃滚轮事件(页面滚动把鼠标放面板外)。
-- **第 5-6 步卡点(2026-10-13 实证)**:native 文件对话框(tauri-plugin-dialog → GTK file chooser)无法可靠无头自动化——`ctrl+l` 不开位置栏、`xdotool type/key --window` 键盘事件不投递、对话框交互后 unmap、`windowfocus` 报 BadMatch;试遍 sidebar 点击(Home/Other Locations)、路径栏、文件列表键入均无效。**结论**:第 5 步(选文件)与第 6 步(下载/项目包)涉及系统原生对话框,需人工开窗验收;底层 DuckDB 功能已有单测覆盖(`lib.rs` `query_csv_view` 等,与 CLI `query` 同源)。
+- **第 5-6 步卡点与解卡(2026-10-13 实证)**:native 文件对话框(tauri-plugin-dialog → GTK file chooser)无法可靠无头自动化——`ctrl+l` 不开位置栏、`xdotool type/key --window` 键盘事件不投递、对话框交互后 unmap、`windowfocus` 报 BadMatch;试遍 sidebar 点击(Home/Other Locations)、路径栏、文件列表键入均无效。**绕行:两条等价路径落地并全部无头实证**:① LocalQuery 加工具栏手输路径入口(输入框 + 「加载路径」按钮,追加去重,视图仍按文件词根注册;无头走查:键入 `/home/cui/Downloads/days.csv` → 「已选 1 个文件,视图:days」→ 改 SQL 点「查询」→ 结果表渲染,底层 duckdb-rs 与 CLI `query` 同源);② 下载接线——主窗口改在 `setup()` 用 `WebviewWindowBuilder` 构建(`tauri.conf.json` `app.windows` 置空;配置窗无法事后挂 `on_download`),`on_download` 在 `Requested` 把 destination 改写 `~/Downloads`(WebKit 不写不存在的目录故先建目录;同名按 `stem (n).ext` 去重,n 从 0 起首名即裸名),`Finished` 打 `下载true/false` 供冒烟判定(根因:wry 仅在有 handler 时才注册 WebKitGTK 下载委托,无 handler 则 `decide-destination` 无应答、下载被静默取消)。无头实证:点「下载 days.csv」→ `~/Downloads/days.csv`(3 958 B)、再下→ `days (1).csv`(去重生效)、parquet → `days.parquet`(5 594 B,PYARROW 魔数 + pyarrow 读 30 行×18 列)。**项目包闭环**:工具栏「打包项目(.sandtable)」调 `packProject`(manifest v1、条目按路径排序、逐条 sha256、固定归档时间戳 1980-01-01,与 CLI `project pack` 同规)→ 点击后 `sandtable-web.sandtable`(1 388 B)落 `~/Downloads`,CLI `project check` 报「归档有效」、`project unpack --out` 展出与原编辑器逐字节一致的 scenario.yaml;守卫 `apps/web/tests/project.test.mjs`(pack→unpack 闭环 / 排序与字节确定性 / 改一字节即 sha256 拒 / 路径纪律 / 空拒 / 打包产物过真实内核 validate_config,CI web job 接入)。**剩余人工开窗**:仅 native 对话框 GUI 本身(功能已由手输路径等价覆盖)。
 
 | # | 操作 | 预期 |
 | --- | --- | --- |
@@ -121,8 +121,10 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 | 2 | 切扫描面板,选单轴网格预设,运行 | 进度逐候选可见;候选表 + 单轴折线(CI95 须、判定三色、推荐带)出图 |
 | 3 | 读推荐块 | 推荐区间 + Confidence 出现,与 CLI `recommend` 同配置口径一致 |
 | 4 | 查询面板(会话内 days 表)跑一条 SQL(如 `SELECT day, gold_supply FROM days ORDER BY day`) | 表格渲染,数值列可画折线 |
-| 5 | 「本地结果文件分析」面板 → 选 CLI 产物(先 `cargo run -p sandtable-cli --release -- simulate examples/pokemon.yaml --out sim-out` 产 `sim-out/report.json` 与 `sim-out/days.csv`(Parquet 批次另加 `--features parquet` 且尾随 `--parquet`,需要时再建)) → SQL | 按文件词根注册视图,查询出结果 |
-| 6 | 结果导出菜单下载 days.csv / days.parquet;项目文件打包 `.sandtable` → 重新导入 | 下载成功,导入后配置与结果可复现 |
+| 5 | 「本地结果文件分析」面板 → 选 CLI 产物(先 `cargo run -p sandtable-cli --release -- simulate examples/pokemon.yaml --out sim-out` 产 `sim-out/report.json` 与 `sim-out/days.csv`(Parquet 批次另加 `--features parquet` 且尾随 `--parquet`,需要时再建));对话框多选外,手输路径入口(输入框 + 「加载路径」)为等价路 → SQL | 按文件词根注册视图,查询出结果 |
+| 6 | 结果导出菜单下载 days.csv / days.parquet;工具栏「打包项目(.sandtable)」→ `sandtable project check` / 重新导入(下载落 `~/Downloads`,同名自动加 (n)) | 下载成功,check 过,导入后配置与结果可复现 |
+
+六步状态(2026-10-13):**1-4 步无头点击实证过;5-6 步经等价路径(手输路径 / 下载接线 + 项目包按钮)无头实证过**(证据见上「第 5-6 步卡点与解卡」)。剩余仅 native 对话框 GUI 本身与 Windows / macOS 安装包,随桌面端条的人工验收一并做。
 
 失败处置:记下步骤号 + 现象(截图),回仓开修;全过则 Phase 7 验收收口,桌面端条转可解。
 

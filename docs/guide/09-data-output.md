@@ -146,6 +146,8 @@ sandtable project check  myproj.sandtable                # 只校验不落盘
 
 与 Web 形态互补:浏览器打开项目文件即可复现实验——Web 侧加载随此定型排期,见[Web 端](./22-web)。
 
+**浏览器侧双向(2026-10-13 落地)**:Web 不仅能导入 `.sandtable`,也能**导出**——工具栏「打包项目(.sandtable)」把两个编辑器内容 + 当前结果按同一格式规则打包(manifest v1、条目按路径排序、逐条 sha256 走 WebCrypto、归档时间戳固定 1980-01-01,fflate 本地打包零外链),同内容两次打包字节一致;产物 `sandtable project check` / `unpack` 直接读,配置与结果在浏览器与 CLI 之间闭环(守卫 `apps/web/tests/project.test.mjs` 锁 pack→unpack 闭环、路径纪律、字节确定性与内核 validate)。
+
 ## 配置接入:Excel / CSV 导入(评估结论)
 
 策划的数值表大多维护在 Excel / CSV 里,从现有配置表导入可能比 YAML 手工编辑更影响实际采用。Phase 5 评估结论如下(实施排期待定):
