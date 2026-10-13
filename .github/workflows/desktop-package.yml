@@ -1,0 +1,85 @@
+name: 桌面安装包
+
+# 桌面端 Windows / macOS 安装包(文档 18 Phase 7 验收:安装包在 Windows / macOS 可用)。
+# 只做 workflow_dispatch 手动触发 + 制品上传:**不打 tag、不建 Release**——版本号只能由
+# 用户手动给出并触发,验收测试未通过的二进制不作正式版本对外。Linux 腿一并跑,目的不是
+# 产出 Linux 包,而是用同一 bundler 代码路径(图标/清单配置)在本腿快速兜住配置错误,
+# 不必等 Windows / macOS 腿编译完才发现 tauri.conf.json 写错。
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-package
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 平台之间不互相拖:Windows / macOS 编译较慢,任一平台失败不中断其它平台
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+          - macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      # Linux 腿需要 webkit2gtk-4.1 头文件与运行库(与 test job 同一套 apt 包)
+      - name: 安装 Linux 桌面依赖
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev
+
+      # shell: bash 让 Windows / macOS 也走同一安装脚本(init.sh 自动挑平台二进制)
+      - name: 安装 wasm-pack(官方预编译)
+        shell: bash
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # tsc 要解析 sandtable-wasm 的 file:pkg 类型声明,须先出 pkg(与 web job 同序)
+      - name: 构建 wasm pkg(release)
+        run: wasm-pack build crates/sandtable-wasm --target web --release
+
+      - name: 前端产物(npm run build)
+        working-directory: apps/web
+        env:
+          # report.json 导出的环境字段(docs 22 绑定纪律):构建期注入 git_sha
+          VITE_GIT_SHA: ${{ github.sha }}
+        run: |
+          npm ci
+          npm run build
+
+      # custom-protocol 在编译期内嵌 frontendDist=web/dist,故前端产物须先行;
+      # 未签名构建(拍板 2026-10-10:签名证书留到发布时再定)——Windows 不签名只影响
+      # SmartScreen 首次打开体验,macOS 未签名需右键打开,均为首次安装提示非崩溃
+      - name: 构建安装包
+        uses: tauri-apps/tauri-action@v0
+        with:
+          args: --features custom-protocol
+
+      # 制品而非 Release:未验收的二进制不进 Releases 页面
+      - name: 上传安装包制品
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandtable-${{ runner.os }}-${{ github.run_number }}
+          path: |
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/app/*.app
+            target/release/bundle/macos/*.app
+            target/release/bundle/deb/*.deb
+          if-no-files-found: error
