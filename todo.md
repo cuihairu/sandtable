@@ -27,7 +27,7 @@
 - [x] query 守卫与路径字面量测试(33def8a): query.rs 6 测 + 桌面 lib.rs 7 测,CI 绿
 - [x] 桌面无头冒烟升 CI 门(77bd901,cffb43d): Xvfb 截屏判定,runner 实证绿
 - [x] pnpm overrides 三 pin(3b5528e): vite 6.4.3 / katex 0.18.2 / esbuild 0.25.0,docs:build 绿
-- [x] glib 0.20.0 评估(2026-10-11): parked,tauri 2.x 依赖面封顶 gtk ^0.18,随 tauri 3 stable 一并抬
+- [x] glib 0.20.0 评估(2026-10-11): parked,tauri 2.x 依赖面封顶 gtk ^0.18,随 tauri 3 stable 一并抬;告警 #7 用户已 2026-10-13 按 tolerable_risk 手动关(仅桌面壳传递依赖,core/CLI/wasm/python 不受影响)
 - [x] 文档一致性审计(2026-10-13): 三类差异 25 条已修并落表 docs/审计-文档一致性.md
 
 验收:改动后 pnpm docs:build 过 / cargo check 过;测试绿才 push。
