@@ -17,6 +17,10 @@
 - [ ] 游戏引擎 Adapter
 - [ ] Web API(仅当出现真实服务端需求,local-first 不预设)
 
+## 自定位增量(巡检自主落地,非闸门)
+
+- [x] query 注入守卫与路径字面量测试补齐(R13 登记,2026-10-13 同批落地)。验收口径:①CLI 与桌面 query 对非法词根(数字开头/空格/`-` 等非 `[A-Za-z_][A-Za-z0-9_]*` 字符)一律失败且报「视图名…非法」;②合法词根 + 路径含单引号(目录 `it's out/`)查询成功——锁死 DDL 字面量 `'`→`''` 翻倍不被回归(此前零覆盖的安全相关路径);③桌面 `query` 同源守卫有直接单测。改动:`crates/sandtable-cli/tests/query.rs` +2 例、`apps/desktop/src-tauri/src/lib.rs` +2 例
+
 ## 依赖告警(dependabot)
 
 - [x] pnpm 侧 overrides:vite → 6.4.3、katex → 0.18.2、esbuild → 0.25.0(三者均由 vitepress/mermaid 传递引入)——**已生效并复验(2026-10-11,`3b5528e`)**:package.json `pnpm.overrides` 三 pin 在位,锁解析图只含 pin 版(store 内 vite@5.4.21 / katex@0.16.47 / esbuild@0.21.5 为历史残留,不在锁文件),`pnpm install --frozen-lockfile` + `pnpm docs:build` 绿;Dependabot #3/#4/#5 随 pin 转 fixed

@@ -96,6 +96,56 @@ fn query_unknown_view_exits_nonzero() {
     assert!(stderr.contains("视图名"), "{stderr}");
 }
 
+/// 数字开头词根同样非法(is_ident 首字符只收字母与下划线)——
+/// 与 `bad-name` 合起来盖住首字符与后续字符两个非法类。
+#[test]
+fn query_rejects_leading_digit_stem() {
+    let dir = temp_dir("digit-stem");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("9days.csv"), "a\n1\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_sandtable"))
+        .args([
+            "query",
+            dir.join("9days.csv").to_str().unwrap(),
+            "--sql",
+            "SELECT * FROM whatever",
+        ])
+        .output()
+        .unwrap();
+    assert_ne!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("视图名") && stderr.contains("非法"),
+        "{stderr}"
+    );
+}
+
+/// 合法词根 + 路径含单引号(目录 `it's out`):路径进 DDL 字面量前
+/// `'`→`''` 翻倍必须兜住,否则 SQL 语法错;翻倍被移除即此测试红。
+#[test]
+fn query_path_with_quote_still_queries() {
+    let dir = temp_dir("quoted");
+    let quoted = dir.join("it's out");
+    fs::create_dir_all(&quoted).unwrap();
+    fs::write(quoted.join("days.csv"), "a\n7\n8\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_sandtable"))
+        .args([
+            "query",
+            quoted.join("days.csv").to_str().unwrap(),
+            "--sql",
+            "SELECT count(*) AS n, sum(a) AS s FROM days",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("15") && text.contains("1 行"), "{text}");
+}
+
 /// CSV → Parquet → SQL 全链: simulate --parquet 落盘后直接 SQL 探索
 /// (文档 09 章数据流:Simulation → 结果数据集 → DuckDB)。
 #[cfg(feature = "parquet")]

@@ -333,4 +333,40 @@ mod tests {
         assert_eq!(v["rows"], serde_json::json!([["4", "2"]]));
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    /// 与 CLI query 同源的 is_ident 守卫:非法词根(数字开头 + 空格)必须
+    /// 在注册前被拦,报错含「非法」。
+    #[test]
+    fn query_rejects_illegal_view_name() {
+        let dir = std::env::temp_dir().join(format!("st-desktop-query-bad-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("9bad name.csv");
+        std::fs::write(&f, "a\n1\n").unwrap();
+        let err = query(
+            vec![f.to_string_lossy().into_owned()],
+            "SELECT * FROM t".into(),
+        )
+        .unwrap_err();
+        assert!(err.contains("非法"), "{err}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 合法词根 + 路径含单引号:DDL 字面量 `'`→`''` 翻倍必须兜住(与 CLI
+    /// query_path_with_quote_still_queries 同口径,桌面侧独立锁死)。
+    #[test]
+    fn query_path_with_quote_still_queries() {
+        let dir =
+            std::env::temp_dir().join(format!("st-desktop-query-quote-{}", std::process::id()));
+        let quoted = dir.join("it's out");
+        std::fs::create_dir_all(&quoted).unwrap();
+        let f = quoted.join("summary.csv");
+        std::fs::write(&f, "a\n5\n6\n").unwrap();
+        let v = query(
+            vec![f.to_string_lossy().into_owned()],
+            "SELECT count(*) AS n FROM summary".into(),
+        )
+        .unwrap();
+        assert_eq!(v["rows"], serde_json::json!([["2"]]));
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
