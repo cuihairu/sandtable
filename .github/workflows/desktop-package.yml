@@ -6,7 +6,7 @@ name: 桌面安装包
 # 产出 Linux 包,而是用同一 bundler 代码路径(图标/清单配置)在本腿快速兜住配置错误,
 # 不必等 Windows / macOS 腿编译完才发现 tauri.conf.json 写错。
 # 冒烟链:上传制品 → 裸产物 20s 进程存活 → 安装产物再跑 20s(验证安装包本身而非
-# 裸二进制:Windows msiexec / macOS dmg 挂载拷贝 / Linux dpkg -i)。制品先上传是因为
+# 裸二进制:Windows nsis /S / macOS dmg 挂载拷贝 / Linux dpkg -i)。制品先上传是因为
 # 冒烟失败也要能取到安装包排障(制品不是 Release,红线见上)。
 on:
   workflow_dispatch:
@@ -138,22 +138,29 @@ jobs:
         if: startsWith(matrix.os, 'windows')
         shell: pwsh
         run: |
-          $msi = (Get-ChildItem "target\release\bundle\msi\*.msi" -ErrorAction SilentlyContinue `
+          # NSIS 而非 msi:nsis 是 Tauri 默认 Windows 安装器,/S + /D= 在 CI 非交互会话里
+          # 同步跑完并给出退出码;msiexec /quiet 在 runner 会话里瞬时返回且不带退出码,
+          # 判不了成败。msi 制品仍上传,与 nsis 出自同一 bundler 步骤、装的是同一个二进制
+          $nsis = (Get-ChildItem "target\release\bundle\nsis\*.exe" -ErrorAction SilentlyContinue `
             | Select-Object -First 1).FullName
-          if (-not $msi) { Write-Host "no msi found"; exit 1 }
-          Write-Host "installing $msi"
-          msiexec.exe /i "$msi" /quiet /norestart
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "msi install failed, code=$LASTEXITCODE"; exit 1
-          }
-          # 装目录优先读卸载注册表,退而搜 Programs 每用户安装根
+          if (-not $nsis) { Write-Host "no nsis exe found"; exit 1 }
+          Write-Host "installing $nsis"
+          $inst = Start-Process -FilePath $nsis -ArgumentList "/S", "/D=C:\st-install\" `
+            -Wait -PassThru
+          Write-Host "installer exit code: $($inst.ExitCode)"
+          if ($inst.ExitCode -ne 0) { Write-Host "nsis install failed"; exit 1 }
+          # 装目录:优先按 /D= 指定位置,退而读卸载注册表 / 搜每用户安装根
           $exe = $null
-          $entry = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" `
-            -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like "*sandtable*" } | Select-Object -First 1
-          if ($entry -and $entry.InstallLocation) {
-            $candidate = Join-Path $entry.InstallLocation "sandtable-desktop.exe"
-            if (Test-Path $candidate) { $exe = $candidate }
+          $candidate = "C:\st-install\sandtable-desktop.exe"
+          if (Test-Path $candidate) { $exe = $candidate }
+          if (-not $exe) {
+            $entry = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" `
+              -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
+              Where-Object { $_.DisplayName -like "*sandtable*" } | Select-Object -First 1
+            if ($entry -and $entry.InstallLocation) {
+              $candidate = Join-Path $entry.InstallLocation "sandtable-desktop.exe"
+              if (Test-Path $candidate) { $exe = $candidate }
+            }
           }
           if (-not $exe) {
             $exe = (Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse `
@@ -187,7 +194,10 @@ jobs:
           dmg=$(ls target/release/bundle/dmg/*.dmg | head -1)
           [ -n "$dmg" ] || { echo "no dmg found"; exit 1; }
           echo "attaching $dmg"
-          mnt=$(hdiutil attach "$dmg" -nobrowse -quiet | tail -1 | awk '{print $NF}')
+          # -mountpoint 固定挂载点:免解析 hdiutil 输出(-quiet 会吞掉挂载行)
+          mnt=/tmp/st-dmg
+          mkdir -p "$mnt"
+          hdiutil attach "$dmg" -nobrowse -mountpoint "$mnt"
           echo "mounted at $mnt"
           mkdir -p /tmp/st-install
           cp -a "$mnt"/*.app /tmp/st-install/
@@ -218,6 +228,12 @@ jobs:
           sudo dpkg -i "$deb"
           bin=$(dpkg -L "$pkg" | grep -m1 '/sandtable-desktop$')
           [ -n "$bin" ] || { echo "sandtable-desktop not in deb contents"; exit 1; }
+          # GTK 后端要显示服务:runner 无 X,起 Xvfb(与 desktop-smoke job 同配方);
+          # WebKitGTK 在 Xvfb 下须关两个渲染器才落 X 像素
+          Xvfb :96 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          xvfb_pid=$!
+          export DISPLAY=:96
+          export WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1
           echo "running installed $bin"
           "$bin" >/tmp/st2-out.log 2>&1 &
           pid=$!
@@ -227,3 +243,4 @@ jobs:
           fi
           echo "installed app alive after 20s, pid=$pid; killing"
           kill "$pid"
+          kill "$xvfb_pid" 2>/dev/null || true
