@@ -8,13 +8,7 @@
     "frontendDist": "../../web/dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "sandtable",
-        "width": 1280,
-        "height": 840
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

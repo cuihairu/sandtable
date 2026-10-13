@@ -4,6 +4,11 @@
 // CLI report.json / wasm run_simulation_native 的 results 同构序列化。
 // 自动更新器、签名证书按拍板后置。native 无 WASM 的 64 replicates /
 // 200 预算门,更大实验本就是桌面定位(文档 09 章边界)。
+use std::path::{Path, PathBuf};
+use tauri::path::BaseDirectory;
+use tauri::webview::DownloadEvent;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -16,8 +21,76 @@ pub fn run() {
             sweep_recommend,
             query,
         ])
+        .setup(|app| {
+            // 主窗在此构建而非由 tauri.conf.json 自动建:download 拦截必须挂在
+            // WebviewBuilder 上,配置窗口建完无法补挂——无 decide-destination
+            // 应答时 WebKitGTK 直接取消下载,前端 blob 锚点下载在桌面静默失效
+            // (docs 18 Phase 7 清单第 6 步)。
+            let window = WebviewWindowBuilder::new(app.handle(), "main", WebviewUrl::default())
+                .title("sandtable")
+                .inner_size(1280.0, 840.0)
+                .on_download(|webview, event| match event {
+                    DownloadEvent::Requested { destination, .. } => {
+                        let name = destination
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .filter(|n| !n.is_empty())
+                            .unwrap_or_else(|| "download".to_owned());
+                        *destination =
+                            download_destination(&download_dir(webview.app_handle()), &name);
+                        true
+                    }
+                    DownloadEvent::Finished { success, .. } => {
+                        // 无头走查(桌面冒烟脚本)靠这行判定下载是否真的落盘
+                        eprintln!("下载{success}");
+                        false
+                    }
+                    _ => false,
+                });
+            window.build()?;
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 下载目录:Download 定位失败(无 XDG 下载目录)回退到 家目录/Downloads;
+/// 目录不存在时补建——WebKit 写入不存在的目录会直接失败。
+fn download_dir(app: &tauri::AppHandle) -> PathBuf {
+    let dir = app
+        .path()
+        .resolve("", BaseDirectory::Download)
+        .unwrap_or_else(|_| {
+            let mut p = std::env::home_dir().unwrap_or_else(|| PathBuf::from("."));
+            p.push("Downloads");
+            p
+        });
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+/// 下载落点:重名加序号,不静默覆盖上一次导出的产物。
+fn download_destination(dir: &Path, name: &str) -> PathBuf {
+    // 点号前的整体当干,name 形如 days.tar.gz 时只截最后一节
+    let (stem, ext) = match name.split_once('.') {
+        Some((s, e)) if !s.is_empty() => (s.to_owned(), Some(e.to_owned())),
+        _ => (name.to_owned(), None),
+    };
+    let mut n = 0u32;
+    loop {
+        let cand = if n == 0 {
+            dir.join(name)
+        } else {
+            dir.join(match &ext {
+                Some(e) => format!("{stem} ({n}).{e}"),
+                None => format!("{stem} ({n})"),
+            })
+        };
+        if !cand.exists() {
+            return cand;
+        }
+        n += 1;
+    }
 }
 
 /// 加载 + 校验(错误前缀与 wasm 绑定同源,前端处理一致)。
@@ -367,6 +440,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!(v["rows"], serde_json::json!([["2"]]));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 下载落点:重名加序号,不静默覆盖上一次导出的产物(第 6 步下载接线)。
+    #[test]
+    fn download_destination_uniquifies() {
+        let dir = std::env::temp_dir().join(format!("st-desktop-dl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(download_destination(&dir, "days.csv"), dir.join("days.csv"));
+        std::fs::write(dir.join("days.csv"), "x").unwrap();
+        assert_eq!(
+            download_destination(&dir, "days.csv"),
+            dir.join("days (1).csv")
+        );
+        std::fs::write(dir.join("days (1).csv"), "x").unwrap();
+        assert_eq!(
+            download_destination(&dir, "days.csv"),
+            dir.join("days (2).csv")
+        );
+        // 无扩展名保持原样
+        assert_eq!(download_destination(&dir, "report"), dir.join("report"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }
