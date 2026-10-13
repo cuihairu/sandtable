@@ -12,6 +12,7 @@
 # 依赖:Xvfb、openbox、imagemagick(import/convert)、xdotool。
 # 用法:仓库根 bash scripts/desktop_smoke.sh;截图落 /tmp,末行打印路径供目检。
 # CI 提速用 ST_SMOKE_PROFILE=debug 走调试构建(同样内嵌资产);默认 release 同旧配方。
+# 显示号可用 ST_SMOKE_DISPLAY 覆盖(:97 被占用或并行跑两份冒烟时避免误报)。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,6 +21,12 @@ case "$PROFILE" in
   release|debug) ;;
   *) echo "ST_SMOKE_PROFILE 仅支持 release|debug,收到: $PROFILE"; exit 2 ;;
 esac
+
+DISPLAY_NUM="${ST_SMOKE_DISPLAY:-97}"
+case "$DISPLAY_NUM" in
+  ''|*[!0-9]*) echo "ST_SMOKE_DISPLAY 须为数字(收到: $DISPLAY_NUM)"; exit 2 ;;
+esac
+DISP=":$DISPLAY_NUM"
 
 for tool in Xvfb openbox import convert xdotool; do
   command -v "$tool" >/dev/null || { echo "缺依赖: $tool"; exit 2; }
@@ -33,30 +40,30 @@ else
 fi
 BIN="target/$PROFILE/sandtable-desktop"
 
-Xvfb :97 -screen 0 1280x800x24 >/dev/null 2>&1 & XVFB=$!
+Xvfb "$DISP" -screen 0 1280x800x24 >/dev/null 2>&1 & XVFB=$!
 cleanup() { kill "${APP:-0}" "${WM:-0}" "$XVFB" 2>/dev/null || true; }
 trap cleanup EXIT
 sleep 2
-DISPLAY=:97 openbox >/dev/null 2>&1 & WM=$!
+DISPLAY="$DISP" openbox >/dev/null 2>&1 & WM=$!
 sleep 2
-DISPLAY=:97 WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+DISPLAY="$DISP" WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
   "$BIN" >/tmp/sandtable_desktop_smoke.log 2>&1 & APP=$!
 sleep 15
 
 if ! kill -0 "$APP" 2>/dev/null; then
   echo "启动即退,日志:"; cat /tmp/sandtable_desktop_smoke.log; exit 1
 fi
-WID=$(DISPLAY=:97 xdotool search --class sandtable 2>/dev/null | head -1)
+WID=$(DISPLAY="$DISP" xdotool search --class sandtable 2>/dev/null | head -1)
 if [ -z "$WID" ]; then
-  echo "进程存活但无应用窗口"; DISPLAY=:97 xdotool search --name "" 2>/dev/null | head; exit 1
+  echo "进程存活但无应用窗口"; DISPLAY="$DISP" xdotool search --name "" 2>/dev/null | head; exit 1
 fi
 
 # 截屏判定:初帧可能不画,resize 触发重画后重试(实测 1-2 轮内出画)
 BEST=0
 for i in 1 2 3 4 5 6; do
-  DISPLAY=:97 xdotool windowsize "$WID" $((1260 + i)) 780 2>/dev/null || true
+  DISPLAY="$DISP" xdotool windowsize "$WID" $((1260 + i)) 780 2>/dev/null || true
   sleep 3
-  DISPLAY=:97 import -window root /tmp/sandtable_desktop_smoke.png
+  DISPLAY="$DISP" import -window root /tmp/sandtable_desktop_smoke.png
   BEST=$(convert /tmp/sandtable_desktop_smoke.png -format "%k" info:)
   [ "$BEST" -gt 100 ] && break
 done
