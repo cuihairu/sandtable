@@ -127,12 +127,13 @@ jobs:
           ls dist/assets/*.wasm >/dev/null
 
       # 前端守卫(2026-10-13 宝可梦预设漂移 + WebKit ToBigInt 崩溃):
-      # 预设必须过真实内核 validate(需 pkg-node);列式化 BigInt 归一为纯函数守卫
+      # 预设必须过真实内核 validate(需 pkg-node);列式化 BigInt 归一为纯函数守卫;
+      # 项目打包/解包闭环 + 路径纪律(打包产物过真实内核 validate)
       - name: 前端守卫(node --test)
         run: |
           node --test apps/web/tests/columns.test.mjs
           wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
-          node --test apps/web/tests/presets.test.mjs
+          node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs
 
   # 桌面启动链守卫(2026-10-13 接入):无 custom-protocol 的构建是开发形态——窗口
   # 加载 build.devUrl(localhost:5173),独立运行只显示错误页;这个坑此前只被
