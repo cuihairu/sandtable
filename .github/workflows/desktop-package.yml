@@ -44,10 +44,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev
 
-      # shell: bash 让 Windows / macOS 也走同一安装脚本(init.sh 自动挑平台二进制)
+      # shell: bash 让 Windows / macOS 也走同一安装脚本(init.sh 自动挑平台二进制);
+      # 首跑 macOS 腿曾因 runner 到 github.com 瞬时网络错(curl 28)失败,故带重试
       - name: 安装 wasm-pack(官方预编译)
         shell: bash
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        run: |
+          set -e
+          for i in 1 2 3; do
+            if curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh -o /tmp/wasmpack-init.sh && sh /tmp/wasmpack-init.sh; then
+              break
+            fi
+            [ "$i" = 3 ] && exit 1
+            echo "wasm-pack installer attempt $i failed; retrying"; sleep 20
+          done
+          wasm-pack --version
 
       # tsc 要解析 sandtable-wasm 的 file:pkg 类型声明,须先出 pkg(与 web job 同序)
       - name: 构建 wasm pkg(release)
