@@ -141,9 +141,12 @@ jobs:
         if: startsWith(matrix.os, 'windows')
         shell: pwsh
         run: |
-          # NSIS 而非 msi:nsis 是 Tauri 默认 Windows 安装器,/S + /D= 在 CI 非交互会话里
-          # 同步跑完并给出退出码;msiexec /quiet 在 runner 会话里瞬时返回且不带退出码,
-          # 判不了成败。msi 制品仍上传,与 nsis 出自同一 bundler 步骤、装的是同一个二进制
+          # nsis 先装并跑 20s(Tauri 默认 Windows 安装器,/S + /D= 在 CI 非交互会话里
+          # 同步跑完并给出退出码);msi 随后一并装并跑——Start-Process -Wait -PassThru
+          # 取 msiexec 真实退出码(直接调时 $LASTEXITCODE 为空判不了),0 成功、
+          # 3010 成功但需重启,均算过。msi 为 Tauri 默认 InstallScope=perMachine
+          # (装 Program Files,需提权;CI Windows runner 是管理员会话可直接装)。
+          # 两者装同一二进制,出自同一 bundler 步骤
           $nsis = (Get-ChildItem "target\release\bundle\nsis\*.exe" -ErrorAction SilentlyContinue `
             | Select-Object -First 1).FullName
           if (-not $nsis) { Write-Host "no nsis exe found"; exit 1 }
@@ -188,6 +191,46 @@ jobs:
           }
           Write-Host "installed app alive after 20s, pid=$($p.Id); killing"
           Stop-Process -Id $p.Id -Force
+
+          # msi 段:装点搜索排除 nsis 的 st-install 目录,避免两个安装器互相顶替判定。
+          # Program Files / 每用户 Programs 递归找,取第一个非 st-install 的副本
+          $msi = (Get-ChildItem "target\release\bundle\msi\*.msi" -ErrorAction SilentlyContinue `
+            | Select-Object -First 1).FullName
+          if (-not $msi) { Write-Host "no msi found"; exit 1 }
+          Write-Host "installing $msi"
+          $minst = Start-Process -FilePath "msiexec.exe" `
+            -ArgumentList "/i", "`"$msi`"", "/qn", "/norestart", "/l*v", "msi-install.log" -Wait -PassThru
+          Write-Host "msi installer exit code: $($minst.ExitCode)"
+          if ($minst.ExitCode -ne 0 -and $minst.ExitCode -ne 3010) {
+            Write-Host "msi install failed; log tail:"
+            Get-Content msi-install.log -Tail 40 -ErrorAction SilentlyContinue
+            exit 1
+          }
+          $mexe = (Get-ChildItem "$env:LOCALAPPDATA\Programs", "$env:ProgramFiles", "${env:ProgramFiles(x86)}" -Recurse `
+            -Filter "sandtable-desktop.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notlike "*st-install*" } |
+            Select-Object -First 1).FullName
+          if (-not $mexe) {
+            Write-Host "msi-installed exe not found; log tail:"
+            Get-Content msi-install.log -Tail 40 -ErrorAction SilentlyContinue
+            Write-Host "Programs tree:"
+            Get-ChildItem "$env:LOCALAPPDATA\Programs", "$env:ProgramFiles", "${env:ProgramFiles(x86)}" `
+              -Directory -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
+            exit 1
+          }
+          Write-Host "msi installed at $mexe"
+          $mp = Start-Process -FilePath $mexe -PassThru `
+            -RedirectStandardError st3-err.log -RedirectStandardOutput st3-out.log
+          Start-Sleep -Seconds 20
+          if ($mp.HasExited) {
+            Write-Host "msi-installed app exited early, code=$($mp.ExitCode)"
+            Get-Content st3-err.log -ErrorAction SilentlyContinue
+            Get-Content st3-out.log -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Write-Host "msi-installed app alive after 20s, pid=$($mp.Id); killing"
+          Stop-Process -Id $mp.Id -Force
 
       - name: 安装包冒烟(安装后 20s 进程存活)
         if: startsWith(matrix.os, 'macos')
