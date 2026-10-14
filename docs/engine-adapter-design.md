@@ -37,9 +37,9 @@
 5. **参考 importer**:可选提供一个纯 JSON→数据的参考实现(引擎侧自研亦可),用于示例与回归。
 6. **不做反向写入**:契约是沙盘→引擎的单向输出;反向回流(场景 3)走独立的回流文件,不写回契约。
 
-## 4. 落点(待拍板确认)
+## 4. 落点(已按 §5.1 决策 3 确认:独立 crate)
 
-- **落点**:独立 `sandtable-engine` crate(薄壳,同 `sandtable-python` 范式:core path 依赖、导出器纯函数、cargo test 直接覆盖),还是 CLI 内 feature 门子命令——倾向**独立 crate**,保持 core 零改动;
+- **落点**:独立 `sandtable-engine` crate(薄壳,同 `sandtable-python` 范式:core path 依赖、导出器纯函数、cargo test 直接覆盖),还是 CLI 内 feature 门子命令——**已代决:独立 crate**,保持 core 零改动;
 - **feature 门**:默认不编进 CLI 主二进制(同 arrow / parquet 的 feature 纪律),CI 加构建门与测试门;
 - **跨平台 CI(2026-10-13 立)**:`.github/workflows/desktop-package.yml` 以三平台矩阵实跑 bundler 链(ubuntu-24.04 / windows-2025 / macos-15)——适配层若走独立 crate,可复用同一矩阵做构建门;若走 WASM 产物形态(导出器纯函数、理论可编译 wasm32),亦可复用,无需新建工作流。当前不新建 CI 条目,仅登记复用点;
 - **WASM 门**:导出器是纯函数、无平台绑定,若走 WASM 形态须过 core 的 wasm32 编译门(现有 CI 已覆盖同型纪律)。
