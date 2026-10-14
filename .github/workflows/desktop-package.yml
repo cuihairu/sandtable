@@ -141,12 +141,18 @@ jobs:
         if: startsWith(matrix.os, 'windows')
         shell: pwsh
         run: |
-          # nsis 先装并跑 20s(Tauri 默认 Windows 安装器,/S + /D= 在 CI 非交互会话里
-          # 同步跑完并给出退出码);msi 随后一并装并跑——Start-Process -Wait -PassThru
-          # 取 msiexec 真实退出码(直接调时 $LASTEXITCODE 为空判不了),0 成功、
-          # 3010 成功但需重启,均算过。msi 为 Tauri 默认 InstallScope=perMachine
-          # (装 Program Files,需提权;CI Windows runner 是管理员会话可直接装)。
-          # 两者装同一二进制,出自同一 bundler 步骤
+          # 两段安装器的顺序不能换:nsis 先装、msi 后装,且两段之间要清掉 nsis 写下的安装
+          # 目录键。两个理由:一是 tauri-bundler 的 wxs 用 RegistrySearch 从
+          # HKCU\Software\{manufacturer}\sandtable 取 INSTALLDIR 初值,而 nsis 装完经
+          # WriteRegStr MANUPRODUCTKEY 把 $INSTDIR 写进同一个键——不清掉的话 msi 会直接装进
+          # nsis 的目录同址覆盖,冒烟分不出两段各装了什么;二是不能反过来让 msi 先装,nsis
+          # 模板的 wix_loop 会扫 HKLM 卸载表找到 msi 的条目而转入重装分支。
+          # nsis 按 /S + /D= 定目录(同步跑完并给出退出码);msi 为 Tauri 默认
+          # InstallScope=perMachine(装 Program Files,需提权;CI Windows runner 是管理员
+          # 会话可直接装),退出码用 Start-Process -Wait -PassThru 取(直接调 msiexec 时
+          # $LASTEXITCODE 为空判不了),0 成功、3010 成功但需重启,均算过。
+          # 两段装同一二进制,出自同一 bundler 步骤
+          # —— nsis 段(装完把安装目录写进 HKCU,故排在 msi 之前)——
           $nsis = (Get-ChildItem "target\release\bundle\nsis\*.exe" -ErrorAction SilentlyContinue `
             | Select-Object -First 1).FullName
           if (-not $nsis) { Write-Host "no nsis exe found"; exit 1 }
@@ -192,8 +198,12 @@ jobs:
           Write-Host "installed app alive after 20s, pid=$($p.Id); killing"
           Stop-Process -Id $p.Id -Force
 
-          # msi 段:装点搜索排除 nsis 的 st-install 目录,避免两个安装器互相顶替判定。
-          # Program Files / 每用户 Programs 递归找,取第一个非 st-install 的副本
+          # —— msi 段(排在 nsis 之后:nsis 模板的 wix_loop 见 msi 条目会转入重装分支)——
+          # 先清掉 nsis 写下的安装目录键,让 msi 的 INSTALLDIR 落回模板默认
+          # ProgramFiles64Folder\sandtable,而不是继承 nsis 的 C:\st-install
+          Get-ChildItem "HKCU:\SOFTWARE" -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -like "*sandtable*" } |
+            ForEach-Object { Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue }
           $msi = (Get-ChildItem "target\release\bundle\msi\*.msi" -ErrorAction SilentlyContinue `
             | Select-Object -First 1).FullName
           if (-not $msi) { Write-Host "no msi found"; exit 1 }
@@ -206,17 +216,35 @@ jobs:
             Get-Content msi-install.log -Tail 40 -ErrorAction SilentlyContinue
             exit 1
           }
-          $mexe = (Get-ChildItem "$env:LOCALAPPDATA\Programs", "$env:ProgramFiles", "${env:ProgramFiles(x86)}" -Recurse `
-            -Filter "sandtable-desktop.exe" -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notlike "*st-install*" } |
-            Select-Object -First 1).FullName
+          # 装点:msi 是 perMachine,Tauri 经 wxs 的 ARPINSTALLLOCATION 把安装目录写进卸载表
+          # InstallLocation,先按注册表取(瞬时且权威),取不到再递归搜三个安装根;排除
+          # st-install,避免把 nsis 段的副本当成本段产物
+          $mexe = $null
+          $app = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*", `
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" `
+            -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like "*sandtable*" -and $_.InstallLocation -and
+              $_.InstallLocation -notlike "*st-install*" } | Select-Object -First 1
+          if ($app) {
+            $candidate = Join-Path $app.InstallLocation "sandtable-desktop.exe"
+            if (Test-Path $candidate) { $mexe = $candidate }
+          }
           if (-not $mexe) {
-            Write-Host "msi-installed exe not found; log tail:"
-            Get-Content msi-install.log -Tail 40 -ErrorAction SilentlyContinue
-            Write-Host "Programs tree:"
-            Get-ChildItem "$env:LOCALAPPDATA\Programs", "$env:ProgramFiles", "${env:ProgramFiles(x86)}" `
-              -Directory -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName
+            $mexe = (Get-ChildItem "$env:LOCALAPPDATA\Programs", "$env:ProgramFiles", "${env:ProgramFiles(x86)}" -Recurse `
+              -Filter "sandtable-desktop.exe" -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -notlike "*st-install*" } |
+              Select-Object -First 1).FullName
+          }
+          if (-not $mexe) {
+            Write-Host "msi-installed exe not found; uninstall entries:"
+            Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*", `
+              "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" `
+              -ErrorAction SilentlyContinue |
+              Where-Object { $_.DisplayName -like "*sandtable*" } |
+              Format-List DisplayName, InstallLocation, UninstallString, Version
+            Write-Host "msi log path lines:"
+            Get-Content msi-install.log -ErrorAction SilentlyContinue |
+              Select-String -Pattern "INSTALLDIR|ProgramFiles|TARGETDIR" | Select-Object -First 15
             exit 1
           }
           Write-Host "msi installed at $mexe"
@@ -231,6 +259,7 @@ jobs:
           }
           Write-Host "msi-installed app alive after 20s, pid=$($mp.Id); killing"
           Stop-Process -Id $mp.Id -Force
+
 
       - name: 安装包冒烟(安装后 20s 进程存活)
         if: startsWith(matrix.os, 'macos')
