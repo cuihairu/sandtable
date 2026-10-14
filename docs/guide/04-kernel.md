@@ -39,6 +39,18 @@ flowchart LR
 1. **时间只在事件之间跳跃。** 两个事件之间没有计算发生,因此一天内只处理实际发生的几十到几百个事件,而不是按固定步长空转。
 2. **指标在事件处理时增量更新**,不在结束后回放个体明细(见[在线聚合](./13-kpi-metrics))。
 
+MVP 内核的事件→系统订阅全景(程序生成,与代码同源):
+
+![system graph](../assets/systems/system-graph.svg)
+
+图由 example 探测真实调度面生成(`system_registry` 与仿真执行共用同一系统构造,订阅矩阵不可能与实况漂移),重生成命令(仓库根):
+
+```sh
+cargo run -p sandtable-core --example system_graph
+```
+
+`player_day` 系统内部按行为带选动作、结算战斗、推进养成;`gacha_roll` 系统内部跑保底状态机(见 [MVP](./16-mvp))。
+
 ## Model 编译与 World 构建
 
 一次运行的初始化顺序:

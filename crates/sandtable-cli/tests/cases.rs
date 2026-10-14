@@ -76,3 +76,99 @@ fn pokemon_case_validate_simulate_and_tiers() {
     );
     assert!(casual > 1.0, "casual 不该全员卡 1 级:{casual}");
 }
+
+/// 平衡水平回归(docs/方向项定义草案.md §1,巡检代决方案 B):
+/// 黄金快照锁「内核行为变」,本测试锁「案例平衡水平变」——案例数值被改时,
+/// KPI 绝对水平的漂移不再只靠人工 review 兜底。
+///
+/// 锚定 200 玩家 × 30 天 × 1 replicate(配置 seed,确定性)的实测值,
+/// 容差 ±10%(决策点 2)。**改案例数值 = 有意变更**:须同步更新本表锚值,
+/// 并在评审里看到 KPI 位移。
+#[test]
+fn pokemon_case_kpi_levels_within_band() {
+    let yaml = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/pokemon.yaml");
+    let dir = std::env::temp_dir().join(format!(
+        "st-case-kpi-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let out = bin(&[
+        "simulate",
+        yaml,
+        "--players",
+        "200",
+        "--days",
+        "30",
+        "--replicates",
+        "1",
+        "--out",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let report = std::fs::read_to_string(dir.join("report.json")).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&report).unwrap();
+    let r = &v["results"][0];
+
+    let band = |name: &str, anchor: f64, actual: f64| {
+        assert!(
+            (0.9 * anchor..=1.1 * anchor).contains(&actual),
+            "{name} = {actual:.4} 越出锚值 {anchor:.4} ±10% 区间 [{:.4}, {:.4}]\
+             (案例数值或模型平衡面变了:有意变更请更新锚值,否则排查回归)",
+            0.9 * anchor,
+            1.1 * anchor
+        );
+    };
+
+    // 锚值(2026-10-15 实测,与 docs 21 基线口径一致):
+    // churn casual 10/121=0.0826,core 5/58=0.0862,whale 2/21=0.0952,总 0.085
+    let cohort = |name: &str| -> serde_json::Value {
+        r["cohort_stats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["cohort"] == name)
+            .expect("三群都在")
+            .clone()
+    };
+    for (name, churned, count) in [("casual", 10, 121), ("core", 5, 58), ("whale", 2, 21)] {
+        let c = cohort(name);
+        let actual = c["churned"].as_f64().unwrap() / c["count"].as_f64().unwrap();
+        band(
+            &format!("churn_rate[{name}]"),
+            churned as f64 / count as f64,
+            actual,
+        );
+    }
+    band(
+        "churn_rate_total",
+        0.085,
+        r["churn_rate_total"].as_f64().unwrap(),
+    );
+
+    // retention_d7:docs 21 扫描硬约束线 0.9(取下限锚而非 ±10% 带——
+    // 0.985 的 ±10% 下探会越过文档健康线)
+    let ret7 = r["retention_d7"].as_f64().unwrap();
+    assert!(
+        ret7 >= 0.9,
+        "retention_d7 = {ret7} 跌破 docs 21 硬约束线 0.9(平衡面回归)"
+    );
+
+    // win_rate 0.4437:聚合口径含练级期败仗,docs 21 明示不做硬约束,这里只锚水平
+    band("win_rate", 0.4437, r["win_rate"].as_f64().unwrap());
+
+    // 成长节奏(锚 docs 21:12.7 / 14.5 / 36.7;本口径 200×1 实测 12.76/14.79/37.43)
+    let level = |name: &str| -> f64 { cohort(name)["mean_level"].as_f64().unwrap() };
+    band("mean_level[casual]", 12.76, level("casual"));
+    band("mean_level[core]", 14.79, level("core"));
+    band("mean_level[whale]", 37.43, level("whale"));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

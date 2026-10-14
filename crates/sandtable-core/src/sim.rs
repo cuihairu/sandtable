@@ -85,16 +85,7 @@ fn run_impl(cfg: &SimConfig, replicate: u32, mut hook: Option<&mut dyn DayHook>)
         queue.push(u64::from(day), SimEvent::DayClose { day });
     }
 
-    let mut systems: Vec<Box<dyn System<World, SimEvent> + '_>> = vec![
-        Box::new(DayOpenSystem),
-        Box::new(PlayerDaySystem {
-            cfg,
-            seed,
-            xp_formula: &xp_needed_formula,
-        }),
-        Box::new(DayCloseSystem { cfg }),
-        Box::new(GachaRollSystem { cfg, seed }),
-    ];
+    let mut systems = build_systems(cfg, seed, &xp_needed_formula);
 
     let mut clock = Clock::start();
     while let Some((tick, event)) = queue.pop() {
@@ -115,6 +106,90 @@ fn run_impl(cfg: &SimConfig, replicate: u32, mut hook: Option<&mut dyn DayHook>)
 
     // finish 的 config_hash 输入必须是外层 cfg(base_seed 未被 replicate 覆盖)
     world.agg.finish(cfg, replicate, seed)
+}
+
+/// 调度面注册(run_impl 与 [`system_registry`] 共用同一构造,快照不可能与实况漂移)。
+fn build_systems<'a>(
+    cfg: &'a SimConfig,
+    seed: u64,
+    xp_formula: &'a crate::formula::Formula,
+) -> Vec<Box<dyn System<World, SimEvent> + 'a>> {
+    vec![
+        Box::new(DayOpenSystem),
+        Box::new(PlayerDaySystem {
+            cfg,
+            seed,
+            xp_formula,
+        }),
+        Box::new(DayCloseSystem { cfg }),
+        Box::new(GachaRollSystem { cfg, seed }),
+    ]
+}
+
+/// 事件种类(调度面快照用)。[`probe_event`] 的 match **无通配符**:
+/// 新增 SimEvent 变体必须在此补臂,否则编译失败——事件清单漏登记不可能静默。
+#[derive(Debug, Clone, Copy)]
+pub enum EventKind {
+    DayOpen,
+    PlayerDay,
+    DayClose,
+    GachaRoll,
+}
+
+impl EventKind {
+    /// 图与日志展示名(与 SimEvent 变体同名)。
+    pub fn name(self) -> &'static str {
+        match self {
+            EventKind::DayOpen => "DayOpen",
+            EventKind::PlayerDay => "PlayerDay",
+            EventKind::DayClose => "DayClose",
+            EventKind::GachaRoll => "GachaRoll",
+        }
+    }
+}
+
+const ALL_EVENT_KINDS: &[EventKind] = &[
+    EventKind::DayOpen,
+    EventKind::PlayerDay,
+    EventKind::DayClose,
+    EventKind::GachaRoll,
+];
+
+fn probe_event(kind: EventKind) -> SimEvent {
+    match kind {
+        EventKind::DayOpen => SimEvent::DayOpen { day: 0 },
+        EventKind::PlayerDay => SimEvent::PlayerDay {
+            actor_id: 0,
+            day: 0,
+        },
+        EventKind::DayClose => SimEvent::DayClose { day: 0 },
+        EventKind::GachaRoll => SimEvent::GachaRoll { actor_id: 0 },
+    }
+}
+
+/// 调度面快照:`(系统名, 订阅事件名列表)`,按注册序(= 派发序)。
+///
+/// 供文档系统图生成器(`examples/system_graph.rs`)使用:对每个注册系统
+/// 逐事件真实调用 `subscribed`,订阅矩阵与代码同源。入参须为经 validate 的
+/// 配置(默认配置恒合法);`seed` 仅参与系统构造,不影响订阅面。
+pub fn system_registry(cfg: &SimConfig, seed: u64) -> Vec<(String, Vec<&'static str>)> {
+    // 与 run_impl 同法局部 clone:系统与公式同域,借期可统一
+    let cfg = cfg.clone();
+    let xp_needed_formula =
+        crate::formula::compile(&cfg.formulas.xp_needed, crate::formula::XP_NEEDED_VARS)
+            .expect("formulas.xp_needed 编译失败:SimConfig 未经 config::validate");
+    let systems = build_systems(&cfg, seed, &xp_needed_formula);
+    systems
+        .iter()
+        .map(|sys| {
+            let events: Vec<&'static str> = ALL_EVENT_KINDS
+                .iter()
+                .filter(|k| sys.subscribed(&probe_event(**k)))
+                .map(|k| k.name())
+                .collect();
+            (sys.name().to_string(), events)
+        })
+        .collect()
 }
 
 /// 日初系统:记录期初存活数,供日结的 churn_rate 分母使用。
@@ -767,5 +842,33 @@ mod tests {
         // 两个方向都真实发生,防止恒等式在全 0 下空转
         assert!(m.gold_earned_total > 0);
         assert!(m.gold_spent_total > 0);
+    }
+
+    /// 调度面快照契约(方向项定义草案 §2 方案 A 的代码侧锚):
+    /// 每类事件恰好一个订阅系统,且事件全集无遗漏(sim.rs:102 调度不变量)。
+    #[test]
+    fn system_registry_matches_dispatch_contract() {
+        let reg = system_registry(&SimConfig::default(), 0);
+        let names: Vec<&str> = reg.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["day_open", "player_day", "day_close", "gacha_roll"]
+        );
+        for (name, events) in &reg {
+            assert_eq!(
+                events.len(),
+                1,
+                "MVP 中每类事件恰好有一个订阅系统:{name} 订阅了 {events:?}"
+            );
+        }
+        // 事件全集恰好被覆盖一次:漏登记或重复订阅都会在这里红
+        let mut subscribed: Vec<&str> = reg.iter().flat_map(|(_, e)| e.iter().copied()).collect();
+        subscribed.sort_unstable();
+        subscribed.dedup();
+        assert_eq!(
+            subscribed.len(),
+            ALL_EVENT_KINDS.len(),
+            "事件与订阅矩阵不再双射:{subscribed:?} vs {ALL_EVENT_KINDS:?}"
+        );
     }
 }
