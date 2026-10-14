@@ -24,11 +24,11 @@
 - [x] 桌面安装包链路 CI(99b614f + 26e8c25): run 38420221169 三腿绿,三平台制品齐
 - [x] 随机原语指针对账(2026-10-14,f77fb4d): docs:build 绿
 - [x] 桌面 5-6 步解卡(2026-10-13,d8b5896 + 75b4e00): project.test.mjs 6 测 CI 接入
-- [x] 复杂行为脚本阶段 3(2026-10-11): 21 pytest 测
+- [x] 复杂行为脚本阶段 3(2026-10-11,a1e1ac4 + 127da96 + d99a8a9): 21 pytest 测
 - [x] query 守卫与路径字面量测试(33def8a): query.rs 6 测 + 桌面 lib.rs 7 测,CI 绿
 - [x] 桌面无头冒烟升 CI 门(77bd901,cffb43d): Xvfb 截屏判定,runner 实证绿
 - [x] pnpm overrides 三 pin(3b5528e): docs:build 绿
-- [x] glib 0.20.0 评估(2026-10-11): parked,随 tauri 3 stable 一并抬
-- [x] 文档一致性审计(2026-10-13): 三类差异 25 条已修,落表 docs/审计-文档一致性.md
+- [x] glib 0.20.0 评估(2026-10-11,e5399ba): parked,随 tauri 3 stable 一并抬
+- [x] 文档一致性审计(2026-10-13,d092b0a): 三类差异 25 条已修,落表 docs/审计-文档一致性.md
 
 验收:改动后 pnpm docs:build 过 / cargo check 过;测试绿才 push。
