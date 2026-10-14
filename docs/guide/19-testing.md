@@ -13,7 +13,7 @@ title: 19 · 测试策略
 | 确定性快照 | 同版本同平台可复现 | 逐位一致 |
 | 统计回归 | 跨版本 / 重构不改分布 | 均值 ± CI 相容 |
 | 案例 KPI 水平断言(**已建**,2026-10-15) | 案例数值改动不悄悄漂移平衡水平 | 锚值 ±10% 带 |
-| 并行确定性(**未建**,列入补齐计划) | 线程数不影响结果 | 逐位一致 |
+| 并行确定性(**已建**,2026-10-15) | 线程数不影响结果 | 逐位一致 |
 | 性能 smoke(**未建**,列入补齐计划) | 算力预算不漂移 | 时长阈值 |
 
 **解析解对照是最有力的一层**:单元测试证明"每块零件符合规格",解析解证明"整机算出来的答案客观上是对的"。
@@ -51,11 +51,9 @@ title: 19 · 测试策略
 
 ## 并行确定性测试
 
-::: warning 未建
-全仓无 `RAYON_NUM_THREADS` 测试;本节是**补齐计划**,不是现状。
-:::
-
 同一实验在 `rayon` 线程数 = 1 / 4 / 满核下运行,结果摘要必须逐位一致。这是[并行确定性规则](./06-deterministic-rng)(有序容器、固定归约)的守卫测试。
+
+**已建**(2026-10-15):`crates/sandtable-cli/tests/parallel_determinism.rs` 对 `sandtable sweep`(候选间 par_iter 并行的唯一面)在 `RAYON_NUM_THREADS` = 1 / 4 / 满核三档下各跑同一实验,`candidates.csv` 与 `summary.csv` 逐位相等——`run_candidate` 纯函数、`collect` 保序、采样流绑 base_seed 与线程无关;随 `cargo test --workspace` 进 CI。
 
 ## Monte Carlo 统计测试
 
@@ -75,4 +73,4 @@ criterion 基准覆盖热点(公式求值、事件循环、指标聚合);10,000 
 
 ## CI 集成
 
-GitHub Actions:每个 push 跑单元 + 快照 + 解析解对照,外加 **`cargo check --target wasm32-unknown-unknown` 平台门禁**(core 引入平台依赖立即失败,见[仿真内核](./04-kernel));统计回归在依赖升级与发布前手动触发;并行确定性守卫与性能 smoke 未建,列入补齐计划。
+GitHub Actions:每个 push 跑单元 + 快照 + 解析解对照,外加 **`cargo check --target wasm32-unknown-unknown` 平台门禁**(core 引入平台依赖立即失败,见[仿真内核](./04-kernel));统计回归在依赖升级与发布前手动触发;并行确定性守卫已建(随全量测试跑,见上节);性能 smoke 未建,列入补齐计划。
