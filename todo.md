@@ -5,7 +5,7 @@
 ## 待办(挂闸:需用户拍板 / 等外部输入 / 人工验收才开工)
 
 - [ ] 真实案例二期 + 模型校准。解除条件:用户提供真实运营数据与对标基准(2026-10-11 拍板挂起不立项;一期宝可梦用公开数值已跑通全链见 docs 21,二期要真实运营面数据与外部基准,仓内无此输入)
-- [ ] 桌面端投入。**剩:人工开窗验收**——native 文件对话框 GUI 与 Windows / macOS 完整交互走查(需本机 GUI 环境,自动化断言已尽)。自动化链已覆盖:构建(三腿绿 run 38420221169 制品齐)→ 启动链(裸产物 20s 存活 run 38436094647)→ 安装包安装+运行(三平台 run 38457041427);证据 docs 18 Phase 7
+- [ ] 桌面端投入。**剩:人工开窗验收**——native 文件对话框 GUI 与 Windows / macOS 完整交互走查(需本机 GUI 环境,自动化断言已尽)。自动化链已覆盖:构建(三腿绿 run 38420221169 制品齐)→ 启动链(裸产物 20s 存活 run 38436094647)→ 安装包安装+运行(三平台 run 38457041427,Windows 含 msi 腿 run 38488806732);证据 docs 18 Phase 7
 - [ ] 随机函数扩展后续。解除条件:出现真实品类需求(24 章 7 项能力已全落地;唯一已记录候选 = 23 章 NPC 顾客行为所需 Poisson 到达过程,需与顾客 System 同启,候选登记见 docs 24 分期计划引言末段)
 
 ## 方向性(无期限,出现真实需求再启;全量见 docs 02 后续方向)
@@ -18,6 +18,7 @@
 
 ## 已完成(一行证据)
 
+- [x] Windows msi 腿补进安装冒烟(2026-10-14,d789b37):两段顺序固定为 nsis 先、msi 后,中间清 HKCU 安装目录键——installer.nsi 经 WriteRegStr 把 $INSTDIR 写进 `HKCU\Software\{manufacturer}\sandtable`,msi 模板 main.wxs 的 RegistrySearch 从同一键取 INSTALLDIR 初值,不清则 msi 继承 nsis 的 `C:\st-install` 同址覆盖;反序也不行,nsis 模板 wix_loop 会扫 HKLM 卸载表找 msiexec 条目转入重装分支;msiexec 退出码用 `Start-Process -Wait -PassThru` 取(直接调时 `$LASTEXITCODE` 为空,0 成功 3010 成功需重启);装点先按卸载表 InstallLocation(wxs 经 ARPINSTALLLOCATION 写入)再递归搜三个安装根兜底,排除 st-install;run 38488806732 三腿绿(msi exit 0 → `C:\Program Files\sandtable` alive 20s,pid=7724)
 - [x] 安装包安装+运行冒烟(2026-10-14,89ce5c1 + fcef016 + 5ea7076):三平台安装产物再跑 20s——Windows nsis /S + /D= 定目录 / macOS dmg -mountpoint 挂载拷贝 / Linux dpkg -i + Xvfb,制品先上传留排障件;run 38457041427 三腿绿(Win exit 0 → C:\st-install alive / mac /tmp/st-install .app alive / linux /usr/bin/sandtable-desktop pid=9466 alive)
 - [x] 桌面启动冒烟升 CI(f74bc98):Windows / macOS 裸产物 20s 进程存活,兜 WebView2 / WKWebView 运行库与窗口创建 panic;run 38436094647 双腿 alive(Win pid=4544 / mac pid=3077)
 - [x] 桌面安装包链路 CI(99b614f + 26e8c25):三平台矩阵 fail-fast 关 + wasm-pack 三连重试;run 38420221169 三腿绿制品齐(Win 36.8 MB / mac 46.5 MB / Linux 27 MB),不打 tag 不建 Release
