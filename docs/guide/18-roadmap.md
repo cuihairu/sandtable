@@ -126,7 +126,7 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 | 5 | 「本地结果文件分析」面板 → 选 CLI 产物(先 `cargo run -p sandtable-cli --release -- simulate examples/pokemon.yaml --out sim-out` 产 `sim-out/report.json` 与 `sim-out/days.csv`(Parquet 批次另加 `--features parquet` 且尾随 `--parquet`,需要时再建));对话框多选外,手输路径入口(输入框 + 「加载路径」)为等价路 → SQL | 按文件词根注册视图,查询出结果 |
 | 6 | 结果导出菜单下载 days.csv / days.parquet;工具栏「打包项目(.sandtable)」→ `sandtable project check` / 重新导入(下载落 `~/Downloads`,同名自动加 (n)) | 下载成功,check 过,导入后配置与结果可复现 |
 
-六步状态(2026-10-13):**1-4 步无头点击实证过;5-6 步经等价路径(手输路径 / 下载接线 + 项目包按钮)无头实证过**(证据见上「第 5-6 步卡点与解卡」)。剩余仅 native 对话框 GUI 本身与 Windows / macOS 安装包,随桌面端条的人工验收一并做。
+六步状态(2026-10-13):**1-4 步无头点击实证过;5-6 步经等价路径(手输路径 / 下载接线 + 项目包按钮)无头实证过**(证据见上「第 5-6 步卡点与解卡」)。剩余仅 native 对话框 GUI 本身,随桌面端条的人工验收一并做(Windows / macOS 安装包的安装 + 运行已 CI 实证,见上「安装包安装+运行冒烟」)。
 
 失败处置:记下步骤号 + 现象(截图),回仓开修;全过则 Phase 7 验收收口,桌面端条转可解。
 
