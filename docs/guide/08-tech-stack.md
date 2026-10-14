@@ -73,13 +73,15 @@ flowchart TD
 
 ## crate 划分
 
-MVP 只拆两个 crate,避免过度工程化;平台壳按阶段增加:
+MVP 只拆两个 crate,避免过度工程化;平台壳与薄绑定/契约壳按阶段增加:
 
 | crate / 目录 | 职责 | 阶段 |
 | --- | --- | --- |
 | `sandtable-core` | 内核 + 配置 + 实验:model / config / rng / time / world / systems / metrics / experiment | MVP |
 | `sandtable-cli` | clap 命令行,薄封装 core | MVP |
 | `sandtable-wasm` | wasm-bindgen 薄绑定(`run_simulation` / `validate_config` 等,**不放仿真逻辑**) | Phase 6 |
+| `sandtable-python` | pyo3 + maturin 薄绑定(`load / run / sweep / recommend / params` 只读面 + 阶段 3 日粒度读态回调 `run_with_day_hook`,**不放仿真逻辑**) | 脚本层 Phase 1–3(2026-10-11 落地) |
+| `sandtable-engine` | 引擎无关 JSON 契约薄壳(契约导出(有效值纪律)/ 参考导入器 / 回流约定,**不放仿真逻辑**) | 引擎 Adapter(2026-10-14 落地,巡检 R1 代决) |
 | `apps/web` | React + TS + Vite 前端 | Phase 6 |
 | `apps/desktop` | Tauri 2 壳 | Phase 7 |
 | `sandtable-analytics` | 若分析层(DuckDB 查询、数据集构建)膨胀再独立 | 按需评估 |
