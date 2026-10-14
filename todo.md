@@ -10,7 +10,6 @@
 
 ## 方向性(无期限,出现真实需求再启;全量见 docs 02 后续方向)
 
-- [ ] 游戏引擎 Adapter。解除条件:docs/engine-adapter-design.md §5 五个决策点(目标引擎 / schema 命名域 / 落点 crate 还是 CLI / 参考 importer 归属 / 回流是否入一期);设计已定(§2 取引擎无关 JSON 契约,§3 契约面六条),§5 未拍不开工
 - [ ] Web API(仅当出现真实服务端需求,local-first 不预设;docs 02 MVP 明确不做「游戏服务器运行时」)
 - [ ] GP 优化(按需;Bayesian 已拍板随机森林代理并落地,GP 留后续,见 docs 12)
 - [ ] CI 平衡回归(docs 02 后续方向登记,无定义)
@@ -18,6 +17,7 @@
 
 ## 已完成(一行证据:hash + 测试/运行条数,过程细节见 desktop-package.yml 注释与 docs 18)
 
+- [x] 游戏引擎 Adapter(已代决(巡检 R1),2026-10-14,59538ee): `crates/sandtable-engine` 引擎无关 JSON 契约(导出有效值纪律 + 参考导入器 + 回流约定),roundtrip 19 测 + workspace 全绿;理由:五决策点均属产品方向/设计取舍且有明确推荐,不涉版本发布、License、付费、素材授权或人工验收
 - [x] Windows msi 腿补进安装冒烟(2026-10-14,d789b37): run 38488806732 三腿绿,msi 段 exit 0、装点 alive 20s
 - [x] 安装包安装+运行冒烟(2026-10-14,89ce5c1 + fcef016 + 5ea7076): run 38457041427 三腿绿,安装产物各 alive 20s
 - [x] 桌面启动冒烟升 CI(f74bc98): run 38436094647 双腿绿,裸产物 alive 20s
