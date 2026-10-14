@@ -39,6 +39,7 @@
 - 桌面安装包:`desktop-package.yml`(workflow_dispatch 手动触发)构建 Windows msi+nsis / macOS dmg+app / Linux deb,CI 每腿实证装完即跑(裸产物 + 安装产物各 20s 进程存活);不打 tag、不建 Release,未验收二进制不进 Releases 页面
 - 测试:解析解对照、同 seed 逐字节确定性、黄金快照,以及把 CLI ↔ Web(WASM)↔ 桌面锁到同一内核的等价测试
 - Python 绑定:pyo3 + maturin 扩展模块(`sandtable-sim` wheel;load / run / sweep / recommend / params 只读面 + 阶段 3 日粒度读态回调 `run_with_day_hook`),py_parity 把 Python ↔ CLI 锁到同一内核——[crate README](crates/sandtable-python/README.md)
+- 引擎 Adapter:引擎无关 JSON 契约(`sandtable-engine` crate;导出语义层数值面 + 参考导入器 + 回流约定,契约文件 `.engine.json`),roundtrip 回归把契约与 core 锁到同一来源——[crate README](crates/sandtable-engine/README.md)
 
 ```bash
 cargo install --path crates/sandtable-cli
