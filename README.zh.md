@@ -36,6 +36,7 @@
 - 指标在线聚合:留存 / 胜率 / 通胀 / sink_ratio / Power 分位快照,按 cohort 切片;保底抽卡的期望抽数
 - 随机函数扩展:加权表(加载期 CDF)、洗牌与无放回加权抽样、保底状态机、Box–Muller 正态、χ² 分布检验(`disttest`)
 - 报告与交换:单文件 HTML 报告、`.sandtable` 项目归档、双向 CSV 参数表、Arrow / Parquet(feature flag)
+- 桌面安装包:`desktop-package.yml`(workflow_dispatch 手动触发)构建 Windows msi+nsis / macOS dmg+app / Linux deb,CI 每腿实证装完即跑(裸产物 + 安装产物各 20s 进程存活);不打 tag、不建 Release,未验收二进制不进 Releases 页面
 - 测试:解析解对照、同 seed 逐字节确定性、黄金快照,以及把 CLI ↔ Web(WASM)↔ 桌面锁到同一内核的等价测试
 - Python 绑定:pyo3 + maturin 扩展模块(`sandtable-sim` wheel;load / run / sweep / recommend / params 只读面 + 阶段 3 日粒度读态回调 `run_with_day_hook`),py_parity 把 Python ↔ CLI 锁到同一内核——[crate README](crates/sandtable-python/README.md)
 

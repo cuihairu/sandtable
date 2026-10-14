@@ -36,6 +36,7 @@
 - Online metric aggregation: retention / win rate / inflation / sink_ratio / power percentile snapshots, sliced by cohort; pulls-to-hit for pity-driven gacha
 - Random-function extension: weighted tables (compile-time CDF), shuffling and weighted sampling without replacement, pity state machines, Box–Muller normals, and a chi-square `disttest` for distribution checks
 - Reporting and exchange: single-file HTML reports, `.sandtable` project archives, a two-way CSV parameter table, and Arrow / Parquet behind a feature flag
+- Desktop packages: `desktop-package.yml` (workflow_dispatch, manual) builds Windows msi+nsis / macOS dmg+app / Linux deb; every platform leg is CI-verified to install and run (raw + installed binaries, each alive 20s after launch); no tags, no Releases — unaccepted binaries never ship
 - Testing: closed-form cross-checks, byte-for-byte determinism under the same seed, golden snapshots, and equivalence tests locking CLI ↔ Web (WASM) ↔ Desktop to one kernel
 - Python bindings: a pyo3 + maturin extension module (`sandtable-sim` wheel; load / run / sweep / recommend / params, plus the stage-3 day-level read-only hook `run_with_day_hook`), with parity tests locking Python ↔ CLI to one kernel — [crate README](crates/sandtable-python/README.md)
 
