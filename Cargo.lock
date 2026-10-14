@@ -3593,6 +3593,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sandtable-engine"
+version = "0.1.0"
+dependencies = [
+ "sandtable-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "sandtable-python"
 version = "0.1.0"
 dependencies = [

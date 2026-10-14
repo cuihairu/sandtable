@@ -1,0 +1,13 @@
+[package]
+name = "sandtable-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Sandtable 游戏引擎 Adapter(引擎无关 JSON 契约:导出 / 参考导入器 / 回流约定)"
+
+[dependencies]
+sandtable-core = { path = "../sandtable-core" }
+# float_roundtrip:契约 JSON 写盘再读回 f64 逐位一致(默认解析器个别值差 1 ulp)
+serde_json = { version = "1", features = ["float_roundtrip"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"

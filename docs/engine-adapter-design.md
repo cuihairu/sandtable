@@ -1,6 +1,6 @@
 # sandtable 游戏引擎 Adapter 设计
 
-**状态:待拍板方案,未实施。** 本文只做选型与边界分析,不落地代码;落地须由用户拍板(见 §5)。
+**状态:已代决(巡检 R1)并落地。** 五个决策点已按 §5.1 代决,阶段 0–2 全部实装于 `crates/sandtable-engine`(2026-10-14):契约导出 + 参考导入器 + 回流约定,契约规范见 §7。
 配套工程证据:跨平台 CI 链已就位(2026-10-13,`desktop-package.yml` 三平台矩阵实跑 bundler),见 §4。
 
 ## 0. 定位(承既有架构口径)
@@ -44,7 +44,7 @@
 - **跨平台 CI(2026-10-13 立)**:`.github/workflows/desktop-package.yml` 以三平台矩阵实跑 bundler 链(ubuntu-24.04 / windows-2025 / macos-15)——适配层若走独立 crate,可复用同一矩阵做构建门;若走 WASM 产物形态(导出器纯函数、理论可编译 wasm32),亦可复用,无需新建工作流。当前不新建 CI 条目,仅登记复用点;
 - **WASM 门**:导出器是纯函数、无平台绑定,若走 WASM 形态须过 core 的 wasm32 编译门(现有 CI 已覆盖同型纪律)。
 
-## 5. 决策点(需用户拍板,未拍不开工)
+## 5. 决策点(2026-10-14 已代决,见 §5.1;原待拍板记录保留)
 
 1. 目标引擎是哪个(决定 schema 取舍与参考 importer 是否要做);
 2. 契约 schema 版本起点与命名域(包名 / 文件扩展名 / JSON 命名风格);
@@ -52,10 +52,34 @@
 4. 参考 importer 是否由沙盘仓库维护(涉及长期维护责任);
 5. 场景 3 回流是否纳入第一期(影响契约是否要预留回指字段)。
 
-## 6. 分期(拍板后启用)
+## 5.1 代决记录(巡检 R1,2026-10-14)
 
-- **阶段 0**:契约 v0 草案(导出 schema + 示例产物 + 校验),只导出,不接任何引擎。
-- **阶段 1**:参考 importer + 回归测试(导出产物可被重新加载并等价校验)。
-- **阶段 2**:场景 3 回流文件约定与校验(若拍板纳入)。
+五项均属产品方向 / 设计取舍且有明确推荐,不涉版本发布、License、付费、素材授权或人工验收,按巡检授权代决:
 
-对应待办登记见 `todo.md` 与[文档路线图](guide/18-roadmap.md)。本方案拍板前不占用实现资源。
+1. **目标引擎:不预设。** A 方案的立论即引擎无关(§2),schema 按「中立语义层」取舍,先落地契约再等真实引擎接入,不为假想引擎特化字段。
+2. **命名域:schema_version 起点 `"0.1.0"`;包名 `sandtable-engine`;扩展名 `.engine.json`;JSON 键 snake_case** (与沙盘 YAML 配置键风格一致,跨语言消费方零歧义)。
+3. **落点:独立 `sandtable-engine` crate** (同 `sandtable-python` 薄壳范式:core path 依赖、导出器纯函数、cargo test 直接覆盖),CLI 子命令留待真实接入需求出现再加。
+4. **参考 importer:由沙盘仓维护。** load 即契约回归 oracle(导出产物必须能被重新加载且等价,tests/roundtrip.rs 19 测),与 py_parity / web_parity 先例同构。
+5. **回流:纳入一期。** `config_hash` 本就随契约导出,回流文件只回指 hash + 指标点,成本极低且是场景 3(A/B 对照)的唯一通道,不做则场景 3 永远缺位。
+
+## 6. 分期(已全部完成,2026-10-14)
+
+- **阶段 0**:契约 v0 草案(导出 schema + 示例产物 + 校验),只导出,不接任何引擎。✅
+- **阶段 1**:参考 importer + 回归测试(导出产物可被重新加载并等价校验)。✅
+- **阶段 2**:场景 3 回流文件约定与校验(已拍板纳入)。✅
+
+实装:`crates/sandtable-engine`(contract.rs 导出器 + importer.rs 参考导入 + backflow.rs 回流约定;tests/roundtrip.rs 19 测;examples/export_pokemon.rs 最小可跑;README.md 含接入三步)。
+
+## 7. 契约规范 v0.1(sandtable-engine 落地口径)
+
+- **顶层**:`kind`(`sandtable-engine-contract`)/ `schema_version`(`0.1.0`)/ `config_hash`(64 位十六进制,随契约出)/ `model`。
+- **model 面**:warrior、whale_gain_mult、combat、dungeon(几何参数恒出 + tier_table 可选)、behavior(三群)、training(可选)、progression、formula、churn、loot(可选)、gacha(可选)。
+- **有效值导出**:缺省即语义明确的标量导出生效值(`damage_model` 缺省→`"difference"`、`ratio_k` 缺省→`1.0`);tier_table 行内 gold/xp 缺省按 `reward · growth^tier` 截断为有效整数(与 core `monster_of` 同公式)。
+- **确定性**:字段序 = 声明序,BTreeMap 键序固定;导出前过 `config::validate` 同源校验,不产出沙盘自己都跑不通的契约。
+- **回流**:`kind`=`sandtable-engine-backflow` + `config_hash` 回指 + 指标点(键须过 `MetricKey::parse`,均值须有限,CI 下界≤上界);单向,不写回契约。
+
+### 接入三步
+
+1. **取契约**:YAML 场景 → `export_from_yaml`(或 `export(&SimConfig)`)→ 写 `*.engine.json`。
+2. **校验 + 读入**:`importer::load(json)` 校验 kind / schema_version / 64 位 hash / 域值(命中率∈[0,1]、tier_table 行数 == tiers 等)。
+3. **回流对照**:引擎侧写回流文件(回指同一 `config_hash`)→ `backflow_load` 校验 → `backflow_matches` 对回契约做 A/B 对照。

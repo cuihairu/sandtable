@@ -5,6 +5,7 @@ members = [
   "crates/sandtable-cli",
   "crates/sandtable-wasm",
   "crates/sandtable-python",
+  "crates/sandtable-engine",
   "apps/desktop/src-tauri",
 ]
 
