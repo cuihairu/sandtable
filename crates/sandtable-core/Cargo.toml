@@ -17,3 +17,11 @@ arrow = { version = "59.3", default-features = false, optional = true }
 
 [features]
 arrow = ["dep:arrow"]
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+# 细基准(docs 19):热点剖析手动跑 `cargo bench -p sandtable-core`,不进常规 CI 门禁
+[[bench]]
+name = "hot_paths"
+harness = false

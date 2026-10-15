@@ -14,7 +14,7 @@ title: 19 · 测试策略
 | 统计回归 | 跨版本 / 重构不改分布 | 均值 ± CI 相容 |
 | 案例 KPI 水平断言(**已建**,2026-10-15) | 案例数值改动不悄悄漂移平衡水平 | 锚值 ±10% 带 |
 | 并行确定性(**已建**,2026-10-15) | 线程数不影响结果 | 逐位一致 |
-| 性能 smoke(**粗粒度已建**,2026-10-15;criterion 细基准未建) | 算力预算不漂移 | 时长阈值 |
+| 性能 smoke(**粗粒度已建** + criterion 细基准已建,2026-10-15) | 算力预算不漂移 | 时长阈值 / 基线对比 |
 | 生成物新鲜度(**已建**,2026-10-15) | 提交进仓的图与实况一致 | 订阅矩阵逐边对账 |
 
 **解析解对照是最有力的一层**:单元测试证明"每块零件符合规格",解析解证明"整机算出来的答案客观上是对的"。
@@ -68,9 +68,17 @@ title: 19 · 测试策略
 
 **已建(粗粒度,2026-10-15)**:`crates/sandtable-cli/tests/perf_smoke.rs`——10,000 玩家 × 30 天全流程(simulate + 导出)debug 时长 < 120s(实测基线 2.4s 的约 50 倍余量,只拦数量级退化,共享 runner 抖动不进判定);随 `cargo test --workspace` 进 CI。
 
-::: warning criterion 细基准未引入
-criterion 未进依赖树、无 benches;基准级热点(公式求值、事件循环、指标聚合)剖析是**补齐计划**,不是现状,引入需动依赖清单。
-:::
+**已建(criterion 细基准,2026-10-15,用户拍板引入)**:`crates/sandtable-core/benches/hot_paths.rs` 覆盖四个热点——公式求值(`formula_eval_xp_needed`,默认 xp_needed 公式对典型变量求值)、带键随机数派生(`rng_derive_u64`)、战斗解析结算(`combat_settle_battle`)、事件循环全流程含在线聚合(`sim_pipeline_200x30`,与案例 KPI 锚同口径 200 玩家 × 30 天 × 1 replicate)。
+
+**运行**(仓库根,手动触发,不进常规 CI 门禁——基准耗时且共享 runner 噪声大):
+
+```sh
+cargo bench -p sandtable-core --bench hot_paths
+```
+
+**解读与回归口径**:每次输出 `[下界 均值 上界]` 置信区间;首次跑后 criterion 自动留基线,后续跑给出 `change: [x% y% z%] (p = …)` 与方向判定。口径:**均值变化 >10% 且 p < 0.05 才视为退化信号**,且只作排查信号不作门禁(共享机噪声常见 ±10-20%,单看一次输出会误判)。要做严谨对比时显式管理基线:改动前 `cargo bench -p sandtable-core --bench hot_paths -- --save-baseline before`,改动后 `--baseline before` 对照;热点结构有意变化(新增 System / 改聚合路径)后重录基线。HTML 报告在 `target/criterion/report/`。
+
+**依赖口径**:criterion 仅 `sandtable-core` 的 dev-dependency,不进 release 依赖树;`cargo test --workspace` 会编译但不执行基准(编译耗时被 CI rust-cache 摊薄)。
 
 ## 生成物新鲜度守卫
 
@@ -82,4 +90,4 @@ criterion 未进依赖树、无 benches;基准级热点(公式求值、事件循
 
 ## CI 集成
 
-GitHub Actions:每个 push 跑单元 + 快照 + 解析解对照,外加 **`cargo check --target wasm32-unknown-unknown` 平台门禁**(core 引入平台依赖立即失败,见[仿真内核](./04-kernel));统计回归在依赖升级与发布前手动触发;并行确定性守卫、性能粗粒度守卫与生成物新鲜度守卫已建(随全量测试跑,见上三节);criterion 细基准未建,列入补齐计划。
+GitHub Actions:每个 push 跑单元 + 快照 + 解析解对照,外加 **`cargo check --target wasm32-unknown-unknown` 平台门禁**(core 引入平台依赖立即失败,见[仿真内核](./04-kernel));统计回归在依赖升级与发布前手动触发;并行确定性守卫、性能粗粒度守卫与生成物新鲜度守卫已建(随全量测试跑,见上三节);criterion 细基准已建但**不进常规 CI 门禁**,本地 `cargo bench -p sandtable-core --bench hot_paths` 手动触发(见性能守卫节)。
