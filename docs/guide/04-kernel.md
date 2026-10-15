@@ -51,6 +51,8 @@ cargo run -p sandtable-core --example system_graph
 
 `player_day` 系统内部按行为带选动作、结算战斗、推进养成;`gacha_roll` 系统内部跑保底状态机(见 [MVP](./16-mvp))。
 
+提交进仓的这一份**由测试逐边对账**:加了系统或改了订阅却忘了重跑 example,CI 即红(生成物新鲜度守卫,见 [测试策略](./19-testing))。
+
 ## Model 编译与 World 构建
 
 一次运行的初始化顺序:
