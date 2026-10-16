@@ -1,5 +1,7 @@
 # sandtable 游戏引擎 Adapter 设计
 
+[English](engine-adapter-design.en.md) | [中文](engine-adapter-design.md)
+
 **状态:已代决(巡检 R1)并落地。** 五个决策点已按 §5.1 代决,阶段 0–2 全部实装于 `crates/sandtable-engine`(2026-10-14):契约导出 + 参考导入器 + 回流约定,契约规范见 §7。
 配套工程证据:跨平台 CI 链已就位(2026-10-13,`desktop-package.yml` 三平台矩阵实跑 bundler),见 §4。
 

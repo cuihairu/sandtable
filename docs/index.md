@@ -31,4 +31,7 @@ features:
     details: 玩家行为概率是人为设定的,输出的绝对数值不可信。Sandtable 的价值在 A/B 差值(ΔD7 Power 这类),不在绝对预言。
   - title: 单核三形态
     details: 同一 Rust 内核跑 CLI / Web(WASM)/ Desktop(Tauri 2)。core 可编译 wasm32 是 Phase 1 的 CI 门禁;浏览器跑小中型,桌面与 CLI 跑大型;local-first,无服务器。
+footer:
+  message: 本页为站点首页，暂无独立英文版（首页 hero 为中文文案，英文入口见 README）；docs/ 根目录其余文档均已配英文版（*.en.md），docs/guide/ 等子目录文档双语配对见根目录 todo.md。
+  copyright: MIT
 ---
