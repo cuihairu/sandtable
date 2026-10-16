@@ -2,6 +2,8 @@
 title: 05 · 时间模型
 ---
 
+[English](05-time-model.en.md) | [中文](05-time-model.md)
+
 # 时间模型
 
 ## 问题:全程固定 tick 是算力陷阱

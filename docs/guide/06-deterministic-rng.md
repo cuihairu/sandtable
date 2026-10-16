@@ -2,6 +2,8 @@
 title: 06 · 确定性随机数
 ---
 
+[English](06-deterministic-rng.en.md) | [中文](06-deterministic-rng.md)
+
 # 确定性随机数
 
 可复现性属于核心能力,不是附加功能。目标有二:

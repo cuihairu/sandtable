@@ -2,6 +2,8 @@
 title: 03 · 核心概念
 ---
 
+[English](03-concepts.en.md) | [中文](03-concepts.md)
+
 # 核心概念
 
 Sandtable 的核心不是功能列表,而是七个模型概念:

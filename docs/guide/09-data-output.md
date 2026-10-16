@@ -2,6 +2,8 @@
 title: 09 · 数据输出
 ---
 
+[English](09-data-output.en.md) | [中文](09-data-output.md)
+
 # 数据输出
 
 不要让 CSV 成为唯一输出格式,也不要让 Parquet 成为 MVP 负担。

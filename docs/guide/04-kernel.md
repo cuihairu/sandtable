@@ -2,6 +2,8 @@
 title: 04 · 仿真内核
 ---
 
+[English](04-kernel.en.md) | [中文](04-kernel.md)
+
 # 仿真内核
 
 Simulation Kernel 是整个项目最重要的技术资产。

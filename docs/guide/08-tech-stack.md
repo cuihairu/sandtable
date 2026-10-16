@@ -2,6 +2,8 @@
 title: 08 · 技术栈
 ---
 
+[English](08-tech-stack.en.md) | [中文](08-tech-stack.md)
+
 # 技术栈
 
 ## 语言与形态

@@ -2,6 +2,8 @@
 title: 12 · 参数扫描
 ---
 
+[English](12-parameter-sweep.en.md) | [中文](12-parameter-sweep.md)
+
 # 参数扫描
 
 ## Grid Search

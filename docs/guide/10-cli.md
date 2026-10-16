@@ -2,6 +2,8 @@
 title: 10 · CLI
 ---
 
+[English](10-cli.en.md) | [中文](10-cli.md)
+
 # CLI
 
 第一阶段 CLI 是第一优先级 UI。

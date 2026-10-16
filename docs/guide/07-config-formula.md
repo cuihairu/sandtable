@@ -2,6 +2,8 @@
 title: 07 · 配置与公式引擎
 ---
 
+[English](07-config-formula.en.md) | [中文](07-config-formula.md)
+
 # 配置与公式引擎
 
 ## 原则

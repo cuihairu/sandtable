@@ -1,5 +1,7 @@
 # 22 · Web 端
 
+[English](22-web.en.md) | [中文](22-web.md)
+
 Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**——打开页面、改配置、本地跑小中型仿真、图表直接出,零安装,数据不出浏览器。
 
 ## 形态

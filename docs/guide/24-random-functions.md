@@ -2,6 +2,8 @@
 title: 24 · 随机函数与概率系统
 ---
 
+[English](24-random-functions.en.md) | [中文](24-random-functions.md)
+
 # 随机函数与概率系统
 
 [宝可梦案例](./21-pokemon-case)暴露过一条规律:数值方案的"手感"大半由随机结构决定——命中浮动、掉落惊喜、抽卡保底,而 sandtable 目前只内置了最窄的一层(均匀 + 伯努利)。本页把随机能力系统**整体整理成一张设计图纸**:每项能力给出适用场景、确定性键与状态的归宿、API 形态,以及与既有实验机制(sweep / CI95 / 黄金快照)的衔接方式。设计侧口径(期望怎么算、保底怎么定、方差怎么调)与 hello-game [numerical/05 掉落与概率设计](https://github.com/cuihairu/hello-game/blob/main/docs/numerical/05.md)互为表里:那边讲"设计侧怎么定",本页讲"仿真侧怎么验"。

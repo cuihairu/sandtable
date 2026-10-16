@@ -2,6 +2,8 @@
 title: 01 · 项目定位
 ---
 
+[English](01-positioning.en.md) | [中文](01-positioning.md)
+
 # 项目定位
 
 > **Sandtable —— A configuration-driven simulation and experimentation framework for game systems.**

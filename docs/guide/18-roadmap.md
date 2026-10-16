@@ -2,6 +2,8 @@
 title: 18 · 路线图
 ---
 
+[English](18-roadmap.en.md) | [中文](18-roadmap.md)
+
 # 路线图
 
 ## 方法:纵向切片
@@ -27,7 +29,7 @@ flowchart LR
 ```
 
 ::: tip 平台纪律
-Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 门禁强制**:core 可编译 `wasm32-unknown-unknown`、core 依赖树无平台库、并行可退化为串行(见[仿真内核](./04-kernel))。功能后置,边界不后置。
+Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 门禁强制**:core 可编译 `wasm32-unknown-unknown`、core 依赖树无平台库、并行可退化为串行(见[仿真内核](./04-kernel.en))。功能后置,边界不后置。
 :::
 
 ## Phase 0 — 定义(已完成)
@@ -36,16 +38,16 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 ## Phase 1 — 最小闭环(纵向切片)
 
-**做**:硬编码最小 RPG([MVP 定义](./16-mvp)):Actor 概率行为 + 解析战斗 + 奖励 + 成长 + 流失机制;按天推进 30 天;[指标公式集](./13-kpi-metrics)的最小实现(WinRate / Power 分布 / 金字与通胀 / 留存流失);CLI `simulate` + `compare`;一次 attack=100 vs 105 的 A/B 报告。
+**做**:硬编码最小 RPG([MVP 定义](./16-mvp.en)):Actor 概率行为 + 解析战斗 + 奖励 + 成长 + 流失机制;按天推进 30 天;[指标公式集](./13-kpi-metrics.en)的最小实现(WinRate / Power 分布 / 金字与通胀 / 留存流失);CLI `simulate` + `compare`;一次 attack=100 vs 105 的 A/B 报告。
 
 **平台门禁(本阶段起进 CI)**:
 - `cargo check --target wasm32-unknown-unknown` 通过(core 不引入任何平台依赖);
-- 输出 schema 按 Arrow 契约设计(列名 / 类型可直映射 RecordBatch,见[数据输出](./09-data-output))。
+- 输出 schema 按 Arrow 契约设计(列名 / 类型可直映射 RecordBatch,见[数据输出](./09-data-output.en))。
 
 **验证**:
 - 确定性快照:同 seed 重跑逐位一致;
-- 解析解对照:闭式期望伤害、独立期望收益与仿真均值一致([测试策略](./19-testing));
-- MVP 验收七项([MVP](./16-mvp))全部通过。
+- 解析解对照:闭式期望伤害、独立期望收益与仿真均值一致([测试策略](./19-testing.en));
+- MVP 验收七项([MVP](./16-mvp.en))全部通过。
 
 **验收**:上表七项齐备 → MVP 成立。
 
@@ -62,7 +64,7 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 **做**:Grid / Random 扫描、replicates 编排、候选并行(rayon)、`sweep` 子命令、基于置信区间的约束判定、比较报告;**DuckDB 分析层(native)**:duckdb-rs 读结果数据集(Parquet / CSV),SQL 事后探索(分 cohort 战力、经济收支等),不进仿真路径。
 
-**验收**:修改参数范围后自动生成候选实验并比较;约束判定输出 PASS / BORDERLINE / FAIL 三态(见[指标](./13-kpi-metrics))。
+**验收**:修改参数范围后自动生成候选实验并比较;约束判定输出 PASS / BORDERLINE / FAIL 三态(见[指标](./13-kpi-metrics.en))。
 
 ## Phase 4 — 敏感性与推荐
 
@@ -74,17 +76,17 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 **做**:HTML 报告(图表、KPI、参数对比);**真实配置验证节点**——拿一个真实或公开游戏的数值配置接入跑通全管线;评估 Excel / CSV 配置导入。
 
-**验收**:外部配置(非最小 RPG)端到端跑通 simulate → sweep → recommend,暴露并修复接入层的真实阻力。**已完成**:宝可梦(第一世代关都)案例接入,零模型改动全链跑通,阻力清单与后续候选见[真实配置验证](./21-pokemon-case);CSV 导入以 `params export / import` 落地(见 [CLI](./10-cli))。
+**验收**:外部配置(非最小 RPG)端到端跑通 simulate → sweep → recommend,暴露并修复接入层的真实阻力。**已完成**:宝可梦(第一世代关都)案例接入,零模型改动全链跑通,阻力清单与后续候选见[真实配置验证](./21-pokemon-case.en);CSV 导入以 `params export / import` 落地(见 [CLI](./10-cli.en))。
 
 ## Phase 6 — Web(WASM + React)
 
-**做**:`sandtable-wasm` 薄绑定(run_simulation / validate_config,不放仿真逻辑);React + TS + Vite 前端;DuckDB-Wasm 本地分析;"Try in your browser"——打开页面、导入[项目文件](./09-data-output)或配置、本地跑小中型仿真、图表直接出,零安装。
+**做**:`sandtable-wasm` 薄绑定(run_simulation / validate_config,不放仿真逻辑);React + TS + Vite 前端;DuckDB-Wasm 本地分析;"Try in your browser"——打开页面、导入[项目文件](./09-data-output.en)或配置、本地跑小中型仿真、图表直接出,零安装。
 
-**进度**:绑定、前端骨架与 DuckDB-Wasm 查询面板已落地(配置编辑 → 本地仿真 → KPI/按天曲线/分群表 → SQL 查询出图,等价测试锁死,见 [Web 端](./22-web));结果导出已落地(`days.csv` / `report.json` 下载,与 CLI `simulate --out` 产物同构);sweep 前端化已落地(单轴网格扫描 + 约束判定表 + 推荐带可视化,JS 逐候选驱动,预算门内本地执行)。
+**进度**:绑定、前端骨架与 DuckDB-Wasm 查询面板已落地(配置编辑 → 本地仿真 → KPI/按天曲线/分群表 → SQL 查询出图,等价测试锁死,见 [Web 端](./22-web.en));结果导出已落地(`days.csv` / `report.json` 下载,与 CLI `simulate --out` 产物同构);sweep 前端化已落地(单轴网格扫描 + 约束判定表 + 推荐带可视化,JS 逐候选驱动,预算门内本地执行)。
 
 **边界**:Web 只承诺小中型仿真(DuckDB-Wasm 默认单线程、WASM 内存 4GB 上限);万级玩家大型 sweep 引导走 CLI / 桌面。
 
-**验收**:浏览器与 CLI 用同一配置同 seed,结果统计等价([测试策略](./19-testing));结果可由 DuckDB-Wasm 查询并出图。**已完成**:等价由 `web_parity` 测试逐值锁死,DuckDB-Wasm 查询面板落地,见 [Web 端](./22-web)。
+**验收**:浏览器与 CLI 用同一配置同 seed,结果统计等价([测试策略](./19-testing.en));结果可由 DuckDB-Wasm 查询并出图。**已完成**:等价由 `web_parity` 测试逐值锁死,DuckDB-Wasm 查询面板落地,见 [Web 端](./22-web.en)。
 
 ## Phase 7 — 桌面(Tauri 2)
 
@@ -94,7 +96,7 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 
 **依赖评估(2026-10-10,可开工,无依赖阻塞)→ 已拍板开工(2026-10-10)**:
 
-- **技术面**:Tauri 2.x 为现行稳定线(2024-10 稳定,2026 年仍在活跃维护,updater 插件要求 Rust 1.90+);架构与本节立项一致——`apps/desktop` 壳(见[项目结构](./17-project-structure)壳落点约定)+ `sandtable-core` 以 path 依赖直连(native 仿真,不经 wasm 边界)+ `duckdb-rs` 读 Parquet/CSV(与 Phase 6 native 分析层同一依赖)+ 复用 apps/web 的 React 19 + Vite 8 前端(Tauri 原生支持 Vite 构建产物)。core 侧零改动:CI 门禁已强制 core 可编译 wasm32、依赖树无平台库、并行可退化为串行。
+- **技术面**:Tauri 2.x 为现行稳定线(2024-10 稳定,2026 年仍在活跃维护,updater 插件要求 Rust 1.90+);架构与本节立项一致——`apps/desktop` 壳(见[项目结构](./17-project-structure.en)壳落点约定)+ `sandtable-core` 以 path 依赖直连(native 仿真,不经 wasm 边界)+ `duckdb-rs` 读 Parquet/CSV(与 Phase 6 native 分析层同一依赖)+ 复用 apps/web 的 React 19 + Vite 8 前端(Tauri 原生支持 Vite 构建产物)。core 侧零改动:CI 门禁已强制 core 可编译 wasm32、依赖树无平台库、并行可退化为串行。
 - **CI/打包**:官方 `tauri-apps/tauri-action` 支持三平台矩阵;Windows / macOS runner 零额外依赖(WebView2 / WKWebView 系统自带),Linux runner 需 webkit2gtk-4.1 等约 8 个 apt 包;二进制用系统 WebView,体积远小于 Electron。
 - **风险**:代码签名(Windows SmartScreen / macOS Gatekeeper)是发布质量门槛,非技术阻塞;不签名仅影响首次打开体验。
 - **拍板结论(2026-10-10)**:① 平台优先级 **Linux 本机先行**(壳在本机开发验收,Windows/macOS 后置);② **暂不引入自动更新器**(验证通道先行手动安装,更新器二期);③ 签名证书**留到发布时再定**;④ 开工顺序:壳 + core path 直连最小可跑 → 前端接入 → 实验流对齐 CLI 验收。
@@ -136,7 +138,7 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 原始计划([计划-原始.md](https://github.com/cuihairu/sandtable/blob/main/docs/计划-原始.md))的 Phase 7 是 **Report / Web UI**(HTML Report / Dashboard / Charts / Parameter Comparison / Population / Economy / Progression 七项),与本章 Phase 7(桌面)**编号不同源**。桌面在本章编号下仍未立项;本节立项的是原计划 Phase 7 的剩余项。
 :::
 
-**现状对账**:HTML Report 与 Charts 已随 Phase 5 落地(`sandtable report`,见[数据输出](./09-data-output));Parameter Comparison 由 A/B 与扫描判定覆盖。**本批补齐四个缺口**(全部落在 CLI 报告侧,只读产物纪律不变;Web 侧按[22 章](./22-web)小中型定位按需跟进):
+**现状对账**:HTML Report 与 Charts 已随 Phase 5 落地(`sandtable report`,见[数据输出](./09-data-output.en));Parameter Comparison 由 A/B 与扫描判定覆盖。**本批补齐四个缺口**(全部落在 CLI 报告侧,只读产物纪律不变;Web 侧按[22 章](./22-web.en)小中型定位按需跟进):
 
 | 缺口 | 落点 | 数据源 |
 | --- | --- | --- |
@@ -145,20 +147,20 @@ Web 与桌面排在 Phase 6 / 7,**但它们的架构前提从 Phase 1 起由 CI 
 | Economy Flow(经济流) | 产出 vs 消耗双线 + 累计汇总 | days.csv |
 | Progression Curve(成长曲线) | 平均战力 + 升级累计 | days.csv |
 
-**验收**:`sandtable report` 对常规产物出全上述板块,端到端测试断言各板块存在;只读产物、单文件自包含两条纪律不破。**已完成**:四缺口全部落地(总览 f158ab2 / 分群+分位 f158ab2+49a1d90 / 经济流+成长 e2cb494),折线图升级多序列(图例、CI 须挂首序列),见[数据输出](./09-data-output)报告契约表。
+**验收**:`sandtable report` 对常规产物出全上述板块,端到端测试断言各板块存在;只读产物、单文件自包含两条纪律不破。**已完成**:四缺口全部落地(总览 f158ab2 / 分群+分位 f158ab2+49a1d90 / 经济流+成长 e2cb494),折线图升级多序列(图例、CI 须挂首序列),见[数据输出](./09-data-output.en)报告契约表。
 
 ## 后续方向
 
-- 参数优化:Evolutionary 已落地(2026-10-10,`optimize` 子命令,见[参数扫描](./12-parameter-sweep)自动寻优节);**后续增量裁定(2026-10-10)**:Bayesian 代理模型选型 = 随机森林(GP 留后续——无线性代数依赖、确定性同构、特征重要性可解释、小数据足够);Pareto / 多目标 = 约束感知非支配排序(加权求和被拒,前沿即答案);**Pareto 已落地(2026-10-10,`mode: pareto` + `objectives` 列表,三级字典序 hard_pass → 非支配层级 → 拥挤距离,front0 全前沿落 opt.json;顺带修 GA bug:pop 种群向量停在初始种群致第 2 代起育种读错基因)**;**随机森林代理已落地(2026-10-10,`surrogate` 子命令 train / predict / importance,bootstrap + CART 回归 + 方差削减重要性,种子派生确定性,只读 sweep 产物不进仿真路径)**;
-- ~~Parquet-in-browser 依赖评估~~ **已评估(2026-10-10):零新依赖可达成**——浏览器端已有 `@duckdb/duckdb-wasm`(查询层依赖),其原生支持 Parquet 读写:`SELECT * FROM read_parquet(...)` 读入、`COPY (SELECT ...) TO 'x.parquet' (FORMAT PARQUET)` 导出(从 duckdb 文件系统取字节 Blob 下载即可);落地动作只是 QueryPanel 增收 `.parquet` 分支与导出菜单加 Parquet 项,随 [Web 端](./22-web)跟进。**两项均已落地(2026-10-10)**:查询面板收 `.parquet`(read_parquet 装表)、结果导出菜单加 `days.parquet` 项(COPY TO PARQUET 取字节下载)。备选 [hyparquet](https://github.com/hyparam/hyparquet)(纯 JS 零依赖,只读,289KB unpacked,支持 HTTP range 按列懒读)仅在"不初始化 DuckDB 就预览 Parquet"成为真实需求时按需引入;`parquet-wasm`(Rust→WASM,读写全)与既有两块 wasm(仿真 + DuckDB)相叠,边际价值低,不引入;
+- 参数优化:Evolutionary 已落地(2026-10-10,`optimize` 子命令,见[参数扫描](./12-parameter-sweep.en)自动寻优节);**后续增量裁定(2026-10-10)**:Bayesian 代理模型选型 = 随机森林(GP 留后续——无线性代数依赖、确定性同构、特征重要性可解释、小数据足够);Pareto / 多目标 = 约束感知非支配排序(加权求和被拒,前沿即答案);**Pareto 已落地(2026-10-10,`mode: pareto` + `objectives` 列表,三级字典序 hard_pass → 非支配层级 → 拥挤距离,front0 全前沿落 opt.json;顺带修 GA bug:pop 种群向量停在初始种群致第 2 代起育种读错基因)**;**随机森林代理已落地(2026-10-10,`surrogate` 子命令 train / predict / importance,bootstrap + CART 回归 + 方差削减重要性,种子派生确定性,只读 sweep 产物不进仿真路径)**;
+- ~~Parquet-in-browser 依赖评估~~ **已评估(2026-10-10):零新依赖可达成**——浏览器端已有 `@duckdb/duckdb-wasm`(查询层依赖),其原生支持 Parquet 读写:`SELECT * FROM read_parquet(...)` 读入、`COPY (SELECT ...) TO 'x.parquet' (FORMAT PARQUET)` 导出(从 duckdb 文件系统取字节 Blob 下载即可);落地动作只是 QueryPanel 增收 `.parquet` 分支与导出菜单加 Parquet 项,随 [Web 端](./22-web.en)跟进。**两项均已落地(2026-10-10)**:查询面板收 `.parquet`(read_parquet 装表)、结果导出菜单加 `days.parquet` 项(COPY TO PARQUET 取字节下载)。备选 [hyparquet](https://github.com/hyparam/hyparquet)(纯 JS 零依赖,只读,289KB unpacked,支持 HTTP range 按列懒读)仅在"不初始化 DuckDB 就预览 Parquet"成为真实需求时按需引入;`parquet-wasm`(Rust→WASM,读写全)与既有两块 wasm(仿真 + DuckDB)相叠,边际价值低,不引入;
 - 复杂行为脚本:载体已拍板 Python(rhai 缓议),设计与分期见 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md);**阶段 0–2 已落地(2026-10-11:外挂模式示例 + `sandtable-python` 绑定 crate + `scripts/templates/` 官方编排模板;maturin 出 `sandtable-sim` wheel,pytest 16 例含 py_parity 与 CLI 逐值一致,wasm 门不回归)**;**阶段 3 已拍板开工(2026-10-11,用户授权自行拍板)**:范围 = 批处理粒度(day-level chunk)回调评估——事件级 Python 回调红线不松(设计稿 §4),只评估「日粒度批量 chunk」形态;第一批 = 性能实测报告先行(设计稿 §7 门槛「先出实测报告再拍板,不预设结论」),**已落地([scripting-perf-report.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-perf-report.md)):日粒度 chunk GO(逐玩家观测面每日一次,30 天挂满 ≈3% 基线;固定成本 ns 级),事件级红线被数据反向证实维持;第二批已落地(读态日钩子:core `DayHook` + Python `run_with_day_hook`,只读不改结果,pytest 对账锁死)**;rhai 维持缓议;Pyodide 维持「前端独立实验,不承诺」不动;
-- Python 绑定:扩展模块(maturin + PyO3)主路径已落地(阶段 1–2,`crates/sandtable-python`,`import sandtable_sim`,编排模板见 `scripts/templates/`,发布前按[项目结构](./17-project-structure)命名纪律再核);
-- 随机函数扩展(加权表/保底/正态/卡方):设计与分期见[随机函数与概率系统](./24-random-functions);**R1 已落地(2026-10-10):加权表(加载期 CDF + `model.loot.tables` YAML 面 + `ParamKind::Table`)+ 洗牌/无放回加权抽样(A-Res 键序法,Fisher–Yates 带键)+ `disttest` 子命令(均匀/加权 χ²,Cochran 桶合并);新 purpose `Shuffle` 追加在尾不挪旧键,黄金快照逐位不变,params 表 +1(rate_mult)**;**R2 已落地(2026-10-10):保底状态机(硬/软,`Purpose::Gacha = 7` 尾部追加,计数器是 actor 状态不进键)+ 期望抽数 KPI `gacha_pulls_to_hit` 全链接通(比较/sweep/推荐)+ 抽卡案例 yaml(`examples/gacha-pity*.yaml`);闭式对账 2%/50 → 31.79,params 表 +4(53 → 57),黄金快照逐位不变**;**R3 已落地(2026-10-10):正态 Box–Muller(`Purpose::Normal = 8` 尾部追加,双消耗键稳定:改 μ/σ 不挪键)+ `normal_clamped` + χ² 正态分桶(`normal_buckets` 尾部质量并首尾桶,`normal_cdf` 经不完全伽马)+ `disttest normal`;均值/方差 CI 对账,10 万采样 20 桶 χ² 全过,黄金快照逐位不变**;至此 24 章能力清单 7 项全部落地;
-- ~~项目导入 / 导出格式定型~~ **格式与 CLI 已定型落地(2026-10-09,manifest v1 + `project pack/unpack/check`,见[数据输出](./09-data-output))**;Web 侧加载项目文件随[Web 端](./22-web)跟进;
-- **可信度注记(2026-10-11 拍板,三项一次裁完)**:①「统计 CI 只在模型内有效」立小阶段,**已落地**——措辞沿用[01 章](./01-positioning)立场,落点两处:`sandtable report` 页首一行**模型边界注记**(单文件自包含纪律不破,报告端到端测试锁死其存在),`comparison.json` 的脚本消费面 `scripts/templates/ab_summary.py` 表格尾打同一口径;PNG 不带注记(图内标签英文纪律不变),模板侧验收 = py_compile 门 + 本批对真实 compare 产物跑通;②**真实案例二期与模型校准挂起不立项**——需真实运营数据与对标基准,属用户侧输入,登记待触发;③**桌面端投入维持挂闸门后**(实验流 GUI 人工开窗验收未做,见 Phase 7 状态)。
+- Python 绑定:扩展模块(maturin + PyO3)主路径已落地(阶段 1–2,`crates/sandtable-python`,`import sandtable_sim`,编排模板见 `scripts/templates/`,发布前按[项目结构](./17-project-structure.en)命名纪律再核);
+- 随机函数扩展(加权表/保底/正态/卡方):设计与分期见[随机函数与概率系统](./24-random-functions.en);**R1 已落地(2026-10-10):加权表(加载期 CDF + `model.loot.tables` YAML 面 + `ParamKind::Table`)+ 洗牌/无放回加权抽样(A-Res 键序法,Fisher–Yates 带键)+ `disttest` 子命令(均匀/加权 χ²,Cochran 桶合并);新 purpose `Shuffle` 追加在尾不挪旧键,黄金快照逐位不变,params 表 +1(rate_mult)**;**R2 已落地(2026-10-10):保底状态机(硬/软,`Purpose::Gacha = 7` 尾部追加,计数器是 actor 状态不进键)+ 期望抽数 KPI `gacha_pulls_to_hit` 全链接通(比较/sweep/推荐)+ 抽卡案例 yaml(`examples/gacha-pity*.yaml`);闭式对账 2%/50 → 31.79,params 表 +4(53 → 57),黄金快照逐位不变**;**R3 已落地(2026-10-10):正态 Box–Muller(`Purpose::Normal = 8` 尾部追加,双消耗键稳定:改 μ/σ 不挪键)+ `normal_clamped` + χ² 正态分桶(`normal_buckets` 尾部质量并首尾桶,`normal_cdf` 经不完全伽马)+ `disttest normal`;均值/方差 CI 对账,10 万采样 20 桶 χ² 全过,黄金快照逐位不变**;至此 24 章能力清单 7 项全部落地;
+- ~~项目导入 / 导出格式定型~~ **格式与 CLI 已定型落地(2026-10-09,manifest v1 + `project pack/unpack/check`,见[数据输出](./09-data-output.en))**;Web 侧加载项目文件随[Web 端](./22-web.en)跟进;
+- **可信度注记(2026-10-11 拍板,三项一次裁完)**:①「统计 CI 只在模型内有效」立小阶段,**已落地**——措辞沿用[01 章](./01-positioning.en)立场,落点两处:`sandtable report` 页首一行**模型边界注记**(单文件自包含纪律不破,报告端到端测试锁死其存在),`comparison.json` 的脚本消费面 `scripts/templates/ab_summary.py` 表格尾打同一口径;PNG 不带注记(图内标签英文纪律不变),模板侧验收 = py_compile 门 + 本批对真实 compare 产物跑通;②**真实案例二期与模型校准挂起不立项**——需真实运营数据与对标基准,属用户侧输入,登记待触发;③**桌面端投入维持挂闸门后**(实验流 GUI 人工开窗验收未做,见 Phase 7 状态)。
 - **依赖安全与升级勾账(2026-10-11 巡检)**:①pnpm overrides(vite 6.4.3 / katex 0.18.2 / esbuild 0.25.0,`3b5528e`)**复验通过**——`pnpm install --frozen-lockfile` + `pnpm docs:build` 绿(锁解析图只含 pin 版;store 内 vite@5.4.21 / katex@0.16.47 / esbuild@0.21.5 为历史残留,不在锁文件),Dependabot #3/#4/#5 随 pin 转 fixed;②`glib 0.18 → 0.20` **抬不动,如实报方案**:`cargo update -p glib --precise 0.20.0` 被 cargo 拒——`gtk 0.18.2 ← tauri 2.12.2 ← sandtable-desktop` 要求 `glib ^0.18`,tauri 2.x 线依赖面封顶 `gtk ^0.18`(stable 顶格 2.12.2,3.0 仍 alpha.4),patch 不可能换依赖大版;**方案 = 维持 parked,解除条件 = tauri 3.0 stable 且依赖面出现 gtk 0.20 栈**(届时随桌面端大版本一起抬,风险面 = 桌面编译链);Dependabot #7(medium)**已由用户 2026-10-13 按 tolerable_risk 手动关闭**(dismissed ≠ fixed,传导链与影响面记录在关闭理由:仅桌面壳传递依赖,core / CLI / wasm / python crate 不受影响);抬升仍 parked 不 force,也不为消 alert 改桌面编译链,解除条件不变。
-- **公式与曲线知识库(2026-10-11 已落地,新增 [25 章](./25-formulas-and-curves))**:定位「程序验证猜想,文档沉淀知识」——知识库章节必须与实现同源,曲线不手画:`crates/sandtable-core/examples/formula_curves.rs` 对代表性表达式调用**真实求值器**逐点采样出 SVG(`docs/assets/formulas/`),表达式编译不过即 panic,文档曲线与求值器能力不可能漂移;图内标签维持英文(不依赖 CJK 字形纪律),正文讲形状语义、数值用途与陷阱;顺带订正 [07 章](./07-config-formula) 一处漂移——能力面把 `lookup(表查找)` 列为现有能力,但求值器 builtin 白名单(7 个:min/max/clamp/floor/ceil/abs/round)并无 lookup,已移出能力面、归回「后续扩展」;
-- 游戏引擎 Adapter:**已代决并落地(2026-10-14,巡检 R1 代决五决策点)**——`crates/sandtable-engine` 引擎无关 JSON 契约(导出含有效值纪律 + 参考导入器回归 oracle + 回流约定,roundtrip 19 测 + examples/export_pokemon.rs 最小可跑),决策记录与契约规范见 [引擎 Adapter 设计](../engine-adapter-design.md);Web API(仅当出现真实的服务端需求,local-first 不预设)。
+- **公式与曲线知识库(2026-10-11 已落地,新增 [25 章](./25-formulas-and-curves.en))**:定位「程序验证猜想,文档沉淀知识」——知识库章节必须与实现同源,曲线不手画:`crates/sandtable-core/examples/formula_curves.rs` 对代表性表达式调用**真实求值器**逐点采样出 SVG(`docs/assets/formulas/`),表达式编译不过即 panic,文档曲线与求值器能力不可能漂移;图内标签维持英文(不依赖 CJK 字形纪律),正文讲形状语义、数值用途与陷阱;顺带订正 [07 章](./07-config-formula.en) 一处漂移——能力面把 `lookup(表查找)` 列为现有能力,但求值器 builtin 白名单(7 个:min/max/clamp/floor/ceil/abs/round)并无 lookup,已移出能力面、归回「后续扩展」;
+- 游戏引擎 Adapter:**已代决并落地(2026-10-14,巡检 R1 代决五决策点)**——`crates/sandtable-engine` 引擎无关 JSON 契约(导出含有效值纪律 + 参考导入器回归 oracle + 回流约定,roundtrip 19 测 + examples/export_pokemon.rs 最小可跑),决策记录与契约规范见 [引擎 Adapter 设计](../engine-adapter-design.en.md);Web API(仅当出现真实的服务端需求,local-first 不预设)。
 
 ## 节奏约束
 

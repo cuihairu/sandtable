@@ -2,6 +2,8 @@
 title: 02 · 产品边界
 ---
 
+[English](02-scope.en.md) | [中文](02-scope.md)
+
 # 产品边界
 
 ## 第一阶段做什么

@@ -2,6 +2,8 @@
 title: 11 · 实验管线
 ---
 
+[English](11-experiment-pipeline.en.md) | [中文](11-experiment-pipeline.md)
+
 # 实验管线
 
 ## 全流程

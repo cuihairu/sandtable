@@ -1,4 +1,8 @@
+[English](21-pokemon-case.en.md) | [中文](21-pokemon-case.md)
+
 # 21 · 真实配置验证:宝可梦案例
+
+[English](21-pokemon-case.en.md) | [中文](21-pokemon-case.md)
 
 P5c 的验收问题是:**一套外部真实游戏的公开数值,能否不经改模型直接接入 sandtable?接入过程暴露什么表达力缺口?**
 

@@ -2,6 +2,8 @@
 title: 14 · 敏感性分析
 ---
 
+[English](14-sensitivity.en.md) | [中文](14-sensitivity.md)
+
 # 敏感性分析
 
 敏感性分析回答:哪些参数真正值得调整。

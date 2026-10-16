@@ -2,6 +2,8 @@
 title: 15 · 平衡推荐
 ---
 
+[English](15-recommendation.en.md) | [中文](15-recommendation.md)
+
 # 平衡推荐
 
 从输出"仿真结果"升级到输出"推荐"。第一阶段不涉及寻优算法,只用 [Sweep](./12-parameter-sweep) + [约束判定](./13-kpi-metrics) + [敏感性](./14-sensitivity)。
