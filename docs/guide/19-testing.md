@@ -35,7 +35,7 @@ title: 19 · 测试策略
 
 例 3——流失模型:恒定流失概率 p_c 下,D7 留存的期望是 (1−p_c)⁷(与仿真口径对齐后对照)。
 
-要求:至少一条解析解测试进入 Phase 1 验收([路线图](./18-roadmap.en));新增系统时,凡存在闭式解的机制必须配对照测试。
+要求:至少一条解析解测试进入 Phase 1 验收([路线图](./18-roadmap));新增系统时,凡存在闭式解的机制必须配对照测试。
 
 ## 确定性测试:快照 vs 统计回归
 
@@ -48,13 +48,13 @@ title: 19 · 测试策略
 | --- | --- |
 | 日常 CI(同平台) | 快照(逐位) |
 | 升级 Rust 版本 / 依赖 / 重构后 | 快照更新 + 统计回归确认分布未漂移 |
-| native ↔ wasm 比对(同配置同 seed) | 统计回归(基础算术逐位一致,超越函数允许 ULP 级差异,见[确定性随机数](./06-deterministic-rng.en)) |
+| native ↔ wasm 比对(同配置同 seed) | 统计回归(基础算术逐位一致,超越函数允许 ULP 级差异,见[确定性随机数](./06-deterministic-rng)) |
 | 跨平台比对 | 统计回归(浮点不承诺跨平台逐位) |
 :::
 
 ## 并行确定性测试
 
-同一实验在 `rayon` 线程数 = 1 / 4 / 满核下运行,结果摘要必须逐位一致。这是[并行确定性规则](./06-deterministic-rng.en)(有序容器、固定归约)的守卫测试。
+同一实验在 `rayon` 线程数 = 1 / 4 / 满核下运行,结果摘要必须逐位一致。这是[并行确定性规则](./06-deterministic-rng)(有序容器、固定归约)的守卫测试。
 
 **已建**(2026-10-15):`crates/sandtable-cli/tests/parallel_determinism.rs` 对 `sandtable sweep`(候选间 par_iter 并行的唯一面)在 `RAYON_NUM_THREADS` = 1 / 4 / 满核三档下各跑同一实验,`candidates.csv` 与 `summary.csv` 逐位相等——`run_candidate` 纯函数、`collect` 保序、采样流绑 base_seed 与线程无关;随 `cargo test --workspace` 进 CI。
 
@@ -64,7 +64,7 @@ title: 19 · 测试策略
 
 ## 案例 KPI 水平断言
 
-黄金快照锚**默认配置**(内核行为变 → CI 红),不锚案例配置;`crates/sandtable-cli/tests/cases.rs` 的水平断言补这一缺口:对 `examples/pokemon.yaml`(200 玩家 × 30 天 × 1 replicate,确定性)锚 churn / retention_d7 / win_rate / 均等级的绝对水平,容差 ±10%,retention_d7 取 docs 21 硬约束下限 0.9 而非带宽(0.985 的 −10% 下探会越过健康线)。**改案例数值 = 有意变更**:须同步更新锚值,让平衡面位移出现在评审里,而不是靠人工 review 兜底。锚值口径见[真实配置验证](./21-pokemon-case.en)。
+黄金快照锚**默认配置**(内核行为变 → CI 红),不锚案例配置;`crates/sandtable-cli/tests/cases.rs` 的水平断言补这一缺口:对 `examples/pokemon.yaml`(200 玩家 × 30 天 × 1 replicate,确定性)锚 churn / retention_d7 / win_rate / 均等级的绝对水平,容差 ±10%,retention_d7 取 docs 21 硬约束下限 0.9 而非带宽(0.985 的 −10% 下探会越过健康线)。**改案例数值 = 有意变更**:须同步更新锚值,让平衡面位移出现在评审里,而不是靠人工 review 兜底。锚值口径见[真实配置验证](./21-pokemon-case)。
 
 ## 性能守卫
 
@@ -92,4 +92,4 @@ cargo bench -p sandtable-core --bench hot_paths
 
 ## CI 集成
 
-GitHub Actions:每个 push 跑单元 + 快照 + 解析解对照,外加 **`cargo check --target wasm32-unknown-unknown` 平台门禁**(core 引入平台依赖立即失败,见[仿真内核](./04-kernel.en));统计回归在依赖升级与发布前手动触发;并行确定性守卫、性能粗粒度守卫与生成物新鲜度守卫已建(随全量测试跑,见上三节);criterion 细基准已建但**不进常规 CI 门禁**,本地 `cargo bench -p sandtable-core --bench hot_paths` 手动触发(见性能守卫节)。
+GitHub Actions:每个 push 跑单元 + 快照 + 解析解对照,外加 **`cargo check --target wasm32-unknown-unknown` 平台门禁**(core 引入平台依赖立即失败,见[仿真内核](./04-kernel));统计回归在依赖升级与发布前手动触发;并行确定性守卫、性能粗粒度守卫与生成物新鲜度守卫已建(随全量测试跑,见上三节);criterion 细基准已建但**不进常规 CI 门禁**,本地 `cargo bench -p sandtable-core --bench hot_paths` 手动触发(见性能守卫节)。

@@ -8,7 +8,7 @@ title: 17 · 项目结构
 
 ## crate 布局
 
-MVP 只拆两个 crate(避免过度工程化,理由见[技术栈](./08-tech-stack.en));平台壳按阶段增加,目录提前预留:
+MVP 只拆两个 crate(避免过度工程化,理由见[技术栈](./08-tech-stack));平台壳按阶段增加,目录提前预留:
 
 ```text
 sandtable/
@@ -71,9 +71,9 @@ core 不依赖任何壳;systems 不依赖 experiment;kernel 不依赖任何上�
 
 | 规则 | 落点 |
 | --- | --- |
-| `cargo check --target wasm32-unknown-unknown` 从 Phase 1 起进 CI | [路线图](./18-roadmap.en) Phase 1 |
-| core 禁止 `duckdb` / `web-sys` / `tokio` / 文件与网络 I/O / 壁钟 | [仿真内核](./04-kernel.en)平台边界 |
-| 并行(rayon)是 feature,core 算法串行确定,WASM 下退化单线程 | [技术栈](./08-tech-stack.en) |
+| `cargo check --target wasm32-unknown-unknown` 从 Phase 1 起进 CI | [路线图](./18-roadmap) Phase 1 |
+| core 禁止 `duckdb` / `web-sys` / `tokio` / 文件与网络 I/O / 壁钟 | [仿真内核](./04-kernel)平台边界 |
+| 并行(rayon)是 feature,core 算法串行确定,WASM 下退化单线程 | [技术栈](./08-tech-stack) |
 
 ## 模块职责速查
 
@@ -95,7 +95,7 @@ core 不依赖任何壳;systems 不依赖 experiment;kernel 不依赖任何上�
 | crates.io | `sandtable` 前缀暂无冲突记录;**正式发布前需再核一次** |
 | PyPI | `sandtable` 已被占用;Python 绑定**另行命名已落地**(2026-10-11 阶段 1:发行名 `sandtable-sim`,导入名 `sandtable_sim`,不占用 sandtable 名;**正式发布前按本章纪律再核一次**)——载体与分期见 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md) |
 
-内置系统模块命名 `systems`;若未来独立成 crate 用 `sandtable-systems`,不用 `sandtable-model`(避免与概念 Model 混淆,见[技术栈](./08-tech-stack.en))。
+内置系统模块命名 `systems`;若未来独立成 crate 用 `sandtable-systems`,不用 `sandtable-model`(避免与概念 Model 混淆,见[技术栈](./08-tech-stack))。
 
 ## 与原计划的差异
 

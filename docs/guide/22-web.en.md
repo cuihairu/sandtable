@@ -1,6 +1,10 @@
-# 22 · Web
+---
+title: 22 · Web
+---
 
 [English](22-web.en.md) | [中文](22-web.md)
+
+# 22 · Web
 
 The Phase 6 deliverable (document [Roadmap](./18-roadmap.en)): **"Try in your browser"** — open the page, change the configuration, run a small-to-medium simulation locally, charts come out directly, zero install, data never leaves the browser.
 

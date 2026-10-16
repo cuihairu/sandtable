@@ -16,9 +16,9 @@ title: 20 · 设计原则与愿景
 6. **Population First**:不模拟"一个平均玩家",模拟群体与分布;
 7. **Long-Term First**:不只模拟一场战斗,至少 Day 1 → Day 30;
 8. **Measure Before Optimize**:先把仿真、指标、实验、敏感性做对,再做复杂优化;
-9. **相对比较优先**:输出的价值在 A/B 差值与置信区间,不在绝对数值的预言(见[定位](./01-positioning.en));
+9. **相对比较优先**:输出的价值在 A/B 差值与置信区间,不在绝对数值的预言(见[定位](./01-positioning));
 10. **Local First**:配置、实验、仿真、结果、分析全部本地完成,不需要账号、服务器、数据库、网络;
-11. **单核多形态**:CLI / Web / Desktop 共用同一 Rust 内核,不为任何平台重写仿真(见[产品边界](./02-scope.en))。
+11. **单核多形态**:CLI / Web / Desktop 共用同一 Rust 内核,不为任何平台重写仿真(见[产品边界](./02-scope))。
 
 ## 设计承诺
 
@@ -26,13 +26,13 @@ title: 20 · 设计原则与愿景
 
 | 承诺 | 落点 |
 | --- | --- |
-| Model 与 Scenario 分离 | [核心概念](./03-concepts.en) |
-| Experiment 一等公民 | [核心概念](./03-concepts.en) · [实验管线](./11-experiment-pipeline.en) |
-| Deterministic First | [确定性随机数](./06-deterministic-rng.en) · [测试策略](./19-testing.en) |
-| Measure Before Optimize | [路线图](./18-roadmap.en) |
-| MVP 以闭环而非功能数量验收 | [MVP](./16-mvp.en) |
-| 明确列出"不做什么" | [产品边界](./02-scope.en) |
-| 单核多形态与 core 纯净性(平台门禁) | [仿真内核](./04-kernel.en) · [技术栈](./08-tech-stack.en) |
+| Model 与 Scenario 分离 | [核心概念](./03-concepts) |
+| Experiment 一等公民 | [核心概念](./03-concepts) · [实验管线](./11-experiment-pipeline) |
+| Deterministic First | [确定性随机数](./06-deterministic-rng) · [测试策略](./19-testing) |
+| Measure Before Optimize | [路线图](./18-roadmap) |
+| MVP 以闭环而非功能数量验收 | [MVP](./16-mvp) |
+| 明确列出"不做什么" | [产品边界](./02-scope) |
+| 单核多形态与 core 纯净性(平台门禁) | [仿真内核](./04-kernel) · [技术栈](./08-tech-stack) |
 
 ## 最终产品形态
 
@@ -79,4 +79,4 @@ Combat Simulation
       → Simulation + Experiment + Measurement + Optimization
 ```
 
-每一步扩张都以[路线图](./18-roadmap.en)的验证节点为门,不以愿景为门。
+每一步扩张都以[路线图](./18-roadmap)的验证节点为门,不以愿景为门。

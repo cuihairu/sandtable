@@ -1,3 +1,9 @@
+---
+title: '21 · Real-Config Validation: The Pokémon Case'
+---
+
+[English](21-pokemon-case.en.md) | [中文](21-pokemon-case.md)
+
 # 21 · Real-Config Validation: The Pokémon Case
 
 P5c's acceptance question is: **can the public numbers of an external real game be plugged into sandtable without changing the model? And what expressiveness gaps does the integration expose?**
