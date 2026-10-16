@@ -32,6 +32,6 @@ features:
   - title: 单核三形态
     details: 同一 Rust 内核跑 CLI / Web(WASM)/ Desktop(Tauri 2)。core 可编译 wasm32 是 Phase 1 的 CI 门禁;浏览器跑小中型,桌面与 CLI 跑大型;local-first,无服务器。
 footer:
-  message: 本页为站点首页，暂无独立英文版（首页 hero 为中文文案，英文入口见 README）；docs/ 根目录其余文档均已配英文版（*.en.md），docs/guide/ 等子目录文档双语配对见根目录 todo.md。
+  message: "本页为中文首页；英文首页见 [/en](/en/)。docs/guide/ 各章与 docs/ 根目录文档均已配英文版（同目录 .en.md），英文页正文顶部有语言切换器。"
   copyright: MIT
 ---
