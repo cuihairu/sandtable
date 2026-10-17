@@ -55,7 +55,7 @@ A single run of 10k players × 30 days takes about 0.5 s (release build). The fu
 
 ## Documentation structure
 
-The original plan was a single monolithic document (archived at `docs/zh/计划-原始.md`), later split into 20 chapters, with five more chapters added for the Pokémon case study, the Web form, the genre matrix, the random-function extension and the formula-curve reference. The mapping from chapters to the original plan:
+The original plan was a single monolithic document (Chinese original archived at `docs/zh/计划-原始.md`, English rendering at `docs/计划-原始.md`), later split into 20 chapters, with five more chapters added for the Pokémon case study, the Web form, the genre matrix, the random-function extension and the formula-curve reference. The mapping from chapters to the original plan:
 
 | Chapter | Contents | Original plan |
 | --- | --- | --- |

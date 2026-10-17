@@ -135,7 +135,7 @@ Failure handling: record the step number + symptom (screenshot), go back to the 
 ## Chartered: Report / Web UI Deepening (originally Phase 7, 2026-10-08)
 
 ::: note Numbering clarification
-The original plan's ([计划-原始.md](/计划-原始.md)) Phase 7 was **Report / Web UI** (the seven items HTML Report / Dashboard / Charts / Parameter Comparison / Population / Economy / Progression), which is **not from the same numbering source** as this chapter's Phase 7 (Desktop). Desktop remains unchartered under this chapter's numbering; what this section charters are the remaining items of the original plan's Phase 7.
+The original plan's ([计划-原始.md](/计划-原始)) Phase 7 was **Report / Web UI** (the seven items HTML Report / Dashboard / Charts / Parameter Comparison / Population / Economy / Progression), which is **not from the same numbering source** as this chapter's Phase 7 (Desktop). Desktop remains unchartered under this chapter's numbering; what this section charters are the remaining items of the original plan's Phase 7.
 :::
 
 **Status reconciliation**: HTML Report and Charts landed with Phase 5 (`sandtable report`, see [data output](./09-data-output.md)); Parameter Comparison is covered by A/B and sweep adjudication. **This batch fills four gaps** (all on the CLI report side, the read-only artifacts discipline unchanged; the Web side follows up on demand per [chapter 22](./22-web.md)'s small-to-medium positioning):
