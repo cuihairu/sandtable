@@ -2,7 +2,6 @@
 title: 24 · Random Functions and Probability Systems
 ---
 
-[English](/guide/24-random-functions) | [中文](/zh/guide/24-random-functions)
 
 # Random Functions and Probability Systems
 

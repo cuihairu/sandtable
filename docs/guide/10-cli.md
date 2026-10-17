@@ -2,7 +2,6 @@
 title: 10 · CLI
 ---
 
-[English](/guide/10-cli) | [中文](/zh/guide/10-cli)
 
 # CLI
 

@@ -2,7 +2,6 @@
 title: 08 · Technology Stack
 ---
 
-[English](/guide/08-tech-stack) | [中文](/zh/guide/08-tech-stack)
 
 # Technology Stack
 

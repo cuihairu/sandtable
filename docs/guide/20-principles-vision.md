@@ -2,7 +2,6 @@
 title: 20 · Design Principles and Vision
 ---
 
-[English](/guide/20-principles-vision) | [中文](/zh/guide/20-principles-vision)
 
 # Design Principles and Vision
 

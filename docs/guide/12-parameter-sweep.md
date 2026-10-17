@@ -2,7 +2,6 @@
 title: 12 · Parameter Sweep
 ---
 
-[English](/guide/12-parameter-sweep) | [中文](/zh/guide/12-parameter-sweep)
 
 # Parameter Sweep
 

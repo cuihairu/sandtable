@@ -2,7 +2,6 @@
 title: 03 · Core Concepts
 ---
 
-[English](/guide/03-concepts) | [中文](/zh/guide/03-concepts)
 
 # Core Concepts
 

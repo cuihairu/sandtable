@@ -2,7 +2,6 @@
 title: 01 · Project Positioning
 ---
 
-[English](/guide/01-positioning) | [中文](/zh/guide/01-positioning)
 
 # Project Positioning
 

@@ -2,7 +2,6 @@
 title: 13 · KPI and Metrics
 ---
 
-[English](/guide/13-kpi-metrics) | [中文](/zh/guide/13-kpi-metrics)
 
 # KPI and Metrics
 

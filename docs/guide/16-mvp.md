@@ -2,7 +2,6 @@
 title: 16 · MVP
 ---
 
-[English](/guide/16-mvp) | [中文](/zh/guide/16-mvp)
 
 # MVP
 

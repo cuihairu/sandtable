@@ -2,7 +2,6 @@
 title: 02 · Product Boundaries
 ---
 
-[English](/guide/02-scope) | [中文](/zh/guide/02-scope)
 
 # Product Boundaries
 

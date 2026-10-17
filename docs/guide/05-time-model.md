@@ -2,7 +2,6 @@
 title: 05 · Time Model
 ---
 
-[English](/guide/05-time-model) | [中文](/zh/guide/05-time-model)
 
 # Time Model
 

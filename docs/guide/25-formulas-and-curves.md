@@ -2,7 +2,6 @@
 title: 25 · Common Functions and Curves
 ---
 
-[English](/guide/25-formulas-and-curves) | [中文](/zh/guide/25-formulas-and-curves)
 
 # Common Functions and Curves
 

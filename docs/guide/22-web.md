@@ -2,7 +2,6 @@
 title: 22 · Web
 ---
 
-[English](/guide/22-web) | [中文](/zh/guide/22-web)
 
 # 22 · Web
 

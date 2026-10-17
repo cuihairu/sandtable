@@ -2,7 +2,6 @@
 title: 15 · Balance Recommendation
 ---
 
-[English](/guide/15-recommendation) | [中文](/zh/guide/15-recommendation)
 
 # Balance Recommendation
 

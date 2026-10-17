@@ -2,7 +2,6 @@
 title: 19 · Testing Strategy
 ---
 
-[English](/guide/19-testing) | [中文](/zh/guide/19-testing)
 
 # Testing Strategy
 

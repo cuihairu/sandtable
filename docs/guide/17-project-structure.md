@@ -2,7 +2,6 @@
 title: 17 · Project Structure
 ---
 
-[English](/guide/17-project-structure) | [中文](/zh/guide/17-project-structure)
 
 # Project Structure
 

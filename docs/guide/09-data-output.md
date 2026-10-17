@@ -2,7 +2,6 @@
 title: 09 · Data Output
 ---
 
-[English](/guide/09-data-output) | [中文](/zh/guide/09-data-output)
 
 # Data Output
 

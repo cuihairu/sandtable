@@ -1,6 +1,5 @@
 # sandtable Game Engine Adapter Design
 
-[English](/engine-adapter-design) | [中文](/zh/engine-adapter-design)
 
 **Status: decided via patrol delegation and landed.** All five decision points were decided per §5.1; phases 0–2 are fully implemented in `crates/sandtable-engine` (2026-10-14): contract export + reference importer + backflow convention. Contract specification in §7.
 Supporting engineering evidence: the cross-platform CI chain is in place (2026-10-13, `desktop-package.yml` three-platform matrix actually runs the bundler), see §4.

@@ -2,7 +2,6 @@
 title: '21 · Real-Config Validation: The Pokémon Case'
 ---
 
-[English](/guide/21-pokemon-case) | [中文](/zh/guide/21-pokemon-case)
 
 # 21 · Real-Config Validation: The Pokémon Case
 

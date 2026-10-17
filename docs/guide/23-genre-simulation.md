@@ -2,7 +2,6 @@
 title: 23 · Genre × Simulation Function Catalog
 ---
 
-[English](/guide/23-genre-simulation) | [中文](/zh/guide/23-genre-simulation)
 
 # Genre × Simulation Function Catalog
 

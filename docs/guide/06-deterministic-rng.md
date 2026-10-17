@@ -2,7 +2,6 @@
 title: 06 · Deterministic RNG
 ---
 
-[English](/guide/06-deterministic-rng) | [中文](/zh/guide/06-deterministic-rng)
 
 # Deterministic RNG
 

@@ -2,7 +2,6 @@
 title: 11 · Experiment Pipeline
 ---
 
-[English](/guide/11-experiment-pipeline) | [中文](/zh/guide/11-experiment-pipeline)
 
 # Experiment Pipeline
 

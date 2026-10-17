@@ -2,7 +2,6 @@
 title: 04 · Simulation Kernel
 ---
 
-[English](/guide/04-kernel) | [中文](/zh/guide/04-kernel)
 
 # Simulation Kernel
 

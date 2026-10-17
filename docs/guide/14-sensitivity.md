@@ -2,7 +2,6 @@
 title: 14 · Sensitivity Analysis
 ---
 
-[English](/guide/14-sensitivity) | [中文](/zh/guide/14-sensitivity)
 
 # Sensitivity Analysis
 

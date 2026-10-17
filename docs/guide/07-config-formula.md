@@ -2,7 +2,6 @@
 title: 07 · Configuration and Formula Engine
 ---
 
-[English](/guide/07-config-formula) | [中文](/zh/guide/07-config-formula)
 
 # Configuration and Formula Engine
 

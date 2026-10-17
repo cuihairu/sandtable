@@ -2,7 +2,6 @@
 title: 18 · Roadmap
 ---
 
-[English](/guide/18-roadmap) | [中文](/zh/guide/18-roadmap)
 
 # Roadmap
 
