@@ -1,147 +1,147 @@
 ---
-title: 23 · 游戏类型 × 仿真函数清单
+title: 23 · Genre × Simulation Function Catalog
 ---
 
-[English](23-genre-simulation.en.md) | [中文](23-genre-simulation.md)
+[English](/guide/23-genre-simulation) | [中文](/zh/guide/23-genre-simulation)
 
-# 游戏类型 × 仿真函数清单
+# Genre × Simulation Function Catalog
 
-sandtable 是横向沙盘:内核(时间/事件/带键随机/在线聚合)与实验层(sweep / 敏感性 / 推荐 / CI95)与游戏类型无关,类型知识全部在配置里(见[宝可梦案例](./21-pokemon-case))。本页反过来做一次**纵向盘点**:按主流游戏类型整理"做数值仿真时常用的仿真函数清单",并逐项对照 sandtable 现状——哪些是通用积木(已有)、哪些经映射可表达、哪些是缺口(扩展方向)。
+sandtable is a horizontal sandbox: the kernel (time / events / keyed randomness / online aggregation) and the experiment layer (sweep / sensitivity / recommendation / CI95) are genre-agnostic, and all genre knowledge lives in the configuration (see the [Pokémon case](./21-pokemon-case.md)). This page turns the view around for a **vertical survey**: organized by mainstream genre, a "catalog of the simulation functions commonly used when doing numeric simulation", compared item by item against sandtable's current state — which are generic building blocks (already present), which can be expressed through mapping, and which are gaps (extension directions).
 
-与 [hello-game](https://github.com/cuihairu/hello-game) 的调研直接联动:其 [genre-coverage.md(玩法品类与功能组件覆盖对照)](https://github.com/cuihairu/hello-game/blob/main/docs/system/genre-coverage.md)(检索日期 2026-10-08)拉了 **21 品类 × 46 组件**的覆盖网——品类清单每行给核心循环 / 最先要求的功能组件 / 主导问题模型,从**服务端组件侧**回答"这类游戏要建哪些件";`24-game-types-architecture` 树从**架构侧**回答"怎么承载",`numerical` 树从**设计侧**回答"数值怎么定";本页从**仿真侧**回答"这类游戏的数值决策怎么在沙盘里验证后再落盘"。四视角共用同一套类型词汇,本页六族与 21 品类的映射见文末。
+This is directly linked to the research in [hello-game](https://github.com/cuihairu/hello-game): its [genre-coverage.md (coverage mapping from gameplay category to functional component)](https://github.com/cuihairu/hello-game/blob/main/docs/system/genre-coverage.md) (retrieved 2026-10-08) draws a coverage grid of **21 genres × 46 components** — each row of the genre list gives the core loop / the functional component demanded first / the dominant problem model, answering "what components does this kind of game need" from the **server-component side**; the `24-game-types-architecture` tree answers "how they are carried" from the **architecture side**; the `numerical` tree answers "how the numbers get decided" from the **design side**; this page answers "how are the numeric decisions for this kind of game validated in the sandbox and then written to disk" from the **simulation side**. The four views share one vocabulary of genres; the mapping between this page's six families and the 21 genres is at the end of the page.
 
-## 现状标记约定
+## Status marker conventions
 
-| 标记 | 含义 |
+| Marker | Meaning |
 | --- | --- |
-| ✅ 已有 | 内核 / 实验层现成,配置即可用 |
-| 🔶 可表达 | 不改模型可映射,或有明确 workaround(如名义起步等级) |
-| ⛔ 缺口 | 需要新 System / 新机制,列入扩展方向 |
+| ✅ Have | Already in the kernel / experiment layer; configuration is all it takes |
+| 🔶 Expressible | Expressible by mapping with no model change, or with a clear workaround (such as a nominal starting level) |
+| ⛔ Gap | Needs a new System / new mechanics; listed as an extension direction |
 
-## MMORPG(世界制长生命周期)
+## MMORPG (world-based, long lifecycle)
 
-典型仿真问题:产出消耗闭环是否通胀、副本难度阶梯是否卡进度、掉落期望是否兑现、分群行为差异是否可控。
+Typical simulation questions: does the output-spend closed loop inflate; does the dungeon difficulty ladder stall progress; do drop expectations pay off; are cohort behavior differences controllable.
 
-| 仿真函数 | 解决什么问题 | 典型口径 | 现状 |
+| Simulation function | What problem it solves | Typical convention | Status |
 | --- | --- | --- | --- |
-| 战斗轮期望模型 | 玩家 vs 关卡的胜负与时长 | 差值/比值伤害公式 + 命中浮动 | ✅ `combat.*` 两口径齐备:`damage_model` 差值(缺省)/ 比值(阻力 #1 根治,[宝可梦案例](./21-pokemon-case)) |
-| 难度阶梯(逐层) | 关卡曲线形状(锯齿非等比) | 逐层 HP/攻防显式表 | ✅ `dungeon.tier_table`(阻力 #3 根治) |
-| 成长曲线 | 升级节奏与练度积累 | 幂律 `xp_base·L^xp_pow` | ✅ `progression.*` |
-| 野怪练级环 | 非关卡的经验/金币来源 | 独立产出带 × 行为概率 | ✅ `model.training` + `p_training`(阻力 #4 根治,[宝可梦案例](./21-pokemon-case)L1 真起步) |
-| 经济产出-消耗-sink | 通胀与囤金 | 在线聚合 `gold_earned/spent/sink_ratio` | ✅ `economy` 聚合([KPI](./13-kpi-metrics)) |
-| 掉落表(加权) | 稀有度分布与期望产出 | 权重轮盘 / alias | ✅ R1 已落地(`model.loot.tables` + WeightedTable + disttest,见[随机函数](./24-random-functions)) |
-| 强化/升星定价链 | sink 深度与货币回收 | 等比成本链 | ✅ `upgrade_cost_*`(宝可梦案例第五条阻力的教训:须与产出联动校准) |
-| 拍卖行价格动态 | 玩家间定价均衡 | 供需弹性 / 存量博弈 | ⛔ 缺口(远期) |
-| 分群行为与会话 | 付费深度 ↔ 进度差异 | 三分群行为参数 | ✅ `behavior.*` |
-| 流失 | 卡关 / 长期留存 | 基础 + 停滞条件流失 | ✅ `churn.*` |
+| Combat-round expectation model | Win/loss and duration for player vs stage | Difference / ratio damage formula + hit variation | ✅ `combat.*` has both conventions: `damage_model` difference (default) / ratio (blocker #1 root-caused, [Pokémon case](./21-pokemon-case.md)) |
+| Difficulty ladder (layer by layer) | Stage curve shape (sawtooth, not proportional) | Explicit per-layer HP / attack / defense table | ✅ `dungeon.tier_table` (blocker #3 root-caused) |
+| Growth curve | Level-up pace and training accumulation | Power law `xp_base·L^xp_pow` | ✅ `progression.*` |
+| Wild-monster training loop | Experience / gold source outside stages | Separate output band × behavior probability | ✅ `model.training` + `p_training` (blocker #4 root-caused, [Pokémon case](./21-pokemon-case.md) a true L1 start) |
+| Economy output / spend / sink | Inflation and gold hoarding | Online aggregation `gold_earned/spent/sink_ratio` | ✅ `economy` aggregation ([KPI](./13-kpi-metrics.md)) |
+| Loot tables (weighted) | Rarity distribution and expected output | Weighted roulette / alias | ✅ R1 has landed (`model.loot.tables` + WeightedTable + disttest, see [Random functions](./24-random-functions.md)) |
+| Upgrade / star-rank pricing chain | Sink depth and currency recovery | Proportional cost chain | ✅ `upgrade_cost_*` (the lesson of blocker #5 in the Pokémon case: it must be calibrated in coupling with output) |
+| Auction-house price dynamics | Pricing equilibrium between players | Supply-demand elasticity / stock-based game | ⛔ Gap (long term) |
+| Cohort behavior and sessions | Spending depth ↔ progress differences | Three-cohort behavior parameters | ✅ `behavior.*` |
+| Churn | Being stuck / long-term retention | Base churn + stall-condition churn | ✅ `churn.*` |
 
-架构侧对应:世界制长生命周期、状态服务与持久化分层见 hello-game `24-game-types-architecture`(单服独立 / 世界制 / 数据制三章);经济循环设计侧见其 `numerical/04`。
+Architecture-side counterpart: the world-based long lifecycle and the layering of state services and persistence are in hello-game `24-game-types-architecture` (three chapters: standalone server / world-based / data-based); on the design side, the economy loop is in its `numerical/04`.
 
-## FPS / MOBA(房间制强实时)
+## FPS / MOBA (room-based, strongly real-time)
 
-典型仿真问题:TTK 手感、枪械/英雄平衡、匹配质量与段位分布演化、局内经济曲线。
+Typical simulation questions: TTK feel, weapon / hero balance, matchmaking quality and how the rank distribution evolves, in-match economy curves.
 
-| 仿真函数 | 解决什么问题 | 典型口径 | 现状 |
+| Simulation function | What problem it solves | Typical convention | Status |
 | --- | --- | --- | --- |
-| TTK / 命中-伤害模型 | 交火节奏与平衡 | 命中概率 × 单发伤害 × 射速;期望轮数即 sandtable 战斗轮 | ✅ 骨架同构(`combat.*` 期望轮数即 TTK);弹道/距离衰减 🔶(经公式槽) |
-| 英雄/枪械平衡扫描 | 参数扰动对胜率的影响 | sweep + 敏感性 + 推荐 | ✅ 全链([12](./12-parameter-sweep)/[14](./14-sensitivity)/[15](./15-recommendation)) |
-| 技能评分与匹配 | 分段收敛速度与等待时长 | ELO / Glicko-2 | ⛔ 缺口(评分器本身是纯算法,仿真的是"分数分布随对局演化",需对局生成 System) |
-| 段位分布演化 | 赛季重置 / 通缩通胀 | 马尔可夫链 / 多 replicate 对局流 | ⛔ 缺口(依赖评分器) |
-| 局内经济(击杀奖励) | 落后补偿 / 滚雪球 | 事件驱动金流 | 🔶 事件内核已有,经济 System 需按场景写 |
-| 网络条件模拟 | 帧同步 vs 状态同步的表现 | 延迟/丢包注入 | ⛔ 属架构侧仿真(hello-game `24-game-types-architecture/04-network` 的领地),sandtable 不做 |
+| TTK / hit-damage model | Firefight pace and balance | Hit probability × per-shot damage × rate of fire; the expected round count is sandtable's combat round | ✅ The skeleton is isomorphic (`combat.*` expected round count = TTK); ballistics / distance falloff 🔶 (via formula slots) |
+| Hero / weapon balance sweep | The effect of parameter perturbation on win rate | sweep + sensitivity + recommendation | ✅ The full chain ([12](./12-parameter-sweep.md)/[14](./14-sensitivity.md)/[15](./15-recommendation.md)) |
+| Skill rating and matchmaking | Segment convergence speed and wait time | ELO / Glicko-2 | ⛔ Gap (the rating algorithm is pure computation; what you want to simulate is "the score distribution evolving with matches", which needs a match-generation System) |
+| Rank distribution evolution | Season reset / inflationary deflation | Markov chain / multi-replicate match streams | ⛔ Gap (depends on the rating algorithm) |
+| In-match economy (kill rewards) | Comeback compensation / snowballing | Event-driven gold flow | 🔶 The event kernel exists; the economy System must be written per scenario |
+| Network condition simulation | Lockstep vs state-sync behavior | Latency / packet-loss injection | ⛔ This belongs to architecture-side simulation (the territory of hello-game `24-game-types-architecture/04-network`); sandtable does not do it |
 
-评级算法权威口径:Glicko 与 Glicko-2 原文由发明者 [Mark E. Glickman 公开](http://www.glicko.net/glicko.html)。
+Authoritative reference for the rating algorithms: the original papers on Glicko and Glicko-2 are [published by the inventor Mark E. Glickman](http://www.glicko.net/glicko.html).
 
-## 卡牌 / 自走棋(含保底商业化)
+## Card games / auto-battlers (including pity-based monetization)
 
-典型仿真问题:抽卡期望与方差、卡组关键张上手率、天梯 meta 循环、赛季通行证节奏。
+Typical simulation questions: gacha expectation and variance, the rate at which key deck cards come into hand, the ladder meta cycle, season-pass pacing.
 
-| 仿真函数 | 解决什么问题 | 典型口径 | 现状 |
+| Simulation function | What problem it solves | Typical convention | Status |
 | --- | --- | --- | --- |
-| 抽卡保底(硬/软) | 期望抽数与最坏情况兜底 | 截断 / 递增概率状态机 | ✅ R2 已落地(`model.gacha` 硬/软保底状态机 + 闭式对账,见[随机函数](./24-random-functions)) |
-| 卡组抽样 | 关键张上手率、起手调度 | 超几何分布 / 无放回抽样 | ✅ R1 已落地(`rng::shuffle` / `sample` / `sample_weighted`,见[随机函数](./24-random-functions)) |
-| 对战胜率矩阵 | meta 相性(猜拳循环) | 口径矩阵 + 混合策略 | 🔶 单场胜率可表达(战斗模型),矩阵演化需对局生成层 |
-| 天梯分布 | 段位结构健康度 | 同 FPS 匹配条目 | ⛔ 同上 |
-| 通行证 / 赛季节奏 | 每日任务产出 vs 通行证定价 | 产出曲线 + 流失耦合 | ✅ 产出侧可表达(经济聚合),任务系统 🔶 |
-| 商业化数值 | 首充 / 礼包性价比 | 期望价格模型 | 设计侧见 hello-game `numerical/06`;仿真侧复用经济聚合 🔶 |
+| Gacha pity (hard / soft) | Expected number of pulls and a worst-case floor | Truncation / increasing-probability state machine | ✅ R2 has landed (`model.gacha` hard/soft pity state machine + closed-form reconciliation, see [Random functions](./24-random-functions.md)) |
+| Deck sampling | Rate of getting key cards, opening-hand mulligan | Hypergeometric distribution / sampling without replacement | ✅ R1 has landed (`rng::shuffle` / `sample` / `sample_weighted`, see [Random functions](./24-random-functions.md)) |
+| Matchup win-rate matrix | Meta counter relationships (rock-paper-scissors cycles) | A matrix of conventions + mixed strategies | 🔶 Single-match win rate is expressible (the combat model); matrix evolution needs a match-generation layer |
+| Ladder distribution | Health of the rank structure | Same as the FPS matchmaking entry | ⛔ Same |
+| Season pass / season pacing | Daily quest output vs pass pricing | Output curve + churn coupling | ✅ The output side is expressible (economy aggregation), the quest system 🔶 |
+| Monetization numbers | First-purchase bonus / bundle value for money | Expected price model | On the design side see hello-game `numerical/06`; on the simulation side reuse economy aggregation 🔶 |
 
-设计侧口径(期望 = Σ 结果×概率、硬保底把 50 抽期望前移到约 31.6 抽的可复算账、软保底递增概率的平滑版)全部引自 hello-game [numerical/05 掉落与概率设计](https://github.com/cuihairu/hello-game/blob/main/docs/numerical/05.md)——sandtable 仿真层的价值是把这类手算账升级为**万次抽样 + 置信区间**的机器验收(见 [24 章](./24-random-functions)保底节)。
+The design-side conventions (expectation = Σ result × probability, the recomputable arithmetic by which hard pity moves the 50-pull expectation forward to about 31.6 pulls, the smoothed version of soft pity's increasing probability) are all quoted from hello-game [numerical/05 Loot and probability design](https://github.com/cuihairu/hello-game/blob/main/docs/numerical/05.md) — the value of sandtable's simulation layer is upgrading this kind of hand-computed arithmetic into machine acceptance by **ten thousand samples + confidence intervals** (see the pity section of [chapter 24](./24-random-functions.md)).
 
-## SLG / 策略(行军与聚合战斗)
+## SLG / strategy (marches and aggregated combat)
 
-典型仿真问题:资源产出与加速消耗、行军/集结时间窗、聚合战斗公式、联盟力量聚合。
+Typical simulation questions: resource output rate and speed-ups, march / rally time windows, aggregated combat formulas, alliance power aggregation.
 
-| 仿真函数 | 解决什么问题 | 典型口径 | 现状 |
+| Simulation function | What problem it solves | Typical convention | Status |
 | --- | --- | --- | --- |
-| 资源产出率与加速 | 产出-消耗闭环 | 速率模型 + 货币折算 | ✅ 经济聚合同构(产出/消耗/存量) |
-| 行军 / 集结时间窗 | 地图节奏与防偷袭 | 距离/速度/加成 | ⛔ 缺口(需地图/距离模型;sandtable 分层时间模型是"天"粒度,分钟级行军属扩展) |
-| 聚合战斗 | 多队会战交换比 | 战力比值 + 加权 Buff | 🔶 单场交换比两口径可表达,聚合语义(多单位合并)⛔ |
-| 伤兵 / 募兵循环 | 战损恢复节奏 | 队列 + 速率 | 🔶 事件内核可写 System,无现成 |
-| 联盟聚合 | 集体行动收益 | 聚合函数 + 贡献分 | ⛔ 缺口 |
-| 领地 / 天气等环境参数 | 战略层变量 | 状态修正表 | 🔶 注册表数值参数可承载,系统逻辑需扩展 |
+| Resource output rate and speed-ups | The output-spend closed loop | Rate model + currency conversion | ✅ Isomorphic with economy aggregation (output / spend / stock) |
+| March / rally time windows | Map pacing and preventing sneak attacks | Distance / speed / bonuses | ⛔ Gap (needs a map / distance model; sandtable's layered time model is at "day" granularity, and minute-level marches belong to the extension) |
+| Aggregated combat | The exchange ratio in a multi-army battle | Power ratios + weighted buffs | 🔶 The exchange ratio of a single battle is expressible in both conventions; the aggregation semantics (merging multiple units) ⛔ |
+| Casualty / recruitment loop | The recovery pace after battle losses | Queues + rates | 🔶 The event kernel can host a System, but none exists off the shelf |
+| Alliance aggregation | The payoff of collective action | Aggregation function + contribution score | ⛔ Gap |
+| Territory / weather and other environmental parameters | Strategic-layer variables | State modifier table | 🔶 Registry numeric parameters can carry them, but the system logic needs an extension |
 
-架构侧(全服/跨服、分服运营)对应 hello-game `24-game-types-architecture` 的规模分类三章;其 `numerical/02` 的伤害公式族选型(减法/乘法/混合)与本仓阻力清单 #1(差值 vs 比值)是同一个问题在两个侧面的表述——后者已以 `damage_model` 双口径配置根治(2026-10-09,见[宝可梦案例](./21-pokemon-case)阻力清单)。
+The architecture side (all-server / cross-server, sharded-server operations) corresponds to the three scale-classification chapters of hello-game `24-game-types-architecture`; its `numerical/02` choice among damage formula families (subtractive / multiplicative / hybrid) and this repo's blocker #1 (difference vs ratio) are the same problem stated from two sides — the latter has been root-caused with the dual-convention `damage_model` configuration (2026-10-09, see the blocker list in the [Pokémon case](./21-pokemon-case.md)).
 
-## 放置 / Idle(离线增长)
+## Idle games (offline growth)
 
-典型仿真问题:幂律成长的手感曲线、离线收益上限、转生重置后的再成长速度、数值域溢出。
+Typical simulation questions: the feel curve of power-law growth, offline earnings caps, the speed of re-growth after a prestige reset, numeric-domain overflow.
 
-| 仿真函数 | 解决什么问题 | 典型口径 | 现状 |
+| Simulation function | What problem it solves | Typical convention | Status |
 | --- | --- | --- | --- |
-| 幂律 / 指数成长 | "数值变大"的节奏控制 | `base·L^pow`、`a·b^k` | ✅ `progression.*` 即幂律拟合形态 |
-| 离线收益结算 | 回流奖励与挂机效率 | 时长 × 速率 × 折损系数 | 🔶 天粒度仿真天然表达"离线 N 天",分钟级精度 ⛔ |
-| 转生(prestige)循环 | 重置换永久加成的最优节奏 | 重置点优化(边际收益) | ⛔ 缺口(重置语义不在模型里) |
-| 广告 / 倍速收益 | 变现点对节奏的扰动 | 速率倍率事件 | 🔶 事件 System 可写 |
-| 大数与数值溢出 | 10^30 级别的表示 | 大数库 / 对数域 | ⛔ 缺口(核心 f64 域,见[技术栈](./08-tech-stack);放置类若成案例再议) |
+| Power-law / exponential growth | Pacing control of "the numbers getting bigger" | `base·L^pow`, `a·b^k` | ✅ `progression.*` is exactly the power-law fit form |
+| Offline earnings settlement | Return-player rewards and idle efficiency | Duration × rate × decay factor | 🔶 Day-granularity simulation naturally expresses "N days offline"; minute-level precision ⛔ |
+| Prestige loop | The optimal cadence for trading a reset for permanent bonuses | Reset-point optimization (marginal return) | ⛔ Gap (reset semantics are not in the model) |
+| Ad / speed-up rewards | How monetization points disturb the pace | Rate-multiplier events | 🔶 Writable as an event System |
+| Big numbers and numeric overflow | Representation at the 10^30 level | Big-number library / logarithmic domain | ⛔ Gap (the core f64 domain, see [Tech stack](./08-tech-stack.md); revisit if an idle game becomes a case) |
 
-idle 数值设计的系统性参考资料:Kongregate 开发者博客 "The Math of Idle Games" 系列与 GDC 同主题演讲(Anthony Pecorella)是社区公认入口(链接稳定性差,按标题检索);hello-game `24-game-types-architecture` 弱实时/异步一节覆盖其架构面。
+Systematic references for idle numeric design: the Kongregate developer blog "The Math of Idle Games" series and the GDC talk on the same topic (Anthony Pecorella) are the community-recognized entry points (link stability is poor — search by title); the weak real-time / asynchronous section of hello-game `24-game-types-architecture` covers its architecture side.
 
-## 模拟经营(产线与供需)
+## Simulation / management games (production lines and supply-demand)
 
-典型仿真问题:产线吞吐瓶颈、供需价格均衡、员工/设施成长、任务奖励节奏。
+Typical simulation questions: production-line throughput bottlenecks, supply-demand price equilibrium, staff / facility growth, quest reward pacing.
 
-| 仿真函数 | 解决什么问题 | 典型口径 | 现状 |
+| Simulation function | What problem it solves | Typical convention | Status |
 | --- | --- | --- | --- |
-| 产线吞吐 | 瓶颈工序与扩产节奏 | 排队论 / 速率链 | 🔶 事件内核(队列原语已有)可建产线 System,无现成 |
-| 供需价格弹性 | 动态定价是否收敛 | 库存模型 / 蛛网模型 | ⛔ 缺口 |
-| NPC 顾客行为 | 客流与消费分布 | 到达过程(Poisson)+ 偏好 | ⛔ 到达过程缺(正态已随 24 章 R3 落地;泊松未立项——24 章能力清单止于 R3,随机原语的后续扩展挂根目录 todo.md「随机函数扩展后续」,候选登记见该页分期计划引言末段) |
-| 设施 / 员工成长 | 投资回报周期 | 成本-产出回收期 | ✅ 强化链 + 经济聚合同构 |
+| Production-line throughput | The bottleneck stage and the pace of capacity expansion | Queueing theory / rate chain | 🔶 The event kernel (queue primitives already exist) can host a production-line System, but none exists off the shelf |
+| Supply-demand price elasticity | Whether dynamic pricing converges | Inventory model / cobweb model | ⛔ Gap |
+| NPC customer behavior | Foot traffic and spending distribution | Arrival process (Poisson) + preferences | ⛔ The arrival process is missing (the normal distribution has landed with chapter 24's R3; Poisson is not chartered — chapter 24's capability list stops at R3, and the follow-up extensions of the random primitives hang off the root todo.md entry "Follow-up random function extensions"; the candidate is registered in the closing paragraph of the introduction to that page's phasing plan) |
+| Facility / staff growth | The payback period on investment | Cost-output payback period | ✅ Isomorphic with the upgrade chain + economy aggregation |
 
-## 横向归纳:通用积木与类型特定
+## Cross-cutting summary: generic building blocks vs genre-specific
 
-把六张表去重,结论清晰:
+Deduplicating the six tables gives a clear conclusion:
 
-| 层 | 内容 | sandtable 定位 |
+| Layer | Contents | sandtable positioning |
 | --- | --- | --- |
-| 通用积木 | 战斗轮期望、成长曲线、经济产出/消耗/sink、分群行为、流失、带键随机、replicates/CI95、sweep/敏感性/推荐 | **内核 + 实验层,全部类型共享**(已落地) |
-| 半通用 | 掉落表/保底/洗牌、难度阶梯、聚合战斗、离线结算 | 随机原语已齐([24 章](./24-random-functions) 7 项全部落地),新原语按需挂 todo.md;其余经映射或扩展 System 🔶 |
-| 类型特定 | 匹配/天梯、行军/集结、拍卖行/供需、转生、产线 | 各类型一个 System 扩展([复杂行为扩展接口](./07-config-formula)),不进内核;随机原语侧对应 24 章已落地清单与 todo.md 挂闸项 |
+| Generic building blocks | Combat-round expectation, growth curves, economy output / spend / sink, cohort behavior, churn, keyed randomness, replicates / CI95, sweep / sensitivity / recommendation | **Kernel + experiment layer, shared by every genre** (landed) |
+| Semi-generic | Loot tables / pity / shuffle, difficulty ladders, aggregated combat, offline settlement | The random primitives are complete (all 7 items of [chapter 24](./24-random-functions.md) have landed); new primitives hang off todo.md as needed; the rest go through mapping or an extended System 🔶 |
+| Genre-specific | Matchmaking / ladder, march / rally, auction house / supply-demand, prestige, production lines | One System extension per genre ([Complex behavior extension interface](./07-config-formula.md)); not part of the kernel; on the random-primitive side they correspond to chapter 24's landed list and the gated entries in todo.md |
 
-这正是 sandtable 选"横向沙盘"的立论:**六类游戏共享约六成仿真需求,共享部分做成内核,差异部分做成插件**——清单的价值在于把"六成"和"四成"逐项点清,避免给内核塞类型逻辑。
+This is exactly the argument behind sandtable's choice of a "horizontal sandbox": **six genres of game share about sixty percent of their simulation needs; the shared part becomes the kernel and the differing part becomes plugins** — the value of this catalog is pinning down "sixty percent" and "forty percent" item by item, so that genre logic never gets stuffed into the kernel.
 
-## 与 hello-game 21 品类的映射
+## Mapping to hello-game's 21 genres
 
-本页六族是按"仿真函数族"归并的(同族函数与口径基本共用),对应 genre-coverage 品类清单如下;六族各表的"典型仿真问题"行与那边品类行的"核心循环 / 主导问题模型"列对读:
+This page's six families are grouped by "simulation function family" (functions and conventions within a family are largely shared), and map onto the genre list in genre-coverage as follows; read the "typical simulation questions" row of each of the six families against the "core loop / dominant problem model" columns of the genre rows there:
 
-| 本页六族 | genre-coverage 品类 |
+| This page's six families | genre-coverage genres |
 | --- | --- |
-| MMORPG | MMORPG 与大世界 |
-| FPS / MOBA | MOBA;FPS / TPS 与战术射击 |
-| 卡牌 / 自走棋 | 卡牌与 CCG;自走棋(回合制 RPG 与战棋邻接) |
-| SLG / 策略 | SLG 与 4X 赛季沙盘 |
-| 放置 / Idle | 放置与挂机养成 |
-| 模拟经营 | 模拟经营与生活 |
+| MMORPG | MMORPG and open worlds |
+| FPS / MOBA | MOBA; FPS / TPS and tactical shooters |
+| Card games / auto-battlers | Card games and CCGs; auto-battlers (adjacent to turn-based RPG and wargames) |
+| SLG / strategy | SLG and 4X season sandboxes |
+| Idle games | Idle games and afk progression |
+| Simulation / management games | Simulation / management and life sims |
 
-其余品类(棋牌对局、派对、三消、音乐节奏、格斗、竞速体育、RTS、塔防、ARPG、生存建造、Roguelike、UGC)的仿真诉求大体是六族函数的子集或组合(如棋牌=洗牌/无放回抽样、ARPG=战斗轮+掉落表+逐层表),需要时按同一表式增族,不预设。
+The simulation demands of the remaining genres (card & board matches, party games, match-three, music rhythm, fighting, racing sports, RTS, tower defense, ARPG, survival building, roguelike, UGC) are largely subsets or combinations of the six families' functions (card & board = shuffle / sampling without replacement; ARPG = combat rounds + loot table + layer-by-layer table); add families in the same table format when needed, without pre-empting it.
 
-另注意两条缺口清单**不同轴**:genre-coverage 的 11 缺口是服务端**组件面**(任务、成就、强化升星、战令……),本页 ⛔ 是**仿真函数面**(抽卡保底、匹配评分、供需均衡……)——组件缺口由那边树补篇解决,仿真缺口由本仓扩展分期解决,不互指。
+Also note that the two gap lists sit on **different axes**: the 11 gaps in genre-coverage are on the server **component side** (quests, achievements, upgrade / star rank, battle pass, …), while the ⛔ marks on this page are on the **simulation-function side** (gacha pity, matchmaking rating, supply-demand equilibrium, …) — component gaps are solved by supplementary chapters on that tree, simulation gaps are solved by this repo's extension phases; the two do not point at each other.
 
-## 来源与分级
+## Sources and grading
 
-| 级别 | 内容 | 来源 |
+| Level | Contents | Source |
 | --- | --- | --- |
-| 本仓(公式) | 现状列的全部 ✅/🔶 判定 | 本 docs 04–15、21 章与仓库代码 |
-| 交叉引用 | 品类词汇与品类清单基准(21 类 × 46 组件,六族映射)、设计侧口径(期望/保底/公式族)、架构侧对应 | hello-game [genre-coverage.md](https://github.com/cuihairu/hello-game/blob/main/docs/system/genre-coverage.md)、`24-game-types-architecture` 树与 `numerical` 树 |
-| 外部(算法) | Glicko/Glicko-2 原文 | [glicko.net(Mark E. Glickman)](http://www.glicko.net/glicko.html) |
-| 外部(综述) | idle 数学设计资料 | "The Math of Idle Games" 系列(Kongregate 博客 / GDC,Anthony Pecorella;按标题检索) |
-| 组织方式 | 类型分组、"六成/四成"归纳、清单表结构 | 本页作者综合,非行业标准 |
+| This repo (formulas) | Every ✅/🔶 verdict in the status column | Chapters 04–15 and 21 of these docs, plus the repo code |
+| Cross-reference | Genre vocabulary and the genre-list baseline (21 genres × 46 components, the six-family mapping), design-side conventions (expectation / pity / formula families), architecture-side counterparts | hello-game [genre-coverage.md](https://github.com/cuihairu/hello-game/blob/main/docs/system/genre-coverage.md), the `24-game-types-architecture` tree and the `numerical` tree |
+| External (algorithms) | The original Glicko / Glicko-2 papers | [glicko.net (Mark E. Glickman)](http://www.glicko.net/glicko.html) |
+| External (survey) | Idle math design material | The "The Math of Idle Games" series (Kongregate blog / GDC, Anthony Pecorella; search by title) |
+| Organization | Genre grouping, the "sixty / forty percent" summary, the catalog's table structure | Synthesized by this page's author; not an industry standard |

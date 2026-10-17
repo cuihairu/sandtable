@@ -1,18 +1,18 @@
 ---
-title: 01 · 项目定位
+title: 01 · Project Positioning
 ---
 
-[English](01-positioning.en.md) | [中文](01-positioning.md)
+[English](/guide/01-positioning) | [中文](/zh/guide/01-positioning)
 
-# 项目定位
+# Project Positioning
 
 > **Sandtable —— A configuration-driven simulation and experimentation framework for game systems.**
 >
-> 中文定位:**面向游戏系统的配置驱动仿真与实验框架 / 游戏数字沙盘**。
+> Chinese positioning: **面向游戏系统的配置驱动仿真与实验框架 / 游戏数字沙盘**.
 
-## 核心问题
+## The Core Question
 
-Sandtable 不是单纯的战斗模拟器,也不是单纯的经济流图工具。它提供一个可以把游戏系统放进"数字沙盘"中长期推演的框架:
+Sandtable is neither a pure combat simulator nor a pure economy-flow tool. It provides a framework for dropping game systems into a "digital sandtable" and running them forward over the long term:
 
 ```text
 Game Configuration → Game Model → Players / Actors
@@ -21,42 +21,42 @@ Game Configuration → Game Model → Players / Actors
 → Parameter Analysis / Optimization → Balance Recommendation
 ```
 
-它要回答的问题是:
+The question it answers:
 
-> 如果调整某个游戏参数,让大量不同类型的玩家运行 7 天、30 天甚至更长时间,整个游戏系统最终会发生什么变化?
+> If a game parameter is adjusted, and a large population of different player types runs for 7 days, 30 days, or longer, what ultimately happens to the whole game system?
 
-典型问题包括:
+Typical questions include:
 
-- 某角色攻击力从 100 调整到 95 / 105 后,胜率如何变化?
-- 掉落金币增加 10% 后,30 天经济会不会通胀?
-- 升级成本曲线变化后,玩家第 7 / 14 / 30 天的战力分布如何变化?
-- Casual / Core / Whale 玩家是否出现明显不同的成长路径?
-- 哪些参数对目标 KPI 最敏感?
-- 在满足多个 KPI 约束的前提下,哪些参数组合更合理?
+- After a character's attack is changed from 100 to 95 / 105, how does the win rate move?
+- After gold drops increase by 10%, does the economy inflate over 30 days?
+- After the level-up cost curve changes, how do players' power distributions on day 7 / 14 / 30 shift?
+- Do Casual / Core / Whale players develop clearly different progression paths?
+- Which parameters are most sensitive with respect to the target KPIs?
+- Subject to several KPI constraints at once, which parameter combinations are more reasonable?
 
-## 建模假设
+## Modeling Assumption
 
-::: warning 最大建模假设,决定整体架构
-MVP 阶段,玩家之间**相互独立**:
+::: warning The largest modeling assumption; it decides the overall architecture
+In the MVP phase, players are **mutually independent**:
 
-1. **只有 PvE 内容**——战斗对象是怪物,不是其他玩家;
-2. **没有市场、拍卖行、公会等玩家间交互**;
-3. **经济指标是聚合量**——通胀等指标只是全体玩家资源产出与消耗的聚合统计,不存在玩家间的资源转移。
+1. **PvE content only** — combat opponents are monsters, not other players;
+2. **No inter-player interaction** such as markets, auctions, or guilds;
+3. **Economy metrics are aggregates** — inflation and the like are only aggregate statistics of all players' resource output and spend, with no resource transfer between players.
 :::
 
-这条假设之所以最重要,是因为它是并行架构的前提:玩家彼此独立,才能按玩家切分并行推进;一旦引入市场或 PvP,玩家状态互相依赖,就必须换一种架构(按事件全局排序),两者不可混做。计划中所有"10,000 玩家并行运行"的表述,均以此为前提。
+This assumption matters most because it is the prerequisite for the parallel architecture: players independent of each other can be split and advanced in parallel per player. Once markets or PvP are introduced, player states depend on one another and a different architecture (global ordering by event) is required — the two cannot be mixed. Every "10,000 players run in parallel" statement in the plan rests on this assumption.
 
-若未来要支持玩家间交互,应作为独立阶段重新设计,而不是在 MVP 上打补丁。
+If inter-player interaction is needed later, it should be designed as a separate phase rather than patched onto the MVP.
 
-## 立场:相对比较,而非绝对预测
+## Position: Relative Comparison, Not Absolute Prediction
 
-玩家行为模型中的概率(登录概率、副本概率、升级概率)是人为设定的,不是从真实数据拟合的。因此:
+The probabilities in the player behavior model (login probability, dungeon probability, level-up probability) are set by hand, not fitted from real data. Therefore:
 
-- 仿真输出的**绝对数值不可信**——"第 7 天平均战力 12,357"里的 12,357 没有现实含义;
-- 仿真输出的**相对差异有价值**——同一行为模型下,参数 A 与参数 B 的差值(ΔD7 Power、ΔWinRate)反映的是参数本身的效应。
+- **Absolute numbers out of the simulation are not trustworthy** — the 12,357 in "average day-7 power 12,357" carries no real-world meaning;
+- **Relative differences are valuable** — under the same behavior model, the delta between parameter A and parameter B (ΔD7 Power, ΔWinRate) reflects the parameter's own effect.
 
-Sandtable 的产品定位是**辅助相对比较与平衡探索**,不是预测上线后真实玩家的行为。MVP 实验使用 ΔD7 Power 这类差值指标,正是基于这一定位。
+Sandtable's product position is **assisting relative comparison and balance exploration**, not predicting the behavior of real players after launch. The MVP experiments use delta metrics like ΔD7 Power for exactly this reason.
 
-## 文档导读
+## Reading Guide
 
-本站共 25 章:[核心概念](./03-concepts)与[仿真内核](./04-kernel)定义"仿真什么";[时间模型](./05-time-model)与[确定性随机数](./06-deterministic-rng)定义"如何可复现地推进";[实验管线](./11-experiment-pipeline)到[平衡推荐](./15-recommendation)定义"如何做实验并得出结论";[MVP](./16-mvp)与[路线图](./18-roadmap)定义"先做什么、后做什么"。
+This site has 25 chapters: [Core concepts](./03-concepts.md) and the [Simulation kernel](./04-kernel.md) define "what is simulated"; the [Time model](./05-time-model.md) and [Deterministic RNG](./06-deterministic-rng.md) define "how to advance it reproducibly"; [Experiment pipeline](./11-experiment-pipeline.md) through [Balance recommendation](./15-recommendation.md) define "how to run experiments and draw conclusions"; the [MVP](./16-mvp.md) and the [Roadmap](./18-roadmap.md) define "what comes first and what comes later".

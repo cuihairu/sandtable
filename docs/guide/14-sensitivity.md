@@ -1,36 +1,36 @@
 ---
-title: 14 · 敏感性分析
+title: 14 · Sensitivity Analysis
 ---
 
-[English](14-sensitivity.en.md) | [中文](14-sensitivity.md)
+[English](/guide/14-sensitivity) | [中文](/zh/guide/14-sensitivity)
 
-# 敏感性分析
+# Sensitivity Analysis
 
-敏感性分析回答:哪些参数真正值得调整。
+Sensitivity analysis answers: which parameters are actually worth adjusting.
 
-## 方法选定:MVP 用 OAT 弹性
+## Method choice: the MVP uses OAT elasticity
 
-::: tip 决策
-参数重要度必须绑定方法才有意义("0.72 是什么的 0.72?")。**MVP 选定 One-at-a-time(OAT)弹性**;标准化回归、Morris、Sobol 作为升级路径按需引入(见下文)。
+::: tip Decision
+A parameter-importance number only means something when it is bound to a method ("0.72 of what?"). **The MVP picks One-at-a-time (OAT) elasticity**; standardized regression, Morris, and Sobol join later as upgrade paths on demand (below).
 :::
 
-### 定义
+### Definition
 
-对基线参数 p₀ 与指标 Y,取相对步长 δ(默认 5%),中心差分:
+For baseline parameter p₀ and metric Y, take a relative step δ (default 5%) and central-difference:
 
 ```text
-弹性 E(p → Y) = (∂Y / ∂p) · (p₀ / Y₀) ≈ [Y(p₀+δp₀) − Y(p₀−δp₀)] / (2δ · Y₀)
+elasticity E(p → Y) = (∂Y / ∂p) · (p₀ / Y₀) ≈ [Y(p₀+δp₀) − Y(p₀−δp₀)] / (2δ · Y₀)
 ```
 
-含义:**p 变化 1%,Y 变化约 E%**,无量纲,不同量纲的参数与指标之间可以直接比较。
+Meaning: **p changing by 1% moves Y by roughly E%** — dimensionless, so parameters and metrics of different units compare directly.
 
-### 数据来源
+### Data source
 
-弹性直接从 [Grid 扫描](./12-parameter-sweep)数据中提取(基线邻域格点),**零额外仿真成本**。这就是 MVP 选 OAT 的原因:扫描本来就要跑。
+Elasticity is extracted directly from [Grid sweep](./12-parameter-sweep.md) data (grid points in the baseline's neighborhood) at **zero extra simulation cost**. That is exactly why the MVP picked OAT: the sweep runs anyway.
 
-### 输出形式
+### Output form
 
-重要度针对**单个指标**定义,输出"参数 × 指标"矩阵,不做全局单一排序:
+Importance is defined **per metric**; the output is a "parameters × metrics" matrix, not one global ranking:
 
 ```text
 E(→ win_rate)      E(→ day_7_power)    E(→ inflation)
@@ -40,19 +40,19 @@ gold.reward           0.2               0.5               2.1
 upgrade_cost          0.1               0.4               0.3
 ```
 
-对某个指标取 |E| 排序,即该指标下的"参数值得调整程度"。弹性数值配合[置信区间](./13-kpi-metrics)呈现:区间跨零的弹性标注为"不显著"。
+Sorting by |E| for a given metric yields that metric's "how much each parameter is worth adjusting". Elasticity values are presented together with [confidence intervals](./13-kpi-metrics.md): an elasticity whose interval spans zero is marked "not significant".
 
-## 升级路径
+## Upgrade paths
 
-| 方法 | 适用 | 引入时机 |
+| Method | Fits | When |
 | --- | --- | --- |
-| OAT 弹性 | 基线邻域、参数少、已有网格数据 | **MVP** |
-| 标准化回归系数 | 需要全局线性近似,配随机采样设计 | Phase 4 可选 |
-| Morris | 参数多、需筛选重要子集 | 参数 > 15 时评估 |
-| Sobol | 方差分解、交互作用定量 | 明确需求后 |
+| OAT elasticity | Baseline neighborhood, few parameters, grid data already at hand | **MVP** |
+| Standardized regression coefficients | When a global linear approximation is wanted, paired with random-sampling designs | Phase 4, optional |
+| Morris | Many parameters; screening for an important subset | Evaluate when parameters > 15 |
+| Sobol | Variance decomposition; quantifying interactions | After a clear need arises |
 
-## 局限(写明,不掩盖)
+## Limitations (stated, not hidden)
 
-- **OAT 看不到交互作用**:两个参数各自弹性小、组合效应大的情况会漏报;发现疑似交互时升级到 Morris / Sobol;
-- **局部有效**:弹性只在基线点邻域成立,远离基线的结论不可外推;
-- **指标绑定**:不存在"全局重要度",换指标重算。
+- **OAT cannot see interactions**: two parameters with small individual elasticities but a large joint effect will be missed; on suspected interactions, upgrade to Morris / Sobol;
+- **Locally valid**: elasticity holds only near the baseline point; conclusions far from the baseline cannot be extrapolated;
+- **Metric-bound**: there is no "global importance" — switch the metric and recompute.

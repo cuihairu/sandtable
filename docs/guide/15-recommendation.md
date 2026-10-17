@@ -1,14 +1,14 @@
 ---
-title: 15 · 平衡推荐
+title: 15 · Balance Recommendation
 ---
 
-[English](15-recommendation.en.md) | [中文](15-recommendation.md)
+[English](/guide/15-recommendation) | [中文](/zh/guide/15-recommendation)
 
-# 平衡推荐
+# Balance Recommendation
 
-从输出"仿真结果"升级到输出"推荐"。第一阶段不涉及寻优算法,只用 [Sweep](./12-parameter-sweep) + [约束判定](./13-kpi-metrics) + [敏感性](./14-sensitivity)。
+An upgrade from outputting "simulation results" to outputting "recommendations". Phase 1 involves no optimization algorithm — just [Sweep](./12-parameter-sweep.md) + [constraint verdicts](./13-kpi-metrics.md) + [sensitivity](./14-sensitivity.md).
 
-## 输出形态
+## Output shape
 
 ```text
 Current:
@@ -18,44 +18,44 @@ Recommended:
   96 ~ 101
 
 Reason:
-  - Win Rate 当前超出目标上限,需要下调攻击力
-  - D7 Progression 在下调后仍处于目标区间
-  - 经济影响微小
+  - Win rate currently exceeds the target ceiling; attack needs to come down
+  - D7 progression stays inside the target range even after the reduction
+  - Economic impact is minor
 
 Confidence:
   High
 ```
 
-## 区间从哪来:插值
+## Where the interval comes from: interpolation
 
-::: warning 连续区间必须由插值给出
-步长 5 的网格上只有 95 / 100 / 105 三个点,"96~101"不可能直接从网格点读出来。推荐区间的生成规则:
+::: warning A continuous interval must come from interpolation
+A grid with step 5 has only the three points 95 / 100 / 105; "96~101" cannot be read straight off grid points. Rules for generating the recommendation interval:
 
-1. 对每条 hard 约束,取该约束指标沿参数轴的格点值(均值 ± CI);
-2. 约束边界(如 win_rate = 0.52)落在两个格点之间时,用**线性插值**(格点密或曲线平滑时二次插值)求边界对应的参数值;
-3. 所有 hard 约束的可行段取交集,得推荐区间;
-4. 区间端点标注"插值所得",CI 相交于边界的段标注 BORDERLINE。
+1. For each hard constraint, take the constraint metric's grid values along the parameter axis (mean ± CI);
+2. When a constraint boundary (e.g. win_rate = 0.52) falls between two grid points, use **linear interpolation** (quadratic when the grid is dense or the curve is smooth) to find the parameter value at the boundary;
+3. Intersect the feasible segments of all hard constraints to obtain the recommendation interval;
+4. Interval endpoints are annotated "obtained by interpolation"; segments whose CI crosses the boundary are annotated BORDERLINE.
 
-MVP 只做**单参数轴**的插值推荐。多参数联合可行域需要代理模型或优化器,属后续阶段,不提前承诺。
+The MVP only does interpolation-based recommendation on a **single parameter axis**. The joint feasible region of multiple parameters needs a surrogate model or an optimizer — a later phase, promised no earlier.
 :::
 
-## 置信度定义
+## Confidence definition
 
-"Confidence: High" 不是形容词,是判据:
+"Confidence: High" is not an adjective; it is a criterion:
 
-| 等级 | 判据 |
+| Level | Criterion |
 | --- | --- |
-| **High** | 可行区间存在,轴上无 BORDERLINE,且各 hard 指标弹性显著 |
-| **Medium** | 可行,但存在 BORDERLINE 约束或端点弹性不显著 |
-| **Low** | 无可行点或交集为空 |
+| **High** | A feasible interval exists, no BORDERLINE on the axis, and every hard metric's elasticity is significant |
+| **Medium** | Feasible, but a BORDERLINE constraint exists or endpoint elasticity is not significant |
+| **Low** | No feasible point, or the intersection is empty |
 
-效应量与 CI 的定义见 [KPI 与指标](./13-kpi-metrics)。
+Definitions of effect size and CI are in [KPI and metrics](./13-kpi-metrics.md).
 
-## 推荐层不做候选打分
+## The recommendation layer does not score candidates
 
-推荐层只回答「可行区间在哪」,不给候选排序打分:hard 约束定义可行段,所有可行段取交集得推荐区间;soft 目标不参与可行域(加权排序属后续阶段,与 [KPI 与指标](./13-kpi-metrics) 同口径)。候选层面的比较由 [实验管线](./11-experiment-pipeline) 的约束判定与 A/B 配对差承担。
+The recommendation layer only answers "where the feasible interval is" and neither ranks nor scores candidates: hard constraints define feasible segments, and the intersection of all of them yields the recommendation interval; soft targets do not join the feasible region (weighted ranking is a later phase, the same convention as [KPI and metrics](./13-kpi-metrics.md)). Candidate-level comparison is carried by the [Experiment pipeline](./11-experiment-pipeline.md)'s constraint verdicts and A/B paired differences.
 
-## 非目标
+## Non-goals
 
-- **自动寻优**:单轴推荐 → 多维寻优的升级由 `optimize` 子命令承担(Phase 8 点火,进化算法已落地;Pareto 多目标 2026-10-10 落地——约束感知非支配排序,见[参数扫描](./12-parameter-sweep)自动寻优节;随机森林代理已落地,`surrogate` 子命令,见[参数扫描](./12-parameter-sweep)随机森林代理节);
-- **不做绝对预测**:推荐措辞是"相对当前参数的可行方向",不是"上线后胜率必然 50%"(见[定位](./01-positioning))。
+- **Automated optimization**: the upgrade from single-axis recommendation → multi-dimensional optimization is carried by the `optimize` subcommand (ignited Phase 8; the evolutionary algorithm has landed; Pareto multi-objective landed 2026-10-10 — constraint-aware non-dominated sorting, see the automated-optimization section of [Parameter sweep](./12-parameter-sweep.md); the random-forest surrogate has landed as the `surrogate` subcommand, see the random-forest-surrogate section of [Parameter sweep](./12-parameter-sweep.md));
+- **No absolute prediction**: recommendation wording is "a feasible direction relative to the current parameters", not "the win rate will certainly be 50% after launch" (see [Positioning](./01-positioning.md)).

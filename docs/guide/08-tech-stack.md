@@ -1,99 +1,99 @@
 ---
-title: 08 · 技术栈
+title: 08 · Technology Stack
 ---
 
-[English](08-tech-stack.en.md) | [中文](08-tech-stack.md)
+[English](/guide/08-tech-stack) | [中文](/zh/guide/08-tech-stack)
 
-# 技术栈
+# Technology Stack
 
-## 语言与形态
+## Language and Forms
 
-核心实现语言为 **Rust**。理由:高性能、内存安全、并行能力强、CLI 生态成熟、可编译为 WASM、可嵌入 Tauri,适合长期运行大规模仿真。
+The core implementation language is **Rust**. Rationale: high performance, memory safety, strong parallelism, a mature CLI ecosystem, compilable to WASM, embeddable in Tauri — suited to long-running large-scale simulation.
 
-核心要求:
+Core requirements:
 
 ```text
 Deterministic · Headless · Parallel · Embeddable · Testable · Platform-portable
 ```
 
-## 总体架构:一个内核,三种壳
+## Overall Architecture: One Kernel, Three Shells
 
 ```mermaid
 flowchart TD
-    CORE["sandtable-core<br>(纯 Rust,禁平台依赖)"]
+    CORE["sandtable-core<br>(pure Rust, no platform dependencies)"]
     CORE --> CLI["sandtable-cli<br>(clap)"]
-    CORE --> WASM["sandtable-wasm<br>(wasm-bindgen,薄绑定)"]
-    CLI --> T1["终端 / CI<br>(大规模实验)"]
+    CORE --> WASM["sandtable-wasm<br>(wasm-bindgen, thin bindings)"]
+    CLI --> T1["Terminal / CI<br>(large-scale experiments)"]
     WASM --> WEB["apps/web<br>(React + TS + Vite)"]
-    CORE --> TAURI["桌面壳<br>(Tauri 2)"]
+    CORE --> TAURI["Desktop shell<br>(Tauri 2)"]
     TAURI --> APP["apps/desktop"]
-    WEB --> VIZ["前端 UI<br>(手绘 SVG 图表)"]
+    WEB --> VIZ["Frontend UI<br>(hand-drawn SVG charts)"]
     APP --> VIZ
-    CORE --> RES["实验结果数据集<br>(Arrow / Parquet)"]
-    RES --> DDB["DuckDB<br>(native,Phase 3)"]
-    RES --> DDBW["DuckDB-Wasm<br>(浏览器,Phase 6)"]
+    CORE --> RES["Experiment result datasets<br>(Arrow / Parquet)"]
+    RES --> DDB["DuckDB<br>(native, Phase 3)"]
+    RES --> DDBW["DuckDB-Wasm<br>(browser, Phase 6)"]
 ```
 
-三个形态共用同一内核;**严禁为 Web 单独实现一份 JS 仿真**——那会导致 Web 与桌面结果不一致,破坏可复现承诺(见[产品边界](./02-scope))。
+The three forms share one kernel; **implementing a separate JS simulation for Web is strictly forbidden** — that would make Web and desktop results inconsistent, breaking the reproducibility commitment (see [Product Scope](./02-scope.md)).
 
-## 选型总表
+## Selection Overview
 
-| 层 | 技术 | 阶段 |
+| Layer | Technology | Phase |
 | --- | --- | --- |
 | Core | Rust | MVP |
 | CLI | clap | MVP |
-| **WASM 绑定** | wasm-bindgen(**架构一等目标**:Phase 1 起 `wasm32-unknown-unknown` 编译门禁;绑定层 Phase 6) | 门禁 MVP / 绑定 Phase 6 |
+| **WASM bindings** | wasm-bindgen (**first-class architectural goal**: a `wasm32-unknown-unknown` compilation gate from Phase 1; the binding layer in Phase 6) | Gate MVP / bindings Phase 6 |
 | **Web** | React + TypeScript + Vite | Phase 6 |
-| **Desktop** | Tauri 2(Windows 主力形态;Web UI + Rust 后端,无 Node / Python 服务) | Phase 7 |
-| **分析(native)** | DuckDB(duckdb-rs:内存 / 文件库、Arrow 互操作、读 Parquet / CSV / JSON) | Phase 3 |
-| **分析(浏览器)** | DuckDB-Wasm(默认单线程;WASM 内存有官方 4GB 上限,浏览器实际更严) | Phase 6 |
-| **数据契约** | Arrow / Parquet(MVP 例外:JSON + CSV,但 schema 按 Arrow 契约设计,见[数据输出](./09-data-output)) | 契约 MVP / 载体 Phase 2 |
-| 序列化 | serde + serde_json | MVP |
-| 配置(YAML) | serde_yaml_ng(选型理由见[配置与公式引擎](./07-config-formula)) | MVP |
-| 错误处理 | thiserror(core)/ anyhow(cli) | MVP |
-| 随机数 | 自实现带键派生(SplitMix64 混合,**无 rand 依赖**;见[确定性随机数](./06-deterministic-rng)) | MVP |
-| 并行 | rayon(feature 开关;仅实验级并行,WASM 下退化串行,行为不变) | MVP |
-| 表达式求值 | 内置最小求值器(加载期编译) | MVP |
-| 数据输出 | JSON + CSV | MVP |
-| 测试 | Rust 内置 test + 快照 | MVP |
-| Benchmark | criterion(**未引入**,属计划项) | 按需 |
-| CI | GitHub Actions(含 wasm32 门禁) | MVP |
-| 图表 | 零图表库:前端手绘 SVG、HTML 报告内联 SVG;**ECharts 未引入** | 已落地(Phase 5) |
-| 系统图 | React Flow(未引入) | 后续 |
-| 脚本扩展候选 | rhai(评估项,未定) | 后续 |
-| Python 绑定 | sandtable-sim(pyo3 + maturin,导入名 `sandtable_sim`;PyPI `sandtable` 已占用故另行命名) | 已落地(脚本层阶段 1–3) |
-| Web API | Axum(**默认不需要**:local-first;仅在确需服务端时随 tokio 引入) | 按需 |
+| **Desktop** | Tauri 2 (the primary form on Windows; Web UI + Rust backend, no Node / Python services) | Phase 7 |
+| **Analytics (native)** | DuckDB (duckdb-rs: in-memory / file databases, Arrow interop, reads Parquet / CSV / JSON) | Phase 3 |
+| **Analytics (browser)** | DuckDB-Wasm (single-threaded by default; WASM memory has an official 4GB cap, and browsers are stricter in practice) | Phase 6 |
+| **Data contract** | Arrow / Parquet (MVP exception: JSON + CSV, but the schema is designed per the Arrow contract, see [Data Output](./09-data-output.md)) | Contract MVP / carriers Phase 2 |
+| Serialization | serde + serde_json | MVP |
+| Configuration (YAML) | serde_yaml_ng (selection rationale in [Configuration and Formula Engine](./07-config-formula.md)) | MVP |
+| Error handling | thiserror (core) / anyhow (cli) | MVP |
+| Random numbers | Self-implemented keyed derivation (SplitMix64 mixing, **no rand dependency**; see [Deterministic RNG](./06-deterministic-rng.md)) | MVP |
+| Parallelism | rayon (feature flag; experiment-level parallelism only, degrades to serial under WASM, behavior unchanged) | MVP |
+| Expression evaluation | Built-in minimal evaluator (compile at load time) | MVP |
+| Data output | JSON + CSV | MVP |
+| Testing | Built-in Rust tests + snapshots | MVP |
+| Benchmark | criterion (**not introduced**, a planned item) | On demand |
+| CI | GitHub Actions (including the wasm32 gate) | MVP |
+| Charts | Zero chart libraries: hand-drawn SVG in the frontend, inline SVG in HTML reports; **ECharts not introduced** | Shipped (Phase 5) |
+| System diagrams | React Flow (not introduced) | Later |
+| Scripting extension candidate | rhai (evaluation item, undecided) | Later |
+| Python bindings | sandtable-sim (pyo3 + maturin, import name `sandtable_sim`; the PyPI name `sandtable` is already taken, hence the separate name) | Shipped (scripting layer Phases 1–3) |
+| Web API | Axum (**not needed by default**: local-first; introduced together with tokio only if a server is genuinely required) | On demand |
 
-## 依赖纪律
+## Dependency Discipline
 
-::: warning 红线
-- **core 依赖树里只有纯 Rust**:`duckdb` / `web-sys` / `tokio` / 任何数据库客户端出现在 core 里即为架构回归;平台适配全部在壳层(cli / wasm / 桌面壳);
-- **分析引擎不碰仿真状态**:DuckDB 只读结果数据集,仿真状态是 Rust 结构体(见[数据输出](./09-data-output));
-- 引入任何依赖前检查许可证兼容性(Apache-2.0 项目排除 AGPL 依赖,实例:evalexpr);
-- criterion 只在 Benchmark 一行出现,不与测试混记。
+::: warning Red lines
+- **Core's dependency tree contains only pure Rust**: `duckdb` / `web-sys` / `tokio` / any database client appearing in core is an architectural regression; all platform adaptation lives in the shell layer (cli / wasm / desktop shell);
+- **The analytics engine must not touch simulation state**: DuckDB only reads the result datasets; simulation state is Rust structs (see [Data Output](./09-data-output.md));
+- Check license compatibility before introducing any dependency (an Apache-2.0 project excludes AGPL dependencies; example: evalexpr);
+- criterion appears on the Benchmark line only; do not mix it into test records.
 :::
 
-## crate 划分
+## Crate Layout
 
-MVP 只拆两个 crate,避免过度工程化;平台壳与薄绑定/契约壳按阶段增加:
+The MVP splits only two crates, avoiding over-engineering; platform shells and thin binding / contract shells are added by phase:
 
-| crate / 目录 | 职责 | 阶段 |
+| Crate / directory | Responsibility | Phase |
 | --- | --- | --- |
-| `sandtable-core` | 内核 + 配置 + 实验:model / config / rng / time / world / systems / metrics / experiment | MVP |
-| `sandtable-cli` | clap 命令行,薄封装 core | MVP |
-| `sandtable-wasm` | wasm-bindgen 薄绑定(`run_simulation` / `validate_config` 等,**不放仿真逻辑**) | Phase 6 |
-| `sandtable-python` | pyo3 + maturin 薄绑定(`load / run / sweep / recommend / params` 只读面 + 阶段 3 日粒度读态回调 `run_with_day_hook`,**不放仿真逻辑**) | 脚本层 Phase 1–3(2026-10-11 落地) |
-| `sandtable-engine` | 引擎无关 JSON 契约薄壳(契约导出(有效值纪律)/ 参考导入器 / 回流约定,**不放仿真逻辑**) | 引擎 Adapter(2026-10-14 落地,巡检 R1 代决) |
-| `apps/web` | React + TS + Vite 前端 | Phase 6 |
-| `apps/desktop` | Tauri 2 壳 | Phase 7 |
-| `sandtable-analytics` | 若分析层(DuckDB 查询、数据集构建)膨胀再独立 | 按需评估 |
+| `sandtable-core` | Kernel + configuration + experiment: model / config / rng / time / world / systems / metrics / experiment | MVP |
+| `sandtable-cli` | clap command line, thin wrapper over core | MVP |
+| `sandtable-wasm` | wasm-bindgen thin bindings (`run_simulation` / `validate_config`, etc., **no simulation logic**) | Phase 6 |
+| `sandtable-python` | pyo3 + maturin thin bindings (`load / run / sweep / recommend / params` read-only surface + Phase 3 day-granularity read-state callback `run_with_day_hook`, **no simulation logic**) | Scripting layer Phases 1–3 (landed 2026-10-11) |
+| `sandtable-engine` | Engine-agnostic JSON contract thin shell (contract export (valid-value discipline) / reference importer / return conventions, **no simulation logic**) | Engine adapter (landed 2026-10-14, inspection R1 decides) |
+| `apps/web` | React + TS + Vite frontend | Phase 6 |
+| `apps/desktop` | Tauri 2 shell | Phase 7 |
+| `sandtable-analytics` | Spun out only if the analytics layer (DuckDB queries, dataset construction) grows | Evaluate on demand |
 
-::: warning 命名约定
-内置系统(战斗、经济、成长等)在 core 内的模块叫 **`systems`**。若未来独立成 crate,命名为 `sandtable-systems`——**不用 `sandtable-model`**,避免与概念上的 Model(配置编译产物)重名混淆。
+::: warning Naming convention
+Built-in systems (combat, economy, progression, etc.) live in a module called **`systems`** inside core. If they are split out as a crate in the future, name it `sandtable-systems` — **not `sandtable-model`**, to avoid colliding with the conceptual Model (the compiled product of configuration).
 :::
 
-## 原则
+## Principles
 
-> Core 尽量保持纯 Rust:不依赖 Web,不依赖数据库,不依赖具体游戏引擎;Local-first,默认无服务器、无账号。
+> Keep core as pure Rust as possible: no Web dependency, no database dependency, no dependency on any specific game engine; local-first, no server and no accounts by default.
 
-core 不依赖 cli / wasm;systems 不依赖 experiment;kernel 不依赖任何上层;分析层只被壳层调用。
+core does not depend on cli / wasm; systems does not depend on experiment; the kernel does not depend on any upper layer; the analytics layer is called only by the shell layer.

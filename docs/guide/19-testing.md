@@ -1,95 +1,95 @@
 ---
-title: 19 · 测试策略
+title: 19 · Testing Strategy
 ---
 
-[English](19-testing.en.md) | [中文](19-testing.md)
+[English](/guide/19-testing) | [中文](/zh/guide/19-testing)
 
-# 测试策略
+# Testing Strategy
 
-## 分层总览
+## Layered Overview
 
-| 层 | 保证什么 | 判据 |
+| Layer | What it guarantees | Criterion |
 | --- | --- | --- |
-| 单元测试 | 组件行为正确 | 断言 |
-| **解析解对照** | **仿真器没写错**(机制正确性) | 仿真均值落入闭式解 CI |
-| 确定性快照 | 同版本同平台可复现 | 逐位一致 |
-| 统计回归 | 跨版本 / 重构不改分布 | 均值 ± CI 相容 |
-| 案例 KPI 水平断言(**已建**,2026-10-15) | 案例数值改动不悄悄漂移平衡水平 | 锚值 ±10% 带 |
-| 并行确定性(**已建**,2026-10-15) | 线程数不影响结果 | 逐位一致 |
-| 性能 smoke(**粗粒度已建** + criterion 细基准已建,2026-10-15) | 算力预算不漂移 | 时长阈值 / 基线对比 |
-| 生成物新鲜度(**已建**,2026-10-15) | 提交进仓的图与实况一致 | 订阅矩阵逐边对账 |
+| Unit tests | Components behave correctly | Assertions |
+| **Analytic cross-check** | **The simulator is not miswritten** (mechanism correctness) | Simulation mean falls inside the closed-form CI |
+| Deterministic snapshot | Reproducible on the same version and platform | Bit-for-bit identical |
+| Statistical regression | Distributions unchanged across versions / refactors | Mean ± CI compatible |
+| Case KPI level assertions (**built**, 2026-10-15) | Case value changes do not silently drift balance levels | Anchor value ±10% band |
+| Parallel determinism (**built**, 2026-10-15) | Thread count does not affect results | Bit-for-bit identical |
+| Performance smoke (**coarse-grained built** + criterion fine benchmarks built, 2026-10-15) | The compute budget does not drift | Duration threshold / baseline comparison |
+| Generated-asset freshness (**built**, 2026-10-15) | Charts committed into the repo stay consistent with reality | Per-edge reconciliation against the subscription matrix |
 
-**解析解对照是最有力的一层**:单元测试证明"每块零件符合规格",解析解证明"整机算出来的答案客观上是对的"。
+**The analytic cross-check is the most powerful layer**: unit tests prove "each part meets spec"; analytic solutions prove "the answer the whole machine computes is objectively right".
 
-## 单元测试
+## Unit Tests
 
-覆盖:RNG 派生(键相同 → 值相同;键任一分量不同 → 值不同)、Clock / 事件队列(有序性)、公式求值(对照手算)、战斗结算、经济聚合、成长曲线、指标聚合器(对照朴素实现)。
+Coverage: RNG derivation (same key → same value; any differing key component → different value), Clock / event queue (ordering), formula evaluation (against hand computation), combat resolution, economic aggregation, progression curves, metric aggregators (against naive implementations).
 
-## 解析解对照
+## Analytic Cross-Check
 
-确认模拟器没有写错的最有力手段:构造存在**闭式解**的场景,比较仿真结果与数学期望。
+The most powerful way to confirm the simulator is not miswritten: construct scenarios that have **closed-form solutions** and compare simulation results against mathematical expectations.
 
-例 1——期望伤害:命中概率 p、命中伤害恒为 a − d,则 N 场战斗总伤害的期望是 N·p·(a−d),方差闭式可算。仿真均值必须落入闭式值 ± 3σ。
+Example 1 — expected damage: with hit probability p and hit damage constant at a − d, the expected total damage over N battles is N·p·(a−d), and the variance is closed-form computable. The simulation mean must fall within the closed-form value ± 3σ.
 
-例 2——期望收益:玩家每日固定打 k 场副本、掉落期望 g,则 30 天金币总收入的期望是 30·k·g。同理对照。
+Example 2 — expected income: a player runs exactly k dungeon runs per day with expected drop g, so expected total gold income over 30 days is 30·k·g. Cross-check the same way.
 
-例 3——流失模型:恒定流失概率 p_c 下,D7 留存的期望是 (1−p_c)⁷(与仿真口径对齐后对照)。
+Example 3 — churn model: under a constant churn probability p_c, expected D7 retention is (1−p_c)⁷ (cross-checked after aligning with the simulation's accounting).
 
-要求:至少一条解析解测试进入 Phase 1 验收([路线图](./18-roadmap));新增系统时,凡存在闭式解的机制必须配对照测试。
+Requirement: at least one analytic-solution test enters Phase 1 acceptance ([roadmap](./18-roadmap.md)); whenever a new system is added, every mechanism with a closed-form solution must ship with a cross-check test.
 
-## 确定性测试:快照 vs 统计回归
+## Determinism Tests: Snapshot vs Statistical Regression
 
-::: warning 两层不要混用
-**快照测试**:同版本 + 同平台 + 同 seed → 结果**逐位一致**。实现为结果摘要(规范化 JSON)的哈希快照,CI 中比对;字节级偏差即回归。
+::: warning Don't mix the two layers
+**Snapshot tests**: same version + same platform + same seed → results **bit-for-bit identical**. Implemented as hash snapshots of the result summary (normalized JSON), compared in CI; any byte-level deviation is a regression.
 
-**统计回归**:跨版本或重构后,浮点结果**允许**不同(优化器、依赖升级都可能改变浮点细节),改为比较指标均值 ± CI 是否相容。
+**Statistical regression**: across versions or after refactors, floating-point results **are allowed** to differ (optimizers and dependency upgrades can both change floating-point details), so the comparison shifts to whether metric means ± CI are compatible.
 
-| 场景 | 用哪层 |
+| Scenario | Which layer |
 | --- | --- |
-| 日常 CI(同平台) | 快照(逐位) |
-| 升级 Rust 版本 / 依赖 / 重构后 | 快照更新 + 统计回归确认分布未漂移 |
-| native ↔ wasm 比对(同配置同 seed) | 统计回归(基础算术逐位一致,超越函数允许 ULP 级差异,见[确定性随机数](./06-deterministic-rng)) |
-| 跨平台比对 | 统计回归(浮点不承诺跨平台逐位) |
+| Daily CI (same platform) | Snapshot (bit-for-bit) |
+| After upgrading the Rust version / dependencies / refactoring | Snapshot update + statistical regression to confirm the distribution has not drifted |
+| native ↔ wasm comparison (same config, same seed) | Statistical regression (basic arithmetic is bit-for-bit identical; transcendental functions allow ULP-level differences — see [deterministic RNG](./06-deterministic-rng.md)) |
+| Cross-platform comparison | Statistical regression (floating point does not promise cross-platform bit-for-bit identity) |
 :::
 
-## 并行确定性测试
+## Parallel Determinism Tests
 
-同一实验在 `rayon` 线程数 = 1 / 4 / 满核下运行,结果摘要必须逐位一致。这是[并行确定性规则](./06-deterministic-rng)(有序容器、固定归约)的守卫测试。
+The same experiment runs under `rayon` with thread counts = 1 / 4 / all cores, and the result summaries must be bit-for-bit identical. This is the guard test for the [parallel determinism rules](./06-deterministic-rng.md) (ordered containers, fixed reduction).
 
-**已建**(2026-10-15):`crates/sandtable-cli/tests/parallel_determinism.rs` 对 `sandtable sweep`(候选间 par_iter 并行的唯一面)在 `RAYON_NUM_THREADS` = 1 / 4 / 满核三档下各跑同一实验,`candidates.csv` 与 `summary.csv` 逐位相等——`run_candidate` 纯函数、`collect` 保序、采样流绑 base_seed 与线程无关;随 `cargo test --workspace` 进 CI。
+**Built** (2026-10-15): `crates/sandtable-cli/tests/parallel_determinism.rs` runs the same experiment for `sandtable sweep` (the only surface parallelized with par_iter across candidates) under `RAYON_NUM_THREADS` = 1 / 4 / all cores; `candidates.csv` and `summary.csv` come out bit-for-bit equal — `run_candidate` is a pure function, `collect` preserves order, and the sampling stream is bound to base_seed independent of threads; it enters CI with `cargo test --workspace`.
 
-## Monte Carlo 统计测试
+## Monte Carlo Statistical Tests
 
-涉及随机性的端到端性质用统计断言:多 seed 复跑后检验均值、方差、置信区间、分位数是否落在理论或历史基线范围内。**不要求**这类测试的浮点逐位一致。
+End-to-end properties involving randomness use statistical assertions: after multi-seed reruns, check whether means, variances, confidence intervals, and quantiles fall within theoretical or historical baselines. Bit-for-bit floating-point identity is **not required** for these tests.
 
-## 案例 KPI 水平断言
+## Case KPI Level Assertions
 
-黄金快照锚**默认配置**(内核行为变 → CI 红),不锚案例配置;`crates/sandtable-cli/tests/cases.rs` 的水平断言补这一缺口:对 `examples/pokemon.yaml`(200 玩家 × 30 天 × 1 replicate,确定性)锚 churn / retention_d7 / win_rate / 均等级的绝对水平,容差 ±10%,retention_d7 取 docs 21 硬约束下限 0.9 而非带宽(0.985 的 −10% 下探会越过健康线)。**改案例数值 = 有意变更**:须同步更新锚值,让平衡面位移出现在评审里,而不是靠人工 review 兜底。锚值口径见[真实配置验证](./21-pokemon-case)。
+Golden snapshots anchor the **default configuration** (kernel behavior changes → CI red), not case configurations; the level assertions in `crates/sandtable-cli/tests/cases.rs` fill that gap: against `examples/pokemon.yaml` (200 players × 30 days × 1 replicate, deterministic) they anchor the absolute levels of churn / retention_d7 / win_rate / mean level with a ±10% tolerance, and retention_d7 takes the docs-21 hard-constraint floor of 0.9 rather than a band (a −10% dip from 0.985 would cross the health line). **Changing case values = an intentional change**: the anchors must be updated in sync, so the balance-surface shift shows up in review instead of being caught by human review alone. The anchor convention is in [real-config validation](./21-pokemon-case.md).
 
-## 性能守卫
+## Performance Guards
 
-**已建(粗粒度,2026-10-15)**:`crates/sandtable-cli/tests/perf_smoke.rs`——10,000 玩家 × 30 天全流程(simulate + 导出)debug 时长 < 120s(实测基线 2.4s 的约 50 倍余量,只拦数量级退化,共享 runner 抖动不进判定);随 `cargo test --workspace` 进 CI。
+**Built (coarse-grained, 2026-10-15)**: `crates/sandtable-cli/tests/perf_smoke.rs` — the full pipeline of 10,000 players × 30 days (simulate + export) completes in < 120s in debug (roughly 50× headroom over the measured 2.4s baseline; it only catches order-of-magnitude regressions, and shared-runner jitter stays out of the verdict); it enters CI with `cargo test --workspace`.
 
-**已建(criterion 细基准,2026-10-15,用户拍板引入)**:`crates/sandtable-core/benches/hot_paths.rs` 覆盖四个热点——公式求值(`formula_eval_xp_needed`,默认 xp_needed 公式对典型变量求值)、带键随机数派生(`rng_derive_u64`)、战斗解析结算(`combat_settle_battle`)、事件循环全流程含在线聚合(`sim_pipeline_200x30`,与案例 KPI 锚同口径 200 玩家 × 30 天 × 1 replicate)。
+**Built (criterion fine benchmarks, 2026-10-15, adopted on the user's decision)**: `crates/sandtable-core/benches/hot_paths.rs` covers four hot paths — formula evaluation (`formula_eval_xp_needed`, evaluating the default xp_needed formula on typical variables), keyed random derivation (`rng_derive_u64`), analytic combat resolution (`combat_settle_battle`), and the full event-loop pipeline including online aggregation (`sim_pipeline_200x30`, same convention as the case KPI anchors: 200 players × 30 days × 1 replicate).
 
-**运行**(仓库根,手动触发,不进常规 CI 门禁——基准耗时且共享 runner 噪声大):
+**Run** (from the repo root, manually triggered, not part of the regular CI gate — benchmarks are slow and shared runners are noisy):
 
 ```sh
 cargo bench -p sandtable-core --bench hot_paths
 ```
 
-**解读与回归口径**:每次输出 `[下界 均值 上界]` 置信区间;首次跑后 criterion 自动留基线,后续跑给出 `change: [x% y% z%] (p = …)` 与方向判定。口径:**均值变化 >10% 且 p < 0.05 才视为退化信号**,且只作排查信号不作门禁(共享机噪声常见 ±10-20%,单看一次输出会误判)。要做严谨对比时显式管理基线:改动前 `cargo bench -p sandtable-core --bench hot_paths -- --save-baseline before`,改动后 `--baseline before` 对照;热点结构有意变化(新增 System / 改聚合路径)后重录基线。HTML 报告在 `target/criterion/report/`。
+**Interpreting output and the regression criterion**: each run prints a `[lower mean upper]` confidence interval; after the first run criterion keeps a baseline automatically, and later runs give `change: [x% y% z%] (p = …)` with a direction verdict. The rule: **a mean change >10% with p < 0.05 counts as a regression signal**, and only as a triage signal, never a gate (shared-machine noise of ±10-20% is common, and a single output read alone will mislead). For rigorous comparisons, manage baselines explicitly: before a change, `cargo bench -p sandtable-core --bench hot_paths -- --save-baseline before`; after the change, compare with `--baseline before`; re-record the baseline after intentional changes to hot-path structure (a new System / a changed aggregation path). The HTML report lives in `target/criterion/report/`.
 
-**依赖口径**:criterion 仅 `sandtable-core` 的 dev-dependency,不进 release 依赖树;`cargo test --workspace` 会编译但不执行基准(编译耗时被 CI rust-cache 摊薄)。
+**Dependency policy**: criterion is only a dev-dependency of `sandtable-core` and never enters the release dependency tree; `cargo test --workspace` compiles but does not run the benchmarks (the compile cost is amortized by CI rust-cache).
 
-## 生成物新鲜度守卫
+## Generated-Asset Freshness Guard
 
-「程序生成」只保证**生成器**与实况同源,不保证**提交进仓的那一份**被重新生成过:加了 System、改了订阅矩阵却忘了跑 example,图会静默过期,而正文仍写着「与代码同源」。`crates/sandtable-core/tests/doc_assets.rs` 补这条缝——对 `docs/assets/systems/system-graph.svg` 反解每条订阅边的行栅格,与 `system_registry` 实况逐边对账(框标签缺失、边数不符、订阅改挂都红),底部注记引用的 `crate::systems` 模块必须真实存在;失效信息直接给出重跑命令。
+"Generated by program" only guarantees the **generator** shares a source with reality — not that **the copy committed into the repo** was regenerated: add a System or change the subscription matrix but forget to run the example, and the chart silently goes stale while the body text still reads "same source as the code". `crates/sandtable-core/tests/doc_assets.rs` closes this gap — it reverse-parses the row grid of every subscription edge in `docs/assets/systems/system-graph.svg` and reconciles each edge against the live `system_registry` (missing box labels, mismatched edge counts, or re-pointed subscriptions all turn red), the `crate::systems` module referenced by the bottom note must really exist, and the failure message gives the rerun command directly.
 
-::: tip 覆盖面的诚实边界
-公式曲线图(`docs/assets/formulas/*.svg`)**不在守卫内**:坐标映射逻辑只存在于 `formula_curves.rs`,测试里复制一份反解实现就是第二份必然漂移的实现。它的新鲜度仍靠生成器 panic(表达式编译不过即失败)+ 人工重绘。
+::: tip The honest boundary of coverage
+The formula curve charts (`docs/assets/formulas/*.svg`) are **not under the guard**: the coordinate-mapping logic exists only in `formula_curves.rs`, and reproducing a reverse-parser inside the test would be a second implementation guaranteed to drift. Their freshness still relies on the generator panicking (an expression that fails to compile fails the run) + manual redraws.
 :::
 
-## CI 集成
+## CI Integration
 
-GitHub Actions:每个 push 跑单元 + 快照 + 解析解对照,外加 **`cargo check --target wasm32-unknown-unknown` 平台门禁**(core 引入平台依赖立即失败,见[仿真内核](./04-kernel));统计回归在依赖升级与发布前手动触发;并行确定性守卫、性能粗粒度守卫与生成物新鲜度守卫已建(随全量测试跑,见上三节);criterion 细基准已建但**不进常规 CI 门禁**,本地 `cargo bench -p sandtable-core --bench hot_paths` 手动触发(见性能守卫节)。
+GitHub Actions: every push runs unit + snapshot + analytic cross-checks, plus the **`cargo check --target wasm32-unknown-unknown` platform gate** (core pulling in a platform dependency fails immediately, see [simulation kernel](./04-kernel.md)); statistical regression is triggered manually on dependency upgrades and before releases; the parallel determinism guard, the coarse-grained performance guard, and the generated-asset freshness guard are built (they run with the full test suite — see the three sections above); the criterion fine benchmarks are built but **do not enter the regular CI gate**, triggered manually via `cargo bench -p sandtable-core --bench hot_paths` (see the performance guards section).

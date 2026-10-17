@@ -1,150 +1,150 @@
 ---
-title: 13 · KPI 与指标
+title: 13 · KPI and Metrics
 ---
 
-[English](13-kpi-metrics.en.md) | [中文](13-kpi-metrics.md)
+[English](/guide/13-kpi-metrics) | [中文](/zh/guide/13-kpi-metrics)
 
-# KPI 与指标
+# KPI and Metrics
 
-指标回答"系统运行得好不好"。本章给出每个指标的**明确公式**、采集方式与统计口径——指标没有公式就没有约束,没有约束就没有推荐。
+Metrics answer "is the system running well". This chapter gives every metric an **explicit formula**, a collection method, and a statistical convention — without formulas there are no constraints, and without constraints there are no recommendations.
 
-## 指标类型
+## Metric types
 
 ```text
-留存(D1 / D3 / D7 / D14 / D30)· 胜率 · 流失率
-通胀 · sink_ratio · 金币(产出 / 消耗 / 存量 / 人均)
-战力(日均值 + 快照日 P50 / P90 / P99)· 升级次数 · 抽卡期望抽数(配置抽卡时)
+Retention (D1 / D3 / D7 / D14 / D30) · win rate · churn rate
+inflation · sink_ratio · gold (earned / spent / stock / per player)
+power (daily mean + snapshot-day P50 / P90 / P99) · level-up count · expected gacha pulls to hit (when gacha is configured)
 ```
 
-## 采集架构:在线聚合
+## Collection architecture: online aggregation
 
-10 万玩家 × 90 天的量级下,**不能**存每个玩家每步的明细再事后统计。指标在事件处理时增量聚合:
+At the scale of 100k players × 90 days, it is **not** viable to store every player's per-step detail and compute statistics afterwards. Metrics aggregate incrementally while events are processed:
 
-| 结构 | 用途 |
+| Structure | Purpose |
 | --- | --- |
-| 整数计数器 | 次数类(战斗数、胜利数、流失数、升级数)——金币等可数资源用整数,不用浮点 |
-| 增量累计 | 通胀、sink_ratio 的按天求和(日粒度) |
-| 快照日全量排序 + 线性插值 | 固定快照日(D1 / D3 / D7 / D14 / D30)的 Power P50 / P90 / P99 |
-| 双遍均值 / 方差 + t 分布 CI | replicate 层统计(实验层 `summarize`,非 Welford) |
+| Integer counters | Count-type metrics (battles, wins, churns, level-ups) — countable resources like gold stay integer, never float |
+| Incremental accumulators | Per-day sums for inflation and sink_ratio (daily granularity) |
+| Full sort on snapshot days + linear interpolation | Power P50 / P90 / P99 on fixed snapshot days (D1 / D3 / D7 / D14 / D30) |
+| Two-pass mean / variance + t-distribution CI | Replicate-level statistics (experiment-level `summarize`, not Welford) |
 
-内存量级:计数器与累计量与玩家数量无关;快照日仅存当日 Power 全量(仅 5 天),量级受控。
+Memory scale: counters and accumulators are independent of the player count; snapshot days store only that day's full Power set (just 5 days), keeping the footprint bounded.
 
-## 指标定义(公式)
+## Metric definitions (formulas)
 
-以下 `a` 遍历当日活跃玩家;`active(a, d)` 表示玩家 a 在第 d 天有至少一次登录。
+Below, `a` ranges over that day's active players; `active(a, d)` means player a logged in at least once on day d.
 
-### 战斗
-
-```text
-win_rate(d)  = 胜利战斗数(d) / 总战斗数(d)
-death_rate(d) = 玩家战败次数(d) / 总战斗数(d)
-```
-
-### 成长
+### Combat
 
 ```text
-Dn_power  = 第 n 天日结时 Power 的分布(报告 P50 / P90)
-Dn_level  = 第 n 天日结时 Level 的分布
+win_rate(d)  = winning battles(d) / total battles(d)
+death_rate(d) = player defeat count(d) / total battles(d)
 ```
 
-### 经济
+### Growth
 
 ```text
-产出(d) = 当日全体玩家获得的金币总量(战斗掉落 + 奖励)
-回收(d) = 当日全体玩家消耗的金币总量(升级 + 消耗)
-G(d)    = 第 d 天日结时全体存续玩家的金币存量总和
-
-inflation(d) = (G(d) − G(d−1)) / max(G(d−1), 1)        —— 主口径:存量日增长率
-sink_ratio(d) = 回收(d) / max(产出(d), 1)               —— 辅助口径:回收产出比,< 1 表示经济在净增发
+Dn_power  = distribution of Power at end-of-day n (reported as P50 / P90)
+Dn_level  = distribution of Level at end-of-day n
 ```
 
-MVP 没有价格体系,通胀定义为**金币总量日增长率**(主口径),并同期输出 sink_ratio 作诊断。约束(如 `inflation ≤ 0.05`)绑定主口径。报告窗口用 30 天累计增长率与日均增长率两个数。
-
-### 留存与流失
+### Economy
 
 ```text
-retention_Dn = |{a : active(a, n)}| / |{a : active(a, 1)}|     —— D1 / D7 / D14 / D30 留存
+earned(d)    = total gold gained by all players that day (combat drops + rewards)
+spent(d)     = total gold consumed by all players that day (level-ups + other sinks)
+G(d)         = total gold held by all surviving players at end-of-day d
 
-churn(a, d) ⟺ 玩家 a 已连续 K 天不活跃(K 默认 3,可配)
-churn_rate(d) = 新增流失数(d) / 期初活跃数(d)
+inflation(d)  = (G(d) − G(d−1)) / max(G(d−1), 1)        —— primary convention: daily growth rate of the stock
+sink_ratio(d) = spent(d) / max(earned(d), 1)             —— auxiliary convention: spend-to-earn ratio; < 1 means the economy is net-minting
 ```
 
-::: warning 流失必须有机制来源
-留存指标如果只是统计口径,难度调整就不会影响玩家去留,"长期仿真"没有意义。MVP 内置最简流失机制,把指标与行为挂钩:
+The MVP has no price system, so inflation is defined as the **daily growth rate of total gold** (the primary convention), with sink_ratio output alongside as a diagnostic. Constraints (e.g. `inflation ≤ 0.05`) bind to the primary convention. The reporting window uses two numbers: the 30-day cumulative growth rate and the daily average growth rate.
+
+### Retention and churn
 
 ```text
-停滞(stalled):玩家连续 S 天等级与 Power 均无增长(S 默认 2)
-流失判定:每日一次伯努利试验
-  p_churn = p_base            (未停滞)
-  p_churn = p_stall           (停滞;p_stall > p_base)
+retention_Dn = |{a : active(a, n)}| / |{a : active(a, 1)}|     —— D1 / D7 / D14 / D30 retention
+
+churn(a, d) ⟺ player a has been inactive for K consecutive days (K defaults to 3, configurable)
+churn_rate(d) = newly churned(d) / active at start of period(d)
 ```
 
-这样"改难度 → 胜率变化 → 成长速度变化 → 停滞率变化 → 留存变化"的链条在 MVP 内是通的。
+::: warning Churn must have a mechanistic source
+If retention metrics are mere statistical conventions, difficulty adjustments will never influence whether players stay, and "long-term simulation" is meaningless. The MVP ships a minimal churn mechanism that ties the metric to behavior:
+
+```text
+stalled: the player's level and Power have both failed to grow for S consecutive days (S defaults to 2)
+churn check: one Bernoulli trial per day
+  p_churn = p_base            (not stalled)
+  p_churn = p_stall           (stalled; p_stall > p_base)
+```
+
+With this, the chain "change difficulty → win rate shifts → growth pace shifts → stall rate shifts → retention shifts" is fully connected inside the MVP.
 :::
 
-### 收支
+### Income and spending
 
 ```text
-income(d)  = 产出(d) 的玩家人均值
-spending(d) = 回收(d) 的玩家人均值
+income(d)    = per-player average of earned(d)
+spending(d)  = per-player average of spent(d)
 ```
 
-### Whale 的 MVP 定义
+### The MVP definition of Whale
 
-MVP 没有付费系统,不存在购买事件。Whale 在 MVP 中定义为**高活跃 + 成长倍率**:session 频率与资源获取按倍率放大(硬编码常数),并在输出中标注"无付费语义"。引入最小付费事件是后续扩展,届时 Whale 定义迁移到付费口径。
+The MVP has no payment system, hence no purchase events. In the MVP, Whale is defined as **high activity + growth multiplier**: session frequency and resource acquisition are scaled up by a multiplier (a hard-coded constant), and the output is annotated "no payment semantics". Introducing minimal payment events is a later extension, at which point the Whale definition migrates to a payment-based convention.
 
-### 抽卡(保底期望抽数)
+### Gacha (expected pulls to hit)
 
-保底类玩法用**期望抽数** `gacha_pulls_to_hit` 衡量:一次"抽到首次命中即止"会话的抽数聚合,是策划感知"坑深不深"的直接量。硬 / 软保底状态机与闭式对账(截断几何 `E[T](H) = (1 − (1−p)^H)/p`,H 为硬保底抽数)见[随机函数与概率系统](./24-random-functions);该指标与其余指标同走 CI₉₅ 判定链,约束写法如 `gacha_pulls_to_hit max 30`。
+Pity-style gameplay is measured by **expected pulls to hit**, `gacha_pulls_to_hit`: the pull count aggregated over a "stop at first hit" session — the most direct read on "how deep the pit is" for a designer. The hard / soft pity state machine and its closed-form reconciliation (truncated geometric `E[T](H) = (1 − (1−p)^H)/p`, H being the hard-pity pull count) are in [Random functions and probability systems](./24-random-functions.md); this metric rides the same CI₉₅ verdict chain as the others, with constraints written like `gacha_pulls_to_hit max 30`.
 
-## 统计口径与置信区间
+## Statistical conventions and confidence intervals
 
-**统计单位是 replicate,不是玩家**(理由见[实验管线](./11-experiment-pipeline))。设某候选跑了 R 个 replicate,第 r 个 replicate 的某指标聚合值为 m_r:
+**The statistical unit is the replicate, not the player** (rationale in [Experiment pipeline](./11-experiment-pipeline.md)). Suppose a candidate ran R replicates and the r-th replicate's aggregated value of some metric is m_r:
 
 ```text
 mean  = (1/R) · Σ m_r
-sd    = 样本标准差(m_r)
+sd    = sample standard deviation (m_r)
 CI₉₅  = mean ± t(0.975, R−1) · sd / √R
 ```
 
-**效应量**:A/B 比较报告 Δ = mean_B − mean_A 及双方 CI;并报告标准化效应 d = Δ / pooled_sd。|d| 与 CI 的组合构成[推荐置信度](./15-recommendation)的判据。
+**Effect size**: A/B comparisons report Δ = mean_B − mean_A together with both sides' CIs, plus the standardized effect d = Δ / pooled_sd. The combination of |d| and the CIs forms the criteria for [recommendation confidence](./15-recommendation.md).
 
-## 约束判定:基于置信区间,不是点估计
+## Constraint verdicts: confidence-interval based, not point estimates
 
-::: warning 点估计判定会在噪声上翻车
-`win_rate ∈ [0.48, 0.52]` 这种硬约束,单次实验的抽样噪声就可能达到 ±0.02——点估计 0.519 与 0.521 的差别没有意义。判定规则:
+::: warning Point-estimate verdicts crash on noise
+For a hard constraint like `win_rate ∈ [0.48, 0.52]`, the sampling noise of a single experiment can already reach ±0.02 — the difference between point estimates 0.519 and 0.521 means nothing. Verdict rules:
 
-| CI₉₅ 与约束区间的位置 | 判定 |
+| Position of the CI₉₅ vs. the constraint interval | Verdict |
 | --- | --- |
-| CI 完全落在约束区间内 | **PASS** |
-| CI 与约束边界相交 | **BORDERLINE**(推荐场景按 FAIL 处理,或加 replicates 收窄 CI) |
-| CI 完全落在约束区间外 | **FAIL** |
+| CI entirely inside the constraint interval | **PASS** |
+| CI crossing a constraint boundary | **BORDERLINE** (treated as FAIL in recommendation scenarios, or add replicates to narrow the CI) |
+| CI entirely outside the constraint interval | **FAIL** |
 :::
 
-## Targets 配置
+## Targets configuration
 
 ```yaml
 targets:
   - metric: combat.win_rate
     min: 0.48
     max: 0.52
-    kind: hard          # 缺省 hard,可省;soft 不参与可行域
+    kind: hard          # defaults to hard and may be omitted; soft does not join the feasible region
   - metric: economy.inflation
     max: 0.05
   - metric: progression.day_7_power
-    min: 10000          # 只支持区间;target/tolerance 是 Rust 侧
-    max: 15000          # Target::centered 构造器,不进 YAML 面
+    min: 10000          # intervals only; target/tolerance belong to the Rust side
+    max: 15000          # Target::centered constructor and never enter the YAML surface
 ```
 
-支持:`min / max`(两侧缺省即不设界)与 `kind`(缺省 `hard`);`hard` 一票否决,`soft` 不参与可行域(加权排序属后续阶段,见[平衡推荐](./15-recommendation))。判定输出示例:
+Supported: `min / max` (a missing side means no bound there) and `kind` (defaults to `hard`); `hard` is a one-vote veto and `soft` does not join the feasible region (weighted ranking belongs to a later phase, see [Balance recommendation](./15-recommendation.md)). Example verdict output:
 
 ```text
 Candidate A    Win Rate PASS · Inflation FAIL · D7 Power PASS
 Candidate B    Win Rate PASS · Inflation PASS · D7 Power PASS
 ```
 
-BORDERLINE 在报告中单独标注,不与 PASS 合并。
+BORDERLINE is annotated separately in reports and never merged into PASS.
 
-## Cohort 切片
+## Cohort slicing
 
-以上指标全部支持按 cohort(Casual / Core / Whale)切片输出;约束绑定聚合口径或切片口径,在 targets 中显式声明,避免"全局通过、某群体崩坏"被均值掩盖。
+All of the metrics above support sliced output by cohort (Casual / Core / Whale); whether a constraint binds to the aggregate convention or a slice convention is declared explicitly in targets, so that "passes globally, collapses for one cohort" cannot hide behind the average.

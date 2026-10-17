@@ -5,9 +5,9 @@
 
 ## 0. 定位(承既有架构口径)
 
-- [配置与公式引擎](../docs/guide/07-config-formula.md)的原则不变:**配置描述数据,代码描述复杂行为**。脚本不是把 YAML 变成编程语言,而是承载 YAML 表达不了的两类东西:**实验编排**(批量跑、自定义分析)与**复杂行为原型**(远期)。
-- [时间模型](../docs/guide/05-time-model.md)的量级红线不变:单次仿真事件量 10⁷ 级,仿真热路径永远在 Rust;Python 出现在**实验粒度**(per-run / per-candidate),不出现在**事件粒度**。
-- 三形态分工(文档 [09](../docs/guide/09-data-output.md)/[22](../docs/guide/22-web.md)):CLI 是主力实验形态;Web 定位小中型交互;桌面已立项并落地 Tauri 2 壳(2026-10,文档 18 Phase 7)。脚本层依附于 native 形态,Web 不做(见 §3)。
+- [配置与公式引擎](../zh/guide/07-config-formula.md)的原则不变:**配置描述数据,代码描述复杂行为**。脚本不是把 YAML 变成编程语言,而是承载 YAML 表达不了的两类东西:**实验编排**(批量跑、自定义分析)与**复杂行为原型**(远期)。
+- [时间模型](../zh/guide/05-time-model.md)的量级红线不变:单次仿真事件量 10⁷ 级,仿真热路径永远在 Rust;Python 出现在**实验粒度**(per-run / per-candidate),不出现在**事件粒度**。
+- 三形态分工(文档 [09](../zh/guide/09-data-output.md)/[22](../zh/guide/22-web.md)):CLI 是主力实验形态;Web 定位小中型交互;桌面已立项并落地 Tauri 2 壳(2026-10,文档 18 Phase 7)。脚本层依附于 native 形态,Web 不做(见 §3)。
 
 ## 1. 需求场景(按优先级)
 
@@ -72,7 +72,7 @@ sw = st.sweep("examples/pokemon-sweep.yaml", replicates=4)   # ← 计划/候选
 rec = st.recommend("examples/pokemon-sweep.yaml", sw.results)
 ```
 
-- 绑定层是**第三份薄转发**(CLI / wasm / python 三形态同源 core 纯函数,口径见 [22 章](../docs/guide/22-web.md)绑定纪律):不放仿真逻辑,只做 load → validate → run / sweep / recommend 的转接与 Arrow 交接;
+- 绑定层是**第三份薄转发**(CLI / wasm / python 三形态同源 core 纯函数,口径见 [22 章](../zh/guide/22-web.md)绑定纪律):不放仿真逻辑,只做 load → validate → run / sweep / recommend 的转接与 Arrow 交接;
 - **等价验收照抄 web_parity 模式**:`py_parity` 测试锁"同配置同 seed 下,Python 入口 results 与 CLI report.json 逐值一致"——三形态一个内核,一份测试范式三种载体。
 
 ## 7. 分期计划
@@ -104,5 +104,5 @@ rec = st.recommend("examples/pokemon-sweep.yaml", sw.results)
 | 工具文档 | PyO3(扩展与 embed 指南)、maturin 构建 | [PyO3 user guide](https://pyo3.rs/)、[PyO3/maturin](https://github.com/PyO3/maturin) |
 | 语言演进 | 子解释器 GIL、free-threading 成熟度 | [PEP 684](https://peps.python.org/pep-0684/)、[PEP 703](https://peps.python.org/pep-0703/) |
 | 数据交接 | Arrow 零拷贝契约 | [Arrow C Data Interface](https://arrow.apache.org/docs/format/CDataInterface.html) |
-| 事实核查 | PyPI `sandtable` 名称已被占用 | [项目结构](../docs/guide/17-project-structure.md)核查记录 |
+| 事实核查 | PyPI `sandtable` 名称已被占用 | [项目结构](../zh/guide/17-project-structure.md)核查记录 |
 | 决策 | Python 载体拍板、"扩展优于嵌入"取舍、不做事件级回调 | 2026-10-08 用户拍板 + 本文档推导 |

@@ -3,35 +3,35 @@ layout: home
 
 hero:
   name: Sandtable
-  text: 面向游戏系统的配置驱动仿真与实验框架
-  tagline: 把游戏系统放进数字沙盘——调整参数,推演 7 / 30 / 90 天,用指标与置信区间比较差异,辅助平衡决策。
+  text: A configuration-driven simulation and experimentation framework for game systems
+  tagline: Put game systems into a digital sandtable — tune parameters, run 7 / 30 / 90 days, compare differences with metrics and confidence intervals to support balance decisions.
   actions:
     - theme: brand
-      text: 从项目定位开始
+      text: Start with project positioning
       link: /guide/01-positioning
     - theme: alt
-      text: 路线图
+      text: Roadmap
       link: /guide/18-roadmap
     - theme: alt
       text: GitHub
       link: https://github.com/cuihairu/sandtable
 
 features:
-  - title: 配置驱动
-    details: Model 与 Scenario 分离。游戏数值、公式、规则进配置;实验环境单独描述,改参数不改代码。
-  - title: 分层时间模型
-    details: 宏观时间线用离散事件推进,Fixed Tick 只在单场战斗内部可选使用。MVP 战斗采用解析结算,避开全程 tick 的算力陷阱。
-  - title: 确定性优先
-    details: 带键随机数 (seed, actor_id, day, event_index, purpose),与调用顺序无关。同配置同 seed,结果逐位一致;改参数后随机路径仍可比。
-  - title: 实验一等公民
-    details: Grid / Random 扫描、多 seed 复跑、候选比较是核心模型而非外挂脚本。约束判定基于置信区间,不是点估计。
-  - title: 在线聚合指标
-    details: 不存每个玩家每步的数据。日粒度整数计数与增量统计,加固定快照日(D1 / 3 / 7 / 14 / 30)分位直算,十万玩家 × 90 天也在内存预算内。
-  - title: 相对比较立场
-    details: 玩家行为概率是人为设定的,输出的绝对数值不可信。Sandtable 的价值在 A/B 差值(ΔD7 Power 这类),不在绝对预言。
-  - title: 单核三形态
-    details: 同一 Rust 内核跑 CLI / Web(WASM)/ Desktop(Tauri 2)。core 可编译 wasm32 是 Phase 1 的 CI 门禁;浏览器跑小中型,桌面与 CLI 跑大型;local-first,无服务器。
+  - title: Configuration driven
+    details: Model and Scenario are separated. Game numbers, formulas, and rules live in configuration; the experiment environment is described separately, so changing parameters never means changing code.
+  - title: Layered time model
+    details: The macro timeline advances on discrete events; fixed ticks are an optional inner mechanism inside a single battle. MVP combat uses analytic resolution, avoiding the compute trap of ticking everything.
+  - title: Determinism first
+    details: Keyed random numbers (seed, actor_id, day, event_index, purpose), independent of call order. Same config and same seed give bit-identical results; random paths stay comparable after a parameter change.
+  - title: Experiments are first-class
+    details: Grid / random sweeps, multi-seed reruns, and candidate comparison are part of the core model, not bolted-on scripts. Constraints are judged on confidence intervals, not point estimates.
+  - title: Online-aggregated metrics
+    details: No per-player per-step storage. Day-granularity integer counters and incremental statistics, plus fixed snapshot days (D1 / 3 / 7 / 14 / 30) with quantiles computed directly — even 100,000 players × 90 days stays inside the memory budget.
+  - title: Relative comparison position
+    details: Player behavior probabilities are set by hand, so absolute outputs are not trustworthy. Sandtable's value is in A/B deltas (things like ΔD7 Power), not in absolute forecasts.
+  - title: One kernel, three forms
+    details: The same Rust kernel runs as CLI / Web (WASM) / Desktop (Tauri 2). core compiling for wasm32 is a Phase 1 CI gate; the browser runs small and medium sims, desktop and CLI run the large ones; local-first, no server.
 footer:
-  message: "本页为中文首页；英文首页见 [/en](/en/)。docs/guide/ 各章与 docs/ 根目录文档均已配英文版（同目录 .en.md），英文页正文顶部有语言切换器。"
+  message: "This is the English home; use the language selector in the navigation bar for the Chinese site."
   copyright: MIT
 ---

@@ -1,76 +1,76 @@
 ---
-title: 20 · 设计原则与愿景
+title: 20 · Design Principles and Vision
 ---
 
-[English](20-principles-vision.en.md) | [中文](20-principles-vision.md)
+[English](/guide/20-principles-vision) | [中文](/zh/guide/20-principles-vision)
 
-# 设计原则与愿景
+# Design Principles and Vision
 
-## 设计原则
+## Design Principles
 
-1. **Simulation First**:不先做漂亮 UI;
-2. **Deterministic First**:实验必须可复现,同 seed 同版本逐位一致;
-3. **Configuration Driven**:游戏数据与引擎解耦(内核抽取后全面配置驱动);
-4. **Engine Agnostic**:不绑定 Unity / Unreal / Godot;
-5. **Experiment First-Class**:Experiment 是核心模型,不是 CLI 外面的脚本;
-6. **Population First**:不模拟"一个平均玩家",模拟群体与分布;
-7. **Long-Term First**:不只模拟一场战斗,至少 Day 1 → Day 30;
-8. **Measure Before Optimize**:先把仿真、指标、实验、敏感性做对,再做复杂优化;
-9. **相对比较优先**:输出的价值在 A/B 差值与置信区间,不在绝对数值的预言(见[定位](./01-positioning));
-10. **Local First**:配置、实验、仿真、结果、分析全部本地完成,不需要账号、服务器、数据库、网络;
-11. **单核多形态**:CLI / Web / Desktop 共用同一 Rust 内核,不为任何平台重写仿真(见[产品边界](./02-scope))。
+1. **Simulation First**: no pretty UI first;
+2. **Deterministic First**: experiments must be reproducible — same seed, same version, bit-for-bit identical;
+3. **Configuration Driven**: game data decoupled from the engine (fully configuration-driven once the kernel is extracted);
+4. **Engine Agnostic**: no binding to Unity / Unreal / Godot;
+5. **Experiment First-Class**: Experiment is a core model, not a script sitting outside the CLI;
+6. **Population First**: do not simulate "one average player" — simulate populations and distributions;
+7. **Long-Term First**: do not simulate just one battle — at least Day 1 → Day 30;
+8. **Measure Before Optimize**: get the simulation, metrics, experiments, and sensitivity right first, then attempt complex optimization;
+9. **Relative comparison first**: the value of the output lies in the A/B difference and confidence intervals, not in prophesying absolute values (see [positioning](./01-positioning.md));
+10. **Local First**: configuration, experiments, simulation, results, and analysis all happen locally — no account, no server, no database, no network;
+11. **One core, many form factors**: CLI / Web / Desktop share one Rust kernel; the simulation is never rewritten for any one platform (see [product boundaries](./02-scope.md)).
 
-## 设计承诺
+## Design Commitments
 
-以下决策经评审确认是本计划最扎实的部分,后续修改需要显式理由:
+The following decisions were confirmed in review as the most solid parts of this plan; changing them later requires explicit justification:
 
-| 承诺 | 落点 |
+| Commitment | Where it lands |
 | --- | --- |
-| Model 与 Scenario 分离 | [核心概念](./03-concepts) |
-| Experiment 一等公民 | [核心概念](./03-concepts) · [实验管线](./11-experiment-pipeline) |
-| Deterministic First | [确定性随机数](./06-deterministic-rng) · [测试策略](./19-testing) |
-| Measure Before Optimize | [路线图](./18-roadmap) |
-| MVP 以闭环而非功能数量验收 | [MVP](./16-mvp) |
-| 明确列出"不做什么" | [产品边界](./02-scope) |
-| 单核多形态与 core 纯净性(平台门禁) | [仿真内核](./04-kernel) · [技术栈](./08-tech-stack) |
+| Model separated from Scenario | [Core concepts](./03-concepts.md) |
+| Experiment as a first-class citizen | [Core concepts](./03-concepts.md) · [Experiment pipeline](./11-experiment-pipeline.md) |
+| Deterministic First | [Deterministic RNG](./06-deterministic-rng.md) · [Testing strategy](./19-testing.md) |
+| Measure Before Optimize | [Roadmap](./18-roadmap.md) |
+| The MVP is accepted on its closed loop, not on feature count | [MVP](./16-mvp.md) |
+| Explicitly listing "what we don't do" | [Product boundaries](./02-scope.md) |
+| One core many form factors, and purity of the core (platform gates) | [Simulation kernel](./04-kernel.md) · [Tech stack](./08-tech-stack.md) |
 
-## 最终产品形态
+## Final Product Shape
 
 ```mermaid
 flowchart TD
     ST["Sandtable"] --> DEF["Model / Scenario / Experiment"]
-    DEF --> SIM["仿真<br>(离散事件 + 解析结算)"]
-    SIM --> PS["群体状态<br>(在线聚合)"]
-    PS --> MET["指标<br>(公式定义 + 置信区间)"]
-    MET --> KPI["KPI 约束判定"]
-    KPI --> AN["参数分析<br>(OAT 弹性 / 敏感性)"]
-    AN --> REC["平衡推荐<br>(插值区间 + 置信度)"]
+    DEF --> SIM["Simulation<br>(discrete events + analytic resolution)"]
+    SIM --> PS["Population state<br>(online aggregation)"]
+    PS --> MET["Metrics<br>(formula-defined + confidence intervals)"]
+    MET --> KPI["KPI constraint adjudication"]
+    KPI --> AN["Parameter analysis<br>(OAT elasticity / sensitivity)"]
+    AN --> REC["Balance recommendation<br>(interpolated intervals + confidence)"]
 ```
 
-目标用户体验:
+The target user experience:
 
 ```text
-1. 修改游戏配置
-2. 定义实验
-3. 运行 10,000 / 100,000 个玩家
-4. 推进 7 / 30 / 90 天
-5. 查看 KPI(附置信区间)
-6. 比较参数
-7. 找到敏感参数
-8. 获得推荐参数区间(附置信度)
+1. Modify the game configuration
+2. Define the experiment
+3. Run 10,000 / 100,000 players
+4. Advance 7 / 30 / 90 days
+5. Inspect the KPIs (with confidence intervals)
+6. Compare parameters
+7. Find the sensitive parameters
+8. Get recommended parameter intervals (with confidence)
 ```
 
-而不是:写代码 → 跑脚本 → 自己处理 CSV → 自己用 Excel 分析。
+And not: write code → run scripts → wrangle CSVs by hand → analyze in Excel yourself.
 
-## 一句话定义
+## One-Sentence Definition
 
 > **Sandtable is a configuration-driven simulation and experimentation framework for game systems.**
 
-中文:**Sandtable 是一个面向游戏系统的配置驱动仿真与实验框架,用于长期模拟玩家、战斗、经济和成长系统,并通过实验与指标分析辅助游戏平衡。**
+In Chinese: **Sandtable 是一个面向游戏系统的配置驱动仿真与实验框架,用于长期模拟玩家、战斗、经济和成长系统,并通过实验与指标分析辅助游戏平衡。**
 
-## 愿景
+## Vision
 
-Sandtable 最终应成为**游戏开发者的数字沙盘**。它不是告诉策划"这个技能 DPS 是 12,532",而是帮助回答"把这个参数改掉以后,整个游戏运行 30 天会发生什么"。
+Sandtable should ultimately become **the game developer's digital sandtable**. It is not about telling a designer "this skill's DPS is 12,532"; it helps answer "after changing this parameter, what happens to the whole game over 30 days of running".
 
 ```text
 Combat Simulation
@@ -79,4 +79,4 @@ Combat Simulation
       → Simulation + Experiment + Measurement + Optimization
 ```
 
-每一步扩张都以[路线图](./18-roadmap)的验证节点为门,不以愿景为门。
+Every expansion step is gated by the validation nodes of the [Roadmap](./18-roadmap.md), not by the vision.

@@ -1,19 +1,19 @@
 ---
-title: 07 · 配置与公式引擎
+title: 07 · Configuration and Formula Engine
 ---
 
-[English](07-config-formula.en.md) | [中文](07-config-formula.md)
+[English](/guide/07-config-formula) | [中文](/zh/guide/07-config-formula)
 
-# 配置与公式引擎
+# Configuration and Formula Engine
 
-## 原则
+## Principles
 
-::: tip 核心原则
-**配置描述数据,代码 / 脚本描述复杂行为。** 不要让 YAML 成为编程语言。
+::: tip Core principle
+**Configuration describes data; code / scripts describe complex behavior.** Do not let YAML become a programming language.
 :::
 
 ```yaml
-# 数据与简单规则进配置
+# Data and simple rules go in config
 stats:
   attack: 100
   defense: 80
@@ -21,101 +21,101 @@ formula:
   damage: "max(1, attack - defense)"
 ```
 
-涉及流程控制、多步状态的复杂行为,走 System 扩展机制(见下文),不往 YAML 里塞逻辑。
+Complex behavior involving flow control or multi-step state goes through the System extension mechanism (see below) — do not stuff logic into YAML.
 
-## 格式
+## Formats
 
-| 格式 | 角色 |
+| Format | Role |
 | --- | --- |
-| YAML | 人类编辑的主格式 |
-| JSON | 机器交换与**规范化权威格式**(config_hash 以 canonical JSON 计算) |
-| TOML | CLI / 工程配置,可选 |
+| YAML | The primary format for human editing |
+| JSON | Machine interchange and the **canonical authoritative format** (config_hash is computed from canonical JSON) |
+| TOML | CLI / engineering configuration, optional |
 
-### YAML 库选型(决策记录)
+### YAML Library Selection (Decision Record)
 
-- `serde_yaml`:维护者已于 2024 年 3 月归档,声明不再维护,**不采用**;
-- `serde_yml`:此后出现的热门分支,现已同样停止维护且社区对其实现质量有争议,**不采用**;
-- **采用 `serde_yaml_ng`**(serde_yaml 的维护分支,API 兼容)。
+- `serde_yaml`: the maintainer archived it in March 2024, declaring it unmaintained — **rejected**;
+- `serde_yml`: a popular fork that appeared afterward, now also unmaintained, and the community disputes its implementation quality — **rejected**;
+- **`serde_yaml_ng` adopted** (the maintained fork of serde_yaml, API-compatible).
 
-YAML 本身有隐式类型陷阱(如未加引号的 `no` / `on` 解析为布尔、`1.10` 解析为浮点)。约定:**语义上非布尔的字符串一律加引号**;机器间交换与哈希一律走 JSON。
+YAML has implicit-type traps of its own (e.g., unquoted `no` / `on` parse as booleans; `1.10` parses as float). Convention: **any string that is not semantically boolean must be quoted**; machine-to-machine exchange and hashing always go through JSON.
 
-## 参数注册表
+## Parameter Registry
 
-`warrior.attack` 这类点路径寻址需要中央注册表,否则 sweep 与 override 无从校验:
+Dot-path addressing like `warrior.attack` needs a central registry; otherwise sweep and override have nothing to validate against:
 
 ```text
-参数注册表:路径 → 类型 / 取值范围 / 默认值 / 说明
+Parameter registry: path → type / range / default / description
 ```
 
-- 加载时校验:未知路径报错、类型不符报错、越界报错;
-- [参数扫描](./12-parameter-sweep)的寻址、[推荐](./15-recommendation)的输出都基于注册表;
-- 注册表随 Model 编译生成,运行期零字符串查找;
-- 非数值槽(时长 `Dur`、公式 `Expr`、逐层表 `Table`)注册在案供校验与提示,但不进数值通道——不可扫描、不进参数表;
-- 遗留字段(如拆分前的 `model.dungeon.reward_growth`)只放行 YAML 加载并按旧语义映射,同样不进数值通道——旧配置载入结果不变,新写法显式给出时优先。
+- Validated at load: unknown paths error, type mismatches error, out-of-range errors;
+- The addressing of [Parameter Sweep](./12-parameter-sweep.md) and the output of [Recommendation](./15-recommendation.md) are both based on the registry;
+- The registry is generated with Model compilation, with zero string lookup at runtime;
+- Non-numeric slots (duration `Dur`, formula `Expr`, per-level tables `Table`) are registered for validation and hints but do not enter the numeric channel — not scannable, absent from the parameter table;
+- Legacy fields (e.g., `model.dungeon.reward_growth` before the split) are allowed through YAML loading and mapped per the old semantics, likewise without entering the numeric channel — old configurations load with unchanged results, and the new spelling takes priority when explicitly given.
 
-## 规范化与 config_hash
+## Normalization and config_hash
 
-::: warning 同一配置必须得到同一 hash
-config_hash 的输入是**规范化配置**:键按字典序排序、去除注释与空白、数字统一表示,序列化为 canonical JSON 后取 SHA-256。键书写顺序不同、注释不同的两份 YAML,只要语义相同,hash 必须一致。
+::: warning The same configuration must yield the same hash
+The input to config_hash is the **normalized configuration**: keys sorted lexicographically, comments and whitespace removed, numbers in a unified representation, serialized to canonical JSON, then hashed with SHA-256. Two YAML files with different key order or different comments must produce the same hash as long as their semantics are identical.
 :::
 
-配置根节点带 `schema_version` 字段,用于配置结构演进时的兼容判断与迁移。
+The configuration root carries a `schema_version` field, used for compatibility judgment and migration as the configuration structure evolves.
 
-## 公式引擎
+## Formula Engine
 
-### 能力范围(MVP)
+### Scope (MVP)
 
-受控表达式,不是通用语言:
-
-```text
-算术 · 比较 · 布尔 · 内置函数(min / max / clamp / floor / ceil / abs / round) · 条件
-```
-
-示例:`damage = max(1, attack * skill_ratio - defense)`。
-
-表查找(lookup)不在表达式层——它列在下方「后续扩展」;函数语义、运算符优先级与常用曲线形态(图由真实求值器采样生成)见[25 章](./25-formulas-and-curves)。
-
-### 执行模型:加载期编译
-
-伤害这类公式在一次实验中要求数十亿次求值,是热点路径,必须编译执行:
+Controlled expressions, not a general-purpose language:
 
 ```text
-加载期:解析 AST → 变量名解析为索引 → 编译为闭包 / 扁平指令
-运行期:按索引取值求值,零字符串查找
+Arithmetic · Comparison · Boolean · Built-in functions (min / max / clamp / floor / ceil / abs / round) · Conditionals
 ```
 
-### 现成方案评估(决策记录)
+Example: `damage = max(1, attack * skill_ratio - defense)`.
 
-| 方案 | 结论 |
+Table lookup is not at the expression layer — it is listed under "Follow-up Extensions" below; function semantics, operator precedence, and common curve shapes (the figure is sampled from the real evaluator) are in [Chapter 25](./25-formulas-and-curves.md).
+
+### Execution Model: Compile at Load Time
+
+Damage-type formulas are evaluated billions of times within one experiment — a hot path that must be compiled for execution:
+
+```text
+Load time:  parse AST → resolve variable names to indices → compile to closures / flat instructions
+Runtime:    evaluate by index lookup, zero string lookup
+```
+
+### Evaluation of Existing Options (Decision Record)
+
+| Option | Conclusion |
 | --- | --- |
-| evalexpr | 实现活跃,但自 13.x 起许可证为 **AGPL-3.0**,与本项目 Apache-2.0 不兼容,**排除**;旧 MIT 版本已停止维护,不采纳 |
-| rhai | Apache-2.0 / MIT 双许可,维护活跃,提供 `no-float` 整数模式利于确定性。作为**复杂行为脚本扩展的候选**,留待后续阶段评估引入 |
-| 内置最小求值器 | MVP 采用:能力范围有界(上文五类),加载期编译,无外部依赖 |
+| evalexpr | Actively implemented, but since 13.x its license is **AGPL-3.0**, incompatible with this project's Apache-2.0 — **excluded**; the old MIT versions are no longer maintained, not adopted |
+| rhai | Dual-licensed Apache-2.0 / MIT, actively maintained, offers a `no-float` integer mode that helps determinism. Kept as a **candidate for the complex-behavior scripting extension**, to be evaluated for introduction in a later phase |
+| Built-in minimal evaluator | Adopted for the MVP: bounded capability scope (the five categories above), compile at load time, no external dependencies |
 
-注意:内置最小求值器是**有界的表达式求值实现**,不是通用脚本引擎;需要图灵完备脚本时,应评估 rhai,而不是扩权表达式语法。
+Note: the built-in minimal evaluator is a **bounded expression-evaluation implementation**, not a general-purpose scripting engine; when Turing-complete scripting is needed, evaluate rhai rather than expanding the expression syntax.
 
-### 后续扩展
+### Follow-up Extensions
 
-函数、表查找、曲线(Curve)、分段(Piecewise)、分布采样,按 MVP 内置系统的实际需要逐步加入。
+Functions, table lookup, curves (Curve), piecewise (Piecewise), and distribution sampling are added incrementally as the MVP's built-in systems actually need them.
 
-## 复杂行为扩展接口
+## Complex Behavior Extension Interface
 
-MVP 内置系统以 Rust 硬编码实现于 `sandtable-core` 的 `systems` 模块([crate 划分](./08-tech-stack))。扩展接口的最小形态:
+MVP built-in systems are hardcoded in Rust in the `systems` module of `sandtable-core` ([crate layout](./08-tech-stack.md)). The minimal form of the extension interface:
 
 ```text
 System trait
-├── name()            系统标识
-├── 订阅的事件类型     只响应声明过的事件
-├── update(world, event)  状态变更入口
-└── 确定性约束         状态遍历必须有序容器;随机消费必须带键
+├── name()            system identifier
+├── subscribed event types   respond only to declared events
+├── update(world, event)  entry point for state changes
+└── determinism constraints  state iteration must use ordered containers; random consumption must be keyed
 ```
 
-外部脚本(如 rhai)属于"自定义 System 实现"的一种载体,接口形态先定,载体后选。
+External scripting (e.g., rhai) is one possible carrier of "custom System implementations"; the interface form is decided first, the carrier chosen later.
 
-::: tip 载体拍板(2026-10-08)
-复杂行为脚本的载体定为 **Python**(简单库多、仿真分析生态成熟),rhai 缓议。嵌入形态、三形态边界、性能红线与脚本安全策略见设计文档 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md)(已定稿待分期实施);脚本不进仿真热路径的量级论证见[时间模型](./05-time-model)。
+::: tip Carrier decided (2026-10-08)
+The carrier for complex-behavior scripting is set to **Python** (many simple libraries, a mature simulation-analysis ecosystem); rhai is deferred. The embedding form, the three-form boundary, the performance red line, and the script security strategy are in the design document [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md) (finalized, pending phased implementation); the quantitative argument for keeping scripts out of the simulation hot path is in the [Time Model](./05-time-model.md).
 :::
 
-## MVP 范围
+## MVP Scope
 
-MVP 的最小 RPG 以硬编码数值跑通闭环([MVP](./16-mvp)),公式引擎与参数注册表在闭环验证后接入(见[路线图](./18-roadmap) Phase 2)。
+The MVP's minimal RPG runs the closed loop with hardcoded numbers ([MVP](./16-mvp.md)); the formula engine and the parameter registry are wired in after the closed loop is validated (see Phase 2 of the [Roadmap](./18-roadmap.md)).

@@ -1,63 +1,63 @@
 ---
-title: 22 · Web 端
+title: 22 · Web
 ---
 
-[English](22-web.en.md) | [中文](22-web.md)
+[English](/guide/22-web) | [中文](/zh/guide/22-web)
 
-# 22 · Web 端
+# 22 · Web
 
-Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**——打开页面、改配置、本地跑小中型仿真、图表直接出,零安装,数据不出浏览器。
+The Phase 6 deliverable (document [Roadmap](./18-roadmap.md)): **"Try in your browser"** — open the page, change the configuration, run a small-to-medium simulation locally, charts come out directly, zero install, data never leaves the browser.
 
-## 形态
+## Form factor
 
-`apps/web`:Vite + React + TS 前端,消费 `sandtable-wasm` 绑定产物(`file:` 依赖,不经 npm registry)。零图表库——按天曲线由前端手绘 SVG(与 CLI `report` 子命令同一视觉纪律:无 CDN、无外链、无 JS 图表运行时)。
+`apps/web`: a Vite + React + TS frontend consuming the `sandtable-wasm` binding artifacts (a `file:` dependency, not via the npm registry). Zero charting libraries — per-day curves are hand-drawn SVG in the frontend (the same visual discipline as the CLI `report` subcommand: no CDN, no external resources, no JS charting runtime).
 
-页面能力(当前增量):
+Page capabilities (current increment):
 
-- 预设配置(最小 RPG / 宝可梦案例)一键载入,或导入本地 `.yaml` 配置文件,编辑器直接改;
-- `replicates` 1–8,本地执行 `run_simulation`;
-- KPI 卡(D3/D7 留存、日胜率、总流失率、人均金币、人均战力)与 `config_hash`;
-- 按天曲线(日活跃 / 日胜率 / 金币存量 / 升级次数);
-- 分群表(casual / core / whale 的等级、金币、战力、流失);
-- **SQL 查询面板(DuckDB-Wasm)**:仿真产物装入内存表 `days`,任意 SQL 本地执行(结果表 + 按天数值列一键画线)。零外链——worker 与 wasm 都经 vite `?url` 本地打包,不经 CDN;mvp 单线程构建按需加载(39 MB 资产,打开查询才下载)。
-- **结果导出**:`days.csv`(replicate 1,与 CLI `simulate --out` 写盘产物逐字节一致)、`report.json`(结构同构,`results` 逐值一致)与 `days.parquet`(同一份按天数据经 DuckDB `COPY ... (FORMAT PARQUET)` 落 Parquet,零新依赖)一键下载——放进一个目录即可被 `sandtable report` / `sandtable query` 继续分析([数据输出](./09-data-output) 契约)。
-- **项目打包与手输路径(2026-10-13)**:工具栏「打包项目(.sandtable)」把两个编辑器内容 + 当前结果打成 `.sandtable`(fflate,manifest v1、条目按路径排序、逐条 sha256 走 WebCrypto、固定归档时间戳 1980-01-01,与 CLI `project pack` 同规),`sandtable project check` / `unpack` 直接读;「本地结果文件分析」面板除原生对话框(多选)外有手输路径入口(单条追加去重,视图仍按文件词根注册)——native 对话框无法无头自动化时的等价路,功能同 duckdb-rs 查询。桌面下载经壳 `on_download` 接线落 `~/Downloads`(同名自动加 (n) 后缀,见[路线图 Phase 7](./18-roadmap))。
-- **参数扫描(网格 / Random + 推荐带 + 联合可行域)**:实验文件(scenario + model + sweep 三节,[文档 12 章](./12-parameter-sweep))本地扫描——经 YAML 编辑或预设选择器(单轴网格 / 单轴随机 / 双轴网格),JS 逐候选驱动(单线程下候选并行不可用,候选间让出主线程,进度可渲染);出候选 × 指标表(约束判定 PASS / BORDERLINE / FAIL,失败候选标注不静默丢弃)、单轴图(网格折线 / Random 散点,CI95 须、判定着色、推荐带与基线标记)、双轴联合可行域矩阵(逐目标三色判定,Random 稀疏格留空)、OAT 敏感性矩阵与推荐块——与 CLI `sweep` / `recommend` 同源(core 纯函数);预算门:候选 × replicates ≤ 200、players × days ≤ 40 万,超出引导走 CLI。
+- Preset configurations (minimal RPG / Pokémon case) load in one click, or import a local `.yaml` configuration file and edit it directly in the editor;
+- `replicates` 1–8, running `run_simulation` locally;
+- KPI cards (D3/D7 retention, daily win rate, total churn rate, gold per player, power per player) and `config_hash`;
+- Per-day curves (daily active / daily win rate / gold stock / level-up count);
+- Cohort table (level, gold, power, churn for casual / core / whale);
+- **SQL query panel (DuckDB-Wasm)**: the simulation artifact is loaded into the in-memory table `days`, and arbitrary SQL runs locally (result table + one-click line chart of the per-day numeric columns). Zero external requests — worker and wasm are both bundled locally through vite `?url`, not via a CDN; the mvp single-threaded build is loaded on demand (39 MB of assets, downloaded only when the query is opened);
+- **Result export**: `days.csv` (replicate 1, byte-for-byte identical to what the CLI's `simulate --out` writes to disk), `report.json` (structurally isomorphic, with `results` identical value by value), and `days.parquet` (the same per-day data written to Parquet through DuckDB `COPY ... (FORMAT PARQUET)`, zero new dependencies), all downloadable in one click — drop them into one directory and `sandtable report` / `sandtable query` can continue the analysis ([data output](./09-data-output.md) contract);
+- **Project packing and typed-path entry (2026-10-13)**: the toolbar's "Pack project (.sandtable)" packs the two editors' contents + the current results into a `.sandtable` (fflate, manifest v1, entries sorted by path, per-entry sha256 via WebCrypto, archive timestamp fixed at 1980-01-01, the same rules as the CLI's `project pack`), read directly by `sandtable project check` / `unpack`; besides the native dialog (multi-select), the "local result file analysis" panel also has a typed-path entry (single append with de-duplication, views still registered by file stem) — the equivalent route for when the native dialog cannot be automated headlessly, with functionality identical to the duckdb-rs query. Desktop downloads are wired through the shell's `on_download` into `~/Downloads` (same names automatically get a (n) suffix, see [Roadmap Phase 7](./18-roadmap.md));
+- **Parameter sweep (grid / Random + recommendation band + joint feasible region)**: the experiment file (three sections: scenario + model + sweep, [document chapter 12](./12-parameter-sweep.md)) is swept locally — through YAML editing or the preset selector (single-axis grid / single-axis random / two-axis grid), driven candidate by candidate by JS (candidate parallelism is unavailable under single-threading; the main thread yields between candidates, so progress can be rendered); it produces a candidates × metrics table (constraint verdicts PASS / BORDERLINE / FAIL, failing candidates annotated and never silently dropped), single-axis charts (grid line / Random scatter, CI95 required, verdicts color-coded, recommendation band and baseline markers), the two-axis joint feasible region matrix (per-target three-color verdicts, sparse Random cells left empty), the OAT sensitivity matrix and the recommendation block — the same source as the CLI's `sweep` / `recommend` (core pure functions); budget gates: candidates × replicates ≤ 200, players × days ≤ 400,000, beyond which users are steered to the CLI.
 
-## 绑定纪律
+## Binding discipline
 
-[`sandtable-wasm`](https://github.com/cuihairu/sandtable/tree/main/crates/sandtable-wasm) 是**薄绑定**:
+[`sandtable-wasm`](https://github.com/cuihairu/sandtable/tree/main/crates/sandtable-wasm) is a **thin binding**:
 
-- 只转发 core(load → validate → run),**不放仿真逻辑**;真实逻辑在 native 纯函数(`*_native`),cargo test 直接覆盖;
-- wasm 入口返回 **JSON 字符串**,前端 `JSON.parse`——不经过 serde-wasm-bindgen 的 JsValue 协议(实测与 wasm-bindgen 新版存在静默不兼容:to_value 产出空对象;字符串是 wasm ABI 最稳通道);
-- `run_simulation` 输出附 `days_csv`(replicate 1,`core::export::day_csv` 直出)——CSV 由 Rust 渲染,浏览器下载与 CLI 写盘**逐字节一致**(`web_parity` 锁死),不在 JS 侧重拼浮点;
-- 扫描三绑定(`sweep_plan / sweep_candidate / sweep_recommend`)同为纯转发;单线程下候选并行(rayon)不可用,由 **JS 逐候选驱动**、候选间让出主线程——`replicates` 由 plan 统一给出,candidate / recommend 不各自解释;推荐仅单参数轴(MVP 红线,[文档 15 章](./15-recommendation)同源拒绝);
-- `meta` 只带 `schema_version / model_version`;`generated_at_unix / git_sha` 属环境字段,由前端构建注入(`VITE_GIT_SHA`,CI 构建期注入;未注入回退 `unknown`,与 CLI 未设 `SANDTABLE_GIT_SHA` 时同),绑定层不伪造;
-- replicates 上限 64(Web 定位小中型,WASM 内存 4GB 上限、单线程,文档 [数据输出](./09-data-output)),更大的实验引导走 CLI / 桌面。
+- It forwards core only (load → validate → run) and **carries no simulation logic**; the real logic lives in native pure functions (`*_native`), which cargo test covers directly;
+- The wasm entry points return **JSON strings** and the frontend calls `JSON.parse` — it does not go through serde-wasm-bindgen's JsValue protocol (measured silent incompatibility with newer wasm-bindgen: to_value produces an empty object; a string is the most stable channel across the wasm ABI);
+- `run_simulation` output carries `days_csv` (replicate 1, straight out of `core::export::day_csv`) — the CSV is rendered by Rust, so browser downloads and CLI on-disk writes are **byte-for-byte identical** (locked down by `web_parity`); floats are never reassembled on the JS side;
+- The three sweep bindings (`sweep_plan / sweep_candidate / sweep_recommend`) are pure forwarding as well; candidate parallelism (rayon) is unavailable under single-threading, so **JS drives them candidate by candidate**, yielding the main thread between candidates — `replicates` is given uniformly by the plan; candidate / recommend do not each interpret it; recommendation covers a single parameter axis only (an MVP red line, refused the same way as [document chapter 15](./15-recommendation.md));
+- `meta` carries only `schema_version / model_version`; `generated_at_unix / git_sha` are environment fields, injected by the frontend build (`VITE_GIT_SHA`, injected during the CI build; falling back to `unknown` when not injected, the same as the CLI without `SANDTABLE_GIT_SHA`); the binding layer does not fabricate them;
+- The ceiling on replicates is 64 (the Web form targets small-to-medium simulations: the 4GB WASM memory cap, single-threaded, [data output](./09-data-output.md)); larger experiments are steered to the CLI / desktop.
 
-## 等价验收
+## Equivalence acceptance
 
-路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。
+The roadmap's Phase 6 acceptance criterion: **the browser and the CLI, with the same configuration and the same seed, produce statistically equivalent results**. It is locked down by `crates/sandtable-cli/tests/web_parity.rs` — with the same configuration and the same seed, the report.json from the CLI's `simulate` and the results from the binding's `run_simulation_native` are **identical value by value** (not merely close in statistics; `serde_json` has `float_roundtrip` enabled, so an f64 written to disk and read back is bit-identical).
 
-脚本层阶段 1(2026-10-11)补齐第三条边:`crates/sandtable-python/tests/test_parity.py` 以同一范式锁 py↔CLI(simulate / sweep / recommend 逐值一致,`days_csv` 与 CLI `days.csv` 逐字节一致)——core 唯一真源、三份独立薄转发的 pairwise 等价闭环(web_parity + py_parity + 桌面等价测试)完成。
+Scripting-layer Phase 1 (2026-10-11) closed the third edge: `crates/sandtable-python/tests/test_parity.py` locks py↔CLI with the same paradigm (simulate / sweep / recommend identical value by value, `days_csv` byte-for-byte identical to the CLI's `days.csv`) — the core is the single source of truth, and the pairwise equivalence loop over three independent thin forwardings (web_parity + py_parity + the desktop equivalence test) is complete.
 
-## CI 门
+## CI gates
 
-`.github/workflows/ci.yml` 三个 job 都盖到 wasm 面:
+All three jobs in `.github/workflows/ci.yml` cover the wasm surface:
 
-- `test` job:WASM 编译门(core,wasm32)+ WASM 绑定构建门(wasm-pack `--dev` 出 pkg);
-- `web` job:wasm-pack `--release` 出 pkg → `npm ci` → `npm run build`(类型检查 + 打包,断言产物含 .wasm)→ **`node --test` 前端守卫**(`tests/columns.test.mjs` 列归一含 BigInt、`tests/presets.test.mjs` 预设过真实 wasm 内核、`tests/project.test.mjs` 打包/解包闭环 + 路径纪律 + 打包产物过真实内核,后两条需 pkg-node);
-- `desktop-smoke` job(2026-10-13):wasm-pack `--target web --dev` 出 pkg(桌面壳 custom-protocol 编译期内嵌 `web/dist`,tsc 也要解析 file:pkg 类型)→ 前端构建 → Xvfb 无头拉起壳截屏判定(启动链门,配方见 `scripts/desktop_smoke.sh`)。
+- `test` job: the WASM compile gate (core, wasm32) + the WASM binding build gate (wasm-pack `--dev` produces pkg);
+- `web` job: wasm-pack `--release` produces pkg → `npm ci` → `npm run build` (type check + bundling, asserting the artifacts contain .wasm) → **`node --test` frontend guards** (`tests/columns.test.mjs` column normalization including BigInt, `tests/presets.test.mjs` presets passing through the real wasm kernel, `tests/project.test.mjs` pack/unpack loop + path discipline + packed artifact passing through the real kernel; the latter two require pkg-node);
+- `desktop-smoke` job (2026-10-13): wasm-pack `--target web --dev` produces pkg (the desktop shell inlines `web/dist` at compile time via custom-protocol, and tsc must resolve the file:pkg types as well) → frontend build → Xvfb brings the shell up headless and takes a screenshot for adjudication (startup-chain gate, recipe in `scripts/desktop_smoke.sh`).
 
-独立工作流 `.github/workflows/desktop-package.yml`(2026-10-13,`workflow_dispatch` 手动触发):同一 wasm pkg + 前端产物前置 → `tauri-action` 打包三平台安装制品(Windows msi+nsis / macOS dmg+app / Linux deb)上传 artifacts——**不打 tag、不建 Release**,未验收的二进制不进 Releases 页面(版本号只由用户手动给出)。前端产物同样先行(custom-protocol 内联),故这条链也顺带覆盖 wasm 类型解析与前端打包。
+The standalone workflow `.github/workflows/desktop-package.yml` (2026-10-13, manually triggered via `workflow_dispatch`): same wasm pkg + frontend artifact preconditions → `tauri-action` packages installable artifacts for three platforms (Windows msi+nsis / macOS dmg+app / Linux deb) and uploads them as artifacts — **no tags, no Release created**; unaccepted binaries never reach the Releases page (the version number is only ever supplied manually by the user). The frontend artifact is likewise produced first (custom-protocol inlining), so this pipeline incidentally also covers wasm type resolution and frontend bundling.
 
-## 本地运行
+## Running locally
 
-见 [apps/web/README](https://github.com/cuihairu/sandtable/tree/main/apps/web):先 `wasm-pack build crates/sandtable-wasm --target web`,再 `npm install && npm run dev`。
+See [apps/web/README](https://github.com/cuihairu/sandtable/tree/main/apps/web): first `wasm-pack build crates/sandtable-wasm --target web`, then `npm install && npm run dev`.
 
-桌面安装包本地构建:`cd apps/desktop/src-tauri && tauri build --features custom-protocol`(需先备好 `apps/web/dist`,见上);仅验编译链时可加 `--bundles deb` 跳过 AppImage 下载。图标重生成见 [src-tauri/assets/README](https://github.com/cuihairu/sandtable/tree/main/apps/desktop/src-tauri/assets)。
+To build the desktop installers locally: `cd apps/desktop/src-tauri && tauri build --features custom-protocol` (you need `apps/web/dist` ready first, see above); when verifying only the compilation chain, add `--bundles deb` to skip the AppImage download. For regenerating icons see [src-tauri/assets/README](https://github.com/cuihairu/sandtable/tree/main/apps/desktop/src-tauri/assets).
 
-## 后续
+## Follow-ups
 
-- ~~查询面板改为加载随结果携带的 CSV / Parquet 文件~~ **CSV 与项目文件已落地(2026-10-09,a47ad10 + 9edca3f)**:查询面板可载入 `.sandtable`(fflate 本地解包,校验同 CLI `project check`——manifest v1、路径纪律、逐条 sha256 走 WebCrypto、归档集合与清单严格相等)或散装 CSV,产物注册为 DuckDB 内存表直接 SQL;顶部「导入配置文件」支持 `.sandtable`,scenario / experiment 各取路径序首个接进仿真与扫描编辑器(打开项目文件即可复现实验,文档 09 章闭环)。**余项均已落地(2026-10-10)**:项目多配置选择器——`.sandtable` 内多个 scenario / experiment 时 toolbar 出下拉切换(默认路径序首个,单个不占位);Parquet 直读——查询面板接受 `.parquet` 散装文件与项目内 Parquet 产物,duckdb-wasm `read_parquet` 装表(读入函数按扩展名二选一,CSV 走 `read_csv_auto` 不变)。仿真按天数据仍同时可查(`days` 表)。
-- ~~扫描的多参数轴联合可行域与 Random 搜索前端化~~ **已完成(2026-10-09,1952308 + 9b75565)**:Random 预设 + 散点图(采样点不连线、刻度抽稀);双轴联合可行域矩阵(SweepMatrix,逐目标三色判定,Random 稀疏格如实留空,单轴取值过多降级提示);单轴推荐带红线不变,≥3 轴仍仅候选表。
+- ~~Change the query panel to load the CSV / Parquet files carried along with the results~~ **CSV and project files have landed (2026-10-09, a47ad10 + 9edca3f)**: the query panel can load a `.sandtable` (unpacked locally with fflate, validated by the same rules as the CLI's `project check` — manifest v1, path discipline, per-entry sha256 via WebCrypto, archive file set strictly equal to the manifest) or loose CSV files, with the artifact registered as a DuckDB in-memory table for direct SQL; the "Import configuration file" button at the top accepts `.sandtable`, taking the first entry in path order from scenario / experiment and wiring it into the simulation and sweep editors (opening the project file reproduces the experiment, closing the loop with document chapter 09). **All remaining items have landed (2026-10-10)**: a multi-configuration selector for projects — when a `.sandtable` holds multiple scenarios / experiments, the toolbar shows a dropdown to switch (default = the first entry in path order; a single entry takes no slot); direct Parquet reading — the query panel accepts loose `.parquet` files and Parquet artifacts inside a project, with duckdb-wasm `read_parquet` loading the table (the read function picks by extension, CSV still goes through `read_csv_auto` unchanged). Per-day simulation data remains queryable at the same time (the `days` table).
+- ~~Frontend-ize the multi-axis joint feasible region and Random search for sweeps~~ **Done (2026-10-09, 1952308 + 9b75565)**: the Random preset + scatter plot (sampled points not connected, axis tick labels thinned out); the two-axis joint feasible region matrix (SweepMatrix, per-target three-color verdicts, sparse Random cells honestly left empty, a downgrade prompt when a single axis has too many values); the single-axis recommendation band red line unchanged, and with ≥3 axes still only a candidate table.

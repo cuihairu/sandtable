@@ -1,87 +1,87 @@
-# sandtable 游戏引擎 Adapter 设计
+# sandtable Game Engine Adapter Design
 
-[English](engine-adapter-design.en.md) | [中文](engine-adapter-design.md)
+[English](/engine-adapter-design) | [中文](/zh/engine-adapter-design)
 
-**状态:已代决(巡检 R1)并落地。** 五个决策点已按 §5.1 代决,阶段 0–2 全部实装于 `crates/sandtable-engine`(2026-10-14):契约导出 + 参考导入器 + 回流约定,契约规范见 §7。
-配套工程证据:跨平台 CI 链已就位(2026-10-13,`desktop-package.yml` 三平台矩阵实跑 bundler),见 §4。
+**Status: decided via patrol delegation and landed.** All five decision points were decided per §5.1; phases 0–2 are fully implemented in `crates/sandtable-engine` (2026-10-14): contract export + reference importer + backflow convention. Contract specification in §7.
+Supporting engineering evidence: the cross-platform CI chain is in place (2026-10-13, `desktop-package.yml` three-platform matrix actually runs the bundler), see §4.
 
-## 0. 定位(承既有架构口径)
+## 0. Positioning (carries over existing architecture terms)
 
-- 沙盘的核心资产是**配置语义**(七概念 + 数值表 + 公式/曲线 + 行为配置),不是任何引擎的运行时。
-- 目标:**配置一次,引擎侧复用**——沙盘内验证过的参数与曲线,能以机器可读方式交给引擎侧,减少"沙盘与实机两套数"的漂移。
-- 不做的事:不写引擎侧运行时、不复制 core 逻辑到引擎、不让引擎成为 core 的反向依赖。引擎是**消费方**,不是同构实现。
+- The sandtable's core asset is **configuration semantics** (seven concepts + value tables + formulas/curves + behavior config) — not any engine's runtime.
+- Goal: **configure once, reuse on the engine side** — parameters and curves validated inside the sandtable can be handed to the engine side in machine-readable form, reducing drift from "one set of numbers in the sandtable, another on the live build".
+- What we do not do: no engine-side runtime, no copy of core logic into the engine, no letting the engine become a reverse dependency of core. The engine is a **consumer**, not an isomorphic implementation.
 
-## 1. 需求场景(按优先级)
+## 1. Requirement Scenarios (by priority)
 
-1. 沙盘验证过的数值(掉落率、成长曲线、抽卡期望)同步到引擎侧,策划不必二次录入。
-2. 引擎侧配置反向校验:改引擎参数前,先在沙盘验一下分布是否健康。
-3. 引擎侧真实运行结果回流,与沙盘分布做 A/B 对照(依赖场景 1 的契约)。
-4. 多引擎并行(同一沙盘配置喂两个引擎做选型对比)。
+1. Sandtable-validated numbers (drop rates, growth curves, gacha expectations) sync to the engine side so designers do not re-enter them.
+2. Reverse validation on the engine side: before changing an engine parameter, first check in the sandtable whether the distribution is healthy.
+3. Real engine run results flow back and are compared against the sandtable distribution as an A/B check (depends on the scenario 1 contract).
+4. Multiple engines in parallel (one sandtable config fed to two engines for a selection comparison).
 
-场景 1–3 需要"出得来"的契约;场景 4 要求契约**引擎无关**——这决定 §2 的推荐方向。
+Scenarios 1–3 need a contract that "can be produced"; scenario 4 requires the contract to be **engine-agnostic** — which decides §2's recommendation.
 
-## 2. 形态对比与决策
+## 2. Form Comparison and Decision
 
-| 形态 | 做法 | 优点 | 代价 | 判断 |
+| Form | Approach | Upside | Cost | Verdict |
 | --- | --- | --- | --- | --- |
-| **A. 引擎无关 JSON 契约** | 定义中立 JSON schema,导出沙盘配置;各引擎写**自己的 importer** | 一次导出多引擎复用;契约可版本化、可 diff、可入版本库;沙盘零引擎依赖 | 每接一个引擎写一次 importer(薄,但真实工作量) | **推荐**。沙盘保持引擎无关,契约稳定即可;importer 是引擎侧薄胶水,可社区化 |
-| B. 逐引擎 importer 内建 | sandtable 直接生成 Unity/Unreal 资源(脚本able/scene) | 引擎侧零胶水 | 沙盘被引擎 API 绑死,升级即破;每接一引擎重做一套;core 侧被迫引入平台依赖 | 不做。违反 §0 定位,维护成本随引擎数线性涨 |
-| C. 引擎侧只读沙盘源码目录 | 引擎直接读 `*.yaml` / `*.json` 配置目录 | 零转换 | 无契约版本、无校验、路径与命名成隐式约定 | 不推荐。可作为场景 1 的临时过渡,不作为契约 |
+| **A. Engine-agnostic JSON contract** | Define a neutral JSON schema, export the sandtable config; each engine writes **its own importer** | One export reused across engines; the contract is versionable, diffable, committable; zero engine dependency in the sandtable | One importer per engine wired up (thin, but real work) | **Recommended**. The sandtable stays engine-agnostic and only the contract needs to be stable; the importer is thin engine-side glue and can be community-owned |
+| B. Built-in per-engine importer | sandtable generates Unity/Unreal assets directly (scriptable/scene) | Zero engine-side glue | The sandtable is pinned to engine APIs and breaks on every upgrade; each engine means another full round of work; core is forced to take platform dependencies | Not done. Violates §0 positioning; maintenance cost grows linearly with the engine count |
+| C. Engine reads the sandtable source dir | Engine reads the `*.yaml` / `*.json` config directory directly | Zero conversion | No contract version, no validation; paths and naming become implicit conventions | Not recommended. Usable as a temporary bridge for scenario 1, not as a contract |
 
-**决策:取 A。** 引擎侧 importer 由引擎方维护或委托;沙盘只提供契约与参考 importer(可选)。
+**Decision: go with A.** Engine-side importers are maintained by the engine side or by delegation; the sandtable only supplies the contract and (optionally) a reference importer.
 
-## 3. 契约面(A 方案细节)
+## 3. Contract Surface (option A details)
 
-1. **导出范围**:仅导出沙盘语义层——数值表、公式/曲线、掉落表、抽卡配置、行为配置。不导出 UI、布局、动画等引擎侧概念;沙盘本就没有的东西不假装生成。
-2. **版本字段**:契约带 `schema_version`,语义变更走加法;删除/改义须升 major 并留迁移说明。
-3. **确定性**:导出产物排序稳定(键序、列表序固定),便于 diff 与代码评审——与 core 现有确定性纪律一致。
-4. **校验**:导出前走 `validate_config` 同源校验,不产出"沙盘自己都跑不通"的契约;`config_hash` 随契约一起出,便于引擎侧回指沙盘运行结果。
-5. **参考 importer**:可选提供一个纯 JSON→数据的参考实现(引擎侧自研亦可),用于示例与回归。
-6. **不做反向写入**:契约是沙盘→引擎的单向输出;反向回流(场景 3)走独立的回流文件,不写回契约。
+1. **Export scope**: only the sandtable semantics layer — value tables, formulas/curves, loot tables, gacha config, behavior config. No UI, layout, animation or other engine-side concepts; the sandtable does not pretend to produce what it never had.
+2. **Version field**: the contract carries `schema_version`; semantic changes are additive; removals or redefinitions require a major bump plus a migration note.
+3. **Determinism**: export output has stable ordering (fixed key order, fixed list order) so diffs and code review are meaningful — consistent with core's existing determinism discipline.
+4. **Validation**: `validate_config` runs through the same-source check before export, so we never emit a contract "the sandtable itself cannot run"; `config_hash` ships with the contract so the engine side can point back at a sandtable run result.
+5. **Reference importer**: optionally provide a pure JSON→data reference implementation (the engine side may roll its own), used for examples and regression.
+6. **No reverse write-back**: the contract is a one-way sandtable→engine output; backflow (scenario 3) uses a separate backflow file and never writes back into the contract.
 
-## 4. 落点(已按 §5.1 决策 3 确认:独立 crate)
+## 4. Landing Point (confirmed per §5.1 decision 3: standalone crate)
 
-- **落点**:独立 `sandtable-engine` crate(薄壳,同 `sandtable-python` 范式:core path 依赖、导出器纯函数、cargo test 直接覆盖),还是 CLI 内 feature 门子命令——**已代决:独立 crate**,保持 core 零改动;
-- **feature 门**:默认不编进 CLI 主二进制(同 arrow / parquet 的 feature 纪律),CI 加构建门与测试门;
-- **跨平台 CI(2026-10-13 立)**:`.github/workflows/desktop-package.yml` 以三平台矩阵实跑 bundler 链(ubuntu-24.04 / windows-2025 / macos-15)——适配层若走独立 crate,可复用同一矩阵做构建门;若走 WASM 产物形态(导出器纯函数、理论可编译 wasm32),亦可复用,无需新建工作流。当前不新建 CI 条目,仅登记复用点;
-- **WASM 门**:导出器是纯函数、无平台绑定,若走 WASM 形态须过 core 的 wasm32 编译门(现有 CI 已覆盖同型纪律)。
+- **Landing point**: standalone `sandtable-engine` crate (thin shell, same pattern as `sandtable-python`: core path dependency, exporter as pure function, covered directly by cargo test) vs. a feature-gated CLI subcommand — **decided: standalone crate**, keeping core untouched;
+- **Feature gate**: not compiled into the main CLI binary by default (same feature discipline as arrow / parquet), with CI build and test gates added;
+- **Cross-platform CI (set up 2026-10-13)**: `.github/workflows/desktop-package.yml` runs the bundler chain on a three-platform matrix (ubuntu-24.04 / windows-2025 / macos-15) — an adapter layer as a standalone crate can reuse the same matrix as its build gate; a WASM artifact form (exporter is a pure function and would compile for wasm32 in theory) could reuse it too, with no new workflow needed. No new CI entry is added now; the reuse point is only registered;
+- **WASM gate**: the exporter is a pure function with no platform binding; if shipped in WASM form it must pass core's wasm32 compile gate (existing CI already covers the same discipline).
 
-## 5. 决策点(2026-10-14 已代决,见 §5.1;原待拍板记录保留)
+## 5. Decision Points (decided 2026-10-14, see §5.1; the original pending-sign-off record is kept)
 
-1. 目标引擎是哪个(决定 schema 取舍与参考 importer 是否要做);
-2. 契约 schema 版本起点与命名域(包名 / 文件扩展名 / JSON 命名风格);
-3. 落点:独立 `sandtable-engine` crate,还是 CLI 内 feature 门子命令;
-4. 参考 importer 是否由沙盘仓库维护(涉及长期维护责任);
-5. 场景 3 回流是否纳入第一期(影响契约是否要预留回指字段)。
+1. Which target engine (decides schema trade-offs and whether a reference importer is needed);
+2. Contract schema version start and naming domain (package name / file extension / JSON naming style);
+3. Landing point: standalone `sandtable-engine` crate, or a feature-gated CLI subcommand;
+4. Whether the sandtable repo maintains the reference importer (involves long-term maintenance responsibility);
+5. Whether scenario 3 backflow enters phase 1 (affects whether the contract must reserve back-reference fields).
 
-## 5.1 代决记录(巡检 R1,2026-10-14)
+## 5.1 Delegation Record (patrol R1, 2026-10-14)
 
-五项均属产品方向 / 设计取舍且有明确推荐,不涉版本发布、License、付费、素材授权或人工验收,按巡检授权代决:
+All five are product-direction / design trade-offs with clear recommendations; none touch version release, License, paid features, asset licensing, or human acceptance. Decided under patrol delegation:
 
-1. **目标引擎:不预设。** A 方案的立论即引擎无关(§2),schema 按「中立语义层」取舍,先落地契约再等真实引擎接入,不为假想引擎特化字段。
-2. **命名域:schema_version 起点 `"0.1.0"`;包名 `sandtable-engine`;扩展名 `.engine.json`;JSON 键 snake_case** (与沙盘 YAML 配置键风格一致,跨语言消费方零歧义)。
-3. **落点:独立 `sandtable-engine` crate** (同 `sandtable-python` 薄壳范式:core path 依赖、导出器纯函数、cargo test 直接覆盖),CLI 子命令留待真实接入需求出现再加。
-4. **参考 importer:由沙盘仓维护。** load 即契约回归 oracle(导出产物必须能被重新加载且等价,tests/roundtrip.rs 19 测),与 py_parity / web_parity 先例同构。
-5. **回流:纳入一期。** `config_hash` 本就随契约导出,回流文件只回指 hash + 指标点,成本极低且是场景 3(A/B 对照)的唯一通道,不做则场景 3 永远缺位。
+1. **Target engine: none preset.** Option A's thesis is engine-agnostic (§2), so the schema is chosen for a "neutral semantics layer": land the contract first, then wait for a real engine integration — no fields specialized for a hypothetical engine.
+2. **Naming domain: schema_version starts at `"0.1.0"`; package name `sandtable-engine`; extension `.engine.json`; JSON keys snake_case** (matches the sandtable YAML config key style, unambiguous for cross-language consumers).
+3. **Landing point: standalone `sandtable-engine` crate** (same thin-shell pattern as `sandtable-python`: core path dependency, exporter as pure function, covered directly by cargo test). A CLI subcommand is deferred until a real integration request appears.
+4. **Reference importer: maintained by the sandtable repo.** Loading is the contract regression oracle (an export must be reloadable and equivalent — `tests/roundtrip.rs`, 19 tests); isomorphic to the py_parity / web_parity precedent.
+5. **Backflow: included in phase 1.** `config_hash` already ships with the contract, and the backflow file only points back at the hash plus metric points — very low cost, and it is the only channel for scenario 3 (A/B comparison); skipping it leaves scenario 3 permanently absent.
 
-## 6. 分期(已全部完成,2026-10-14)
+## 6. Phasing (all complete, 2026-10-14)
 
-- **阶段 0**:契约 v0 草案(导出 schema + 示例产物 + 校验),只导出,不接任何引擎。✅
-- **阶段 1**:参考 importer + 回归测试(导出产物可被重新加载并等价校验)。✅
-- **阶段 2**:场景 3 回流文件约定与校验(已拍板纳入)。✅
+- **Phase 0**: contract v0 draft (export schema + example artifact + validation); export only, no engine wired up. ✅
+- **Phase 1**: reference importer + regression tests (export artifacts reload and validate equivalently). ✅
+- **Phase 2**: scenario 3 backflow file convention and validation (approved for inclusion). ✅
 
-实装:`crates/sandtable-engine`(contract.rs 导出器 + importer.rs 参考导入 + backflow.rs 回流约定;tests/roundtrip.rs 19 测;examples/export_pokemon.rs 最小可跑;README.md 含接入三步)。
+Implementation: `crates/sandtable-engine` (contract.rs exporter + importer.rs reference importer + backflow.rs backflow convention; tests/roundtrip.rs, 19 tests; examples/export_pokemon.rs minimal runnable; README.md with the three-step integration guide).
 
-## 7. 契约规范 v0.1(sandtable-engine 落地口径)
+## 7. Contract Specification v0.1 (sandtable-engine landing terms)
 
-- **顶层**:`kind`(`sandtable-engine-contract`)/ `schema_version`(`0.1.0`)/ `config_hash`(64 位十六进制,随契约出)/ `model`。
-- **model 面**:warrior、whale_gain_mult、combat、dungeon(几何参数恒出 + tier_table 可选)、behavior(三群)、training(可选)、progression、formula、churn、loot(可选)、gacha(可选)。
-- **有效值导出**:缺省即语义明确的标量导出生效值(`damage_model` 缺省→`"difference"`、`ratio_k` 缺省→`1.0`);tier_table 行内 gold/xp 缺省按 `reward · growth^tier` 截断为有效整数(与 core `monster_of` 同公式)。
-- **确定性**:字段序 = 声明序,BTreeMap 键序固定;导出前过 `config::validate` 同源校验,不产出沙盘自己都跑不通的契约。
-- **回流**:`kind`=`sandtable-engine-backflow` + `config_hash` 回指 + 指标点(键须过 `MetricKey::parse`,均值须有限,CI 下界≤上界);单向,不写回契约。
+- **Top level**: `kind` (`sandtable-engine-contract`) / `schema_version` (`0.1.0`) / `config_hash` (64 hex chars, shipped with the contract) / `model`.
+- **model surface**: warrior, whale_gain_mult, combat, dungeon (geometric parameters always emitted + optional tier_table), behavior (three cohorts), training (optional), progression, formula, churn, loot (optional), gacha (optional).
+- **Effective-value export**: scalars with unambiguous defaults export their effective values (`damage_model` default → `"difference"`, `ratio_k` default → `1.0`); missing gold/xp inside a tier_table row is truncated to an effective integer per `reward · growth^tier` (same formula as core `monster_of`).
+- **Determinism**: field order = declaration order, BTreeMap key order fixed; `config::validate` runs through the same-source check before export, so we never emit a contract the sandtable itself cannot run.
+- **Backflow**: `kind`=`sandtable-engine-backflow` + `config_hash` back-reference + metric points (keys must pass `MetricKey::parse`, means must be finite, CI lower bound ≤ upper bound); one-way, never written back into the contract.
 
-### 接入三步
+### Three-Step Integration
 
-1. **取契约**:YAML 场景 → `export_from_yaml`(或 `export(&SimConfig)`)→ 写 `*.engine.json`。
-2. **校验 + 读入**:`importer::load(json)` 校验 kind / schema_version / 64 位 hash / 域值(命中率∈[0,1]、tier_table 行数 == tiers 等)。
-3. **回流对照**:引擎侧写回流文件(回指同一 `config_hash`)→ `backflow_load` 校验 → `backflow_matches` 对回契约做 A/B 对照。
+1. **Get the contract**: YAML scenario → `export_from_yaml` (or `export(&SimConfig)`) → write `*.engine.json`.
+2. **Validate + load**: `importer::load(json)` checks kind / schema_version / the 64-char hash / domain values (hit rate ∈ [0,1], tier_table row count == tiers, etc.).
+3. **Backflow comparison**: the engine side writes a backflow file (pointing back at the same `config_hash`) → `backflow_load` validates → `backflow_matches` compares the contract against it as an A/B check.

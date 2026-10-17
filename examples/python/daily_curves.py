@@ -2,7 +2,7 @@
 """按天曲线:sandtable days.csv → pandas → matplotlib。
 
 脚本层阶段 0 示例(外挂模式,见 scripts/scripting-design.md §2 方案 A)。
-days.csv 与 report.json 同一 run 的产物,18 列契约见 docs/guide/09-data-output.md。
+days.csv 与 report.json 同一 run 的产物,18 列契约见 docs/zh/guide/09-data-output.md。
 
 输入产出(仓库根目录执行):
     cargo run -p sandtable-cli -- simulate examples/pokemon.yaml \

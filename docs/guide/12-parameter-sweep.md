@@ -1,10 +1,10 @@
 ---
-title: 12 · 参数扫描
+title: 12 · Parameter Sweep
 ---
 
-[English](12-parameter-sweep.en.md) | [中文](12-parameter-sweep.md)
+[English](/guide/12-parameter-sweep) | [中文](/zh/guide/12-parameter-sweep)
 
-# 参数扫描
+# Parameter Sweep
 
 ## Grid Search
 
@@ -20,136 +20,136 @@ parameters:
     step: 20
 ```
 
-自动产生笛卡尔积:
+The Cartesian product is generated automatically:
 
 ```text
 90/100 · 90/120 · 90/140 · … · 110/200
 ```
 
-**规模公式**:总运行数 = ∏((max − min) / step + 1) × R(replicates)。上例为 5 × 6 = 30 个候选;再乘 R = 5,即 150 次仿真。网格设计先算这笔账。
+**Scale formula**: total runs = ∏((max − min) / step + 1) × R (replicates). The example above gives 5 × 6 = 30 candidates; times R = 5, that is 150 simulations. Run this arithmetic before designing the grid.
 
-寻址路径经[参数注册表](./07-config-formula)校验;候选之间并行执行,确定性不受线程数影响([并行确定性](./06-deterministic-rng))。
+Addressing paths are validated against the [parameter registry](./07-config-formula.md); candidates execute in parallel and determinism is unaffected by thread count ([parallel determinism](./06-deterministic-rng.md)).
 
 ## Random Search
 
-用于高维参数空间:在注册表声明的范围内按分布采样。
+For high-dimensional parameter spaces: sampling by distribution within the ranges declared in the registry.
 
-## Latin Hypercube(`mode: latin_hypercube`,2026-10-09 落地)
+## Latin Hypercube (`mode: latin_hypercube`, landed 2026-10-09)
 
-Random 的分层改进:每维 [min, max] 分 `samples` 层、层内均匀采 1 点,再各维独立 Fisher–Yates 洗牌配对——同样 N 个样本下每维的覆盖均匀性优于纯随机(各维保证无空层、无堆叠),适合高维空间预算有限时的采样。
+A stratified refinement of Random: each dimension's [min, max] is split into `samples` strata with one point sampled uniformly inside each, and dimensions are then paired by independent Fisher–Yates shuffles — with the same N samples, per-dimension coverage is more uniform than pure random (every dimension is guaranteed no empty strata and no pile-ups), a good fit for budget-limited sampling in high-dimensional spaces.
 
 ```yaml
 sweep:
   mode: latin_hypercube
-  samples: 24        # 候选数 = samples(与 Random 同字段)
+  samples: 24        # candidate count = samples (same field as Random)
   replicates: 4
 ```
 
-- 候选数 = `samples`,总运行数 = samples × R;规模上限与 Random 同门(MAX_CANDIDATES 兜底);
-- 采样流与 `base_seed` 绑定:同配置同采样,线程数无关(与 [Random 模式](#random-search) 同一条纪律);
-- 洗牌只打乱层序配对,不改变层内取值——排序后仍每层恰一点;
-- `step` 不参与(与 Random 一致,只作范围元数据保留)。
+- Candidate count = `samples`, total runs = samples × R; the scale cap is the same gate as Random (MAX_CANDIDATES as the backstop);
+- The sampling stream is bound to `base_seed`: same configuration, same samples, independent of thread count (the same discipline as the [Random mode](#random-search));
+- The shuffle only permutes the pairing of strata, never the values inside them — after sorting, each stratum still holds exactly one point;
+- `step` takes no part (consistent with Random; kept only as range metadata).
 
-## 自动寻优(`optimize`,Phase 8 点火,2026-10-10)
+## Automated optimization (`optimize`, ignited Phase 8, 2026-10-10)
 
-扫描回答"这条曲线上哪些点可行",寻优回答"机器帮我在多维空间里找可行点"——[平衡推荐](./15-recommendation)遗留的"多参数联合可行域需要代理模型或优化器"由此接上。实验文件的第三节换成 `optimize`:
+A sweep answers "which points on this curve are feasible"; optimization answers "let the machine find feasible points for me in a multi-dimensional space" — this picks up what [Balance recommendation](./15-recommendation.md) left open, that "the joint feasible region of multiple parameters needs a surrogate model or an optimizer". The experiment file's third section becomes `optimize`:
 
 ```yaml
 optimize:
   mode: evolutionary
-  population: 8        # 种群大小
-  generations: 5       # 迭代代数
-  elite: 2             # 精英保留数(每代原样进入下一代)
-  mutation_rate: 0.3   # 每维变异概率
-  mutation_scale: 0.2  # 变异幅度(相对各维 [min,max] 宽度)
+  population: 8        # population size
+  generations: 5       # number of generations
+  elite: 2             # elites carried verbatim into the next generation
+  mutation_rate: 0.3   # per-dimension mutation probability
+  mutation_scale: 0.2  # mutation magnitude (relative to each dimension's [min,max] width)
   replicates: 4
-  parameters:          # 与 sweep.parameters 同形状(step 不参与)
+  parameters:          # same shape as sweep.parameters (step takes no part)
     model.warrior.attack: { min: 20, max: 220 }
     model.dungeon.reward_gold: { min: 800, max: 2000, step: 100 }
-  targets:             # hard 约束定义可行域(与 sweep.targets 同形状)
+  targets:             # hard constraints define the feasible region (same shape as sweep.targets)
     - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
-  objective:           # 可行点内的排序目标(可省;省略则任一可行点即达标)
+  objective:           # ranking goal within feasible points (optional; if omitted, any feasible point passes)
     metric: power_p50
     direction: maximize
 ```
 
-**适应度是字典序,不是加权分**(可解释性优先):
+**Fitness is lexicographic, not a weighted score** (interpretability first):
 
-1. 主键:hard 约束 pass 数(复用[约束判定](./13-kpi-metrics)三态,PASS 计 1);
-2. 次键:objective 指标值(direction 已折算为越大越好;省略则同分,先到先得);
-3. 配置错误候选垫底,不静默、不崩溃。
+1. Primary key: the hard-constraint pass count (reusing the [constraint verdict](./13-kpi-metrics.md) tri-state; PASS counts as 1);
+2. Secondary key: the objective metric value (direction already folded into larger-is-better; if omitted, everything ties and first-come wins);
+3. Configuration-error candidates sink to the bottom — nothing silenced, no crash.
 
-**进化算法**(纯内核、单线程、逐代依赖——代间串行是算法语义,非性能欠账):
+**Evolutionary algorithm** (pure kernel, single-threaded, generation-by-generation dependency — serializing across generations is algorithm semantics, not a performance debt):
 
-- 初始种群:各维 [min, max] 均匀采样;采样流与 `base_seed` 绑定,同配置同结果,线程数无关;
-- 每代:精英原样保留 → 余量由 锦标赛选择(size 2)× 逐维均匀交叉 × 均匀变异 产生;
-- 变异用均匀扰动而非高斯——正态随机属[随机函数](./24-random-functions) R3 分期,寻优不越界抢依赖;
-- 最优解跨代追踪(同适应度保先到),全历史候选落盘可追溯。
+- Initial population: uniform sampling over each dimension's [min, max]; the sampling stream is bound to `base_seed` — same configuration, same result, independent of thread count;
+- Each generation: elites carried over verbatim → the remainder produced by tournament selection (size 2) × per-dimension uniform crossover × uniform mutation;
+- Mutation uses uniform perturbation rather than Gaussian — normal randoms belong to the [random functions](./24-random-functions.md) R3 phase, and optimization does not jump the queue for that dependency;
+- The best solution is tracked across generations (ties keep the earlier one), and all historical candidates land on disk, traceable.
 
-**成本账**:总仿真数 = [population + generations × (population − elite)] × replicates(精英不重评;粗上界 population × (generations + 1) × replicates 用于预算校验)。上限沿用 MAX_CANDIDATES,先算账再跑。
+**Cost accounting**: total simulations = [population + generations × (population − elite)] × replicates (elites are not re-evaluated; the coarse upper bound population × (generations + 1) × replicates is used for budget checks). The cap stays MAX_CANDIDATES — do the arithmetic before running.
 
-**输出**:与 sweep 同目录契约——`opt.json`(meta + spec + best + 逐代统计)、`candidates.csv`(全历史候选 × 指标 + 判定)。
+**Output**: same directory contract as sweep — `opt.json` (meta + spec + best + per-generation statistics), `candidates.csv` (all historical candidates × metrics + verdicts).
 
-**非目标**:本节先交付可运行的进化寻优,不为后续算法预埋接口。
+**Non-goal**: this section delivers a working evolutionary optimization first and pre-builds no interfaces for later algorithms.
 
-**后续增量裁定(2026-10-10,按仓内决策记录自行裁定)**:
+**Follow-up increment rulings (2026-10-10, decided per the in-repo decision record)**:
 
-1. **Bayesian 代理模型选型 = 随机森林(RF)**。待拍板点见上(GP / 随机森林),裁定依据项目铁律:① RF 纯离散树、无线性代数依赖,wasm32 兼容好(GP 需稠密矩阵求逆,核心要背数值线性代数代码);② RF 的 bootstrap 与特征采样复用现有 SplitMix64 键派生流,与确定性纪律同构;③ 特征重要性直接回答"哪些参数驱动指标",同"适应度字典序非加权"的可解释性纪律(GP 核长度尺度是黑箱超参);④ 本项目典型 36–152 候选,RF 足够;GP 的优势场景(昂贵评估 + 预测不确定性量化)当前无需求,留作后续评估。
-2. **Pareto / 多目标 = 约束感知非支配排序**(NSGA-II 式:非支配层级 + 拥挤距离破平)。加权求和被适应度设计明确拒绝("字典序,不是加权分");Pareto 前沿本身即答案,不压成单值。裁定后即开工实施(见下节)。
+1. **Bayesian surrogate model choice = random forest (RF)**. The pending decision point was above (GP / random forest); the ruling follows the project's iron rules: ① RF is pure discrete trees with no linear-algebra dependency and good wasm32 compatibility (GP needs dense matrix inversion, which would saddle the core with numerical linear-algebra code); ② RF's bootstrap and feature sampling reuse the existing SplitMix64 keyed-derivation stream, structurally identical to the determinism discipline; ③ feature importance directly answers "which parameters drive the metric", in line with the interpretability discipline of "lexicographic fitness, not weighted" (GP kernel length-scales are black-box hyperparameters); ④ this project's typical 36–152 candidates are well within RF's reach; GP's strong suits (expensive evaluations + predictive-uncertainty quantification) have no current demand and are left for later evaluation.
+2. **Pareto / multi-objective = constraint-aware non-dominated sorting** (NSGA-II style: non-domination ranks + crowding distance to break ties). Weighted sums are explicitly rejected by the fitness design ("lexicographic, not a weighted score"); the Pareto front itself is the answer, not compressed into a single value. Implementation started right after the ruling (see the next section).
 
-## Pareto 多目标(`mode: pareto`,2026-10-10 落地)
+## Pareto multi-objective (`mode: pareto`, landed 2026-10-10)
 
-多目标不压成加权单值——前沿本身即答案。第三节换 `objectives`(≥2 个,与 `objective` 互斥):
+Multi-objective is not compressed into a weighted single value — the front itself is the answer. The third section becomes `objectives` (≥2 of them; mutually exclusive with `objective`):
 
 ```yaml
 optimize:
   mode: pareto
-  objectives:          # ≥2 个
+  objectives:          # ≥2 of them
     - { metric: power_p50, direction: maximize }
     - { metric: gold_per_player, direction: minimize }
-  targets:             # hard 约束同进化模式
+  targets:             # hard constraints, same as evolutionary mode
     - { metric: churn_rate, min: 0.0, max: 0.2, kind: hard }
-  # population / generations / elite / mutation_* / parameters 同进化模式
+  # population / generations / elite / mutation_* / parameters same as evolutionary mode
 ```
 
-**适应度是三级字典序**(可解释性与进化模式同纪律):
+**Fitness is a three-level lexicographic order** (interpretability under the same discipline as evolutionary mode):
 
-1. 主键:hard 约束 pass 数(可行域语义不变——低层但目标全优,仍压不过高层);
-2. 层内非支配排序(NSGA-II 式):所有目标不差且至少一个严格好才算支配;
-3. 同层破平:拥挤距离(每目标归一化间距和,边界点 ∞),保前沿多样性。
+1. Primary key: the hard-constraint pass count (feasible-region semantics unchanged — dominating on every objective at a lower level still cannot beat a higher level);
+2. Within a level, non-dominated sorting (NSGA-II style): A dominates B only if it is no worse on every objective and strictly better on at least one;
+3. Ties within a level: crowding distance (the sum of normalized per-objective spacing, ∞ for boundary points), keeping the front diverse.
 
-精英保留 / 锦标赛 / 末代答案全走同一序。**"最优"= 末代最优层前沿 0 中拥挤距离最大者**(代表点);全前沿落 `opt.json` 的 `front0`(拥挤距离降序),逐代统计带 `front0` 规模,`candidates.csv` 照旧全历史可追溯。配置错误候选层级垫底、不进前沿。RNG 消耗序与进化模式一致(采样流同绑 `base_seed` 派生,两模式同构)。
+Elitism / tournament / the final-generation answer all follow the same order. **The "best" = the point with the largest crowding distance in the last generation's front 0** (the representative point); the full front lands in `opt.json`'s `front0` (descending crowding distance), the per-generation statistics carry the `front0` size, and `candidates.csv` remains the full, traceable history as always. Configuration-error candidates sink to the bottom of the ranks and never enter the front. The RNG consumption order matches evolutionary mode (the sampling stream is likewise bound to `base_seed` derivation; the two modes are isomorphic).
 
-成本账与进化模式同式(population × (generations + 1) × replicates,精英不重评)。示例:`examples/pokemon-pareto.yaml`(与 `pokemon-optimize.yaml` 同账,双目标张力交给前沿呈现)。
+The cost accounting uses the same formula as evolutionary mode (population × (generations + 1) × replicates; elites not re-evaluated). Example: `examples/pokemon-pareto.yaml` (same bill as `pokemon-optimize.yaml`; the tension between the two objectives is left to the front to show).
 
-## 随机森林代理(`surrogate` 子命令,2026-10-10 落地)
+## Random-forest surrogate (the `surrogate` subcommand, landed 2026-10-10)
 
-上上节裁定 1 的随机森林落地为独立子命令——代理**只读 sweep 产物,不进仿真路径**(文档 09 章红线):
+The random forest from ruling 1 two sections up lands as a standalone subcommand — the surrogate **only reads sweep artifacts and never enters the simulation path** (the chapter 09 red line):
 
 ```bash
-sandtable surrogate train sweep-out --metric power_p50   # → model.json(训练内 MAE + 重要性表)
+sandtable surrogate train sweep-out --metric power_p50   # → model.json (in-training MAE + importance table)
 sandtable surrogate predict model.json --params '{"model.warrior.attack": 105}'
-sandtable surrogate importance model.json                # 参数重要性排序表
+sandtable surrogate importance model.json                # parameter importance ranking table
 ```
 
-- 训练数据 = sweep.json 的 Ok 候选(参数集须一致;配置错误候选不进代理,缺指标 / 参数集不一致报错,退出码 2);
-- 森林:bootstrap 采样(第 t 棵流 = `seed ^ t·0x9E37…`,同种子同森林、线程数无关)× CART 回归树(全特征扫相邻不同值中点,最小加权方差,两侧满足 min_samples_leaf;达限深 / 目标常数 / 无有效分裂即落叶);
-- 重要性 = 分裂方差削减归一(和为 1),直接回答"哪些参数驱动指标";
-- 预测 = 全树均值,附全树 min / max 散布(森林分歧度);超参(树数 / 深度 / 叶下限 / 种子)显式落 model.json;
-- 定位:36–152 候选小数据的可解释代理;GP(稠密矩阵求逆 + 核超参黑箱)留后续按需评估。
+- Training data = the Ok candidates in sweep.json (parameter sets must be identical; configuration-error candidates never enter the surrogate; missing metrics / inconsistent parameter sets are errors, exit code 2);
+- Forest: bootstrap sampling (the t-th tree's stream = `seed ^ t·0x9E37…` — same seed, same forest, independent of thread count) × CART regression trees (scan every feature for midpoints of adjacent distinct values, minimum weighted variance, both sides satisfying min_samples_leaf; leaf out at max depth / constant target / no valid split);
+- Importance = variance reduction at splits, normalized (sums to 1), directly answering "which parameters drive the metric";
+- Prediction = the mean over all trees, with the all-tree min / max spread (forest disagreement); hyperparameters (tree count / depth / leaf minimum / seed) land explicitly in model.json;
+- Positioning: an interpretable surrogate for small data of 36–152 candidates; GP (dense matrix inversion + black-box kernel hyperparameters) is left for on-demand evaluation later.
 
-本项目的 Monte Carlo 指**多 seed 复跑**(replicates):同一候选换 seed 跑 R 次,用于估计指标的抽样噪声、给出置信区间。它是一种统计手段,不是参数寻优方法。
+Monte Carlo in this project means **multi-seed reruns** (replicates): the same candidate runs R times with different seeds to estimate a metric's sampling noise and produce confidence intervals. It is a statistical device, not a parameter-optimization method.
 
-## 网格是离散的,推荐是连续的
+## The grid is discrete; the recommendation is continuous
 
-::: warning 网格点之间的空白
-步长 5 的网格上只有 95 / 100 / 105 这些点。如果实验结论需要"推荐 96~101"这样的**连续区间**,它不可能直接从网格点读出来——必须对网格结果做**插值或代理模型**(约束边界处线性 / 二次插值),这一步在[平衡推荐](./15-recommendation)中定义。扫描层只负责提供格点数据,不假装自己有连续分辨率。
+::: warning The gaps between grid points
+A grid with step 5 has only the points 95 / 100 / 105. If the experiment's conclusion needs a **continuous interval** like "recommend 96~101", it cannot be read straight off the grid points — the grid results must go through **interpolation or a surrogate model** (linear / quadratic interpolation at constraint boundaries), a step defined in [Balance recommendation](./15-recommendation.md). The sweep layer only supplies grid-point data and does not pretend to have continuous resolution.
 :::
 
-## 输出
+## Output
 
-每个候选输出[标准结果目录](./09-data-output);sweep 层附加:
+Each candidate writes a [standard result directory](./09-data-output.md); the sweep layer adds:
 
-- 候选清单(参数组合 + 实验标识);
-- 汇总表:候选 × 指标(均值 ± CI),CSV 输出;
-- 失败候选的标注(配置错误 / 运行失败),不静默丢弃。
+- a candidate list (parameter combinations + experiment identity);
+- a summary table: candidates × metrics (mean ± CI), output as CSV;
+- annotations on failed candidates (configuration error / run failure); nothing silently dropped.

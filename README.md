@@ -48,42 +48,42 @@ sandtable compare --attack-a 100 --attack-b 105 --replicates 12 --out out/  # A/
 sandtable validate --days 30                                # validate parameters
 ```
 
-A single run of 10k players × 30 days takes about 0.5 s (release build). The full plan lives in the documentation site (sources under [`docs/`](docs/)); for the roadmap see [18 · Roadmap](docs/guide/18-roadmap.en.md).
+A single run of 10k players × 30 days takes about 0.5 s (release build). The full plan lives in the documentation site (sources under [`docs/`](docs/)); for the roadmap see [18 · Roadmap](docs/guide/18-roadmap.md).
 
 - Documentation site: https://cuihairu.github.io/sandtable/
 - Local documentation build: `pnpm install && pnpm docs:dev`
 
 ## Documentation structure
 
-The original plan was a single monolithic document (archived at `docs/计划-原始.md`), later split into 20 chapters, with five more chapters added for the Pokémon case study, the Web form, the genre matrix, the random-function extension and the formula-curve reference. The mapping from chapters to the original plan:
+The original plan was a single monolithic document (archived at `docs/zh/计划-原始.md`), later split into 20 chapters, with five more chapters added for the Pokémon case study, the Web form, the genre matrix, the random-function extension and the formula-curve reference. The mapping from chapters to the original plan:
 
 | Chapter | Contents | Original plan |
 | --- | --- | --- |
-| [01 Positioning](docs/guide/01-positioning.en.md) | Core problem, modeling assumptions, relative-comparison stance | §1 |
-| [02 Scope](docs/guide/02-scope.en.md) | What is included, what is excluded, license | §2 |
-| [03 Core concepts](docs/guide/03-concepts.en.md) | The seven concepts, the Model/World split | §3 |
-| [04 Simulation kernel](docs/guide/04-kernel.en.md) | World composition, execution loop, parallelism model | §4 |
-| [05 Time model](docs/guide/05-time-model.en.md) | Layered nesting: discrete events + in-combat ticks | §4.1, §21 |
-| [06 Deterministic RNG](docs/guide/06-deterministic-rng.en.md) | Keyed randomness, parallel determinism rules | §5 |
-| [07 Configuration and formula engine](docs/guide/07-config-formula.en.md) | Parameter registry, config_hash, expression compilation | §6 |
-| [08 Tech stack](docs/guide/08-tech-stack.en.md) | Selection table and dependency decision records | §7, §8 |
-| [09 Data output](docs/guide/09-data-output.en.md) | JSON/CSV first; Parquet behind a feature flag | §9 |
-| [10 CLI](docs/guide/10-cli.en.md) | Subcommands and output conventions | §10 |
-| [11 Experiment pipeline](docs/guide/11-experiment-pipeline.en.md) | Full workflow and replicates | §11 |
-| [12 Parameter sweep](docs/guide/12-parameter-sweep.en.md) | Grid / Random / Monte Carlo | §12 |
-| [13 KPIs and metrics](docs/guide/13-kpi-metrics.en.md) | Metric formulas, online aggregation, CI-based verdicts | §13 |
-| [14 Sensitivity analysis](docs/guide/14-sensitivity.en.md) | OAT elasticities (selected method) | §14 |
-| [15 Balance recommendation](docs/guide/15-recommendation.en.md) | Interpolated intervals, confidence definitions | §15 |
-| [16 MVP](docs/guide/16-mvp.en.md) | Minimal RPG loop, A/B comparison, acceptance criteria | §16, §17, §26 |
-| [17 Project structure](docs/guide/17-project-structure.en.md) | Crate split and naming checks | §18 |
-| [18 Roadmap](docs/guide/18-roadmap.en.md) | Vertical slices + verification nodes | §19 |
-| [19 Testing strategy](docs/guide/19-testing.en.md) | Layered: closed-form checks, snapshots, statistical regression | §20 |
-| [20 Design principles and vision](docs/guide/20-principles-vision.en.md) | Principles, product forms, vision | §22–§25 |
-| [21 Real-configuration validation](docs/guide/21-pokemon-case.en.md) | Pokémon (Gen 1 Kanto) case study and the friction list | — |
-| [22 Web](docs/guide/22-web.en.md) | Browser form, scale boundaries, query and export | — |
-| [23 Genre × simulation functions](docs/guide/23-genre-simulation.en.md) | Six genre families vs. generic blocks / genre-specific gaps | — |
-| [24 Random functions](docs/guide/24-random-functions.en.md) | Weighted tables, pity, normals, chi-square and staging | — |
-| [25 Common functions and curves](docs/guide/25-formulas-and-curves.en.md) | Built-in function reference and evaluator-generated curve library | — |
+| [01 Positioning](docs/guide/01-positioning.md) | Core problem, modeling assumptions, relative-comparison stance | §1 |
+| [02 Scope](docs/guide/02-scope.md) | What is included, what is excluded, license | §2 |
+| [03 Core concepts](docs/guide/03-concepts.md) | The seven concepts, the Model/World split | §3 |
+| [04 Simulation kernel](docs/guide/04-kernel.md) | World composition, execution loop, parallelism model | §4 |
+| [05 Time model](docs/guide/05-time-model.md) | Layered nesting: discrete events + in-combat ticks | §4.1, §21 |
+| [06 Deterministic RNG](docs/guide/06-deterministic-rng.md) | Keyed randomness, parallel determinism rules | §5 |
+| [07 Configuration and formula engine](docs/guide/07-config-formula.md) | Parameter registry, config_hash, expression compilation | §6 |
+| [08 Tech stack](docs/guide/08-tech-stack.md) | Selection table and dependency decision records | §7, §8 |
+| [09 Data output](docs/guide/09-data-output.md) | JSON/CSV first; Parquet behind a feature flag | §9 |
+| [10 CLI](docs/guide/10-cli.md) | Subcommands and output conventions | §10 |
+| [11 Experiment pipeline](docs/guide/11-experiment-pipeline.md) | Full workflow and replicates | §11 |
+| [12 Parameter sweep](docs/guide/12-parameter-sweep.md) | Grid / Random / Monte Carlo | §12 |
+| [13 KPIs and metrics](docs/guide/13-kpi-metrics.md) | Metric formulas, online aggregation, CI-based verdicts | §13 |
+| [14 Sensitivity analysis](docs/guide/14-sensitivity.md) | OAT elasticities (selected method) | §14 |
+| [15 Balance recommendation](docs/guide/15-recommendation.md) | Interpolated intervals, confidence definitions | §15 |
+| [16 MVP](docs/guide/16-mvp.md) | Minimal RPG loop, A/B comparison, acceptance criteria | §16, §17, §26 |
+| [17 Project structure](docs/guide/17-project-structure.md) | Crate split and naming checks | §18 |
+| [18 Roadmap](docs/guide/18-roadmap.md) | Vertical slices + verification nodes | §19 |
+| [19 Testing strategy](docs/guide/19-testing.md) | Layered: closed-form checks, snapshots, statistical regression | §20 |
+| [20 Design principles and vision](docs/guide/20-principles-vision.md) | Principles, product forms, vision | §22–§25 |
+| [21 Real-configuration validation](docs/guide/21-pokemon-case.md) | Pokémon (Gen 1 Kanto) case study and the friction list | — |
+| [22 Web](docs/guide/22-web.md) | Browser form, scale boundaries, query and export | — |
+| [23 Genre × simulation functions](docs/guide/23-genre-simulation.md) | Six genre families vs. generic blocks / genre-specific gaps | — |
+| [24 Random functions](docs/guide/24-random-functions.md) | Weighted tables, pity, normals, chi-square and staging | — |
+| [25 Common functions and curves](docs/guide/25-formulas-and-curves.md) | Built-in function reference and evaluator-generated curve library | — |
 
 ## License
 

@@ -1,47 +1,47 @@
 ---
-title: 05 · 时间模型
+title: 05 · Time Model
 ---
 
-[English](05-time-model.en.md) | [中文](05-time-model.md)
+[English](/guide/05-time-model) | [中文](/zh/guide/05-time-model)
 
-# 时间模型
+# Time Model
 
-## 问题:全程固定 tick 是算力陷阱
+## Problem: Fixed Ticks Throughout Are a Compute Trap
 
-如果仿真全程按固定 tick 推进(例如 50ms 一个 tick),以 MVP 实验规模计算:
+If the simulation advances at a fixed tick the entire way (say one tick per 50ms), at MVP experiment scale:
 
 ```text
-30 天 = 2,592,000 秒
-2,592,000 秒 ÷ 0.05 秒/tick ≈ 5,180 万 tick / 玩家
-× 10,000 玩家 ≈ 5.2 × 10¹¹ 次状态更新
+30 days = 2,592,000 seconds
+2,592,000 seconds ÷ 0.05 seconds/tick ≈ 51.8 million ticks / player
+× 10,000 players ≈ 5.2 × 10¹¹ state updates
 ```
 
-5×10¹¹ 次更新远超"开发机上快速完成"的[MVP 性能目标](#性能目标)。结论:**全程 tick 不可行**,这不是优化问题,是模型选型问题。
+5×10¹¹ updates far exceeds the [MVP performance target](#performance-targets) of "completing quickly on a developer machine." Conclusion: **fixed ticks throughout are not viable** — this is not an optimization problem but a model-selection problem.
 
-## 方案:分层嵌套时间模型
+## Approach: A Layered, Nested Time Model
 
-时间模型分两层,**嵌套关系,不是并列关系**:
+The time model has two layers, **nested, not parallel**:
 
 ```mermaid
 flowchart TD
-    subgraph MACRO["宏观层:离散事件(全程唯一在跑的层)"]
-        L["登录"] --> D["行为决策"]
-        D --> B["战斗事件"]
-        B --> R["奖励 / 结算"]
-        R --> U["升级 / 成长"]
-        U --> E["日结"]
-        E -->|"下一天"| L
+    subgraph MACRO["Macro layer: discrete events (the only layer running throughout)"]
+        L["Login"] --> D["Behavior decision"]
+        D --> B["Battle event"]
+        B --> R["Reward / settlement"]
+        R --> U["Upgrade / progression"]
+        U --> E["Daily settlement"]
+        E -->|"next day"| L
     end
-    subgraph MICRO["微观层:单场战斗内部(可选,默认不启用)"]
-        T["Fixed Tick(如 50ms)"]
+    subgraph MICRO["Micro layer: inside a single battle (optional, disabled by default)"]
+        T["Fixed Tick (e.g. 50ms)"]
     end
-    B -.->|"需要帧级机制时才展开"| MICRO
-    B -->|"MVP 默认:解析结算,不跑 tick"| RES["胜负与伤害直接算出"]
+    B -.->|"expanded only when frame-level mechanics are needed"| MICRO
+    B -->|"MVP default: analytic settlement, no tick"| RES["Win/loss and damage computed directly"]
 ```
 
-### 宏观层:离散事件
+### Macro Layer: Discrete Events
 
-登录、战斗、奖励、升级、每日结算、离线收益等全部建模为离散事件,事件队列按时间排序,时间只在事件之间跳跃:
+Logins, battles, rewards, upgrades, daily settlements, offline earnings, and so on are all modeled as discrete events. The event queue is sorted by time, and time only jumps between events:
 
 ```text
 Day 1 09:00  Login
@@ -51,36 +51,36 @@ Day 1 09:06  Upgrade
 Day 1 10:00  Logout
 ```
 
-一天内一个玩家实际发生的事件只有几十到几百个。10,000 玩家 × 30 天 × ~百事件/天 ≈ **10⁷–10⁸ 量级事件**,与全程 tick 的 5×10¹¹ 相差 3–4 个数量级,这就是可行的原因。
+Within a day, the events that actually occur for one player number only in the few dozen to few hundred. 10,000 players × 30 days × ~a hundred events/day ≈ **10⁷–10⁸ events in total**, 3–4 orders of magnitude below the 5×10¹¹ of fixed ticks — that is why this is feasible.
 
-### 微观层:战斗内部 tick(可选)
+### Micro Layer: In-Battle Ticks (Optional)
 
-Fixed Tick 只在单场战斗内部使用,适合帧级机制:DPS、Buff / Debuff、冷却、走位。战斗在宏观层是**一个事件**;若该战斗需要帧级机制,才在事件内部展开 tick 子模拟,输入双方状态,输出胜负与伤害,再回到宏观层。
+Fixed Tick is used only inside a single battle, suited to frame-level mechanics: DPS, Buff / Debuff, cooldowns, positioning. A battle is **one event** at the macro layer; if that battle needs frame-level mechanics, a tick sub-simulation is expanded inside the event: it takes both sides' state as input, outputs win/loss and damage, and returns to the macro layer.
 
-### MVP:解析结算
+### MVP: Analytic Settlement
 
-MVP 的战斗不跑 tick,用**解析结算**:给定双方状态与命中 / 伤害公式,直接计算期望结果并按公式随机化,一次计算出胜负与损耗。回合制或期望结算够用的游戏,解析结算已经覆盖;需要帧级机制的战斗类型,等出现真实需求再实现 tick 子模拟。
+MVP battles do not run ticks; they use **analytic settlement**: given both sides' state and hit / damage formulas, the expected result is computed directly and randomized per the formula, yielding win/loss and losses in one pass. For turn-based games, or games where expectation-based settlement suffices, analytic settlement already covers the need; battle types that need frame-level mechanics will get a tick sub-simulation once real demand appears.
 
-::: warning 决策记录
-"全程 tick"与"分层嵌套"不是两种实现风格,是 5×10¹¹ 与 10⁷ 两个量级的差别。任何把宏观层改回固定步长推进的提议,都需要先重新过一遍这笔算力账。
+::: warning Decision record
+"Fixed ticks throughout" and "layered nesting" are not two implementation styles — they differ by the gap between the two magnitudes 5×10¹¹ and 10⁷. Any proposal to move the macro layer back to fixed-step advancement must first redo this compute accounting.
 :::
 
-## 机制归层准则
+## Mechanism Layering Rules
 
-| 机制 | 归属层 | 理由 |
+| Mechanism | Layer | Rationale |
 | --- | --- | --- |
-| 登录、离线收益、日结 | 宏观离散事件 | 天然以"次"为单位发生 |
-| 行为决策、奖励、升级 | 宏观离散事件 | 事件型,无连续状态演化 |
-| 回合制 / 期望战斗 | 宏观事件(解析结算) | 期望可闭式计算 |
-| 帧级 Buff / 冷却 / DPS | 微观 tick(可选) | 需要连续时间轴 |
+| Login, offline earnings, daily settlement | Macro discrete events | Naturally occur in whole occurrences |
+| Behavior decisions, rewards, upgrades | Macro discrete events | Event-shaped, with no continuous state evolution |
+| Turn-based / expectation battles | Macro events (analytic settlement) | Expectation is computable in closed form |
+| Frame-level Buff / cooldown / DPS | Micro ticks (optional) | Requires a continuous time axis |
 
-## 性能目标
+## Performance Targets
 
-MVP 不追求极限 benchmark,但架构上必须允许并行:
+The MVP does not chase extreme benchmarks, but the architecture must allow parallelism:
 
 ```text
-MVP:  10,000 players × 30 days   开发机分钟级完成
-后续: 100,000 players × 30~90 days
+MVP:  10,000 players × 30 days   minutes on a developer machine
+Next: 100,000 players × 30~90 days
 ```
 
-并行的主要粒度是实验级(候选之间),玩家级并行依赖[玩家独立假设](./01-positioning)。浮点聚合的确定性规则见[确定性随机数](./06-deterministic-rng)。
+The primary granularity of parallelism is experiment-level (between candidates); player-level parallelism depends on the [player independence assumption](./01-positioning.md). The determinism rules for floating-point aggregation are in [Deterministic RNG](./06-deterministic-rng.md).

@@ -1,87 +1,87 @@
 ---
-title: 06 · 确定性随机数
+title: 06 · Deterministic RNG
 ---
 
-[English](06-deterministic-rng.en.md) | [中文](06-deterministic-rng.md)
+[English](/guide/06-deterministic-rng) | [中文](/zh/guide/06-deterministic-rng)
 
-# 确定性随机数
+# Deterministic RNG
 
-可复现性属于核心能力,不是附加功能。目标有二:
+Reproducibility is a core capability, not an add-on. There are two goals:
 
-1. **可复现**:同配置 + 同 seed + 同版本 → 结果逐位一致;
-2. **可比随机路径**(Common Random Numbers):修改一个参数前后,两次实验尽可能走相同的随机路径,让 A/B 差值反映参数效应而不是随机噪声。
+1. **Reproducible**: same configuration + same seed + same version → bit-identical results;
+2. **Common Random Numbers**: before and after changing one parameter, the two experiments should follow the same random path as much as possible, so that the A/B difference reflects the parameter effect rather than random noise.
 
-## 实验标识
+## Experiment Identity
 
-一次运行由以下五元组共同确定,并写入每次输出:
+A run is jointly determined by the following five-tuple, which is written into every output:
 
 ```text
 seed · model_version · config_hash · scenario_hash · experiment_id
 ```
 
-其中 config_hash 与 scenario_hash 基于**规范化配置**计算(键序无关,见[配置与公式引擎](./07-config-formula))。
+config_hash and scenario_hash are computed from the **normalized configuration** (key-order-independent, see [Configuration and Formula Engine](./07-config-formula.md)).
 
-## 为什么"按系统分流"不够
+## Why "One Stream per System" Is Not Enough
 
-直觉方案是给每个系统一条独立流(combat / loot / economy / behavior / world)。但它达不到目标:
+The intuitive approach is to give each system its own independent stream (combat / loot / economy / behavior / world). But it fails to meet the goal:
 
-> 假设 combat 流与 loot 流分离。把攻击力从 100 改到 95,某场战斗从 3 回合变 4 回合,combat 流被多抽了一次;之后 combat 流里所有抽取全部错位——后续每场战斗的命中判定都换了随机数。A/B 差异里混入了大量"流错位"噪声,Common Random Numbers 名存实亡。
+> Suppose the combat stream and the loot stream are separate. Change attack from 100 to 95, and a battle that took 3 rounds now takes 4 — the combat stream has been drawn from once more; every subsequent draw in the combat stream is now misaligned — every hit check in later battles uses a different random number. "Stream misalignment" noise floods the A/B difference, and Common Random Numbers exists in name only.
 
-**问题根源:流的推进依赖调用次数,而调用次数本身受参数影响。**
+**Root cause: the stream's advancement depends on the number of calls, and the number of calls is itself affected by parameters.**
 
-## 方案:带键随机数
+## Approach: Keyed Random Numbers
 
-随机数不来自"逐个推进的流",而是**按键直接派生**:
+Random numbers do not come from an "advance-one-by-one stream" but are **derived directly from a key**:
 
 ```text
 key = (seed, actor_id, day, event_index, purpose)
-random_values = derive(key)   // 纯函数,与调用顺序无关
+random_values = derive(key)   // pure function, independent of call order
 ```
 
-| 键分量 | 含义 |
+| Key component | Meaning |
 | --- | --- |
-| `seed` | 实验种子 |
-| `actor_id` | 玩家(或怪物等实体)标识 |
-| `day` | 仿真天 |
-| `event_index` | 该 actor 当天、该 purpose 下的第几次抽取(从 0 起) |
-| `purpose` | 抽取用途:`behavior` / `combat_hit` / `combat_damage` / `loot` / `churn` / … |
+| `seed` | Experiment seed |
+| `actor_id` | Player (or monster, etc.) identifier |
+| `day` | Simulation day |
+| `event_index` | The nth draw for that actor, that day, under that purpose (counting from 0) |
+| `purpose` | Draw purpose: `behavior` / `combat_hit` / `combat_damage` / `loot` / `churn` / … |
 
-实现上是 counter-based 派生:把键哈希为初始状态(如 SplitMix64 / Philox 一类),再产出所需数量的随机值。
+The implementation is counter-based derivation: hash the key into an initial state (something in the SplitMix64 / Philox family), then produce the required number of random values.
 
-这个结构直接解决错位问题:攻击力变化导致第 3 场战斗多打一个回合,只是该场战斗消耗的 `event_index` 变多,**第 4 场战斗仍然用自己的 (day, 战斗序号) 键,不受任何影响**。抽取次数变化只影响事件内部,不污染后续事件。
+This structure solves the misalignment problem directly: an attack change that makes the 3rd battle take one more round only consumes more `event_index` within that battle — **the 4th battle still uses its own (day, battle ordinal) key, unaffected**. Changes in draw count stay inside the event and do not contaminate subsequent events.
 
-无共享状态、无调用顺序依赖,还带来两个附带收益:
+No shared state and no call-order dependency bring two further benefits:
 
-- **天然并行安全**:派生是纯函数,不需要锁,也不需要"哪个线程先抽"的约定;
-- **可局部重放**:调试某个玩家的某一天,直接用键重放随机数,不必从头跑。
+- **Naturally parallel-safe**: derivation is a pure function — no locks needed, and no need for an agreement on "which thread draws first";
+- **Locally replayable**: to debug one player's one day, replay the random numbers directly from the key — no need to run from the start.
 
-## Common Random Numbers 的达成边界
+## The Boundary of Common Random Numbers
 
-带键结构下,键里不含被改参数的抽取(典型如 behavior 流)在 A/B 两次运行中键完全相同 → 随机值相同 → 路径一致。
+Under the keyed structure, draws whose key does not contain the changed parameter (typically the behavior stream) have identical keys across the A/B runs → identical random values → identical paths.
 
-::: note 诚实边界
-CRN **降低噪声,不消除噪声**。若行为决策依赖状态(例如"等级 ≥ 10 才解锁某行为"),改参数间接改变了状态,后续行为路径会分叉——这是真实效应,应当保留。原则:参数直接影响的抽取(战斗判定)允许不同;参数不直接影响、仅因状态变化而分叉的抽取,分叉本身就是实验结果的一部分。
+::: note An honest boundary
+CRN **reduces noise, it does not eliminate it**. If behavior decisions depend on state (for example, "level ≥ 10 to unlock some behavior"), changing a parameter indirectly changes state, and later behavior paths diverge — this is a real effect and should be preserved. Principle: draws directly affected by the parameter (combat checks) are allowed to differ; draws not directly affected by the parameter that diverge only because of a state change — the divergence itself is part of the experimental result.
 :::
 
-## 并行确定性规则
+## Parallel Determinism Rules
 
-随机数派生确定只是必要条件,聚合与遍历也必须确定:
+Deterministic random derivation is only a necessary condition; aggregation and iteration must also be deterministic:
 
-| 陷阱 | 规则 |
+| Pitfall | Rule |
 | --- | --- |
-| Rust `HashMap` 迭代顺序随机 | 实体存储与注册表用 `BTreeMap` 或 `IndexMap`,不用 `HashMap` |
-| rayon 浮点归约顺序不固定 | 固定归约树(按确定性键排序后成对归约),或先排序再串行聚合 |
-| 浮点求和误差随顺序变化 | 指标聚合优先用整数 / 定点(如金币以整数计),浮点求和走固定顺序 |
+| Rust `HashMap` iteration order is random | Use `BTreeMap` or `IndexMap` for entity storage and registries, not `HashMap` |
+| rayon floating-point reduction order is not fixed | Use a fixed reduction tree (sort by a deterministic key, then reduce pairwise), or sort first and aggregate serially |
+| Floating-point summation error varies with order | Prefer integers / fixed-point for metric aggregation (e.g., gold counted as integers); floating-point summation follows a fixed order |
 
-**跨平台浮点提示**:编译器优化(FMA、向量化重排)与 libm 差异可能使同一份代码在不同 CPU / 编译选项下浮点结果不同。因此:
+**Cross-platform floating-point note**: compiler optimizations (FMA, vectorized reassociation) and libm differences can make the same code produce different floating-point results on different CPUs / build options. Therefore:
 
-- **承诺**:同版本 + 同平台 + 同 seed → 逐位一致(快照测试,见[测试策略](./19-testing));
-- **尽力**:跨平台一致是目标而非承诺,跨平台比对使用统计回归而非逐位比较。
+- **Commitment**: same version + same platform + same seed → bit-identical (snapshot tests, see [Testing Strategy](./19-testing.md));
+- **Best effort**: cross-platform agreement is a goal, not a commitment; cross-platform comparison uses statistical regression rather than bitwise comparison.
 
-native 与 wasm32 之间也属于"跨平台":加减乘除与 sqrt 遵循 IEEE-754,两端逐位一致;`powf` / `ln` / `sin` 这类超越函数走不同 libm 实现,可能有 ULP 级差异——凡是影响判定结果的阈值比较,优先用整数 / 定点表述,浮点只用于展示层([指标](./13-kpi-metrics)的整数聚合规则即为此)。
+The gap between native and wasm32 is also "cross-platform": addition, subtraction, multiplication, division, and sqrt follow IEEE-754 and are bit-identical on both ends; transcendental functions like `powf` / `ln` / `sin` go through different libm implementations and can differ at ULP level — for any threshold comparison that affects a decision result, prefer expressing it with integers / fixed-point, and use floating-point only for display (the integer aggregation rules of [Metrics](./13-kpi-metrics.md) exist precisely for this).
 
-## 禁止事项
+## Forbidden
 
-- 禁止把 `rand::thread_rng()` 或任何非确定性源引入仿真路径;
-- 禁止在 System 内自建"流式" RNG 实例并跨事件持有(会重新引入调用顺序依赖);
-- 所有随机消费必须通过带键派生,purpose 枚举集中注册,防止同名不同义。
+- Do not bring `rand::thread_rng()` or any non-deterministic source into the simulation path;
+- Do not create a "streaming" RNG instance inside a System and hold it across events (that reintroduces call-order dependency);
+- All random consumption must go through keyed derivation, with the purpose enum centrally registered to prevent same-name-different-meaning drift.

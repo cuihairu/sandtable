@@ -2,23 +2,23 @@
 title: 16 · MVP
 ---
 
-[English](16-mvp.en.md) | [中文](16-mvp.md)
+[English](/guide/16-mvp) | [中文](/zh/guide/16-mvp)
 
 # MVP
 
-MVP 不以功能数量验收,以**一个极小但完整的闭环**是否成立验收。
+The MVP is not accepted by feature count — it is accepted by whether **one minimal but complete closed loop** holds.
 
-## 闭环
+## The Loop
 
 ```mermaid
 flowchart LR
-    A["玩家行为<br>(三 cohort 概率模型)"] --> B["战斗<br>(解析结算)"]
-    B --> C["金币 + 经验"]
-    C --> D["升级 / 战力"]
-    D -->|"战力提升,挑战更强怪"| B
-    D -->|"停滞"| E["流失概率上升"]
-    E --> F["玩家离开<br>(留存 / 流失指标)"]
-    C --> G["经济<br>(产出 / 回收 / 通胀)"]
+    A["Player behavior<br>(three-cohort probability model)"] --> B["Combat<br>(analytic resolution)"]
+    B --> C["Gold + XP"]
+    C --> D["Level up / Power"]
+    D -->|"Power rises, challenge stronger monsters"| B
+    D -->|"Stagnation"| E["Churn probability rises"]
+    E --> F["Player leaves<br>(retention / churn metrics)"]
+    C --> G["Economy<br>(generation / sink / inflation)"]
 ```
 
 ```text
@@ -26,75 +26,75 @@ Player → Fight Monster → Gold + XP → Level Up → Power Increase
 → Fight Stronger Monster → More Reward → ↺
 ```
 
-涉及系统:Combat · Economy · Progression · Reward · Actor。
+Systems involved: Combat · Economy · Progression · Reward · Actor.
 
-## 硬编码,先跑通
+## Hardcode It, Just Get It Running
 
-::: tip 纵向切片原则
-MVP 的最小 RPG 全部**硬编码**(数值、概率、曲线写在代码里),不做配置驱动。理由:闭环成立是第一目标;"先做通用内核再做游戏"容易把抽象做偏。配置驱动、公式引擎、参数注册表在闭环验证后抽取(见[路线图](./18-roadmap) Phase 2)。MVP 阶段可调的参数只有 seed 与少量实验开关。
+::: tip Vertical-slice principle
+The minimal RPG in the MVP is **fully hardcoded** (values, probabilities, and curves written in code) — no configuration-driven layer. Rationale: a working closed loop is the first goal; "build the generic kernel first, then the game" tends to skew the abstractions. Configuration-driven loading, the formula engine, and the parameter registry are extracted only after the loop is validated (see the [roadmap](./18-roadmap.md) Phase 2). The only tunable parameters in the MVP are the seed and a handful of experiment switches.
 :::
 
-## 实验设定
+## Experiment Setup
 
 ```text
-10,000 players · 30 days · R 个 replicates(默认 5)
-Casual 60% · Core 30% · Whale 10%(Whale = 高活跃 + 成长倍率,见指标定义)
+10,000 players · 30 days · R replicates (default 5)
+Casual 60% · Core 30% · Whale 10% (Whale = high activity + growth multiplier, see metric definitions)
 ```
 
-输出时点:Day 1 / 3 / 7 / 14 / 30。
+Output checkpoints: Day 1 / 3 / 7 / 14 / 30.
 
-## 指标集
+## Metric Set
 
-全部采用 [KPI 与指标](./13-kpi-metrics)定义的公式:
+All formulas follow [KPIs and metrics](./13-kpi-metrics.md):
 
 ```text
 Win Rate · Churn Rate
-Retention(D1 / D3 / D7 / D14 / D30)
-Gold 存量 · Income / Spending
-Inflation(存量日增长率)· Sink Ratio
-Power 日均 + 快照日 P50 / P90 / P99(D1~D30)· 升级次数
-抽卡期望抽数(配置抽卡时)
+Retention (D1 / D3 / D7 / D14 / D30)
+Gold stock · Income / Spending
+Inflation (daily growth rate of stock) · Sink Ratio
+Mean power per day + snapshot-day P50 / P90 / P99 (D1~D30) · level-ups
+Expected pulls per draw (when gacha is configured)
 ```
 
-## A/B 对比
+## A/B Comparison
 
-MVP 的标志性实验:攻击力 100 vs 105,同 seed 组(带键随机数保证可比路径):
+The signature experiment of the MVP: attack 100 vs 105, same seed group (keyed RNG guarantees comparable paths):
 
 ```text
 ΔD7 Power · ΔD7 Gold · ΔWinRate · ΔProgression · ΔInflation
-每个差值附 CI₉₅ 与效应量 d
+Each delta ships with a CI₉₅ and effect size d
 ```
 
-如果这份报告能稳定、可复现地产出,且差值方向与机制解释一致,Sandtable 的核心价值(相对比较)就得到了验证。
+If this report can be produced stably and reproducibly, and the delta directions match the mechanism explanations, Sandtable's core value (relative comparison) is validated.
 
-## 建模假设(重申)
+## Modeling Assumptions (Restated)
 
-玩家相互独立、只有 PvE、经济是聚合指标(见[项目定位](./01-positioning))。MVP 所有设计与验收均在此前提内。
+Players are independent, PvE only, and the economy is an aggregate metric (see [positioning](./01-positioning.md)). All MVP design and acceptance happens within this premise.
 
-## 验收标准
+## Acceptance Criteria
 
 ```text
-配置(实验开关) → 建立世界 → 生成玩家群体 → 玩家执行行为 → 战斗
-→ 获得资源 → 成长 → 继续活动 → 时间推进(30 天) → 收集 KPI
-→ 改变参数 → 重新运行 → 比较结果 → 给出参数建议
+Configure (experiment switches) → Build world → Generate player population → Players act → Combat
+→ Gain resources → Progress → Keep playing → Time advances (30 days) → Collect KPIs
+→ Change parameters → Rerun → Compare results → Give parameter recommendations
 ```
 
-| # | 验收项 | 判据 |
+| # | Criterion | Pass condition |
 | --- | --- | --- |
-| 1 | 闭环跑通 | 10,000 玩家 × 30 天完整运行,无手动干预 |
-| 2 | 指标产出 | 上表指标全部按公式输出,附 CI |
-| 3 | A/B 对比 | simulate + compare 两个子命令产出含 CI 的差值报告 |
-| 4 | 确定性 | 同 seed 重跑,summary 逐位一致 |
-| 5 | 正确性 | 解析解对照测试通过(闭式期望伤害 / 期望收益,见[测试策略](./19-testing)) |
-| 6 | 性能 | 开发机(普通笔记本)分钟级完成 |
-| 7 | 复现性 | [实验标识](./06-deterministic-rng)五元组写入输出 |
+| 1 | Loop runs | 10,000 players × 30 days fully runs with no manual intervention |
+| 2 | Metrics produced | All metrics above are output per their formulas, with CI |
+| 3 | A/B comparison | The `simulate` + `compare` subcommands produce a delta report with CI |
+| 4 | Determinism | Same seed, rerun — summary matches bit-for-bit |
+| 5 | Correctness | Analytic-solution cross-check tests pass (closed-form expected damage / expected reward, see [testing strategy](./19-testing.md)) |
+| 6 | Performance | Completes in minutes on a dev machine (ordinary laptop) |
+| 7 | Reproducibility | The [experiment identifier](./06-deterministic-rng.md) five-tuple is written to output |
 
-七项齐备 → **Sandtable MVP 成立**。
+All seven met → **Sandtable MVP holds**.
 
-## MVP 明确不包含
+## What the MVP Explicitly Excludes
 
-- 配置驱动与公式引擎(Phase 2);
-- 通用 Kernel 抽取(Phase 2,从切片中抽);
-- Sweep / 敏感性 / 推荐(Phase 3–4);
-- HTML 报告(Phase 5);
-- 付费事件与一切玩家间交互。
+- Configuration-driven loading and the formula engine (Phase 2);
+- Generic Kernel extraction (Phase 2, extracted from the slice);
+- Sweep / sensitivity / recommendation (Phase 3–4);
+- HTML reports (Phase 5);
+- Monetization events and any player-to-player interaction.

@@ -1,5 +1,5 @@
 # 真实配置验证案例:宝可梦(第一世代关都八道馆)数值接入 sandtable 模型。
-# 映射方法与阻力清单见 docs/guide/21-pokemon-case.md;本文件注释只标来源。
+# 映射方法与阻力清单见 docs/zh/guide/21-pokemon-case.md;本文件注释只标来源。
 schema_version: '1'
 
 scenario:
