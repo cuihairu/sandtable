@@ -3,11 +3,14 @@
 > 2026-10-14 对账:挂闸条目逐条核对本仓 git log / docs 决策记录 / 测试现状;完成项一行证据(commit hash + 测试数)。
 > 2026-10-16 复核:5 条挂闸/方向性解锁条件逐条仍成立——真实案例二期无运营数据入仓(examples/ 仅公开数值示例)、桌面人工开窗验收无执行记录、随机函数无品类需求、Web API 无服务端需求、GP 无按需触发;open PR/issue=0、Dependabot=0。无可自服务项,不重开已裁决搁置。
 > 2026-10-16 docs 双语:docs/ 根目录 5 页(b64138a)+ docs/guide/ 25 章(f247cfb + d05f5d2)+ 英文首页入口(95c1b1b)全部完成,docs 双语面已清。
+> 2026-10-17 迁 VitePress 官方 locales:英文升为主语言占根路由(`/guide/`),中文整树移入 `docs/zh/`(`/zh/guide/`),导航栏出内置语言切换;此前同目录 `.en.md` 配对路由作废(下两条历史行的做法已被取代,内容全部保留)。
 
 ## 待办(可自服务)
 
-- [x] docs 英文首页入口(2026-10-16,95c1b1b):`docs/en/index.md` 独立 `layout: home`(hero/actions/features 全英文,action 链到 `.en` 章路由),中英两首页 footer 互链;未引入 VitePress locales——站点仍单 locale 多路由,英文页靠同目录 `.en.md` 路由直达,`docs:build` 绿
-- [x] docs 子目录双语配对(docs/guide/ 25 章,2026-10-16,f247cfb + d05f5d2):25 章全部中英配对(`.en.md` × 25),两份顶部切换器均在首屏第 3–5 行;结构对账 25/25 对齐(标题数/表格行/代码块/列表项/提示块计数全等);`docs:build` 绿。口径见 2026-10-16 docs 补双语执行单:命令/路径/代码/专有名词原样保留,链接目标加 `.en` 后缀
+- [ ] docs 中文原始计划页翻译。locales 布局下 `/zh/计划-原始/` 路由已通(`docs/zh/计划-原始.md` 为如实占位页,标 1564 行英文原稿超单页翻译上限);剩下的是正文本身:在不调用外部机器翻译 API、命令/路径/代码块/专有名词原样保留的前提下完整人工/本地翻译
+- [x] docs 迁 VitePress 官方 locales(2026-10-17,06f5f63):英文占根路由(`/guide/`、根目录 4 份文档 + 英文首页 `docs/index.md`),中文整树入 `docs/zh/`(`/zh/guide/`、`/zh/index.md` 与根文档中文版);`config.mts` 加 `locales.root`(en)+ `locales.zh`(zh-CN,侧栏/搜索/页脚文案全中文化),导航栏出内置语言切换;收口停滞会话的半成品:两棵树切换器统一为绝对路由 `/guide/NN | /zh/guide/NN`(原英文页自指、中文页链到已不存在的 `.en.md`)、两棵树图片深度对调修正(根 `../assets/`、zh `../../assets/`)、两个首页 hero action 各自带 locale 前缀、`docs/en/index.md` 与 `计划-原始.zh.md` 退役;结构对账 25/25 对齐(去代码围栏后标题/表格行/列表项/提示块计数全等)、`.en.md` 残留引用 0;`docs:build` 绿(dist 出双首页 + 双语 25 章 + 双语根文档)
+- [x] docs 英文首页入口(2026-10-16,95c1b1b;2026-10-17 被 locales 取代):原做法 = `docs/en/index.md` 独立 `layout: home` + 同目录 `.en.md` 路由;locales 迁移后英文首页改为根 `docs/index.md`,该文件已退役,内容未丢
+- [x] docs 子目录双语配对(docs/guide/ 25 章,2026-10-16,f247cfb + d05f5d2;2026-10-17 路由随 locales 调整):25 章中英全文齐备;此前配对形态为同目录 `.en.md` × 25,现英文并入根路由 `NN.md`、中文在 `docs/zh/guide/NN.md`;结构对账 25/25 对齐;`docs:build` 绿。口径见 2026-10-16 docs 补双语执行单:命令/路径/代码/专有名词原样保留
 
 ## 待办(挂闸:需用户拍板 / 等外部输入 / 人工验收才开工)
 
