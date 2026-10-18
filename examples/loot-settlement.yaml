@@ -1,0 +1,27 @@
+# 掉落结算案例(docs 24 章 §3 / docs/loot-settlement-design.md):战斗胜利
+# 从绑定表抽一次,按 rate_mult 缩放条目数额入账。数值与 24 章 §3 的配置面
+# 示例逐字一致(公示 = 实现):三档 70/25/5,金币档 10/50,经验档 20。
+# 语义:每场胜利恰一次 Purpose::Loot 抽取(CDF 二分),金币随战斗金币
+# 同乘鲸鱼倍率,经验走 gain_xp 级联;KPI = 人均掉落金币
+# loot_gold_per_player(切片口径,只计金币掉落;未配置时不出现在 JSON)。
+# 调参入口:rate_mult 是开放数值轴(params export 可见,可 sweep);
+# 改表形状(权重 / 条目)走 YAML 编辑,校验拒负数、全零数额、悬空引用。
+schema_version: '1'
+
+scenario:
+  population: 500
+  duration: 30d
+  seed: 42
+  population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
+
+model:
+  loot:
+    rate_mult: 1.0
+    on_victory: chest
+    tables:
+      chest:
+        weights: { gold_small: 70, gold_mid: 25, gem: 5 }
+    rewards:
+      gold_small: { gold: 10, xp: 0 }
+      gold_mid: { gold: 50, xp: 0 }
+      gem: { gold: 0, xp: 20 }

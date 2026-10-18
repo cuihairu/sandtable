@@ -172,3 +172,62 @@ fn pokemon_case_kpi_levels_within_band() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 掉落结算案例冒烟(docs 24 章 §3 交付记录):loot 配置可校验、可仿真,
+/// 结算确实在跑——KPI `loot_gold_per_player` 出现且为正,切片不超过总产出
+/// (切片 ⊆ 全额,gacha 无此约束故单独锁)。案例数值与 24 章 §3 示例逐字一致。
+#[test]
+fn loot_case_settlement_wired() {
+    let yaml = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/loot-settlement.yaml"
+    );
+
+    let out = bin(&["validate", yaml]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let dir = std::env::temp_dir().join(format!(
+        "st-case-loot-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let out = bin(&[
+        "simulate",
+        yaml,
+        "--players",
+        "200",
+        "--days",
+        "30",
+        "--replicates",
+        "1",
+        "--out",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let report = std::fs::read_to_string(dir.join("report.json")).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&report).unwrap();
+    let r = &v["results"][0];
+    let loot = r["loot_gold_per_player"]
+        .as_f64()
+        .expect("配置 loot 后切片指标应出现(结算已接入)");
+    assert!(loot > 0.0, "人均掉落金币应为正:{loot}");
+    let players = r["players"].as_f64().unwrap();
+    let earned = r["gold_earned_total"].as_f64().unwrap();
+    assert!(
+        loot * players <= earned,
+        "掉落切片 {loot}×{players} 不得超过总产出 {earned}(切片口径)"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
