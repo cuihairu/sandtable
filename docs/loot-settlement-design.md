@@ -1,6 +1,6 @@
 # sandtable Loot Settlement System Design
 
-**Status: decided via patrol delegation (2026-10-20, order r0240).** This is the design-first step the 2026-10-18 independent review mandates for Table-3 batch 2 ("design first, implement after"); the delegation record is §4. Implementation follows test-first in the same batch; ledger tracking lives in `todo.md`. Anchors below are against `3d04e1a`.
+**Status: landed (2026-10-20).** Decided via patrol delegation (2026-10-20, order r0240) — the design-first step the 2026-10-18 independent review mandates for Table-3 batch 2 ("design first, implement after"); the delegation record is §4. Implemented test-first in the same batch (Phase A §5); acceptance evidence in `todo.md`. Anchors below were taken against `3d04e1a`; as-built deltas from the plan: `on_victory` / `rewards` are registered `ParamKind::Table` slots (needed by the YAML tree check), and the params channel withholds `model.loot.*` on unconfigured configs (56 items by default / 57 armed), see §3.4.
 
 ## 0. Positioning
 
@@ -52,10 +52,9 @@ model:
 
 ### 3.4 Numeric channel, params, config_hash, metrics
 
-- Re-open `model.loot.rate_mult` read/apply (delete the two `Err` arms and the mirror-test exemption); spec descriptions drop the "reserved slot" wording; params table 56 → 57.
-- `model.loot.tables` stays `ParamKind::Table` (structural; not in the numeric channel).
+- Re-open `model.loot.rate_mult` read/apply (delete the two `Err` arms and the mirror-test exemption); spec descriptions drop the "reserved slot" wording. `on_victory` / `rewards` register as `ParamKind::Table` siblings of `tables` (structural; not in the numeric channel). Because applying `model.loot.rate_mult` onto an unconfigured config would spawn a structurally incomplete loot section (which `validate` rejects), the params channel withholds all `model.loot.*` rows when `model.loot` is absent: the params table is 56 items on a default config and 57 on a loot-configured baseline (merged YAML likewise emits the whole loot node for armed baselines).
 - `config_hash`: unconfigured → unchanged (existing Option-skip + test); configured → the loot section enters the hash (intended; BTreeMap ordering keeps it stable, `config.rs:233`).
-- New `MetricKey::LootGoldPerPlayer` appended at the tail (`ALL` 7 → 8, `experiment.rs:157-183`), Option-metric per the gacha precedent: `None` + `unavailable_reason` "loot 未配置" when unconfigured (P1-5 mechanism), `skip_serializing_if` on the JSON field; CLI summary gains a conditional loot line and the metric lists in compare / sweep / optimize / surrogate help text gain the name.
+- New `MetricKey::LootGoldPerPlayer` appended at the tail (`ALL` 7 → 8, `experiment.rs:157-183`), Option-metric per the gacha precedent: `None` + `unavailable_reason` "loot 未配置" when unconfigured (P1-5 mechanism), `skip_serializing_if` on the JSON field; the CLI has no per-metric summary output (simulate prints timing only), so the CLI surface change is the metric-name lists in compare / sweep / optimize / surrogate help text gaining the name.
 
 ### 3.5 disttest: no new kind
 
@@ -84,10 +83,10 @@ Phase A (this batch, test-first — red before each step's code):
 4. Golden: unconfigured snapshots byte-for-bit; purpose lock 0–8 unchanged.
 5. disttest weighted on a loot-bearing YAML reachable again, χ² passes.
 6. Metric: `unavailable_reason` when unconfigured; value present when configured.
-7. Implementation order: config struct + validate → registry re-open → sim settlement → metrics → CLI summary line.
+7. Implementation order: config struct + validate → registry re-open → sim settlement → metrics → CLI metric lists.
 8. Engine contract: `LootContract::validate` (`engine/importer.rs:270-291`) learns `rewards` / `on_victory`; the 19 roundtrip tests stay green.
 
-Acceptance gates: `cargo test --workspace` green; clippy `--all-targets` zero warnings; `cargo fmt --check`; `pnpm docs:build`; `params export` prints 57 项; KPI anchor cases stay green (case configs do not configure loot).
+Acceptance gates: `cargo test --workspace` green; clippy `--all-targets` zero warnings; `cargo fmt --check`; `pnpm docs:build`; `params export` prints 56 项 on a default config / 57 项 on a loot-configured baseline; KPI anchor cases stay green (case configs do not configure loot).
 
 Phase B (deferred, on demand): alias method hot path; per-tier bindings; non-currency item counts (inventory-adjacent).
 
@@ -95,4 +94,4 @@ Phase B (deferred, on demand): alias method hot path; per-tier bindings; non-cur
 
 - docs: chapter 23 loot row 🔶 → ✅; chapter 24 warning box → delivery record with updated params counts; audit doc B4 annotation.
 - ledger: `todo.md` item with evidence (commands + numbers + file:line).
-- status line of this document: updated to "landed" in the implementation commit.
+- status line of this document: updated to "landed" in the implementation commit (done — see the header).

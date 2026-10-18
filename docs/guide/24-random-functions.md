@@ -21,7 +21,7 @@ The [Pokémon case](./21-pokemon-case.md) exposed a pattern: the "feel" of a num
 | --- | --- | --- | --- | --- |
 | 1 | Uniform / Bernoulli | Hits, damage variance, everyday dice rolls | The key is the draw itself, stateless | ✅ Exists |
 | 2 | Normal distribution | Population initial attributes, session length, rating noise | The key is the draw itself (consumes two uniforms), stateless | ✅ R3 landed (2026-10-10) |
-| 3 | Weighted table (with replacement) | Drop tables, quality roll | The table is compiled at load time; the key is the draw itself | ✅ R1 landed (2026-10-10, primitive; loot settlement not wired — see §3) |
+| 3 | Weighted table (with replacement) | Drop tables, quality roll | The table is compiled at load time; the key is the draw itself | ✅ R1 landed (2026-10-10, primitive); settlement wired (2026-10-20 — see §3) |
 | 4 | Shuffle / weighted sampling without replacement | Card deck draws, limited-pool de-duplication, team sampling | The key is the draw itself, stateless | ✅ R1 landed (2026-10-10) |
 | 5 | Pity sequence (hard / soft) | Gacha, rare-drop fallback | **The counter is deterministic actor state**; the draw still goes through the key | ✅ R2 landed (2026-10-10) |
 | 6 | Replay seed | Reproduce any single run / the same A/B path | The key structure is the design; the seed is the experiment identity | ✅ Exists (docs 06) |
@@ -54,22 +54,28 @@ sandtable disttest normal --samples 100000 --buckets 20 --spread 3 --mu 0 --sigm
 - The normal distribution is unbounded, so attribute-type uses must be paired with a `clamp` (`normal_clamped`; clamping is deterministic post-processing). When a configuration surface is introduced, the clamp bounds go into the registry; documentation and reports must state honestly that this is a "truncated normal";
 - Reference implementation conventions: [NumPy Generator.normal](https://numpy.org/doc/stable/reference/random/generator.html) (semantic comparison, not an implementation dependency).
 
-### 3. Weighted table WeightedTable (with replacement) ✅ R1 landed (primitive)
+### 3. Weighted table WeightedTable (with replacement) ✅ R1 landed (primitive) + settlement wired
 
 **Scenario**: drop tables (70/25/5 three tiers), quality roll, NPC behavior branches.
 
-::: warning Wiring status (2026-10-18, review remediation)
-The `WeightedTable` primitive is landed, but **loot settlement is not wired into the simulation** — no system consumes these tables, and `rate_mult` is not applied at runtime. To avoid silently ineffective knobs, a config that contains `model.loot` is **rejected at load** with an explicit error, and the `model.loot.rate_mult` numeric channel is **closed** (read / apply return an error; the slot is excluded from the params table, merged YAML, and sweep numeric axes). The surface is planned shape, to be re-enabled together with the loot settlement System.
+::: tip Delivery record (2026-10-20, loot settlement System)
+The primitive landed 2026-10-10; the review remediation of 2026-10-18 had closed the config surface (configs containing `model.loot` were rejected at load) until a consumer existed. **Settlement is now wired** ([design](../loot-settlement-design.md)): on every battle victory the sim draws once from the bound table (`Purpose::Loot`, an independent key dimension that does not disturb other streams) and grants the entry's gold/xp scaled by `rate_mult`. Configs containing `model.loot` load again; `model.loot.rate_mult` is an **open F64 numeric channel** (readable, applicable, sweepable). When `model.loot` is **not** configured, the slot stays out of the params table / merged YAML (applying it would spawn a structurally incomplete loot section), so the default params export is 56 items and a loot-configured baseline is 57.
 :::
 
 ```yaml
-# Planned configuration surface (parsed + validated, then rejected at load until loot settlement is wired — see the warning above)
+# Landed configuration surface (validated: on_victory must name a table in
+# tables; every weight entry needs a rewards entry with a positive amount)
 model:
   loot:
-    rate_mult: 1.0        # global drop-rate multiplier (reserved numeric slot; NOT applied at runtime until settlement is wired)
+    rate_mult: 1.0        # global drop-rate multiplier (multiplies amounts, not the distribution shape)
+    on_victory: chest     # the table drawn on battle victory
     tables:
       chest:
         weights: { gold_small: 70, gold_mid: 25, gem: 5 }
+    rewards:              # per-entry amounts; at least one of gold/xp > 0
+      gold_small: { gold: 10, xp: 0 }
+      gold_mid: { gold: 50, xp: 0 }
+      gem: { gold: 0, xp: 20 }
 ```
 
 ```text
@@ -78,7 +84,7 @@ Run time: rng.weighted(Purpose::Loot, &table) -> item index   # one uniform draw
 ```
 
 - The roulette linear scan at O(n) is the naive implementation; the alias method (Walker 1977; Vose 1991 gives O(n) construction / O(1) sampling) is a **hot-path optimization item** — the construction cost is paid once, and it is enabled only when a table is referenced a million times in a single day. The MVP uses CDF binary search, readability first;
-- A table entry's **weight** does not enter the numeric channel (`model.loot.tables` goes through `ParamKind::Table`, following the `tier_table` precedent: changing the shape is done by editing YAML); the "global drop-rate multiplier" is a **reserved** registry slot whose numeric channel is **closed** (read / apply return an explicit error, and the slot is excluded from the params table, merged YAML, and sweep numeric axes — sweeping it before settlement is wired would silently change nothing; a config containing `model.loot` is rejected at load; once wired, a multiplier scaling quantity does not change the distribution shape, so distribution tests will not touch it);
+- A table entry's **weight** does not enter the numeric channel (`model.loot.tables` / `on_victory` / `rewards` go through `ParamKind::Table`, following the `tier_table` precedent: changing the shape is done by editing YAML); the "global drop-rate multiplier" is an **open** F64 numeric slot (`model.loot.rate_mult`) — with loot configured it reads / applies / sweeps like any numeric axis; when loot is **not** configured the slot stays out of the params table and merged YAML (and a multiplier scales quantity without changing the distribution shape, so distribution tests still do not touch it);
 - Weights are not probabilities: expected share = wᵢ/Σw, and the reporting layer is responsible for converting it into "expected count per hundred draws" for designers to read.
 
 ### 4. Shuffle and sampling without replacement ✅ R1 landed
@@ -147,7 +153,7 @@ sandtable disttest weighted <scenario.yaml> chest --samples 100000 --alpha 0.01
 | --- | --- | --- |
 | "How large a mean difference counts as significant" (retention / win rate / output) | replicates → CI95 / A/B paired difference | ✅ docs 13/11 |
 | "How much does this parameter matter" | sweep + OAT sensitivity + recommendation interval | ✅ docs 12/14/15 |
-| "What is the economic impact of the drop-rate multiplier" | `gacha.*` is wired and sweeps as the numeric axis; `loot.rate_mult` is a reserved slot, **not applied at runtime** (configs containing `model.loot` are rejected at load) | ✅ R2 landed / ⏳ loot pending |
+| "What is the economic impact of the drop-rate multiplier" | `gacha.*` and `loot.rate_mult` are wired and sweep as numeric axes (loot requires `model.loot` configured; the drop gold slice surfaces as the `loot_gold_per_player` KPI) | ✅ R2 + loot settlement landed |
 | "Does the random implementation match its configuration" | **chi-square distribution test** (primitive level) | ✅ R1/R3 landed (`disttest`) |
 | "Is this run reproducible" | base_seed + golden snapshots + web_parity | ✅ docs 06/19 |
 
@@ -168,7 +174,7 @@ R1 / R2 / R3 are all kernel extensions that touch `rng.rs` and the registry — 
 ### R1 Delivery Record (2026-10-10)
 
 - **purpose key discipline**: `Purpose::Shuffle = 6` is appended at the tail of the enum (the locked test asserts 0–6 are bit-for-bit unchanged); weighted-table draws reuse the existing, still-unused `Purpose::Loot = 3`; the R2 / R3 purposes will keep appending at the tail. The golden snapshot (`tests/golden.rs`) passes byte-for-byte, and `config_hash` is unchanged.
-- **Configuration surface**: the landed shape has one more layer than the design draft — `model.loot: {rate_mult, tables: {table_name: {weights: {...}}}}`. `tables` goes through `ParamKind::Table` (a structural parameter, not entering the numeric channel), while `rate_mult` is an F64 numeric slot (params table count +1: 52 → 53). `loot: Option<LootConfig>` + `skip_serializing_if` (same precedent as the training field); when unconfigured, config_hash is byte-for-byte identical to the old version. **Update (2026-10-18, review remediation)**: loot settlement was never wired into the simulation; to avoid silently ineffective knobs, a config that sets `model.loot` is now **rejected at load**, and the `model.loot.rate_mult` numeric channel is closed (excluded from the params table, merged YAML, and sweep numeric axes) — the surface above is planned shape, to be re-enabled together with the loot System.
+- **Configuration surface**: the landed shape has one more layer than the design draft — `model.loot: {rate_mult, on_victory, tables: {table_name: {weights: {...}}}, rewards: {entry: {gold, xp}}}`. `tables` / `on_victory` / `rewards` go through `ParamKind::Table` (structural parameters, not entering the numeric channel), while `rate_mult` is an F64 numeric slot. `loot: Option<LootConfig>` + `skip_serializing_if` (same precedent as the training field); when unconfigured, config_hash is byte-for-byte identical to the old version. **Update (2026-10-18, review remediation)**: loot settlement had never been wired into the simulation, so configs setting `model.loot` were rejected at load and the `rate_mult` channel was closed. **Landed (2026-10-20, loot settlement System)**: settlement is wired (victory-time draw via `Purpose::Loot`, amounts scaled by `rate_mult`, whale multiplier applied like battle gold), configs load again, the channel is open (56 params items by default / 57 with loot configured), and the drop gold slice surfaces as the `loot_gold_per_player` KPI (design: [loot settlement design](../loot-settlement-design.md)).
 - **Draw primitives** (`rng.rs`): `WeightedTable` (from_weights validation / probabilities / pick via binary search), `Draw::weighted`, `DayRng::weighted` / `draw_stream` (streaming, advances n in one go) / `shuffle` (Fisher–Yates, n−1 draws) / `sample` (partial shuffle taking the first k) / `sample_weighted` (A-Res key-ordered method, `u^(1/w)` taking the k largest, total_cmp ordering + index tiebreak).
 - **Distribution test** (`disttest.rs`, not in the simulation path): Pearson χ², Cochran bucket merging (expected ≥ 5), the p value via the regularized incomplete gamma (series + Lentz continued fraction, Lanczos ln Γ); CLI `disttest uniform | weighted`; a failed test exits with code 1, a configuration error with 2.
 

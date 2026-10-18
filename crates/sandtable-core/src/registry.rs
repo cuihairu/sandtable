@@ -243,13 +243,25 @@ const MODEL: &[ParamSpec] = &[
         "model.loot.rate_mult",
         F64,
         "1.0",
-        "掉落产出倍率(保留槽:掉落结算尚未接入仿真,数值通道已关闭,加载即拒;接入后乘到金币/经验数额,不改表形状)",
+        "掉落产出倍率(乘到金币/经验数额,不改表形状;loot 未配置时不生效)",
     ),
     spec(
         "model.loot.tables",
         Table,
         "—",
-        "掉落加权表(表名 → 权重;保留面:结算尚未接入仿真,含 model.loot 的配置加载即拒)",
+        "掉落加权表(表名 → 权重;结构性参数,改形状走 YAML 编辑)",
+    ),
+    spec(
+        "model.loot.on_victory",
+        Table,
+        "—",
+        "胜利结算用表名(须为 tables 中的键;结构开关,不进数值通道)",
+    ),
+    spec(
+        "model.loot.rewards",
+        Table,
+        "—",
+        "掉落条目数额表(条目 → {gold, xp};结构性参数,改形状走 YAML 编辑)",
     ),
     spec(
         "model.gacha.base_rate",
@@ -446,11 +458,9 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.churn.p_base" => Ok(cfg.churn.p_base),
         "model.churn.p_stall" => Ok(cfg.churn.p_stall),
         "model.churn.stall_days" => Ok(cfg.churn.stall_days as f64),
-        // 掉落数值通道已关闭(审核整改 P1-6):结算未接入,可读会让参数表
-        // 导出 / 合并无中生有 loot 节;接入结算 System 时恢复
-        "model.loot.rate_mult" => Err(Error::Config(format!(
-            "{path}: 掉落结算尚未接入仿真(规划中),数值通道已关闭"
-        ))),
+        // 掉落数值通道(docs/loot-settlement-design.md):结算已接入,
+        // 未配置时缺省 1.0(与 gacha 同口径——写不写都不改变未配置语义)
+        "model.loot.rate_mult" => Ok(cfg.loot.as_ref().map(|l| l.rate_mult).unwrap_or(1.0)),
         "model.gacha.base_rate" => Ok(cfg.gacha.as_ref().map(|g| g.base_rate).unwrap_or(0.02)),
         "model.gacha.pity_hard" => Ok(cfg.gacha.as_ref().map(|g| g.pity_hard).unwrap_or(0) as f64),
         "model.gacha.pity_soft_start" => {
@@ -464,7 +474,9 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         | "model.formulas.xp_needed"
         | "model.dungeon.tier_table"
         | "model.combat.damage_model"
-        | "model.loot.tables" => Err(Error::Config(format!(
+        | "model.loot.tables"
+        | "model.loot.on_victory"
+        | "model.loot.rewards" => Err(Error::Config(format!(
             "{path}: 该参数不是数值,不可数值读取"
         ))),
         _ => Err(unknown(path)),
@@ -565,9 +577,9 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
             cfg.churn.stall_days = unsigned(value, "stall_days")?.round() as u32
         }
         "model.loot.rate_mult" => {
-            return Err(Error::Config(format!(
-                "{path}: 掉落结算尚未接入仿真(规划中),拒绝写入以免静默无效"
-            )))
+            cfg.loot
+                .get_or_insert_with(crate::config::LootConfig::default)
+                .rate_mult = value;
         }
         "model.gacha.base_rate" => {
             cfg.gacha
@@ -590,12 +602,14 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
                 .pity_soft_step = unsigned(value, "pity_soft_step")?;
         }
         // 非数值槽:不可数值扫描(时长是字符串,公式是表达式,逐层表是数组,
-        // 伤害口径是枚举开关,掉落表是结构)
+        // 伤害口径是枚举开关,掉落结构面是字符串/映射)
         "scenario.duration"
         | "model.formulas.xp_needed"
         | "model.dungeon.tier_table"
         | "model.combat.damage_model"
-        | "model.loot.tables" => {
+        | "model.loot.tables"
+        | "model.loot.on_victory"
+        | "model.loot.rewards" => {
             return Err(Error::Config(format!(
                 "{path}: 该参数不是数值,不可数值扫描"
             )));
@@ -670,7 +684,6 @@ mod tests {
 
     /// read_numeric 与 apply_numeric 互为镜像:全部数值路径读出 → 写回 →
     /// 读出不变;非数值路径读必报错。新增注册表路径漏写读臂在此红。
-    /// 豁免:model.loot.rate_mult 数值通道已关闭(P1-6),读写都必须报错。
     #[test]
     fn get_set_mirror_all_numeric_paths() {
         let cfg = crate::config::SimConfig::default();
@@ -681,22 +694,6 @@ mod tests {
                 | ParamKind::I64
                 | ParamKind::F64
                 | ParamKind::Mix => {
-                    // 掉落数值通道已关闭(P1-6):读写都必须显式报错,
-                    // 参数表导出 / 合并 / sweep 数值轴随之剔除该槽
-                    if sp.path == "model.loot.rate_mult" {
-                        assert!(
-                            read_numeric(&cfg, sp.path).is_err(),
-                            "{}: 通道已关,不应可读",
-                            sp.path
-                        );
-                        let mut c2 = cfg.clone();
-                        assert!(
-                            apply_numeric(&mut c2, sp.path, 1.0).is_err(),
-                            "{}: 通道已关,不应可写",
-                            sp.path
-                        );
-                        continue;
-                    }
                     let v = read_numeric(&cfg, sp.path)
                         .unwrap_or_else(|e| panic!("{}: 读失败 {e}", sp.path));
                     let mut c2 = cfg.clone();

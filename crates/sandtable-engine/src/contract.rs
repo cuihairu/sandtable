@@ -189,17 +189,26 @@ pub struct ChurnContract {
     pub stall_days: u32,
 }
 
-/// 掉落加权表(表名 → 权重表;键序固定)。
+/// 掉落结算配置(表 + 胜利绑定 + 条目数额;键序固定)。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LootContract {
     pub rate_mult: f64,
+    pub on_victory: String,
     pub tables: BTreeMap<String, LootTableContract>,
+    pub rewards: BTreeMap<String, LootRewardContract>,
 }
 
 /// 一张掉落表的项权重(项名 → 权重;键序固定)。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LootTableContract {
     pub weights: BTreeMap<String, f64>,
+}
+
+/// 一个掉落条目的产出数额(表条目 → 数额;键序固定)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LootRewardContract {
+    pub gold: i64,
+    pub xp: i64,
 }
 
 /// 抽卡保底。
@@ -281,6 +290,7 @@ impl ModelContract {
             },
             loot: cfg.loot.as_ref().map(|l| LootContract {
                 rate_mult: l.rate_mult,
+                on_victory: l.on_victory.clone(),
                 tables: l
                     .tables
                     .iter()
@@ -289,6 +299,19 @@ impl ModelContract {
                             name.clone(),
                             LootTableContract {
                                 weights: table.weights.clone(),
+                            },
+                        )
+                    })
+                    .collect(),
+                rewards: l
+                    .rewards
+                    .iter()
+                    .map(|(name, r)| {
+                        (
+                            name.clone(),
+                            LootRewardContract {
+                                gold: r.gold,
+                                xp: r.xp,
                             },
                         )
                     })

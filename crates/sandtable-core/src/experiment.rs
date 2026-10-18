@@ -169,10 +169,13 @@ pub enum MetricKey {
     ChurnRate,
     /// 抽卡期望抽数 E[T](gacha 未配置时为 None,不进比较)
     GachaPullsToHit,
+    /// 人均掉落金币(docs/loot-settlement-design.md;loot 未配置时为
+    /// None,不进比较)
+    LootGoldPerPlayer,
 }
 
 impl MetricKey {
-    pub const ALL: [MetricKey; 7] = [
+    pub const ALL: [MetricKey; 8] = [
         MetricKey::RetentionD7,
         MetricKey::RetentionD3,
         MetricKey::WinRate,
@@ -180,6 +183,7 @@ impl MetricKey {
         MetricKey::PowerP50Final,
         MetricKey::ChurnRate,
         MetricKey::GachaPullsToHit,
+        MetricKey::LootGoldPerPlayer,
     ];
 
     pub fn parse(s: &str) -> Option<Self> {
@@ -191,6 +195,7 @@ impl MetricKey {
             "power_p50" => MetricKey::PowerP50Final,
             "churn_rate" => MetricKey::ChurnRate,
             "gacha_pulls_to_hit" => MetricKey::GachaPullsToHit,
+            "loot_gold_per_player" => MetricKey::LootGoldPerPlayer,
             _ => return None,
         })
     }
@@ -204,6 +209,7 @@ impl MetricKey {
             MetricKey::PowerP50Final => "power_p50",
             MetricKey::ChurnRate => "churn_rate",
             MetricKey::GachaPullsToHit => "gacha_pulls_to_hit",
+            MetricKey::LootGoldPerPlayer => "loot_gold_per_player",
         }
     }
 
@@ -216,6 +222,7 @@ impl MetricKey {
             MetricKey::PowerP50Final => m.power_snapshots.last().map(|s| s.p50),
             MetricKey::ChurnRate => Some(m.churn_rate_total),
             MetricKey::GachaPullsToHit => m.gacha_pulls_to_hit,
+            MetricKey::LootGoldPerPlayer => m.loot_gold_per_player,
         }
     }
 
@@ -233,6 +240,9 @@ impl MetricKey {
             }
             MetricKey::GachaPullsToHit if cfg.gacha.is_none() => {
                 Some("gacha_pulls_to_hit 需要 model.gacha 配置,当前未配置")
+            }
+            MetricKey::LootGoldPerPlayer if cfg.loot.is_none() => {
+                Some("loot_gold_per_player 需要 model.loot 配置,当前未配置")
             }
             _ => None,
         }
@@ -338,6 +348,7 @@ mod tests {
             inflation_last: 0.0,
             sink_ratio_mean: 0.0,
             gacha_pulls_to_hit: Some(31.0),
+            loot_gold_per_player: Some(12.5),
             power_snapshots: vec![],
             cohort_stats: vec![],
             day_stats: vec![],
@@ -345,9 +356,14 @@ mod tests {
         assert_eq!(MetricKey::RetentionD7.extract(&m), Some(0.8));
         assert_eq!(MetricKey::GoldPerPlayer.extract(&m), Some(5000.0));
         assert_eq!(MetricKey::GachaPullsToHit.extract(&m), Some(31.0));
+        assert_eq!(MetricKey::LootGoldPerPlayer.extract(&m), Some(12.5));
         assert_eq!(
             MetricKey::parse("gacha_pulls_to_hit"),
             Some(MetricKey::GachaPullsToHit)
+        );
+        assert_eq!(
+            MetricKey::parse("loot_gold_per_player"),
+            Some(MetricKey::LootGoldPerPlayer)
         );
     }
 

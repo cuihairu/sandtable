@@ -119,6 +119,44 @@ fn export_json_is_deterministic() {
     assert_eq!(contract.to_json(), export_json(&cfg).unwrap());
 }
 
+// 掉落结算面进契约(docs/loot-settlement-design.md §6):表 + 胜利绑定 +
+// 条目数额全量导出,参考导入器按同口径校验。
+#[test]
+fn loot_settlement_contract_roundtrip() {
+    let yaml = concat!(
+        "schema_version: '1'\n",
+        "scenario:\n  population: 100\n  duration: 30d\n  seed: 1\n",
+        "model:\n",
+        "  loot:\n",
+        "    rate_mult: 1.5\n",
+        "    on_victory: chest\n",
+        "    tables:\n",
+        "      chest:\n",
+        "        weights:\n",
+        "          gold_small: 70\n",
+        "          xp_charm: 30\n",
+        "    rewards:\n",
+        "      gold_small: { gold: 10, xp: 0 }\n",
+        "      xp_charm: { gold: 0, xp: 20 }\n",
+    );
+    let cfg = sandtable_core::scenario::load_str(yaml).expect("loot 配置应可加载");
+    let contract = export(&cfg).expect("loot 配置导出应通过 validate");
+    let loot = contract.model.loot.as_ref().expect("应携带掉落节");
+    assert!((loot.rate_mult - 1.5).abs() < 1e-12);
+    assert_eq!(loot.on_victory, "chest");
+    assert_eq!(loot.tables["chest"].weights["gold_small"], 70.0);
+    assert_eq!(loot.rewards["gold_small"].gold, 10);
+    assert_eq!(loot.rewards["xp_charm"].xp, 20);
+    let loaded = load(&contract.to_json()).expect("契约应能被参考导入器重新加载");
+    assert_eq!(loaded, contract, "掉落节导出 / 加载应等价");
+
+    // 胜利绑定指向不存在的表:导入器显式拒绝
+    let mut broken = contract.clone();
+    broken.model.loot.as_mut().unwrap().on_victory = "nope".into();
+    let err = load(&broken.to_json()).expect_err("on_victory 指向缺失表应被拒");
+    assert!(err.to_string().contains("on_victory"), "{err}");
+}
+
 // —— 阶段 1:参考导入器 + 回归 ——
 
 #[test]

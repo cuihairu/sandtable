@@ -63,6 +63,8 @@ fn params_export_edit_roundtrip() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
+    // 默认配置 56 项:loot 未配置时 rate_mult 不进模板(apply 会凭空落
+    // 缺 on_victory/rewards 的 loot 节,加载即拒;57 = 配置 loot 后)
     assert!(stdout.contains("56 项"), "{stdout}");
     let imported_hash = stdout
         .split("config_hash = ")
@@ -235,4 +237,82 @@ fn params_import_skips_comments_and_blank() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("已导入 1 项"), "{stdout}");
+}
+
+#[test]
+fn params_roundtrip_keeps_loot_settlement() {
+    // loot 已配置的基线:rate_mult 进模板(56+1=57),合并产物保留结算节
+    let dir = temp_dir("loot");
+    fs::create_dir_all(&dir).unwrap();
+    let base = dir.join("loot.yaml");
+    fs::write(
+        &base,
+        concat!(
+            "schema_version: \"1\"\n",
+            "scenario:\n",
+            "  population: 100\n",
+            "  duration: 30d\n",
+            "  seed: 7\n",
+            "model:\n",
+            "  loot:\n",
+            "    rate_mult: 1.5\n",
+            "    on_victory: chest\n",
+            "    tables:\n",
+            "      chest:\n",
+            "        weights:\n",
+            "          drop: 1.0\n",
+            "    rewards:\n",
+            "      drop: { gold: 10, xp: 0 }\n",
+        ),
+    )
+    .unwrap();
+
+    let csv = dir.join("params.csv");
+    let out = bin(&[
+        "params",
+        "export",
+        base.to_str().unwrap(),
+        "--out",
+        csv.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let csv_text = fs::read_to_string(&csv).unwrap();
+    assert!(
+        csv_text.contains("model.loot.rate_mult,1.5\n"),
+        "loot 已配置时 rate_mult 进模板:{csv_text}"
+    );
+
+    let merged = dir.join("merged.yaml");
+    let out = bin(&[
+        "params",
+        "import",
+        csv.to_str().unwrap(),
+        base.to_str().unwrap(),
+        "--out",
+        merged.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("57 项"),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let text = fs::read_to_string(&merged).unwrap();
+    assert!(text.contains("on_victory: chest"), "结算节随基线:{text}");
+    assert!(text.contains("rewards:"), "{text}");
+    assert!(text.contains("rate_mult: 1.5"), "{text}");
+    let out = bin(&["validate", merged.to_str().unwrap()]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }

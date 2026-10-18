@@ -2,7 +2,7 @@
 
 [English](/loot-settlement-design) | [中文](/zh/loot-settlement-design)
 
-**状态:已代决(巡检代决,2026-10-20,推进单 r0240)。** 本文是 2026-10-18 独立审核为表三第二批规定的「先出设计再实施」一步,代决记录见 §4;实施随本批次按先测后码推进,台账挂 `todo.md`。下文锚点基于 `3d04e1a`。
+**状态:已落地(2026-10-20)。** 经巡检代决(2026-10-20,推进单 r0240)定稿——本文是 2026-10-18 独立审核为表三第二批规定的「先出设计再实施」一步,代决记录见 §4;实施随本批次按先测后码完成(Phase A 见 §5),验收证据挂 `todo.md`。下文锚点基于 `3d04e1a`;落地与原稿的差异:`on_victory` / `rewards` 注册为 `ParamKind::Table` 槽(YAML 树校验需要),参数通道在 loot 未配置时整体扣留 `model.loot.*`(默认 56 项 / 配置后 57 项),见 §3.4。
 
 ## 0. 定位(承既有架构口径)
 
@@ -30,7 +30,7 @@
 ```yaml
 model:
   loot:
-    rate_mult: 1.0       # 数值通道重开(参数表 56 → 57)
+    rate_mult: 1.0       # 数值通道重开(参数表:配置 loot 后 56 → 57)
     on_victory: chest    # 每次战斗胜利抽取的表
     tables:
       chest:
@@ -54,10 +54,9 @@ model:
 
 ### 3.4 数值通道、参数表、config_hash、指标
 
-- 重开 `model.loot.rate_mult` 读写(删两处 `Err` 分支与镜像测试豁免);spec 描述去掉「保留槽」措辞;参数表 56 → 57。
-- `model.loot.tables` 保持 `ParamKind::Table`(结构性;不进数值通道)。
+- 重开 `model.loot.rate_mult` 读写(删两处 `Err` 分支与镜像测试豁免);spec 描述去掉「保留槽」措辞。`on_victory` / `rewards` 与 `tables` 同注册为 `ParamKind::Table`(结构性;不进数值通道)。向未配置的基线 apply `model.loot.rate_mult` 会凭空生成缺 on_victory/rewards 的残缺 loot 节(`validate` 拒收),故 `model.loot` 缺席时参数通道整体扣留 `model.loot.*`:默认参数表 56 项、配置 loot 的基线 57 项(合并 YAML 同理,对已配置基线整节随写)。
 - `config_hash`:未配置 → 不变(既有 Option 跳过 + 测试);配置 → loot 节进哈希(预期行为;BTreeMap 排序保证稳定,`config.rs:233`)。
-- 新 `MetricKey::LootGoldPerPlayer` 尾追加(`ALL` 7 → 8,`experiment.rs:157-183`),按 gacha 先例做 Option 指标:未配置时 `None` + `unavailable_reason`「loot 未配置」(P1-5 机制),JSON 字段 `skip_serializing_if`;CLI 摘要加条件掉落行,compare / sweep / optimize / surrogate 的指标清单加该名字。
+- 新 `MetricKey::LootGoldPerPlayer` 尾追加(`ALL` 7 → 8,`experiment.rs:157-183`),按 gacha 先例做 Option 指标:未配置时 `None` + `unavailable_reason`「loot 未配置」(P1-5 机制),JSON 字段 `skip_serializing_if`;CLI 无逐指标摘要输出(simulate 只打耗时),CLI 面改动即 compare / sweep / optimize / surrogate 的指标清单加该名字。
 
 ### 3.5 disttest:不新增测试种类
 
@@ -86,10 +85,10 @@ Phase A(本批次,先测后码——每步先红):
 4. 黄金快照:未配置逐字节不变;purpose 锁 0–8 不变。
 5. disttest weighted 对含掉落 YAML 重新可达,χ² 通过。
 6. 指标:未配置时 `unavailable_reason`;配置后有值。
-7. 实施顺序:config 结构 + 校验 → 注册表重开 → 仿真结算 → 指标 → CLI 摘要行。
+7. 实施顺序:config 结构 + 校验 → 注册表重开 → 仿真结算 → 指标 → CLI 指标清单。
 8. 引擎契约:`LootContract::validate`(`engine/importer.rs:270-291`)认识 `rewards` / `on_victory`;19 个 roundtrip 测试保持绿。
 
-验收门:`cargo test --workspace` 绿;clippy `--all-targets` 零告警;`cargo fmt --check`;`pnpm docs:build`;`params export` 打 57 项;KPI 锚值用例保持绿(案例配置不配 loot)。
+验收门:`cargo test --workspace` 绿;clippy `--all-targets` 零告警;`cargo fmt --check`;`pnpm docs:build`;`params export` 默认配置打 56 项 / 配置 loot 的基线打 57 项;KPI 锚值用例保持绿(案例配置不配 loot)。
 
 Phase B(押后,按需):alias method 热路径;按层绑表;非货币物品计数(邻接背包)。
 
@@ -97,4 +96,4 @@ Phase B(押后,按需):alias method 热路径;按层绑表;非货币物品计数
 
 - docs:23 章掉落行 🔶 → ✅;24 章 warning 框 → 交付记录并更新参数表计数;审计文档 B4 注记。
 - 台账:`todo.md` 条目带证据(命令 + 数值 + file:line)。
-- 本文状态行:在实施 commit 中改为「已落地」。
+- 本文状态行:在实施 commit 中改为「已落地」(已完成,见顶部)。

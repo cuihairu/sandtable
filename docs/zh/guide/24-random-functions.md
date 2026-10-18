@@ -22,7 +22,7 @@ title: 24 · 随机函数与概率系统
 | --- | --- | --- | --- | --- |
 | 1 | 均匀 / 伯努利 | 命中、伤害浮动、日常掷骰 | 键即抽取,无状态 | ✅ 已有 |
 | 2 | 正态分布 | 群体初始属性、会话时长、评分噪声 | 键即抽取(消耗两次均匀),无状态 | ✅ R3 已落地(2026-10-10) |
-| 3 | 加权表(有放回) | 掉落表、品质 roll | 表在加载期编译;键即抽取 | ✅ R1 已落地(2026-10-10,原语;掉落结算未接入——见 §3) |
+| 3 | 加权表(有放回) | 掉落表、品质 roll | 表在加载期编译;键即抽取 | ✅ R1 已落地(2026-10-10,原语);结算已接入(2026-10-20——见 §3) |
 | 4 | 洗牌 / 无放回加权抽样 | 卡组抽牌、限定池去重、组队抽样 | 键即抽取,无状态 | ✅ R1 已落地(2026-10-10) |
 | 5 | 保底序列(硬/软) | 抽卡、稀有掉落兜底 | **计数器是 actor 确定性状态**;抽取仍走键 | ✅ R2 已落地(2026-10-10) |
 | 6 | 回放种子 | 复现任意一局 / A/B 同路径 | 键结构即设计;种子即实验标识 | ✅ 已有(docs 06) |
@@ -55,22 +55,28 @@ sandtable disttest normal --samples 100000 --buckets 20 --spread 3 --mu 0 --sigm
 - 正态无界,属性类用途必须配 `clamp`(`normal_clamped`,钳位是确定性后处理);引入配置面时钳位边界进注册表;文档与报告里如实标注"截断正态";
 - 参考实现口径:[NumPy Generator.normal](https://numpy.org/doc/stable/reference/random/generator.html)(语义对照,非实现依赖)。
 
-### 3. 加权表 WeightedTable(有放回)✅ R1 已落地(原语)
+### 3. 加权表 WeightedTable(有放回)✅ R1 已落地(原语)+ 结算已接入
 
 **场景**:掉落表(70/25/5 三档)、品质 roll、NPC 行为分支。
 
-::: warning 接入状态(2026-10-18,审核整改)
-`WeightedTable` 原语已落地,但**掉落结算尚未接入仿真**——没有任何系统消费这些表,`rate_mult` 运行期不生效。为避免配置静默无效,当前包含 `model.loot` 的配置在加载期会被**显式拒绝**,且 `model.loot.rate_mult` 数值通道已**关闭**(读写显式报错;该槽从参数表、合并 YAML 与 sweep 数值轴中剔除)。该配置面属规划形态,待掉落结算 System 落地后一同启用。
+::: tip 交付记录(2026-10-20,掉落结算 System)
+原语 2026-10-10 落地;2026-10-18 审核整改曾把配置面整体关闭(含 `model.loot` 的配置加载即拒),直到出现消费方。**结算现已接入**([设计](../loot-settlement-design.md)):每场战斗胜利从绑定表抽一次(`Purpose::Loot`,独立键维度,不扰动其他流),按 `rate_mult` 缩放条目金币/经验入账。含 `model.loot` 的配置恢复可加载;`model.loot.rate_mult` 数值通道**开放**(可读、可写、可 sweep)。`model.loot` **未配置**时该槽不进参数表 / 合并 YAML(落值会凭空生成缺 on_victory/rewards 的残缺 loot 节),故默认参数表 56 项、配置 loot 的基线 57 项。
 :::
 
 ```yaml
-# 规划中的配置面(解析+校验后加载即拒,待掉落结算接入——见上方警示)
+# 已落地的配置面(校验:on_victory 须指向 tables 中的表;每个权重条目
+# 都要有 rewards 定义且数额至少一项 > 0)
 model:
   loot:
-    rate_mult: 1.0        # 全局掉率倍率(保留数值槽;结算接入前运行期不生效)
+    rate_mult: 1.0        # 全局掉率倍率(乘数额,不改分布形状)
+    on_victory: chest     # 战斗胜利时抽取的表
     tables:
       chest:
         weights: { gold_small: 70, gold_mid: 25, gem: 5 }
+    rewards:              # 条目数额;gold/xp 至少一项 > 0
+      gold_small: { gold: 10, xp: 0 }
+      gold_mid: { gold: 50, xp: 0 }
+      gem: { gold: 0, xp: 20 }
 ```
 
 ```text
@@ -79,7 +85,7 @@ model:
 ```
 
 - 轮盘线性扫 O(n) 是朴素实现;alias method(Walker 1977;Vose 1991 给出 O(n) 构造 / O(1) 采样)为**热路径优化项**,构造成本一次性,仅当表被单日百万级引用时启用——MVP 用 CDF 二分,可读性优先;
-- 表条目的**权重**不进数值通道(`model.loot.tables` 走 `ParamKind::Table`,同 `tier_table` 先例:改形态走 YAML 编辑);"全局掉率倍率"是注册表**保留**槽,数值通道已**关闭**(读写显式报错;该槽从参数表、合并 YAML 与 sweep 数值轴中剔除——结算接入前扫它会静默无效;含 `model.loot` 的配置加载即拒;接入后倍率乘量不改分布形状,分布检验仍不涉及它);
+- 表条目的**权重**不进数值通道(`model.loot.tables` / `on_victory` / `rewards` 走 `ParamKind::Table`,同 `tier_table` 先例:改形态走 YAML 编辑);"全局掉率倍率"是**开放**的 F64 数值槽(`model.loot.rate_mult`)——loot 已配置时可读 / 可写 / 可 sweep,与其他数值轴同权;loot **未配置**时该槽不进参数表与合并 YAML(倍率乘量不改分布形状,分布检验仍不涉及它);
 - 权重非概率:期望占比 = wᵢ/Σw,报告层负责换算成"每百次期望次数"给策划看。
 
 ### 4. 洗牌与无放回抽样 ✅ R1 已落地
@@ -148,7 +154,7 @@ sandtable disttest weighted <scenario.yaml> chest --samples 100000 --alpha 0.01
 | --- | --- | --- |
 | "均值差多少算显著"(留存/胜率/产出) | replicates → CI95 / A/B 配对差 | ✅ docs 13/11 |
 | "这个参数影响多大" | sweep + OAT 敏感性 + 推荐区间 | ✅ docs 12/14/15 |
-| "掉率倍率对经济的影响" | `gacha.*` 已接入仿真,可当数值轴;`loot.rate_mult` 为保留槽,**运行期不生效**(含 `model.loot` 的配置加载即拒) | ✅ R2 已落地 / ⏳ 掉落待接入 |
+| "掉率倍率对经济的影响" | `gacha.*` 与 `loot.rate_mult` 均已接入仿真,可当数值轴(loot 需配置 `model.loot`;掉落金币切片走 `loot_gold_per_player` KPI) | ✅ R2 + 掉落结算已落地 |
 | "随机实现与配置一致吗" | **卡方分布检验**(原语级) | ✅ R1/R3 已落地(`disttest`) |
 | "这次 run 可复现吗" | base_seed + 黄金快照 + web_parity | ✅ docs 06/19 |
 
@@ -169,7 +175,7 @@ R1/R2/R3 均为内核扩展,动 `rng.rs` 与注册表——**实施前以本页�
 ### R1 落地存档(2026-10-10)
 
 - **purpose 键纪律**:`Purpose::Shuffle = 6` 追加在枚举尾(锁定测试断言 0–6 逐位不变);加权表抽取复用既有空置的 `Purpose::Loot = 3`,R2/R3 用途届时继续尾部追加。黄金快照(`tests/golden.rs`)逐字节通过,`config_hash` 不变。
-- **配置面**:落地形态比设计稿多一层——`model.loot: {rate_mult, tables: {表名: {weights: {...}}}}`。`tables` 走 `ParamKind::Table`(结构参数,不进数值通道),`rate_mult` 是 F64 数值槽(params 表计数 +1:52 → 53)。`loot: Option<LootConfig>` + `skip_serializing_if`(同 training 字段先例),未配置时 config_hash 与旧版逐字节一致。**更正(2026-10-18,审核整改)**:掉落结算始终未接入仿真;为避免配置静默无效,当前含 `model.loot` 的配置在加载期**显式拒绝**,且 `model.loot.rate_mult` 数值通道已关闭(参数表导出 / 合并 YAML / sweep 数值轴均剔除)——上述配置面属规划形态,待掉落 System 落地后一同启用。
+- **配置面**:落地形态比设计稿多一层——`model.loot: {rate_mult, on_victory, tables: {表名: {weights: {...}}}, rewards: {条目: {gold, xp}}}`。`tables` / `on_victory` / `rewards` 走 `ParamKind::Table`(结构参数,不进数值通道),`rate_mult` 是 F64 数值槽。`loot: Option<LootConfig>` + `skip_serializing_if`(同 training 字段先例),未配置时 config_hash 与旧版逐字节一致。**更正(2026-10-18,审核整改)**:掉落结算始终未接入仿真,含 `model.loot` 的配置曾加载即拒、`rate_mult` 通道关闭。**已落地(2026-10-20,掉落结算 System)**:结算接入(胜利时经 `Purpose::Loot` 抽取,数额乘 `rate_mult`,金币随战斗金币同乘鲸鱼倍率),配置恢复可加载,通道开放(默认参数表 56 项 / 配置 loot 57 项),掉落金币切片走 `loot_gold_per_player` KPI(设计:[掉落结算设计](../loot-settlement-design.md))。
 - **抽取原语**(`rng.rs`):`WeightedTable`(from_weights 校验 / probabilities / pick 二分)、`Draw::weighted`、`DayRng::weighted` / `draw_stream`(流式,一次推进 n)/ `shuffle`(Fisher–Yates,n−1 抽取)/ `sample`(局部洗牌取前 k)/ `sample_weighted`(A-Res 键序法,`u^(1/w)` 取前 k 大,total_cmp 排序 + 序号 tiebreak)。
 - **分布检验**(`disttest.rs`,不进仿真路径):Pearson χ²、Cochran 桶合并(期望 ≥ 5)、p 值经正则化不完全伽马(级数 + Lentz 连分数,Lanczos ln Γ);CLI `disttest uniform | weighted`,检验失败退出码 1,配置错误 2。
 

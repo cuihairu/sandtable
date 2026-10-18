@@ -289,6 +289,37 @@ impl LootContract {
                 }
             }
         }
+        // 结算已接入:胜利绑定表与条目数额必须自洽(与 core validate 同口径)
+        if self.on_victory.trim().is_empty() {
+            return Err(Error::Contract("loot.on_victory 必须指名掉落表名".into()));
+        }
+        if !self.tables.contains_key(&self.on_victory) {
+            return Err(Error::Contract(format!(
+                "loot.on_victory 表 {} 不存在(tables 中无此键)",
+                self.on_victory
+            )));
+        }
+        for (item, r) in &self.rewards {
+            if r.gold < 0 || r.xp < 0 {
+                return Err(Error::Contract(format!(
+                    "loot.rewards[{item}] 数额不能为负: gold={}, xp={}",
+                    r.gold, r.xp
+                )));
+            }
+            if r.gold == 0 && r.xp == 0 {
+                return Err(Error::Contract(format!(
+                    "loot.rewards[{item}] 数额不能全为零(至少一项 > 0)"
+                )));
+            }
+        }
+        let bound = &self.tables[&self.on_victory];
+        for item in bound.weights.keys() {
+            if !self.rewards.contains_key(item) {
+                return Err(Error::Contract(format!(
+                    "loot 条目 {item} 缺少 rewards 定义"
+                )));
+            }
+        }
         Ok(())
     }
 }

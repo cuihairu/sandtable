@@ -236,22 +236,39 @@ pub struct LootTableConfig {
     pub weights: BTreeMap<String, f64>,
 }
 
-/// 掉落配置面(文档 24 章 R1)。
+/// 掉落条目结算数额(docs/loot-settlement-design.md):条目名 → 产出的
+/// 金币 / 经验,数额乘 `rate_mult` 后取整发放。结构性参数(tier_table 先例),
+/// 不进数值通道。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LootReward {
+    #[serde(default)]
+    pub gold: i64,
+    #[serde(default)]
+    pub xp: i64,
+}
+
+/// 掉落配置面(文档 24 章 R1;结算语义见 docs/loot-settlement-design.md)。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LootConfig {
     /// 全局掉率倍率:**乘到掉落产出的量**(金币 / 经验数额),不改变表形状,
     /// 故分布检验不涉及它;数值槽,可 sweep
     pub rate_mult: f64,
+    /// 每次战斗胜利抽取的表名(必须指向 `tables` 中的既有表)
+    pub on_victory: String,
     /// 表名 → 权重表
     pub tables: BTreeMap<String, LootTableConfig>,
+    /// 条目名 → 结算数额;每张表的每个权重条目都必须有定义,且无死条目
+    pub rewards: BTreeMap<String, LootReward>,
 }
 
 impl Default for LootConfig {
     fn default() -> Self {
         Self {
             rate_mult: 1.0,
+            on_victory: String::new(),
             tables: BTreeMap::new(),
+            rewards: BTreeMap::new(),
         }
     }
 }
@@ -635,13 +652,49 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
                 )));
             }
         }
-        // 掉落结算尚未接入仿真(审核整改 P1:此前解析+校验后静默不生效,
-        // 调整这些参数只改 config_hash 不改结果)。结算系统属规划项
-        // (docs 24 与 todo 审核整改表三,需拍板),落地前拒绝加载,
-        // 把静默无效变成显式报错;上面的逐项校验保留,保证报错信息精确。
-        return Err(Error::Config(
-            "model.loot: 掉落结算尚未接入仿真(规划中),已拒绝加载以免静默不生效".into(),
-        ));
+        // 胜利绑定:必须指名一张既有表(显式性——不猜默认表,漏配即报错)
+        if loot.on_victory.is_empty() {
+            return Err(Error::Config(
+                "model.loot.on_victory: 必须指名掉落表名(tables 中的键)".into(),
+            ));
+        }
+        if !loot.tables.contains_key(&loot.on_victory) {
+            return Err(Error::Config(format!(
+                "model.loot.on_victory: 表 {} 不存在(tables 中无此键)",
+                loot.on_victory
+            )));
+        }
+        // 结算数额:非负、不得全零(全零条目抽到了也不产出,是死配置)
+        for (name, r) in &loot.rewards {
+            if r.gold < 0 || r.xp < 0 {
+                return Err(Error::Config(format!(
+                    "model.loot.rewards.{name}: 数额不能为负"
+                )));
+            }
+            if r.gold == 0 && r.xp == 0 {
+                return Err(Error::Config(format!(
+                    "model.loot.rewards.{name}: 数额不能全为零(至少一项 > 0)"
+                )));
+            }
+        }
+        // 表条目 ↔ rewards 双向对账:抽到却没有数额是死掉落,
+        // 定义了却无人抽取是死配置——两种都拒载(同 ratio_k 口径显式性)
+        for (name, table) in &loot.tables {
+            for item in table.weights.keys() {
+                if !loot.rewards.contains_key(item) {
+                    return Err(Error::Config(format!(
+                        "model.loot.tables.{name}: 条目 {item} 缺少 rewards 定义"
+                    )));
+                }
+            }
+        }
+        for item in loot.rewards.keys() {
+            if !loot.tables.values().any(|t| t.weights.contains_key(item)) {
+                return Err(Error::Config(format!(
+                    "model.loot.rewards.{item}: 无表引用(死配置)"
+                )));
+            }
+        }
     }
     if let Some(gacha) = &cfg.gacha {
         if !gacha.base_rate.is_finite() || gacha.base_rate <= 0.0 || gacha.base_rate > 1.0 {
@@ -892,9 +945,19 @@ mod tests {
     /// (审核整改 P1);loot 缺省(None)不进 canonical JSON。
     #[test]
     fn validate_loot_section() {
-        fn loot(rate_mult: f64, tables: BTreeMap<String, LootTableConfig>) -> SimConfig {
+        fn loot(
+            rate_mult: f64,
+            on_victory: &str,
+            tables: BTreeMap<String, LootTableConfig>,
+            rewards: BTreeMap<String, LootReward>,
+        ) -> SimConfig {
             SimConfig {
-                loot: Some(LootConfig { rate_mult, tables }),
+                loot: Some(LootConfig {
+                    rate_mult,
+                    on_victory: on_victory.to_string(),
+                    tables,
+                    rewards,
+                }),
                 ..SimConfig::default()
             }
         }
@@ -906,10 +969,16 @@ mod tests {
         fn w(pairs: &[(&str, f64)]) -> BTreeMap<String, f64> {
             pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
         }
+        fn rw(pairs: &[(&str, (i64, i64))]) -> BTreeMap<String, LootReward> {
+            pairs
+                .iter()
+                .map(|(k, (g, x))| (k.to_string(), LootReward { gold: *g, xp: *x }))
+                .collect()
+        }
 
         // rate_mult 非正
         for rm in [0.0, -1.0] {
-            let msg = validate(&loot(rm, Default::default()))
+            let msg = validate(&loot(rm, "", Default::default(), Default::default()))
                 .unwrap_err()
                 .to_string();
             assert!(msg.contains("rate_mult"), "{msg}");
@@ -917,6 +986,7 @@ mod tests {
         // 空表名
         let cfg = loot(
             1.0,
+            "",
             [(
                 "".to_string(),
                 LootTableConfig {
@@ -925,29 +995,82 @@ mod tests {
             )]
             .into_iter()
             .collect(),
+            Default::default(),
         );
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("表名"), "{msg}");
         // 空表(无权重)
-        let cfg = loot(1.0, table(BTreeMap::new()));
+        let cfg = loot(1.0, "", table(BTreeMap::new()), Default::default());
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("chest"), "{msg}");
         // 全零权重
-        let cfg = loot(1.0, table(w(&[("a", 0.0), ("b", 0.0)])));
+        let cfg = loot(
+            1.0,
+            "",
+            table(w(&[("a", 0.0), ("b", 0.0)])),
+            Default::default(),
+        );
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("权重"), "{msg}");
         // 非有限权重
-        let cfg = loot(1.0, table(w(&[("a", 70.0), ("b", f64::NAN)])));
-        let msg = validate(&cfg).unwrap_err().to_string();
-        assert!(msg.contains("权重"), "{msg}");
-        // 合法表:结构校验通过后仍被拒——结算未接入仿真,拒绝加载
-        // (审核整改 P1:静默不生效是缺陷,规划项落地前显式报错)
         let cfg = loot(
-            1.5,
-            table(w(&[("gold_small", 70.0), ("gold_mid", 25.0), ("gem", 5.0)])),
+            1.0,
+            "",
+            table(w(&[("a", 70.0), ("b", f64::NAN)])),
+            Default::default(),
         );
         let msg = validate(&cfg).unwrap_err().to_string();
-        assert!(msg.contains("尚未接入仿真"), "{msg}");
+        assert!(msg.contains("权重"), "{msg}");
+        // on_victory 缺失(空串)
+        let cfg = loot(1.0, "", table(w(&[("a", 1.0)])), rw(&[("a", (1, 0))]));
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("on_victory"), "{msg}");
+        // on_victory 指向不存在的表
+        let cfg = loot(1.0, "nope", table(w(&[("a", 1.0)])), rw(&[("a", (1, 0))]));
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("on_victory") && msg.contains("nope"), "{msg}");
+        // 权重条目缺 rewards 定义
+        let cfg = loot(
+            1.0,
+            "chest",
+            table(w(&[("a", 1.0), ("b", 1.0)])),
+            rw(&[("a", (1, 0))]),
+        );
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("rewards") && msg.contains("b"), "{msg}");
+        // rewards 条目无表引用(死配置)
+        let cfg = loot(
+            1.0,
+            "chest",
+            table(w(&[("a", 1.0)])),
+            rw(&[("a", (1, 0)), ("dead", (1, 0))]),
+        );
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("dead"), "{msg}");
+        // 数额为负
+        let cfg = loot(1.0, "chest", table(w(&[("a", 1.0)])), rw(&[("a", (-1, 0))]));
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("负"), "{msg}");
+        // 数额全零
+        let cfg = loot(1.0, "chest", table(w(&[("a", 1.0)])), rw(&[("a", (0, 0))]));
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("全为零"), "{msg}");
+        // 合法配置:结算已接入,加载通过(docs/loot-settlement-design.md)
+        let cfg = loot(
+            1.5,
+            "chest",
+            table(w(&[
+                ("gold_small", 70.0),
+                ("gold_mid", 25.0),
+                ("xp_charm", 5.0),
+            ])),
+            rw(&[
+                ("gold_small", (10, 0)),
+                ("gold_mid", (50, 0)),
+                ("xp_charm", (0, 20)),
+            ]),
+        );
+        assert!(validate(&cfg).is_ok(), "{:?}", validate(&cfg).err());
 
         // loot = None 缺省不进 canonical JSON(训练字段先例)
         assert!(SimConfig::default().loot.is_none());

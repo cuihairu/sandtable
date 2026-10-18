@@ -825,9 +825,10 @@ mod tests {
         let cands = spec.plan(1).unwrap();
         let r = run_candidate(&base, &spec, &cands[0]);
         assert!(matches!(r.status, CandidateStatus::Ok));
-        // 全部指标进汇总;gacha_pulls_to_hit 在未配置 gacha 时 extract 为
-        // None,被 filter_map 跳过(每键 +1 个 None 槽即 −1 条汇总)
-        assert_eq!(r.metric_stats.len(), MetricKey::ALL.len() - 1);
+        // 全部指标进汇总;gacha_pulls_to_hit 与 loot_gold_per_player 在各自
+        // 节未配置时 extract 为 None,被 filter_map 跳过(每键 +1 个 None 槽
+        // 即 −1 条汇总;默认配置两节都未配置)
+        assert_eq!(r.metric_stats.len(), MetricKey::ALL.len() - 2);
         let win = r
             .metric_stats
             .iter()

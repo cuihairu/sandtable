@@ -29,7 +29,7 @@ sandtable 是横向沙盘:内核(时间/事件/带键随机/在线聚合)与实�
 | 成长曲线 | 升级节奏与练度积累 | 幂律 `xp_base·L^xp_pow` | ✅ `progression.*` |
 | 野怪练级环 | 非关卡的经验/金币来源 | 独立产出带 × 行为概率 | ✅ `model.training` + `p_training`(阻力 #4 根治,[宝可梦案例](./21-pokemon-case)L1 真起步) |
 | 经济产出-消耗-sink | 通胀与囤金 | 在线聚合 `gold_earned/spent/sink_ratio` | ✅ `economy` 聚合([KPI](./13-kpi-metrics)) |
-| 掉落表(加权) | 稀有度分布与期望产出 | 权重轮盘 / alias | 🔶 原语已落地(`WeightedTable` + disttest);掉落结算未接入仿真——含 `model.loot` 的配置加载即拒(见[随机函数](./24-random-functions)) |
+| 掉落表(加权) | 稀有度分布与期望产出 | 权重轮盘 / alias | ✅ 原语 + 结算已落地(`WeightedTable` + disttest + 胜利时按 `rate_mult` 缩放入账,KPI `loot_gold_per_player`;见[随机函数](./24-random-functions)与[掉落结算设计](../loot-settlement-design)) |
 | 强化/升星定价链 | sink 深度与货币回收 | 等比成本链 | ✅ `upgrade_cost_*`(宝可梦案例第五条阻力的教训:须与产出联动校准) |
 | 拍卖行价格动态 | 玩家间定价均衡 | 供需弹性 / 存量博弈 | ⛔ 缺口(远期) |
 | 分群行为与会话 | 付费深度 ↔ 进度差异 | 三分群行为参数 | ✅ `behavior.*` |

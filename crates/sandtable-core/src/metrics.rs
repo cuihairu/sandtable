@@ -108,6 +108,11 @@ pub struct RunMetrics {
     /// 一次"出到即止"会话);gacha 未配置时为 None,不进 JSON(黄金快照不变)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gacha_pulls_to_hit: Option<f64>,
+    /// 掉落金币切片(人均,docs/loot-settlement-design.md):掉落结算的金币
+    /// 产出 / 玩家数;loot 未配置时为 None,不进 JSON(黄金快照不变)。
+    /// 全额产出另计入 gold_earned_total
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loot_gold_per_player: Option<f64>,
     pub power_snapshots: Vec<PowerSnapshot>,
     pub cohort_stats: Vec<CohortStat>,
     pub day_stats: Vec<DayStat>,
@@ -171,6 +176,7 @@ pub struct RunAggregator {
     inflation_last: f64,
     gacha_pulls_total: u64,
     gacha_hits_total: u64,
+    loot_gold_total: u64,
 }
 
 impl RunAggregator {
@@ -197,6 +203,7 @@ impl RunAggregator {
             inflation_last: 0.0,
             gacha_pulls_total: 0,
             gacha_hits_total: 0,
+            loot_gold_total: 0,
         }
     }
 
@@ -255,6 +262,12 @@ impl RunAggregator {
     pub fn record_gacha(&mut self, pulls: u64, hits: u64) {
         self.gacha_pulls_total += pulls;
         self.gacha_hits_total += hits;
+    }
+
+    /// 掉落金币切片:只记掉落自身的额(全额产出已随 `record_battle` 计入
+    /// `gold_earned_total`,此处为切片口径,避免重复计数)
+    pub fn record_loot(&mut self, gold: u64) {
+        self.loot_gold_total += gold;
     }
 
     pub fn observe_power(&mut self, power: i64) {
@@ -362,6 +375,11 @@ impl RunAggregator {
             sink_ratio_mean: self.sink_ratio_sum / self.days.max(1) as f64,
             gacha_pulls_to_hit: if self.gacha_hits_total > 0 {
                 Some(self.gacha_pulls_total as f64 / self.gacha_hits_total as f64)
+            } else {
+                None
+            },
+            loot_gold_per_player: if self.loot_gold_total > 0 {
+                Some(self.loot_gold_total as f64 / self.players.max(1) as f64)
             } else {
                 None
             },

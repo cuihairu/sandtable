@@ -841,8 +841,8 @@ model:
     /// 为 None(不进 canonical JSON)。契约改动见 docs/review 整改记录。
     #[test]
     fn loot_yaml_roundtrip() {
-        // 配置了 loot:结构合法也拒绝加载
-        let err = load_str(
+        // 配置了 loot(带 on_victory / rewards):结算已接入,加载通过
+        let cfg = load_str(
             r#"schema_version: "1"
 scenario:
   population: 100
@@ -850,67 +850,47 @@ scenario:
 model:
   loot:
     rate_mult: 1.5
+    on_victory: chest
     tables:
       chest:
         weights:
           gold_small: 70
           gold_mid: 25
-          gem: 5
+          xp_charm: 5
       bag:
         weights:
-          nothing: 99
-          something: 1
+          coin: 99
+          charm: 1
+    rewards:
+      gold_small: { gold: 10, xp: 0 }
+      gold_mid: { gold: 50, xp: 0 }
+      xp_charm: { gold: 0, xp: 20 }
+      coin: { gold: 1, xp: 0 }
+      charm: { gold: 0, xp: 1 }
 "#,
         )
-        .unwrap_err();
-        assert!(err.to_string().contains("尚未接入仿真"), "{err}");
-
-        // serde 层照常保留表 / 权重 / 倍率;数值通道已随审核整改关闭
-        // (读写显式报错,参数表导出 / 合并不再无中生有 loot 节)
-        let cfg = crate::config::SimConfig {
-            loot: Some(crate::config::LootConfig {
-                rate_mult: 1.5,
-                tables: [
-                    (
-                        "chest".to_string(),
-                        crate::config::LootTableConfig {
-                            weights: [("gold_small", 70.0), ("gold_mid", 25.0), ("gem", 5.0)]
-                                .into_iter()
-                                .map(|(k, v)| (k.to_string(), v))
-                                .collect(),
-                        },
-                    ),
-                    (
-                        "bag".to_string(),
-                        crate::config::LootTableConfig {
-                            weights: [("nothing", 99.0), ("something", 1.0)]
-                                .into_iter()
-                                .map(|(k, v)| (k.to_string(), v))
-                                .collect(),
-                        },
-                    ),
-                ]
-                .into_iter()
-                .collect(),
-            }),
-            ..SimConfig::default()
-        };
+        .expect("loot 配置应可加载(结算已接入)");
         let loot = cfg.loot.as_ref().expect("loot 应被保留(不得静默丢弃)");
         assert!((loot.rate_mult - 1.5).abs() < 1e-12);
+        assert_eq!(loot.on_victory, "chest");
         assert_eq!(loot.tables.len(), 2);
         let chest = &loot.tables["chest"];
         assert_eq!(chest.weights.len(), 3);
         assert_eq!(chest.weights["gold_small"], 70.0);
         assert_eq!(chest.weights["gold_mid"], 25.0);
-        assert_eq!(chest.weights["gem"], 5.0);
-        assert_eq!(loot.tables["bag"].weights["something"], 1.0);
-        // 数值通道已关闭:结构直构下读写也都显式报错
-        let mut cfg2 = cfg.clone();
-        assert!(crate::registry::read_numeric(&cfg, "model.loot.rate_mult").is_err());
+        assert_eq!(chest.weights["xp_charm"], 5.0);
+        assert_eq!(loot.tables["bag"].weights["charm"], 1.0);
+        assert_eq!(loot.rewards["gold_mid"].gold, 50);
+        assert_eq!(loot.rewards["xp_charm"].xp, 20);
+        // 数值通道随结算接入重开:rate_mult 可读可写
+        //(参数表导出 / 合并 / sweep 数值轴恢复该槽,先测后码见设计文档)
         assert!(
-            crate::registry::apply_numeric(&mut cfg2, "model.loot.rate_mult", 2.0).is_err(),
-            "通道已关,不应可写"
+            (crate::registry::read_numeric(&cfg, "model.loot.rate_mult").unwrap() - 1.5).abs()
+                < 1e-12
         );
+        let mut cfg2 = cfg.clone();
+        crate::registry::apply_numeric(&mut cfg2, "model.loot.rate_mult", 2.0)
+            .expect("通道重开,应可写");
 
         // 未配置 loot → None
         let plain = load_str(

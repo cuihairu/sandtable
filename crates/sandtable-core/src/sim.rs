@@ -134,6 +134,13 @@ fn build_systems<'a>(
             cfg,
             seed,
             xp_formula,
+            loot_table: cfg.loot.as_ref().map(|loot| {
+                let t = &loot.tables[&loot.on_victory];
+                let weights: Vec<(String, f64)> =
+                    t.weights.iter().map(|(k, v)| (k.clone(), *v)).collect();
+                crate::rng::WeightedTable::from_weights(&weights)
+                    .expect("validate 已保证 on_victory 表可编译")
+            }),
         }),
         Box::new(DayCloseSystem { cfg }),
         Box::new(GachaRollSystem { cfg, seed }),
@@ -232,6 +239,9 @@ struct PlayerDaySystem<'a> {
     cfg: &'a SimConfig,
     seed: u64,
     xp_formula: &'a crate::formula::Formula,
+    /// 掉落结算(docs/loot-settlement-design.md):on_victory 指名表的
+    /// 加载期编译产物;validate 已保证该表存在且可编译,此处不再容错
+    loot_table: Option<crate::rng::WeightedTable>,
 }
 
 impl System<World, SimEvent> for PlayerDaySystem<'_> {
@@ -307,8 +317,27 @@ impl System<World, SimEvent> for PlayerDaySystem<'_> {
                     );
                     battle_index += 1;
                     if out.win {
-                        let gold_gain = out.gold * mult;
-                        let xp_gain = out.xp * mult;
+                        let mut gold_gain = out.gold * mult;
+                        let mut xp_gain = out.xp * mult;
+                        // 掉落结算(docs/loot-settlement-design.md):胜利时从绑定
+                        // 的表抽一次——独立键维度 Purpose::Loot,不扰动战斗流;
+                        // 数额乘 rate_mult 四舍五入,金币随战斗金币同口径乘鲸鱼
+                        // 倍率,经验走 gain_xp 级联
+                        if let (Some(wt), Some(loot)) = (&self.loot_table, &cfg.loot) {
+                            let idx = rng.weighted(crate::rng::Purpose::Loot, wt);
+                            if let Some(name) = wt.names().get(idx) {
+                                if let Some(r) = loot.rewards.get(name) {
+                                    let g =
+                                        ((r.gold as f64) * loot.rate_mult).round() as i64 * mult;
+                                    let x = ((r.xp as f64) * loot.rate_mult).round() as i64 * mult;
+                                    gold_gain += g;
+                                    xp_gain += x;
+                                    if g > 0 {
+                                        agg.record_loot(g as u64);
+                                    }
+                                }
+                            }
+                        }
                         actor.gold += gold_gain;
                         let levelups =
                             progression::gain_xp(actor, xp_gain, &cfg.progression, self.xp_formula);
@@ -884,5 +913,103 @@ mod tests {
             ALL_EVENT_KINDS.len(),
             "事件与订阅矩阵不再双射:{subscribed:?} vs {ALL_EVENT_KINDS:?}"
         );
+    }
+
+    /// 掉落结算(docs/loot-settlement-design.md):`Purpose::Loot` 是独立键
+    /// 维度——仅 loot 配置不同的 A/B 两臂,金币 / 战斗路径逐位相同(经验型
+    /// 掉落只抬战力);金币型掉落按预期抬高产出并给出 `loot_gold_per_player`
+    /// 切片指标,未配置时无值且可用性预检报「未配置」。
+    #[test]
+    fn loot_settlement_crn_isolation() {
+        fn loot_cfg(gold: i64, xp: i64) -> crate::config::LootConfig {
+            crate::config::LootConfig {
+                rate_mult: 1.0,
+                on_victory: "chest".to_string(),
+                tables: [(
+                    "chest".to_string(),
+                    crate::config::LootTableConfig {
+                        weights: [("drop".to_string(), 1.0)].into_iter().collect(),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+                rewards: [("drop".to_string(), crate::config::LootReward { gold, xp })]
+                    .into_iter()
+                    .collect(),
+            }
+        }
+        let base = SimConfig {
+            players: 200,
+            days: 5,
+            ..SimConfig::default()
+        };
+        let a = run(&base, 0);
+
+        // 键维度隔离(rng 层,逐位):插入 Purpose::Loot 抽取不得扰动任何
+        // 其他 purpose 的取值序列——计数器按 purpose 分立(counters 数组),
+        // 这是 CRN 成立的机制本体。端到端面允许合法发散:经验抬升战力 →
+        // 同键随机数下胜负阈值位移 → 金币随之变化,是玩法反馈环而非串扰。
+        {
+            let mut r0 = crate::rng::DayRng::new(7, 1, 1);
+            let combat_before: Vec<u64> = (0..3)
+                .map(|_| r0.draw(crate::rng::Purpose::CombatHit).u64())
+                .collect();
+            let churn_before = r0.draw(crate::rng::Purpose::Churn).u64();
+            let mut r1 = crate::rng::DayRng::new(7, 1, 1);
+            let _ = r1.draw(crate::rng::Purpose::Loot).u64();
+            let combat_after: Vec<u64> = (0..3)
+                .map(|_| r1.draw(crate::rng::Purpose::CombatHit).u64())
+                .collect();
+            let churn_after = r1.draw(crate::rng::Purpose::Churn).u64();
+            assert_eq!(combat_before, combat_after, "Loot 抽取不得扰动战斗流");
+            assert_eq!(churn_before, churn_after, "Loot 抽取不得扰动流失流");
+        }
+
+        // 经验型掉落:战力抬升、升级与产出同向(确定性种子下恒成立)
+        let mut armed_xp = base.clone();
+        armed_xp.loot = Some(loot_cfg(0, 50));
+        let b = run(&armed_xp, 0);
+        assert!(
+            b.power_snapshots.last().unwrap().p50 > a.power_snapshots.last().unwrap().p50,
+            "经验掉落应抬升期末战力"
+        );
+        // 直接机械效应:更多经验严格更多升级(确定性种子下恒成立)
+        let levelups =
+            |m: &crate::metrics::RunMetrics| m.day_stats.iter().map(|d| d.levelups).sum::<u64>();
+        assert!(levelups(&b) > levelups(&a), "经验掉落应产生更多升级");
+        // 胜率不设方向断言:pick_tier 按战力自选更高层,变强后打更难的怪,
+        // 胜率可升可降(本种子下微降);人均产出随单胜金币抬层不减
+        assert!(
+            b.gold_earned_total >= a.gold_earned_total,
+            "更高层的胜利金币不应降低产出"
+        );
+        // 金币切片只计金币掉落:纯经验奖励下指标不出现(切片口径非战斗口径)
+        assert!(
+            b.loot_gold_per_player.is_none(),
+            "纯经验掉落不得产生金币切片:{:?}",
+            b.loot_gold_per_player
+        );
+
+        // 金币型掉落:产出抬高 + 切片指标有值
+        let mut armed_gold = base.clone();
+        armed_gold.loot = Some(loot_cfg(10, 0));
+        let c = run(&armed_gold, 0);
+        assert!(
+            c.gold_earned_total > a.gold_earned_total,
+            "金币掉落应抬高产出"
+        );
+        let per_player = c.loot_gold_per_player.expect("配置了 loot 应有切片指标");
+        assert!(per_player > 0.0, "人均掉落金币应非负:{per_player}");
+        assert!(a.loot_gold_per_player.is_none(), "未配置不得有该指标");
+
+        // 指标可用性预检(审核整改 P1-5 机制)+ extract 链
+        let key = crate::experiment::MetricKey::LootGoldPerPlayer;
+        assert!(key.unavailable_reason(&armed_gold).is_none());
+        assert!(
+            key.unavailable_reason(&base).is_some(),
+            "未配置时预检应报不可用"
+        );
+        assert!(key.extract(&c).is_some());
+        assert!(key.extract(&a).is_none());
     }
 }

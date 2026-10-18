@@ -13,8 +13,12 @@ use sandtable_core as core;
 use serde_json::{json, Map, Value};
 
 /// 数值参数行:(注册表路径, 当前值),按注册表顺序。
+///
+/// `model.loot.*` 在 loot 未配置时不导出:apply 会凭空落一个缺
+/// on_victory/rewards 的 loot 节,加载即拒(merged_yaml 同口径把关)。
 pub fn rows(cfg: &SimConfig) -> Vec<(&'static str, f64)> {
     core::registry::all()
+        .filter(|s| !(s.path.starts_with("model.loot.") && cfg.loot.is_none()))
         .filter_map(|s| {
             core::registry::read_numeric(cfg, s.path)
                 .ok()
@@ -120,6 +124,11 @@ pub fn merged_yaml(cfg: &SimConfig) -> String {
         if s.path.starts_with("model.training.") && cfg.training.is_none() {
             continue;
         }
+        // 掉落面同理(rate_mult 缺省回 1.0):loot 未配置时落 rate_mult 会
+        // 无中生有缺 on_victory/rewards 的 loot 节,加载即拒(training 先例)
+        if s.path.starts_with("model.loot.") && cfg.loot.is_none() {
+            continue;
+        }
         let Ok(v) = core::registry::read_numeric(cfg, s.path) else {
             continue;
         };
@@ -130,6 +139,13 @@ pub fn merged_yaml(cfg: &SimConfig) -> String {
     // 丢掉会让 ratio 基线的合并产物被口径守卫拒载,与「可直接 simulate」矛盾
     if let Some(m) = cfg.combat.damage_model {
         insert_path(&mut model, &["combat", "damage_model"], json!(m));
+    }
+    // 掉落结算节同理:on_victory/tables/rewards 是结构面,丢掉会静默改掉
+    // 基线语义(合并产物仿真时不再掉落)。整节随基线写出(rate_mult 与
+    // 数值通道同值,覆盖无害)
+    if let Some(l) = &cfg.loot {
+        let node = serde_json::to_value(l).expect("LootConfig 序列化不失败");
+        insert_path(&mut model, &["loot"], node);
     }
     let mut root = Map::new();
     root.insert("schema_version".into(), json!("1"));
