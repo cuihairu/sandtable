@@ -113,7 +113,7 @@ System trait
 外部脚本(如 rhai)属于"自定义 System 实现"的一种载体,接口形态先定,载体后选。
 
 ::: tip 载体拍板(2026-10-08)
-复杂行为脚本的载体定为 **Python**(简单库多、仿真分析生态成熟),rhai 缓议。嵌入形态、三形态边界、性能红线与脚本安全策略见设计文档 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md)(已定稿待分期实施);脚本不进仿真热路径的量级论证见[时间模型](./05-time-model)。
+复杂行为脚本的载体定为 **Python**(简单库多、仿真分析生态成熟),rhai 缓议。嵌入形态、三形态边界、性能红线与脚本安全策略见设计文档 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md)(已定稿,阶段 0–3 已落地——Python 绑定、批量编排、只读日粒度钩子);脚本不进仿真热路径的量级论证见[时间模型](./05-time-model)。
 :::
 
 ## MVP 范围

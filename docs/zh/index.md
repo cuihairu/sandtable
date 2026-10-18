@@ -26,12 +26,12 @@ features:
   - title: 实验一等公民
     details: Grid / Random 扫描、多 seed 复跑、候选比较是核心模型而非外挂脚本。约束判定基于置信区间,不是点估计。
   - title: 在线聚合指标
-    details: 不存每个玩家每步的数据。日粒度整数计数与增量统计,加固定快照日(D1 / 3 / 7 / 14 / 30)分位直算,十万玩家 × 90 天也在内存预算内。
+    details: 不存每个玩家每步的数据。日粒度整数计数与增量统计,加固定快照日(D1 / 3 / 7 / 14 / 30)分位直算;事件队列按日滚动排程,十万玩家 × 90 天也在内存预算内。
   - title: 相对比较立场
     details: 玩家行为概率是人为设定的,输出的绝对数值不可信。Sandtable 的价值在 A/B 差值(ΔD7 Power 这类),不在绝对预言。
   - title: 单核三形态
     details: 同一 Rust 内核跑 CLI / Web(WASM)/ Desktop(Tauri 2)。core 可编译 wasm32 是 Phase 1 的 CI 门禁;浏览器跑小中型,桌面与 CLI 跑大型;local-first,无服务器。
 footer:
   message: "本页为中文首页；请使用导航栏语言切换器访问英文站点。"
-  copyright: MIT
+  copyright: Apache-2.0
 ---

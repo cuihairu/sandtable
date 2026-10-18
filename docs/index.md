@@ -26,14 +26,14 @@ features:
   - title: Experiments are first-class
     details: Grid / random sweeps, multi-seed reruns, and candidate comparison are part of the core model, not bolted-on scripts. Constraints are judged on confidence intervals, not point estimates.
   - title: Online-aggregated metrics
-    details: No per-player per-step storage. Day-granularity integer counters and incremental statistics, plus fixed snapshot days (D1 / 3 / 7 / 14 / 30) with quantiles computed directly — even 100,000 players × 90 days stays inside the memory budget.
+    details: No per-player per-step storage. Day-granularity integer counters and incremental statistics, plus fixed snapshot days (D1 / 3 / 7 / 14 / 30) with quantiles computed directly; the event queue schedules one day at a time — even 100,000 players × 90 days stays inside the memory budget.
   - title: Relative comparison position
     details: Player behavior probabilities are set by hand, so absolute outputs are not trustworthy. Sandtable's value is in A/B deltas (things like ΔD7 Power), not in absolute forecasts.
   - title: One kernel, three forms
     details: The same Rust kernel runs as CLI / Web (WASM) / Desktop (Tauri 2). core compiling for wasm32 is a Phase 1 CI gate; the browser runs small and medium sims, desktop and CLI run the large ones; local-first, no server.
 footer:
   message: "This is the English home; use the language selector in the navigation bar for the Chinese site."
-  copyright: MIT
+  copyright: Apache-2.0
 ---
 
 <script setup lang="ts">

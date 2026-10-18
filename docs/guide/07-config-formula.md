@@ -112,7 +112,7 @@ System trait
 External scripting (e.g., rhai) is one possible carrier of "custom System implementations"; the interface form is decided first, the carrier chosen later.
 
 ::: tip Carrier decided (2026-10-08)
-The carrier for complex-behavior scripting is set to **Python** (many simple libraries, a mature simulation-analysis ecosystem); rhai is deferred. The embedding form, the three-form boundary, the performance red line, and the script security strategy are in the design document [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md) (finalized, pending phased implementation); the quantitative argument for keeping scripts out of the simulation hot path is in the [Time Model](./05-time-model.md).
+The carrier for complex-behavior scripting is set to **Python** (many simple libraries, a mature simulation-analysis ecosystem); rhai is deferred. The embedding form, the three-form boundary, the performance red line, and the script security strategy are in the design document [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md) (finalized; phases 0–3 landed — Python binding, batch orchestration, and read-only day-granularity hooks); the quantitative argument for keeping scripts out of the simulation hot path is in the [Time Model](./05-time-model.md).
 :::
 
 ## MVP Scope

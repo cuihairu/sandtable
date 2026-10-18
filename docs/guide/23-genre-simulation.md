@@ -28,7 +28,7 @@ Typical simulation questions: does the output-spend closed loop inflate; does th
 | Growth curve | Level-up pace and training accumulation | Power law `xp_base·L^xp_pow` | ✅ `progression.*` |
 | Wild-monster training loop | Experience / gold source outside stages | Separate output band × behavior probability | ✅ `model.training` + `p_training` (blocker #4 root-caused, [Pokémon case](./21-pokemon-case.md) a true L1 start) |
 | Economy output / spend / sink | Inflation and gold hoarding | Online aggregation `gold_earned/spent/sink_ratio` | ✅ `economy` aggregation ([KPI](./13-kpi-metrics.md)) |
-| Loot tables (weighted) | Rarity distribution and expected output | Weighted roulette / alias | ✅ R1 has landed (`model.loot.tables` + WeightedTable + disttest, see [Random functions](./24-random-functions.md)) |
+| Loot tables (weighted) | Rarity distribution and expected output | Weighted roulette / alias | 🔶 primitive landed (`WeightedTable` + `disttest`); loot settlement not wired into the sim — configs containing `model.loot` are rejected at load (see [Random functions](./24-random-functions.md)) |
 | Upgrade / star-rank pricing chain | Sink depth and currency recovery | Proportional cost chain | ✅ `upgrade_cost_*` (the lesson of blocker #5 in the Pokémon case: it must be calibrated in coupling with output) |
 | Auction-house price dynamics | Pricing equilibrium between players | Supply-demand elasticity / stock-based game | ⛔ Gap (long term) |
 | Cohort behavior and sessions | Spending depth ↔ progress differences | Three-cohort behavior parameters | ✅ `behavior.*` |
