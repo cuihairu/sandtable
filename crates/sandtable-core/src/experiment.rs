@@ -218,6 +218,25 @@ impl MetricKey {
             MetricKey::GachaPullsToHit => m.gacha_pulls_to_hit,
         }
     }
+
+    /// 可用性预检(审核整改 P1):对给定配置,该指标是否一定有值。
+    /// 返回不可用原因;None = 可用。此前不可用指标在 run_candidate 里被
+    /// 静默跳过(约束跟着消失、候选照常显示成功),现在在加载实验时
+    /// 显式报错。
+    pub fn unavailable_reason(self, cfg: &crate::config::SimConfig) -> Option<&'static str> {
+        match self {
+            MetricKey::RetentionD3 if cfg.days < 3 => {
+                Some("retention_d3 需要 days ≥ 3,当前配置不足")
+            }
+            MetricKey::RetentionD7 if cfg.days < 7 => {
+                Some("retention_d7 需要 days ≥ 7,当前配置不足")
+            }
+            MetricKey::GachaPullsToHit if cfg.gacha.is_none() => {
+                Some("gacha_pulls_to_hit 需要 model.gacha 配置,当前未配置")
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Serialize for MetricKey {

@@ -50,8 +50,8 @@ pub struct ParamRange {
 }
 
 impl ParamRange {
-    /// 网格点(文档 12 章:min + k·step,不补尾点;k = floor((max−min)/step)+1)。
-    pub fn grid_points(&self) -> Result<Vec<f64>, Error> {
+    /// 范围合法性(网格 / 随机共用):有限、step > 0、min ≤ max。
+    fn check(&self) -> Result<(), Error> {
         if !(self.min.is_finite() && self.max.is_finite() && self.step.is_finite()) {
             return Err(Error::Config(format!("{}: 范围必须是有限数", self.path)));
         }
@@ -64,6 +64,19 @@ impl ParamRange {
                 self.path, self.min, self.max
             )));
         }
+        Ok(())
+    }
+
+    /// 网格点数(纯计数,不物化;饱和加法防溢出)。口径同 [`grid_points`]。
+    pub fn grid_point_count(&self) -> Result<usize, Error> {
+        self.check()?;
+        let steps = ((self.max - self.min) / self.step + 1e-9).floor();
+        Ok((steps as usize).saturating_add(1))
+    }
+
+    /// 网格点(文档 12 章:min + k·step,不补尾点;k = floor((max−min)/step)+1)。
+    pub fn grid_points(&self) -> Result<Vec<f64>, Error> {
+        self.check()?;
         let steps = ((self.max - self.min) / self.step + 1e-9).floor() as usize;
         Ok((0..=steps)
             .map(|k| self.min + k as f64 * self.step)
@@ -182,7 +195,9 @@ impl SweepSpec {
                 )));
             }
             if self.mode == SweepMode::Grid {
-                p.grid_points()?;
+                // 计数即校验(审核整改 P1:物化前先算账,超大范围在这里被拦,
+                // 不再先分配巨型向量)
+                p.grid_point_count()?;
             } else if !(p.min.is_finite() && p.max.is_finite()) || p.min > p.max {
                 return Err(Error::Config(format!(
                     "{}: Random 模式范围 [min, max] 非法",
@@ -209,17 +224,24 @@ impl SweepSpec {
         self.validate()?;
         let candidates: Vec<BTreeMap<String, f64>> = match self.mode {
             SweepMode::Grid => {
+                // 预算先算账再物化(审核整改 P1:原实现先为每维完整生成
+                // grid_points 才查 MAX_CANDIDATES,超大范围在触发上限检查前
+                // 就分配出巨型向量)。饱和乘积 + 逐维提前拒绝。
+                let mut total: usize = 1;
+                for p in &self.parameters {
+                    let n = p.grid_point_count()?;
+                    total = total.saturating_mul(n);
+                    if total > MAX_CANDIDATES {
+                        return Err(Error::Config(format!(
+                            "网格候选数 {total} 超上限 {MAX_CANDIDATES}(文档 12 章:先算成本账,缩小范围或加大 step)"
+                        )));
+                    }
+                }
                 let dims: Vec<Vec<f64>> = self
                     .parameters
                     .iter()
                     .map(|p| p.grid_points())
                     .collect::<Result<_, _>>()?;
-                let total = dims.iter().map(|d| d.len()).product::<usize>();
-                if total > MAX_CANDIDATES {
-                    return Err(Error::Config(format!(
-                        "网格候选数 {total} 超上限 {MAX_CANDIDATES}(文档 12 章:先算成本账,缩小范围或加大 step)"
-                    )));
-                }
                 let mut acc: Vec<BTreeMap<String, f64>> = vec![BTreeMap::new()];
                 for (param, points) in self.parameters.iter().zip(&dims) {
                     let mut next = Vec::with_capacity(acc.len() * points.len());
@@ -485,6 +507,46 @@ mod tests {
             step: 0.0,
         };
         assert!(p.grid_points().is_err());
+    }
+
+    /// 预算先算账(审核整改 P1):计数与物化点数一致;超大范围在分配前
+    /// 被上限拒绝(修复前先为每维物化完整 grid_points,该用例会先耗尽内存)。
+    #[test]
+    fn plan_grid_budget_counted_before_materialize() {
+        let p = ParamRange {
+            path: "model.warrior.attack".into(),
+            min: 90.0,
+            max: 110.0,
+            step: 7.0,
+        };
+        assert_eq!(p.grid_point_count().unwrap(), p.grid_points().unwrap().len());
+
+        let mut spec = grid_spec();
+        spec.parameters = vec![ParamRange {
+            path: "model.warrior.attack".into(),
+            min: 0.0,
+            max: 1.0e12,
+            step: 1.0,
+        }];
+        let msg = spec.plan(1).unwrap_err().to_string();
+        assert!(msg.contains("超上限"), "{msg}");
+
+        // 双维各自不超、乘积超限:同样在物化前拒绝
+        spec.parameters = vec![
+            ParamRange {
+                path: "model.warrior.attack".into(),
+                min: 0.0,
+                max: 200.0,
+                step: 1.0,
+            },
+            ParamRange {
+                path: "model.dungeon.reward_gold".into(),
+                min: 0.0,
+                max: 200.0,
+                step: 1.0,
+            },
+        ];
+        assert!(spec.plan(1).unwrap_err().to_string().contains("超上限"));
     }
 
     #[test]

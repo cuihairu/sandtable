@@ -372,6 +372,17 @@ pub fn load_experiment_str(yaml: &str) -> Result<(SimConfig, SweepSpec), Error> 
     let spec = sweep.into_spec()?;
     let cfg = load_base_from_root(&root, "sweep")?;
     spec.validate()?;
+    // 目标可用性预检(审核整改 P1):不可用指标的目标此前会在 run_candidate
+    // 被静默跳过(约束消失、候选照常显示成功)。days 不足 / gacha 未配置在
+    // 加载期就能判定,直接报错。
+    for t in &spec.targets {
+        if let Some(reason) = t.metric.unavailable_reason(&cfg) {
+            return Err(Error::Config(format!(
+                "sweep.targets[{}]: {reason}",
+                t.metric.name()
+            )));
+        }
+    }
     Ok((cfg, spec))
 }
 
@@ -396,6 +407,27 @@ pub fn load_optimize_str(yaml: &str) -> Result<(SimConfig, OptimSpec), Error> {
     let spec = optim.into_spec()?;
     let cfg = load_base_from_root(&root, "optimize")?;
     spec.validate()?;
+    // 目标可用性预检(审核整改 P1,口径同 sweep 加载):hard 约束与适应度
+    // 目标的指标在 days 不足 / gacha 未配置时无值,加载期报错而非静默缺席。
+    let metric_err = |m: crate::experiment::MetricKey| -> Option<Error> {
+        m.unavailable_reason(&cfg)
+            .map(|reason| Error::Config(format!("optimize: {reason}")))
+    };
+    for t in &spec.targets {
+        if let Some(e) = metric_err(t.metric) {
+            return Err(e);
+        }
+    }
+    for o in &spec.objectives {
+        if let Some(e) = metric_err(o.metric) {
+            return Err(e);
+        }
+    }
+    if let Some(o) = &spec.objective {
+        if let Some(e) = metric_err(o.metric) {
+            return Err(e);
+        }
+    }
     Ok((cfg, spec))
 }
 
@@ -803,11 +835,14 @@ model:
         assert!(err.to_string().contains("hp"), "{err}");
     }
 
-    /// 掉落面(文档 24 章 R1):model.loot YAML 进 cfg,表 / 权重 /
-    /// 倍率完整保留;未配置时为 None(不进 canonical JSON)。
+    /// 掉落面(文档 24 章 R1):结算未接入仿真,配置了 loot 的 YAML 在
+    /// 加载期被拒(审核整改 P1:静默不生效是缺陷,拒绝加载显式报错);
+    /// serde 层与数值通道照常保留(结算系统立项后恢复可达);未配置时
+    /// 为 None(不进 canonical JSON)。契约改动见 docs/review 整改记录。
     #[test]
     fn loot_yaml_roundtrip() {
-        let cfg = load_str(
+        // 配置了 loot:结构合法也拒绝加载
+        let err = load_str(
             r#"schema_version: "1"
 scenario:
   population: 100
@@ -827,8 +862,44 @@ model:
           something: 1
 "#,
         )
-        .unwrap();
-        let loot = cfg.loot.as_ref().expect("loot 应被加载(不得静默丢弃)");
+        .unwrap_err();
+        assert!(err.to_string().contains("尚未接入仿真"), "{err}");
+
+        // serde 层照常保留表 / 权重 / 倍率;数值通道已随审核整改关闭
+        // (读写显式报错,参数表导出 / 合并不再无中生有 loot 节)
+        let cfg = crate::config::SimConfig {
+            loot: Some(crate::config::LootConfig {
+                rate_mult: 1.5,
+                tables: [
+                    (
+                        "chest".to_string(),
+                        crate::config::LootTableConfig {
+                            weights: [
+                                ("gold_small", 70.0),
+                                ("gold_mid", 25.0),
+                                ("gem", 5.0),
+                            ]
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v))
+                            .collect(),
+                        },
+                    ),
+                    (
+                        "bag".to_string(),
+                        crate::config::LootTableConfig {
+                            weights: [("nothing", 99.0), ("something", 1.0)]
+                                .into_iter()
+                                .map(|(k, v)| (k.to_string(), v))
+                                .collect(),
+                        },
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            }),
+            ..SimConfig::default()
+        };
+        let loot = cfg.loot.as_ref().expect("loot 应被保留(不得静默丢弃)");
         assert!((loot.rate_mult - 1.5).abs() < 1e-12);
         assert_eq!(loot.tables.len(), 2);
         let chest = &loot.tables["chest"];
@@ -837,16 +908,15 @@ model:
         assert_eq!(chest.weights["gold_mid"], 25.0);
         assert_eq!(chest.weights["gem"], 5.0);
         assert_eq!(loot.tables["bag"].weights["something"], 1.0);
-        // rate_mult 可经数值通道读写(镜像口径)
-        assert_eq!(
-            crate::registry::read_numeric(&cfg, "model.loot.rate_mult").unwrap(),
-            1.5
-        );
+        // 数值通道已关闭:结构直构下读写也都显式报错
         let mut cfg2 = cfg.clone();
-        crate::registry::apply_numeric(&mut cfg2, "model.loot.rate_mult", 2.0).unwrap();
-        assert_eq!(cfg2.loot.as_ref().unwrap().rate_mult, 2.0);
+        assert!(crate::registry::read_numeric(&cfg, "model.loot.rate_mult").is_err());
+        assert!(
+            crate::registry::apply_numeric(&mut cfg2, "model.loot.rate_mult", 2.0).is_err(),
+            "通道已关,不应可写"
+        );
 
-        // 未配置 loot → None;数值槽读缺省 1.0
+        // 未配置 loot → None
         let plain = load_str(
             r#"schema_version: "1"
 scenario:
@@ -856,10 +926,6 @@ scenario:
         )
         .unwrap();
         assert!(plain.loot.is_none());
-        assert_eq!(
-            crate::registry::read_numeric(&plain, "model.loot.rate_mult").unwrap(),
-            1.0
-        );
 
         // 坏权重(全零)在加载期报错
         let err = load_str(
@@ -983,6 +1049,48 @@ sweep:
         let e = load_experiment_str("schema_version: \"1\"\nscenario:\n  population: 100\n")
             .unwrap_err();
         assert!(e.to_string().contains("sweep"), "{e}");
+    }
+
+    /// 目标可用性预检(审核整改 P1):days 不足时 retention_d7 无值,
+    /// 加载期报错而不是在 run_candidate 被静默跳过。
+    #[test]
+    fn experiment_unavailable_target_rejected_at_load() {
+        let e = load_experiment_str(
+            r#"schema_version: "1"
+scenario:
+  population: 200
+  duration: "5d"
+sweep:
+  replicates: 2
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+  targets:
+    - metric: retention_d7
+      min: 0.5
+"#,
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("retention_d7"), "{e}");
+
+        // gacha 指标:未配置 model.gacha 时同样加载期报错
+        let e = load_optimize_str(
+            r#"schema_version: "1"
+scenario:
+  population: 200
+  duration: "30d"
+optimize:
+  mode: evolutionary
+  population: 6
+  generations: 2
+  replicates: 2
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+  objective:
+    metric: gacha_pulls_to_hit
+"#,
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("gacha_pulls_to_hit"), "{e}");
     }
 
     /// 寻优实验(docs 12 章自动寻优):scenario + model + optimize 三节,

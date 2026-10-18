@@ -653,6 +653,24 @@ impl Ranking {
 /// 序列两模式一致(RNG 消耗序不变)。
 pub fn optimize(base: &SimConfig, spec: &OptimSpec) -> Result<OptimResult, Error> {
     spec.validate()?;
+    // 目标可用性兜底(审核整改 P1;加载器 scenario::load_optimize_str 已
+    // 预检,此处覆盖绕过加载器的直连调用):无值指标的目标/目标函数会
+    // 在 run_candidate 被静默跳过。
+    let check_metric = |m: MetricKey| -> Result<(), Error> {
+        if let Some(reason) = m.unavailable_reason(base) {
+            return Err(Error::Config(format!("optimize: {reason}")));
+        }
+        Ok(())
+    };
+    for t in &spec.targets {
+        check_metric(t.metric)?;
+    }
+    for o in &spec.objectives {
+        check_metric(o.metric)?;
+    }
+    if let Some(o) = &spec.objective {
+        check_metric(o.metric)?;
+    }
     let eval_spec = spec.eval_spec();
 
     // 寻优流与扫描流分立:同 base_seed 的扫描与寻优不共享采样序列
@@ -743,7 +761,15 @@ pub fn optimize(base: &SimConfig, spec: &OptimSpec) -> Result<OptimResult, Error
             Vec::new(),
         ),
         OptimMode::Pareto => {
-            let (max_pass, front) = ranking.pareto_front().expect("pareto 末代排序已算好");
+            // 末代排序无有效前沿 = 全部候选配置错误(审核整改 P2:此前
+            // expect 直接 panic;现在作为可读错误返回)
+            let (max_pass, front) = ranking
+                .pareto_front()
+                .ok_or_else(|| {
+                    Error::Config(
+                        "寻优无有效前沿:所有候选均为配置错误,请检查参数范围与基础配置".into(),
+                    )
+                })?;
             let candidates: Vec<CandidateResult> =
                 front.iter().map(|&i| results[i].clone()).collect();
             let (rep, best) = match front.first() {
@@ -878,6 +904,50 @@ mod tests {
         // 最优不落在配置错误候选上
         let bf = r.best_fitness.unwrap();
         assert!(bf.score > f64::NEG_INFINITY);
+    }
+
+    /// 全部候选配置错误时,Pareto 模式必须返回可读错误而不是 panic
+    /// (审核整改 P2:此前 pareto_front().expect 在无有效前沿时崩溃)。
+    #[test]
+    fn pareto_all_config_errors_returns_error_not_panic() {
+        let base = base();
+        let mut s = spec();
+        s.mode = OptimMode::Pareto;
+        s.objective = None;
+        s.objectives = vec![
+            Objective {
+                metric: MetricKey::PowerP50Final,
+                direction: Direction::Maximize,
+            },
+            Objective {
+                metric: MetricKey::GoldPerPlayer,
+                direction: Direction::Maximize,
+            },
+        ];
+        // 全域负值:每个候选都被 config::validate 拒绝 → 无有效前沿
+        s.parameters = vec![ParamRange {
+            path: "model.dungeon.reward_gold".into(),
+            min: -100.0,
+            max: -10.0,
+            step: 5.0,
+        }];
+        let err = optimize(&base, &s).unwrap_err().to_string();
+        assert!(err.contains("无有效前沿"), "{err}");
+    }
+
+    /// 目标可用性兜底(审核整改 P1):绕过加载器直连调用时,days 不足的
+    /// 指标在 optimize 入口被拦,不再静默缺席。
+    #[test]
+    fn optimize_unavailable_metric_rejected() {
+        let base = SimConfig {
+            players: 100,
+            days: 5,
+            ..SimConfig::default()
+        };
+        let mut s = spec(); // targets = win_rate(总可用),改 retention_d7
+        s.targets[0].metric = MetricKey::RetentionD7;
+        let err = optimize(&base, &s).unwrap_err().to_string();
+        assert!(err.contains("retention_d7"), "{err}");
     }
 
     #[test]

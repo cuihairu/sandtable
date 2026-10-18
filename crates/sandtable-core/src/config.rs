@@ -635,6 +635,13 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
                 )));
             }
         }
+        // 掉落结算尚未接入仿真(审核整改 P1:此前解析+校验后静默不生效,
+        // 调整这些参数只改 config_hash 不改结果)。结算系统属规划项
+        // (docs 24 与 todo 审核整改表三,需拍板),落地前拒绝加载,
+        // 把静默无效变成显式报错;上面的逐项校验保留,保证报错信息精确。
+        return Err(Error::Config(
+            "model.loot: 掉落结算尚未接入仿真(规划中),已拒绝加载以免静默不生效".into(),
+        ));
     }
     if let Some(gacha) = &cfg.gacha {
         if !gacha.base_rate.is_finite() || gacha.base_rate <= 0.0 || gacha.base_rate > 1.0 {
@@ -647,6 +654,15 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
                 "model.gacha.pity_soft_step 必须为非负有限数".into(),
             ));
         }
+    }
+    // 概率面统一有限性与区间校验(审核整改 P1):NaN 与越界概率会静默改写
+    // 行为——NaN 比较恒假恰好越过下面的范围检查,> 1 的流失概率变成必然
+    // 触发,负值变成永不触发。逐字段显式拦截,与命中概率同一口径。
+    if !(cfg.churn.p_base.is_finite() && (0.0..=1.0).contains(&cfg.churn.p_base)) {
+        return Err(Error::Config("churn.p_base 必须为 [0, 1] 内的有限数".into()));
+    }
+    if !(cfg.churn.p_stall.is_finite() && (0.0..=1.0).contains(&cfg.churn.p_stall)) {
+        return Err(Error::Config("churn.p_stall 必须为 [0, 1] 内的有限数".into()));
     }
     if cfg.churn.p_stall < cfg.churn.p_base {
         return Err(Error::Config("p_stall 必须不小于 p_base".into()));
@@ -662,6 +678,18 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
     }
     for c in Cohort::ALL {
         let b = cfg.behavior.for_cohort(c);
+        if !(b.p_dungeon.is_finite() && b.p_upgrade.is_finite() && b.p_training.is_finite()) {
+            return Err(Error::Config(format!(
+                "behavior.{}: 行为概率必须为有限数",
+                c.name()
+            )));
+        }
+        if !(b.sessions_frac.is_finite() && (0.0..=1.0).contains(&b.sessions_frac)) {
+            return Err(Error::Config(format!(
+                "behavior.{}.sessions_frac 必须为 [0, 1] 内的有限数",
+                c.name()
+            )));
+        }
         if b.p_dungeon < 0.0
             || b.p_upgrade < 0.0
             || b.p_training < 0.0
@@ -716,8 +744,25 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
     }
     // 公式槽加载期编译(文档 07 章):语法 / 白名单 / 有界性在此暴露,
     // sim::run 假定已通过编译。
-    crate::formula::compile(&cfg.formulas.xp_needed, crate::formula::XP_NEEDED_VARS)
-        .map_err(|e| Error::Config(format!("formulas.xp_needed: {e}")))?;
+    let xp_needed_formula =
+        crate::formula::compile(&cfg.formulas.xp_needed, crate::formula::XP_NEEDED_VARS)
+            .map_err(|e| Error::Config(format!("formulas.xp_needed: {e}")))?;
+    // 公式求值安全边界(审核整改 P1):编译通过 ≠ 求值安全,xp_needed
+    // 求值 ≤ 0(含 (0,1) 区间截断为 0)会让 progression::gain_xp 的升级环
+    // 无法终止。加载期在 1..=512 逐级求值(远超 30 天仿真的可达等级;
+    // 探针区间外的退化由 gain_xp 的运行时防护兜底)。
+    for level in 1..=512u32 {
+        let v = xp_needed_formula.eval(&[
+            f64::from(level),
+            cfg.progression.xp_base as f64,
+            cfg.progression.xp_pow,
+        ]);
+        if !v.is_finite() || v as i64 <= 0 {
+            return Err(Error::Config(format!(
+                "formulas.xp_needed 在 level={level} 求值为 {v},必须始终为正的有限值(求值 ≤ 0 会让升级环不终止)"
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -839,7 +884,8 @@ mod tests {
     }
 
     /// 掉落面校验(文档 24 章 R1):rate_mult 非正、空表名、全零权重、
-    /// 非有限负数逐项报错;loot 缺省(None)不进 canonical JSON。
+    /// 非有限负数逐项报错;合法表因结算未接入仿真被整体拒绝加载
+    /// (审核整改 P1);loot 缺省(None)不进 canonical JSON。
     #[test]
     fn validate_loot_section() {
         fn loot(rate_mult: f64, tables: BTreeMap<String, LootTableConfig>) -> SimConfig {
@@ -890,15 +936,80 @@ mod tests {
         let cfg = loot(1.0, table(w(&[("a", 70.0), ("b", f64::NAN)])));
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("权重"), "{msg}");
-        // 合法表通过
+        // 合法表:结构校验通过后仍被拒——结算未接入仿真,拒绝加载
+        // (审核整改 P1:静默不生效是缺陷,规划项落地前显式报错)
         let cfg = loot(
             1.5,
             table(w(&[("gold_small", 70.0), ("gold_mid", 25.0), ("gem", 5.0)])),
         );
-        assert!(validate(&cfg).is_ok());
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("尚未接入仿真"), "{msg}");
 
         // loot = None 缺省不进 canonical JSON(训练字段先例)
         assert!(SimConfig::default().loot.is_none());
+    }
+
+    /// 概率面边界(审核整改 P1):流失概率与行为概率的 NaN/越界逐字段拦截。
+    /// NaN 此前的行为是比较恒假,恰好越过 `< 0.0 || > 1.0` 形态的检查。
+    #[test]
+    fn validate_probability_bounds() {
+        fn churn_err(p_base: f64, p_stall: f64) -> String {
+            let mut cfg = SimConfig::default();
+            cfg.churn.p_base = p_base;
+            cfg.churn.p_stall = p_stall;
+            validate(&cfg).unwrap_err().to_string()
+        }
+        assert!(churn_err(f64::NAN, 0.05).contains("p_base"));
+        assert!(churn_err(0.003, f64::NAN).contains("p_stall"));
+        assert!(churn_err(0.003, 1.5).contains("p_stall"));
+        assert!(churn_err(-0.1, 0.05).contains("p_base"));
+        // 合法边界:p_base=0 / p_stall=1 通过(流失概率允许闭区间)
+        assert!(validate(&{
+            let mut cfg = SimConfig::default();
+            cfg.churn.p_base = 0.0;
+            cfg
+        })
+        .is_ok());
+
+        for c in Cohort::ALL {
+            let mut cfg = SimConfig::default();
+            cfg.behavior.for_cohort_mut(c).p_dungeon = f64::NAN;
+            let msg = validate(&cfg).unwrap_err().to_string();
+            assert!(msg.contains("有限数"), "{c:?}: {msg}");
+
+            let mut cfg = SimConfig::default();
+            cfg.behavior.for_cohort_mut(c).sessions_frac = 1.2;
+            let msg = validate(&cfg).unwrap_err().to_string();
+            assert!(msg.contains("sessions_frac"), "{c:?}: {msg}");
+
+            let mut cfg = SimConfig::default();
+            cfg.behavior.for_cohort_mut(c).sessions_frac = f64::NAN;
+            assert!(validate(&cfg).unwrap_err().to_string().contains("sessions_frac"));
+        }
+        // sessions_frac 合法边界 0.0 / 1.0 通过(缺省即 0.5)
+        assert!(validate(&SimConfig::default()).is_ok());
+    }
+
+    /// 公式求值安全边界(审核整改 P1):xp_needed 求值 ≤ 0(含 (0,1) 截断
+    /// 为 0)或非有限时,validate 拒绝;默认公式必须通过。
+    #[test]
+    fn validate_xp_needed_evaluation_positive() {
+        let mut cfg = SimConfig::default();
+        cfg.formulas.xp_needed = "0".into();
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("升级环不终止"), "{msg}");
+
+        let mut cfg = SimConfig::default();
+        cfg.formulas.xp_needed = "0.5".into();
+        assert!(validate(&cfg).unwrap_err().to_string().contains("升级环不终止"));
+
+        let mut cfg = SimConfig::default();
+        cfg.formulas.xp_needed = "0 * xp_base".into();
+        assert!(validate(&cfg).is_err());
+
+        let mut cfg = SimConfig::default();
+        cfg.formulas.xp_needed = "xp_base * level ^ xp_pow".into();
+        assert!(validate(&cfg).is_ok());
     }
 
     /// 抽卡面校验(文档 24 章 R2):base_rate 必须在 (0, 1](≤ 0 永不终止、

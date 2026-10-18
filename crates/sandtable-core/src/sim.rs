@@ -68,22 +68,20 @@ fn run_impl(cfg: &SimConfig, replicate: u32, mut hook: Option<&mut dyn DayHook>)
     run_cfg.base_seed = seed;
     let mut world = World::new(run_cfg);
 
-    // 一次性调度全部事件;(tick, seq) 全序保证出队序 = 逐日 id 升序的
-    // 老双层循环序(浮点聚合顺序不变,指标逐位一致)。抽卡会话排在 tick 0
-    // (Clock 起点,先于第 1 天):开号行为,不属于任何一天。
+    // 按日滚动调度(审核整改 P1:一次性排入 players×days 事件会让队列
+    // 随规模线性膨胀,10 万人 × 90 天 ≈ 900 万事件)。第 1 日先入队,
+    // 此后每个 DayClose{d} 处理完再排入 d+1 日。出队序与一次性预排逐位
+    // 一致:(tick, seq) 全序下,同 tick 内 seq 升序(DayOpen → 玩家日 →
+    // DayClose 的入队序不变),跨 tick 由 tick 定序,滚动入队不改变任何
+    // 相对次序。抽卡会话排在 tick 0(Clock 起点,先于第 1 天):开号
+    // 行为,不属于任何一天。
     let mut queue = EventQueue::new();
     if cfg.gacha.is_some() {
         for id in 0..u64::from(cfg.players) {
             queue.push(0, SimEvent::GachaRoll { actor_id: id });
         }
     }
-    for day in 1..=cfg.days {
-        queue.push(u64::from(day), SimEvent::DayOpen { day });
-        for id in 0..u64::from(cfg.players) {
-            queue.push(u64::from(day), SimEvent::PlayerDay { actor_id: id, day });
-        }
-        queue.push(u64::from(day), SimEvent::DayClose { day });
-    }
+    schedule_day(&mut queue, 1, cfg.players);
 
     let mut systems = build_systems(cfg, seed, &xp_needed_formula);
 
@@ -102,10 +100,26 @@ fn run_impl(cfg: &SimConfig, replicate: u32, mut hook: Option<&mut dyn DayHook>)
         if let (SimEvent::DayClose { day }, Some(h)) = (event, hook.as_deref_mut()) {
             h.on_day(&world, day);
         }
+        // 滚动调度:当日关闭后排队次日(最后一天不再排,队列自然排空)
+        if let SimEvent::DayClose { day } = event {
+            if day < cfg.days {
+                schedule_day(&mut queue, day + 1, cfg.players);
+            }
+        }
     }
 
     // finish 的 config_hash 输入必须是外层 cfg(base_seed 未被 replicate 覆盖)
     world.agg.finish(cfg, replicate, seed)
+}
+
+/// 排入一个日粒度的事件组(DayOpen → 全部玩家日 → DayClose;同 tick 内
+/// 按入队 seq 定序)。滚动调度用,见 run_impl 注释。
+fn schedule_day(queue: &mut EventQueue<SimEvent>, day: u32, players: u32) {
+    queue.push(u64::from(day), SimEvent::DayOpen { day });
+    for id in 0..u64::from(players) {
+        queue.push(u64::from(day), SimEvent::PlayerDay { actor_id: id, day });
+    }
+    queue.push(u64::from(day), SimEvent::DayClose { day });
 }
 
 /// 调度面注册(run_impl 与 [`system_registry`] 共用同一构造,快照不可能与实况漂移)。

@@ -17,7 +17,10 @@ pub fn gain_xp(actor: &mut Actor, amount: i64, p: &ProgressionConfig, f: &Formul
     let mut levelups = 0;
     loop {
         let need = xp_needed(actor.level, p, f);
-        if actor.xp_into_level < need {
+        // 运行时防护(审核整改 P1):公式在探针区间外退化为 ≤ 0 时停止
+        // 升级,保证有限步终止。validate 已在 1..=512 逐级拦截,此处兜底
+        // 直连构造 Formula 的调用面(python 绑定 / 未来系统)。
+        if need <= 0 || actor.xp_into_level < need {
             break;
         }
         actor.xp_into_level -= need;
@@ -114,5 +117,31 @@ mod tests {
         assert_eq!(ups2, 1);
         assert_eq!(b.level, 2);
         assert_eq!(b.xp_into_level, 40);
+    }
+
+    /// 运行时防护(审核整改 P1):公式退化为 ≤ 0(绕过 validate 探针区间
+    /// 的直连构造)时,gain_xp 必须有限步终止,不升级、不改属性。
+    /// 修复前该用例为死循环。
+    #[test]
+    fn gain_xp_terminates_on_degenerate_formula() {
+        let cfg = SimConfig::default();
+        let zero = formula::compile("0", formula::XP_NEEDED_VARS).unwrap();
+        let mut a = actor();
+        assert_eq!(gain_xp(&mut a, 100, &cfg.progression, &zero), 0);
+        assert_eq!(a.level, 1);
+        assert_eq!(a.xp_into_level, 100);
+        assert_eq!(a.attack, 100);
+
+        // (0, 1) 求值截断为 0,同样终止
+        let frac = formula::compile("0.5", formula::XP_NEEDED_VARS).unwrap();
+        let mut a = actor();
+        assert_eq!(gain_xp(&mut a, 100, &cfg.progression, &frac), 0);
+
+        // 对照:正常公式路径不受防护影响(默认 60·level^2,level 1 需 60)
+        let normal = formula::compile("xp_base * level ^ xp_pow", formula::XP_NEEDED_VARS).unwrap();
+        let mut a = actor();
+        assert_eq!(gain_xp(&mut a, 65, &cfg.progression, &normal), 1);
+        assert_eq!(a.level, 2);
+        assert_eq!(a.xp_into_level, 5);
     }
 }

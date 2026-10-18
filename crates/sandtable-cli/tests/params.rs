@@ -63,7 +63,7 @@ fn params_export_edit_roundtrip() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("57 项"), "{stdout}");
+    assert!(stdout.contains("56 项"), "{stdout}");
     let imported_hash = stdout
         .split("config_hash = ")
         .nth(1)
