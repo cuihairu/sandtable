@@ -763,13 +763,9 @@ pub fn optimize(base: &SimConfig, spec: &OptimSpec) -> Result<OptimResult, Error
         OptimMode::Pareto => {
             // 末代排序无有效前沿 = 全部候选配置错误(审核整改 P2:此前
             // expect 直接 panic;现在作为可读错误返回)
-            let (max_pass, front) = ranking
-                .pareto_front()
-                .ok_or_else(|| {
-                    Error::Config(
-                        "寻优无有效前沿:所有候选均为配置错误,请检查参数范围与基础配置".into(),
-                    )
-                })?;
+            let (max_pass, front) = ranking.pareto_front().ok_or_else(|| {
+                Error::Config("寻优无有效前沿:所有候选均为配置错误,请检查参数范围与基础配置".into())
+            })?;
             let candidates: Vec<CandidateResult> =
                 front.iter().map(|&i| results[i].clone()).collect();
             let (rep, best) = match front.first() {

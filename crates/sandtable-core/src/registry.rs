@@ -564,9 +564,11 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.churn.stall_days" => {
             cfg.churn.stall_days = unsigned(value, "stall_days")?.round() as u32
         }
-        "model.loot.rate_mult" => return Err(Error::Config(format!(
-            "{path}: 掉落结算尚未接入仿真(规划中),拒绝写入以免静默无效"
-        ))),
+        "model.loot.rate_mult" => {
+            return Err(Error::Config(format!(
+                "{path}: 掉落结算尚未接入仿真(规划中),拒绝写入以免静默无效"
+            )))
+        }
         "model.gacha.base_rate" => {
             cfg.gacha
                 .get_or_insert_with(crate::config::GachaConfig::default)

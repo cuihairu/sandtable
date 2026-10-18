@@ -659,10 +659,14 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
     // 行为——NaN 比较恒假恰好越过下面的范围检查,> 1 的流失概率变成必然
     // 触发,负值变成永不触发。逐字段显式拦截,与命中概率同一口径。
     if !(cfg.churn.p_base.is_finite() && (0.0..=1.0).contains(&cfg.churn.p_base)) {
-        return Err(Error::Config("churn.p_base 必须为 [0, 1] 内的有限数".into()));
+        return Err(Error::Config(
+            "churn.p_base 必须为 [0, 1] 内的有限数".into(),
+        ));
     }
     if !(cfg.churn.p_stall.is_finite() && (0.0..=1.0).contains(&cfg.churn.p_stall)) {
-        return Err(Error::Config("churn.p_stall 必须为 [0, 1] 内的有限数".into()));
+        return Err(Error::Config(
+            "churn.p_stall 必须为 [0, 1] 内的有限数".into(),
+        ));
     }
     if cfg.churn.p_stall < cfg.churn.p_base {
         return Err(Error::Config("p_stall 必须不小于 p_base".into()));
@@ -984,7 +988,10 @@ mod tests {
 
             let mut cfg = SimConfig::default();
             cfg.behavior.for_cohort_mut(c).sessions_frac = f64::NAN;
-            assert!(validate(&cfg).unwrap_err().to_string().contains("sessions_frac"));
+            assert!(validate(&cfg)
+                .unwrap_err()
+                .to_string()
+                .contains("sessions_frac"));
         }
         // sessions_frac 合法边界 0.0 / 1.0 通过(缺省即 0.5)
         assert!(validate(&SimConfig::default()).is_ok());
@@ -1001,7 +1008,10 @@ mod tests {
 
         let mut cfg = SimConfig::default();
         cfg.formulas.xp_needed = "0.5".into();
-        assert!(validate(&cfg).unwrap_err().to_string().contains("升级环不终止"));
+        assert!(validate(&cfg)
+            .unwrap_err()
+            .to_string()
+            .contains("升级环不终止"));
 
         let mut cfg = SimConfig::default();
         cfg.formulas.xp_needed = "0 * xp_base".into();

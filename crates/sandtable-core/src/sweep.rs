@@ -519,7 +519,10 @@ mod tests {
             max: 110.0,
             step: 7.0,
         };
-        assert_eq!(p.grid_point_count().unwrap(), p.grid_points().unwrap().len());
+        assert_eq!(
+            p.grid_point_count().unwrap(),
+            p.grid_points().unwrap().len()
+        );
 
         let mut spec = grid_spec();
         spec.parameters = vec![ParamRange {

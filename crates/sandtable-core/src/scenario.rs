@@ -874,14 +874,10 @@ model:
                     (
                         "chest".to_string(),
                         crate::config::LootTableConfig {
-                            weights: [
-                                ("gold_small", 70.0),
-                                ("gold_mid", 25.0),
-                                ("gem", 5.0),
-                            ]
-                            .into_iter()
-                            .map(|(k, v)| (k.to_string(), v))
-                            .collect(),
+                            weights: [("gold_small", 70.0), ("gold_mid", 25.0), ("gem", 5.0)]
+                                .into_iter()
+                                .map(|(k, v)| (k.to_string(), v))
+                                .collect(),
                         },
                     ),
                     (
