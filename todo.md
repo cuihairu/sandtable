@@ -75,11 +75,12 @@
       附带发现（代码缺陷，另列条目，不属文档面）：params 回导合并产物丢 `damage_model`
       枚举槽，`damage_model: ratio` 基线（如 examples/pokemon.yaml）回导产物必然被
       config.rs:739 守卫拒载 —— merged_yaml 只写数值槽（params.rs:115-128）所致
-- [ ] params 回导合并产物丢枚举槽（2026-10-19 文档时效性清理中发现）：
-      `params import --out` 的 merged_yaml 只写数值注册表路径，`damage_model` 等枚举槽
+- [x] params 回导合并产物丢枚举槽（2026-10-19 文档时效性清理中发现，同日修复）：
+      `params import --out` 的 merged_yaml 只写数值注册表路径，`damage_model` 枚举槽
       被丢弃；`damage_model: ratio` 基线回导后 ratio_k 仍在而口径缺省为 difference，
       被 validate 拒载（config.rs:739 守卫），与 CLI 自印「可直接 simulate」矛盾。
-      复现：`params export examples/pokemon.yaml --out p.csv && params import p.csv
-      examples/pokemon.yaml --out merged.yaml && validate merged.yaml` → exit 2。
-      修法：先补测试再动代码——merged_yaml 在 damage_model 为 Some 时写回该槽，
-      测试覆盖 ratio 基线导出→回导→validate 全链。
+      修法（先测后码）：新增 tests/params.rs::params_roundtrip_keeps_damage_model
+      （ratio 基线导出→回导→validate 全链，先红后绿）；merged_yaml 在
+      damage_model 为 Some 时写回 model.combat.damage_model（params.rs:129-133）。
+      测试：cargo test -p sandtable-cli --test params 5 绿 / clippy --all-targets
+      零告警 / cargo fmt --check 过。

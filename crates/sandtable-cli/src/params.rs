@@ -126,6 +126,11 @@ pub fn merged_yaml(cfg: &SimConfig) -> String {
         let segs: Vec<&'static str> = s.path["model.".len()..].split('.').collect();
         insert_path(&mut model, &segs, num_value(v));
     }
+    // 非数值枚举槽不经数值通道,但 damage_model 是 ratio_k 的生效口径开关:
+    // 丢掉会让 ratio 基线的合并产物被口径守卫拒载,与「可直接 simulate」矛盾
+    if let Some(m) = cfg.combat.damage_model {
+        insert_path(&mut model, &["combat", "damage_model"], json!(m));
+    }
     let mut root = Map::new();
     root.insert("schema_version".into(), json!("1"));
     root.insert("scenario".into(), Value::Object(scenario));

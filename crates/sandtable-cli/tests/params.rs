@@ -108,6 +108,71 @@ fn params_export_edit_roundtrip() {
 }
 
 #[test]
+fn params_roundtrip_keeps_damage_model() {
+    // ratio 口径基线:回导合并产物必须保留 damage_model,否则口径守卫会拒载,
+    // 与「合并产物可直接 simulate」的承诺矛盾(ratio_k 随数值通道写出而口径丢失)
+    let dir = temp_dir("ratio");
+    fs::create_dir_all(&dir).unwrap();
+    let base = dir.join("ratio.yaml");
+    fs::write(
+        &base,
+        concat!(
+            "schema_version: \"1\"\n",
+            "scenario:\n",
+            "  population: 1000\n",
+            "  duration: 30d\n",
+            "  seed: 7\n",
+            "model:\n",
+            "  combat:\n",
+            "    damage_model: ratio\n",
+            "    ratio_k: 260\n",
+        ),
+    )
+    .unwrap();
+
+    let csv = dir.join("params.csv");
+    let out = bin(&[
+        "params",
+        "export",
+        base.to_str().unwrap(),
+        "--out",
+        csv.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let merged = dir.join("merged.yaml");
+    let out = bin(&[
+        "params",
+        "import",
+        csv.to_str().unwrap(),
+        base.to_str().unwrap(),
+        "--out",
+        merged.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let text = fs::read_to_string(&merged).unwrap();
+    assert!(
+        text.contains("damage_model: ratio"),
+        "枚举槽必须随基线写出:{text}"
+    );
+    let out = bin(&["validate", merged.to_str().unwrap()]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn params_import_bad_rows_annotated_exit2() {
     let dir = temp_dir("bad");
     fs::create_dir_all(&dir).unwrap();
