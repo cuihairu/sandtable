@@ -45,10 +45,13 @@
 - [x] 文档一致性审计(2026-10-13,d092b0a): 三类差异 25 条已修,落表 docs/审计-文档一致性.md
 
 验收:改动后 pnpm docs:build 过 / cargo check 过;测试绿才 push。
-- [ ] 审核整改（2026-10-18 独立审核，见 docs/review/luna-review-2026-10-18.md）：
-      按审核报告的三张表逐项处理，**先核对再动手**，每项给 file:line 证据。
-      1) 表一「缺陷」：按风险排序修，高风险优先
-      2) 表二「文档与实现不一致」：以代码为准改文档，或明确标注为规划中
-         **禁止为对齐文档去改业务代码**
-      3) 表三「值得补的能力」：只做评估与分期建议，**不实现**（需用户拍板）
-      每完成一项勾掉并写证据；全部测试通过后 commit+push；不 bump 版本号。
+- [x] 审核整改（2026-10-18 独立审核，见 docs/review/luna-review-2026-10-18.md）：c0e1e08 + 1d21665 + fcd7a5b
+      1) 表一「缺陷」6 项全修，先核对再动手：P1-1 公式探针+运行时兜底（config.rs / progression.rs:23）、
+         P1-2 概率有限性+区间+sessions_frac（config.rs）、P1-3 网格先计数后物化（sweep.rs plan/validate）、
+         P1-4 按日滚动排程（sim.rs schedule_day，黄金快照逐位等价）、P1-5 目标可用性预检
+         （experiment.rs unavailable_reason + scenario/optimize 双层）、P2 Pareto 无前沿改报错（optimize.rs）
+      2) 表二「文档与实现不一致」5 项以代码为准改文档：24 章 intro/loot 接入状态、23 章掉落、
+         07 章脚本已落地、index 内存承诺 + 页脚 MIT→Apache-2.0；同步审计 B4 与 loot 数值通道关闭
+      3) 表三「值得补的能力」只出评估与分期建议（不实现）：1–3 已随缺陷整改落地，
+         4 掉落结算 / 5 桌面进度取消 / 6 真实数据校准待用户拍板
+      测试：cargo test --workspace 绿 / clippy --all-targets 零告警 / pnpm docs:build 过；不 bump 版本号。
