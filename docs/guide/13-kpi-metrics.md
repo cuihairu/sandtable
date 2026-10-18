@@ -96,6 +96,10 @@ The MVP has no payment system, hence no purchase events. In the MVP, Whale is de
 
 Pity-style gameplay is measured by **expected pulls to hit**, `gacha_pulls_to_hit`: the pull count aggregated over a "stop at first hit" session — the most direct read on "how deep the pit is" for a designer. The hard / soft pity state machine and its closed-form reconciliation (truncated geometric `E[T](H) = (1 − (1−p)^H)/p`, H being the hard-pity pull count) are in [Random functions and probability systems](./24-random-functions.md); this metric rides the same CI₉₅ verdict chain as the others, with constraints written like `gacha_pulls_to_hit max 30`.
 
+### Loot (per-player drop gold)
+
+Drop-based income is measured by **per-player loot gold**, `loot_gold_per_player`: loot-settlement gold ÷ players. It is a **slice, not a second faucet** — the full amount already flows into `gold_earned_total`, so the slice never exceeds it; pure-xp rewards leave the metric absent (only gold drops count). The settlement machinery (one weighted draw per battle victory, amounts scaled by `rate_mult`) is in [Random functions and probability systems](./24-random-functions.md) and the [loot settlement design](../loot-settlement-design.md); this metric rides the same CI₉₅ verdict chain as the others, with constraints written like `loot_gold_per_player max 5000`. When `model.loot` is not configured it is `None` and stays out of the JSON.
+
 ## Statistical conventions and confidence intervals
 
 **The statistical unit is the replicate, not the player** (rationale in [Experiment pipeline](./11-experiment-pipeline.md)). Suppose a candidate ran R replicates and the r-th replicate's aggregated value of some metric is m_r:

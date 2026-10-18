@@ -97,6 +97,10 @@ MVP 没有付费系统,不存在购买事件。Whale 在 MVP 中定义为**高�
 
 保底类玩法用**期望抽数** `gacha_pulls_to_hit` 衡量:一次"抽到首次命中即止"会话的抽数聚合,是策划感知"坑深不深"的直接量。硬 / 软保底状态机与闭式对账(截断几何 `E[T](H) = (1 − (1−p)^H)/p`,H 为硬保底抽数)见[随机函数与概率系统](./24-random-functions);该指标与其余指标同走 CI₉₅ 判定链,约束写法如 `gacha_pulls_to_hit max 30`。
 
+### 掉落(人均掉落金币)
+
+掉落类产出用**人均掉落金币** `loot_gold_per_player` 衡量:掉落结算的金币产出 ÷ 玩家数。它是**切片,不是第二个水龙头**——全额已计入 `gold_earned_total`,切片永不超过总额;纯经验奖励不产生该指标(只计金币掉落)。结算机制(每场战斗胜利一次加权抽取,数额乘 `rate_mult`)见[随机函数与概率系统](./24-random-functions)与[掉落结算设计](../loot-settlement-design);该指标与其余指标同走 CI₉₅ 判定链,约束写法如 `loot_gold_per_player max 5000`。`model.loot` 未配置时为 `None`,不进 JSON。
+
 ## 统计口径与置信区间
 
 **统计单位是 replicate,不是玩家**(理由见[实验管线](./11-experiment-pipeline))。设某候选跑了 R 个 replicate,第 r 个 replicate 的某指标聚合值为 m_r:
