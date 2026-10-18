@@ -158,7 +158,7 @@ sandtable disttest weighted <scenario.yaml> chest --samples 100000 --alpha 0.01
 
 | 阶段 | 内容 | 验收 |
 | --- | --- | --- |
-| R1 ✅ 已落地(2026-10-10) | 加权表(加载期 CDF + YAML 面 + `ParamKind::Table`)+ 洗牌/无放回抽样 + `disttest` 子命令(均匀/加权) | 新 purpose 不动旧键(黄金快照逐位不变);万次采样 χ² 全过;params 表计数 +1(rate_mult) |
+| R1 ✅ 已落地(2026-10-10) | 加权表(加载期 CDF + YAML 面 + `ParamKind::Table`)+ 洗牌/无放回抽样 + `disttest` 子命令(均匀/加权) | 新 purpose 不动旧键(黄金快照逐位不变);万次采样 χ² 全过;params 表计数 +1(rate_mult;该 +1 已于 2026-10-18 随数值通道关闭撤销) |
 | R2 ✅ 已落地(2026-10-10) | 保底状态机(硬/软)+ 期望抽数 KPI + 抽卡案例 yaml | 数值例对账(2%/50 保底 → 闭式 31.79 ± CI);sweep 保底长度出推荐区间(10 ~ 44.6,上端插值);params 表计数 +4(`model.gacha.*`);黄金快照逐位不变 |
 | R3 ✅ 已落地(2026-10-10) | 正态(带 clamp)+ χ² 扩展正态分桶 | 均值/方差对齐解析解(10 万样本 CI 内);Box–Muller 双消耗键稳定(改 μ/σ 不挪键);10 万采样 20 桶 χ² 全过;`disttest normal` 落地;黄金快照逐位不变 |
 
@@ -179,7 +179,7 @@ R1/R2/R3 均为内核扩展,动 `rng.rs` 与注册表——**实施前以本页�
 - **状态与抽取分离**(铁律的 R2 兑现):保底计数器 `gacha_since_hit`(连同 `gacha_pulls` / `gacha_hits`)是 `Actor` 字段,**不进 RNG 键**;逐抽消耗 `Purpose::Gacha` 键。CRN 测试锁死:只改 `pity_hard` 的 A/B 臂,日统计逐位一致、仅抽卡 KPI 不同。
 - **状态机**(`systems::gacha`):`hit_rate(cfg, k)` = `min(1, base_rate + max(0, k − pity_soft_start)·pity_soft_step)`,硬保底 `k+1 ≥ pity_hard > 0` 时钳 1(软保底只在 `step > 0` 生效);`pull_until_hit` 会话语义 = "出到即止"。`validate` 拦 `base_rate ≤ 0 / > 1` 与负步长(≤ 0 会让会话永不终止)。
 - **执行形态**:`SimEvent::GachaRoll` 调度在 tick 0(Clock 起点,第 1 天之前)——开号会话不进任何一天的日统计;`RunMetrics.gacha_pulls_to_hit = 总抽数/总命中`,`Option` + `skip_serializing_if`(训练字段先例),未配置时 JSON 不变。
-- **KPI 全链接通**:`MetricKey::GachaPullsToHit` 进比较 / sweep / 推荐链;params 表计数 +4(53 → 57,`model.gacha.{base_rate, pity_hard, pity_soft_start, pity_soft_step}`)。CLI simulate 摘要条件输出 gacha 行。
+- **KPI 全链接通**:`MetricKey::GachaPullsToHit` 进比较 / sweep / 推荐链;params 表计数 +4(当时 53 → 57;现共 56——rate_mult 的 +1 已于 2026-10-18 撤销,`model.gacha.{base_rate, pity_hard, pity_soft_start, pity_soft_step}`)。CLI simulate 摘要条件输出 gacha 行。
 - **数值对账**:闭式 `E[T] = (1 − (1−p)^H)/p`(截断几何),2%/50 → 31.79(设计稿手算 31.6 系粗估,以闭式为准);核心测试对账容差 1.0(2000 玩家)。无保底退化 `1/p = 50` 同测。
 - **推荐区间验收**:`examples/gacha-pity-sweep.yaml` 扫 `pity_hard ∈ {10..50}`,hard 约束「E[T] ≤ 30」→ 可行段 [10, 44.6](上端点插值;解析交点 H = ln(0.4)/ln(0.98) ≈ 45.7,CI 抖动 ±1 内)。核心测试 `抽卡_扫保底长度出推荐区间` 锁死同口径。
 - **公示口径一致性**(验收第三项的 R2 形态):加权表的"公示 = 实现"由 R1 `disttest weighted` 承担;保底是马尔可夫链结构(抽取间不独立),按本页第 7 节纪律**不做 χ² 单抽频数**,对账走闭式 E[T] ± CI95(上两项)——报告层输出 `gacha_pulls_to_hit` 均值与 CI95 即一致性证据。

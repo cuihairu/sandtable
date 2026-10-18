@@ -32,10 +32,10 @@ The scope of optimization and the surrogate is covered in the automated-optimiza
 ```bash
 sandtable simulate scenario.yaml
 sandtable sweep experiment.yaml
-sandtable compare result-a result-b
+sandtable compare --attack-a 100 --attack-b 105 --replicates 12
 sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate = 'PASS'"
 sandtable recommend experiment.yaml sweep-out/
-sandtable params export --scenario scenario.yaml --out params.csv
+sandtable params export scenario.yaml --out params.csv
 sandtable project pack myproj --out myproj.sandtable
 sandtable report experiment/
 sandtable optimize opt-exp.yaml --out opt-out/
@@ -83,17 +83,18 @@ A two-way flat-CSV channel between the numeric parameter table and YAML (evaluat
 
 ```bash
 # Export all numeric parameters as a (path,value) template
-sandtable params export --scenario scenario.yaml --out params.csv
+sandtable params export scenario.yaml --out params.csv
 
 # Re-import after editing: per-line overrides onto the baseline configuration with validation,
-# errors reported per line (exit code 2)
-sandtable params import params.csv --scenario base.yaml --out merged.yaml
+# errors reported per line (exit code 2); the baseline scenario is the optional
+# second positional argument
+sandtable params import params.csv base.yaml --out merged.yaml
 sandtable simulate merged.yaml
 ```
 
 - Table format: a `path,value` header, one numeric parameter per row; blank lines and lines starting with `#` are skipped;
 - Coverage = every numeric parameter in the registry (integers / floats / cohort weights); formula slots and durations (`30d`) do not go through the parameter table — edit the YAML directly when customization is needed;
-- Import takes `--scenario` as the baseline (the default configuration when omitted); unknown paths get edit-distance suggestions; invalid / out-of-range values and duplicate paths are flagged line by line, never silently skipped;
+- Import takes the baseline scenario as the optional second positional argument (the default configuration when omitted); unknown paths get edit-distance suggestions; invalid / out-of-range values and duplicate paths are flagged line by line, never silently skipped;
 - On success it prints `config_hash`; `--out merged.yaml` produces a scenario file ready to simulate (containing the scenario section's population / duration / seed / population_mix and the full numeric parameters of the model section).
 
 ### project (project packaging)

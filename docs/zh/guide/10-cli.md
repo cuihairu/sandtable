@@ -33,10 +33,10 @@ title: 10 · CLI
 ```bash
 sandtable simulate scenario.yaml
 sandtable sweep experiment.yaml
-sandtable compare result-a result-b
+sandtable compare --attack-a 100 --attack-b 105 --replicates 12
 sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate = 'PASS'"
 sandtable recommend experiment.yaml sweep-out/
-sandtable params export --scenario scenario.yaml --out params.csv
+sandtable params export scenario.yaml --out params.csv
 sandtable project pack myproj --out myproj.sandtable
 sandtable report experiment/
 sandtable optimize opt-exp.yaml --out opt-out/
@@ -84,16 +84,17 @@ sandtable recommend experiment.yaml sweep-out/ --out rec.json
 
 ```bash
 # 全量数值参数导出为(path,value)模板
-sandtable params export --scenario scenario.yaml --out params.csv
+sandtable params export scenario.yaml --out params.csv
 
-# 改值后回导:逐行覆写基线配置并校验,错误逐行报(退出码 2)
-sandtable params import params.csv --scenario base.yaml --out merged.yaml
+# 改值后回导:逐行覆写基线配置并校验,错误逐行报(退出码 2);
+# 基线场景是可选的第二个位置参数
+sandtable params import params.csv base.yaml --out merged.yaml
 sandtable simulate merged.yaml
 ```
 
 - 表格式:`path,value` 表头,每行一个数值参数;空行与 `#` 开头的行跳过;
 - 覆盖范围 = 注册表全部数值参数(整数 / 浮点 / 分群权重);公式槽与时长(`30d`)不经参数表,需要自定义时直接编辑 YAML;
-- 导入以 `--scenario` 为基线(缺省默认配置),未知路径给编辑距离建议,数值非法 / 越界 / 路径重复逐行标注,不静默跳过;
+- 导入以可选的第二个位置参数为基线场景(缺省默认配置),未知路径给编辑距离建议,数值非法 / 越界 / 路径重复逐行标注,不静默跳过;
 - 成功后打印 `config_hash`;`--out merged.yaml` 产出可直接跑仿真的场景文件(含 scenario 节的 population / duration / seed / population_mix 与 model 节全量数值参数)。
 
 ### project(项目打包)

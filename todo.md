@@ -55,10 +55,31 @@
       3) 表三「值得补的能力」只出评估与分期建议（不实现）：1–3 已随缺陷整改落地，
          4 掉落结算 / 5 桌面进度取消 / 6 真实数据校准待用户拍板
       测试：cargo test --workspace 绿 / clippy --all-targets 零告警 / pnpm docs:build 过；不 bump 版本号。
-- [ ] 文档时效性清理（2026-10-18 用户令：很多文档已过时）：
-      在本轮审核整改完成之后执行，避免与整改冲突。
-      1) 通读 README / docs，找出与当前代码不符的描述（能力、配置项、命令、路径、版本）
-      2) 以代码为准修正文档；**禁止为对齐文档去改业务代码**
-      3) 已废弃但仍留在文档里的功能，明确标注「已移除」或删除，不要留成"看起来还能用"
-      4) 命令行示例逐条跑一遍，跑不通的改掉或删掉
-      5) 构建通过后 commit+push，回报改动文件清单
+- [x] 文档时效性清理（2026-10-18 用户令：很多文档已过时，2026-10-19 完成）：
+      1) 通读核对：README 快起 3 条命令逐条实跑 exit 0；10 章子命令表与 `--help` 全量比对一致；
+         `query` 不在默认构建确认为 `#[cfg(feature = "duckdb")]` 门控（非漂移，文档已注明）
+      2) 以代码为准修正（未改任何业务代码）：
+         - 10 章 phantom `--scenario` 旗标 → 位置参数（实测 `params import --help` =
+           `[OPTIONS] <CSV> [SCENARIO]`，CLI 无 `--scenario` 旗标）：
+           en docs/guide/10-cli.md:86,89-91,97 / zh docs/zh/guide/10-cli.md:87,89-90,97
+         - 24 章 params 表计数 57→56（rate_mult 数值通道随审核整改关闭），en/zh 各两处
+         - 用法块旧写法 2 处（compare 选项序、params export）en/zh 已先期修正
+      3) 已废弃功能：未发现「已移除但文档仍称可用」项；原始计划
+         docs/计划-原始.md:682 / zh:685 的 compare 旧用法为历史文档，保留不改
+         （todo.md:13 双语结构对齐锁定，不属活契约）
+      4) 示例逐条实跑：`compare --attack-a 100 --attack-b 105 --replicates 12` exit 0；
+         `params export examples/pokemon.yaml --out p.csv` →「已导出 56 项」；
+         `params import p.csv examples/pokemon.yaml --out merged.yaml` →「已导入 56 项,
+         config_hash = b51d2f79…」exit 0（import 本身成功；后续 validate 的失败见下条）
+      5) 门禁：pnpm docs:build 过（61.38s）；dist 重建后 grep `--scenario` 零命中
+      附带发现（代码缺陷，另列条目，不属文档面）：params 回导合并产物丢 `damage_model`
+      枚举槽，`damage_model: ratio` 基线（如 examples/pokemon.yaml）回导产物必然被
+      config.rs:739 守卫拒载 —— merged_yaml 只写数值槽（params.rs:115-128）所致
+- [ ] params 回导合并产物丢枚举槽（2026-10-19 文档时效性清理中发现）：
+      `params import --out` 的 merged_yaml 只写数值注册表路径，`damage_model` 等枚举槽
+      被丢弃；`damage_model: ratio` 基线回导后 ratio_k 仍在而口径缺省为 difference，
+      被 validate 拒载（config.rs:739 守卫），与 CLI 自印「可直接 simulate」矛盾。
+      复现：`params export examples/pokemon.yaml --out p.csv && params import p.csv
+      examples/pokemon.yaml --out merged.yaml && validate merged.yaml` → exit 2。
+      修法：先补测试再动代码——merged_yaml 在 damage_model 为 Some 时写回该槽，
+      测试覆盖 ratio 基线导出→回导→validate 全链。
