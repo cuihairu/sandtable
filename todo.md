@@ -9,6 +9,9 @@
 
 ## 待办(可自服务)
 
+- [ ] 掉落结算 System(已代决(巡检代决),2026-10-20,推进单 r0240;设计 docs/loot-settlement-design.md + zh 孪生,决策点代决记录见其 §4):
+      按设计 §5 Phase A 先测后码实施;验收门 = workspace 绿 / clippy 零告警 / fmt /
+      docs:build / params 57 项 / KPI 锚值案例绿;完成后按其 §6 同步 23/24 章与审计 B4
 - [x] docs 首页首访语言探测(2026-10-18,c0935e9,巡检补记):`docs/index.md` 加 `<script setup lang="ts">` 段,仅根路径(`/sandtable/` 含去尾斜杠两种形态)在 `onBeforeMount` 按 `navigator.languages` 跳 `/sandtable/zh/`;优先级 = `localStorage['sandtable-lang-auto-picked']` 手动选择 > 浏览器语言 > 保持当前 locale;点击内置语言切换链接时写入该 key;SSR 侧 `typeof window === 'undefined'` 守卫,`navigator.languages` 缺失时回退单值。Deploy Docs run 39080635636 绿;理由注释:vitepress 无此能力、GitHub Pages 不支持 `_redirects`
 - [x] docs 中文原始计划页翻译(2026-10-17,6ebf469):**原计划的正文本来就是中文**(实测 CJK 43% / ASCII 字母 57%,213 行纯英文全是英文技术名词、章节标题与分隔线),此前「英文原稿 1564 行」的判断有误;真正缺的是英文侧。故按 locales 语向改正:`docs/zh/计划-原始.md` 落中文原文(33 处描述性标题按 zh 章词汇中文化,如 仿真内核/确定性随机数/公式引擎/实验管线/参数扫描/平衡推荐/路线图/单元测试/先度量后优化;Grid Search/Monte Carlo/Fixed Tick/Casual-Core-Whale 等技术名词原样保留),`docs/计划-原始.md` 为英文对照版(296 行散文实译 + 3 段中文步骤图转英文);67 个代码块 64 个三版逐字节一致、仅 3 段步骤图按语言各自本地化;结构对账(围栏 134/134、块 67/67、标题 74/74、分隔线 57/57、列表 182/182);两份切换器与 route 互指;README ×2 与 18 章双向引用同步;`docs:build` 绿
 - [x] docs 迁 VitePress 官方 locales(2026-10-17,06f5f63):英文占根路由(`/guide/`、根目录 4 份文档 + 英文首页 `docs/index.md`),中文整树入 `docs/zh/`(`/zh/guide/`、`/zh/index.md` 与根文档中文版);`config.mts` 加 `locales.root`(en)+ `locales.zh`(zh-CN,侧栏/搜索/页脚文案全中文化),导航栏出内置语言切换;收口停滞会话的半成品:两棵树切换器统一为绝对路由 `/guide/NN | /zh/guide/NN`(原英文页自指、中文页链到已不存在的 `.en.md`)、两棵树图片深度对调修正(根 `../assets/`、zh `../../assets/`)、两个首页 hero action 各自带 locale 前缀、`docs/en/index.md` 与 `计划-原始.zh.md` 退役;结构对账 25/25 对齐(去代码围栏后标题/表格行/列表项/提示块计数全等)、`.en.md` 残留引用 0;`docs:build` 绿(dist 出双首页 + 双语 25 章 + 双语根文档)
