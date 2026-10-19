@@ -11,6 +11,8 @@ import { WbIcon } from '../components/icons.tsx'
 import { METHOD_LABEL, planSummary, planErrorLines, budgetActions } from './designerLogic.ts'
 import type { DesignDraft, PlanShape } from './designerLogic.ts'
 import type { DesignError } from './designerLogic.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type PlanState =
   | { stamp: number; status: 'pending' | 'stale' }
@@ -41,6 +43,7 @@ export function RunPlanSidebar({
   submitBlocked,
   onSubmit,
 }: RunPlanSidebarProps): JSX.Element {
+  const locale = useLocale()
   const localErrors = errors.filter((e) => e.scope !== 'scenario')
   const scenarioErrors = errors.filter((e) => e.scope === 'scenario')
   const planError = plan?.status === 'error' ? plan.message : null
@@ -50,11 +53,19 @@ export function RunPlanSidebar({
   const showPlan = (() => {
     if (design.method === 'ab') {
       const count = abCandidates ?? 0
-      return { label: `${count} 方案 × ${design.reps} replicates`, tasks: count * design.reps, caption: 'A/B 配对比较 · 演示任务(执行桥接 WB-07)' }
+      return {
+        label: t(locale, 'experiment.abPlanLabel', { count, reps: design.reps }),
+        tasks: count * design.reps,
+        caption: t(locale, 'experiment.abPlanCaption'),
+      }
     }
     if (thePlan) {
       const s = planSummary(thePlan.plan)
-      return { label: `${s.candidates} 候选 × ${s.replicates} replicates`, tasks: s.sims, caption: `内核计划 · 模式 ${s.mode}` }
+      return {
+        label: t(locale, 'experiment.sweepPlanLabel', { candidates: s.candidates, replicates: s.replicates }),
+        tasks: s.sims,
+        caption: t(locale, 'experiment.sweepPlanCaption', { mode: s.mode }),
+      }
     }
     return null
   })()
@@ -63,59 +74,62 @@ export function RunPlanSidebar({
   const blockedReasons: string[] = [
     ...localErrors.map((e) => (e.locator ? `${e.locator}: ${e.message}` : e.message)),
     ...scenarioErrors.map((e) => e.message),
-    ...(plan?.status === 'pending' ? ['内核计划计算中…'] : []),
-    ...(plan?.status === 'stale' ? ['预览已失效:表单改动尚未通过内核计划校验'] : []),
+    ...(plan?.status === 'pending' ? [t(locale, 'experiment.planPending')] : []),
+    ...(plan?.status === 'stale' ? [t(locale, 'experiment.planStaleReason')] : []),
     ...(planError ? planErrorLines(planError) : []),
     ...(submitBlocked ? [submitBlocked] : []),
   ]
   const summary = thePlan ? planSummary(thePlan.plan) : null
   return (
-    <aside className="form-summary" aria-label="运行计划">
-      <h3>运行计划</h3>
+    <aside className="form-summary" aria-label={t(locale, 'experiment.planAria')}>
+      <h3>{t(locale, 'experiment.planTitle')}</h3>
       {showPlan ? (
         <>
           <div className="budget-value">
             {showPlan.tasks.toLocaleString()}
             {planObsolete && design.method !== 'ab' && (
-              <span className="badge amber" style={{ marginLeft: 8, verticalAlign: 'middle' }}>计划已失效</span>
+              <span className="badge amber" style={{ marginLeft: 8, verticalAlign: 'middle' }}>{t(locale, 'experiment.planStale')}</span>
             )}
           </div>
           <div className="budget-caption">{showPlan.caption}</div>
           <div className="summary-formula">{showPlan.label}</div>
         </>
       ) : (
-        <div className="budget-caption">尚无内核计划:修正因子/方法前一提示后重算(WB-06.10)</div>
+        <div className="budget-caption">{t(locale, 'experiment.noPlan')}</div>
       )}
       {summary && (
         <>
           <div className="inspector-kv">
-            <span>内核 config_hash</span>
+            <span>{t(locale, 'experiment.planConfigHash')}</span>
             <span className="mono" style={{ fontSize: 9 }}>{summary.configHash.slice(0, 16)}…</span>
           </div>
           <div className="inspector-kv">
-            <span>base_seed(复现锚)</span>
+            <span>{t(locale, 'experiment.planBaseSeed')}</span>
             <span className="mono">{summary.baseSeed}</span>
           </div>
           <div className="inspector-kv">
-            <span>总运行数(sims)</span>
+            <span>{t(locale, 'experiment.planSims')}</span>
             <span className="mono">{summary.sims.toLocaleString()}</span>
           </div>
           <div className="inspector-kv">
-            <span>总 player-days</span>
+            <span>{t(locale, 'experiment.planPlayerDays')}</span>
             <span className="mono">{summary.playerDays.toLocaleString()}</span>
           </div>
         </>
       )}
       <div className="inspector-kv">
-        <span>每次运行(规模)</span>
-        <span>{design.method !== 'ab' && thePlan ? `${thePlan.plan.players.toLocaleString()} 玩家 / ${thePlan.plan.days} 天` : '读取场景 YAML'}</span>
+        <span>{t(locale, 'experiment.planPerRun')}</span>
+        <span>{design.method !== 'ab' && thePlan
+          ? t(locale, 'experiment.planPerRunValue', { players: thePlan.plan.players.toLocaleString(), days: thePlan.plan.days })
+          : t(locale, 'experiment.planPerRunPending')}
+        </span>
       </div>
       <div className="inspector-kv">
-        <span>耗时估算</span>
-        <span className="muted">尚无性能基准(不估算)</span>
+        <span>{t(locale, 'experiment.etdLabel')}</span>
+        <span className="muted">{t(locale, 'experiment.etdNone')}</span>
       </div>
       <div className="preflight">
-        <h3>运行前校验</h3>
+        <h3>{t(locale, 'experiment.preflightTitle')}</h3>
         {blockedReasons.length > 0 ? (
           blockedReasons.map((e, i) => (
             <div className="check-row error" key={`${e}:${i}`}>
@@ -127,19 +141,19 @@ export function RunPlanSidebar({
           <>
             <div className="check-row">
               <WbIcon name="circlecheck" />
-              <span>因子域与样本参数有效</span>
+              <span>{t(locale, 'experiment.checkFactors')}</span>
             </div>
             <div className="check-row">
               <WbIcon name="circlecheck" />
-              <span>KPI 约束在当前配置下可用(WB-06.07)</span>
+              <span>{t(locale, 'experiment.checkKpi')}</span>
             </div>
             <div className="check-row">
               <WbIcon name="circlecheck" />
-              <span>内核计划({METHOD_LABEL[design.method]})通过,预算内</span>
+              <span>{t(locale, 'experiment.checkPlan', { method: METHOD_LABEL[design.method] })}</span>
             </div>
           </>
         )}
-        {planError && budgetActions(planError) && (
+        {planError && budgetActions(planError) !== null && (
           <div className="check-row info">
             <WbIcon name="info" />
             <span>{budgetActions(planError)}</span>
@@ -153,11 +167,12 @@ export function RunPlanSidebar({
         title={canSubmit ? undefined : blockedReasons[0]}
       >
         <WbIcon name="play" />
-        {submitting ? '提交中…' : '提交实验(绑定计划快照)'}
+        {submitting ? t(locale, 'experiment.submitting') : t(locale, 'experiment.submitLabel')}
       </button>
       <p className="note" style={{ marginTop: 11 }}>
-        提交动作会重新冻结实验输入并登记计划(候选 {thePlan ? thePlan.plan.candidates.length : '—'});
-        演示队列(WB-07 前不产真实仿真产物)。
+        {t(locale, 'experiment.submitNote', {
+          n: thePlan ? thePlan.plan.candidates.length : '—',
+        })}
       </p>
     </aside>
   )

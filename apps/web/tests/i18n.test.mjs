@@ -373,3 +373,34 @@ test('WB-11.12:参数页词条双语齐全(筛选/表头/检查器/批量/YAML �
     assert.deepEqual(enSlots, zhSlots, `${k} 双语占位必须一致`)
   }
 })
+
+test('WB-11.13:实验设计页词条双语齐全(方法/因子/场景/采样/预算/预检)', () => {
+  const zhExp = Object.keys(zh).filter((k) => k.startsWith('experiment.'))
+  const enExp = Object.keys(en).filter((k) => k.startsWith('experiment.'))
+  assert.deepEqual([...enExp].sort(), [...zhExp].sort(), 'experiment.* 键集合必须双语一致')
+  for (const k of zhExp) {
+    assert.ok(zh[k].trim() !== '', `zh 词条 ${k} 不得为空`)
+    assert.ok(en[k].trim() !== '', `en 词条 ${k} 不得为空`)
+  }
+  // 五个表单区块点名:方法说明 / 因子表 / 场景字段 / 随机策略 / 预算与预检
+  const required = [
+    'experiment.methodTitle.grid', 'experiment.methodDesc.grid',
+    'experiment.colFactorPath', 'experiment.addFactorAria', 'experiment.samplesLabel',
+    'experiment.scenarioSectionTitle', 'experiment.daysNote', 'experiment.mixNote',
+    'experiment.samplingLabel', 'experiment.sampling.lhc', 'experiment.samplingNote',
+    'experiment.planTitle', 'experiment.planSims', 'experiment.planStale', 'experiment.noPlan',
+    'experiment.preflightTitle', 'experiment.checkPlan', 'experiment.submitLabel', 'experiment.submitNote',
+  ]
+  for (const k of required) {
+    assert.ok(zhExp.includes(k), `缺词条 ${k}`)
+  }
+  // 通知类(提交路径)与插值占位对齐
+  const slots = ['experiment.planBound', 'experiment.abCrn', 'experiment.refExperiment',
+    'experiment.submitNote', 'experiment.abBaselineArm', 'experiment.factorExists']
+  for (const k of slots) {
+    assert.ok(zhExp.includes(k), `缺词条 ${k}`)
+    const zhSlots = [...zh[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+    const enSlots = [...en[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+    assert.deepEqual(enSlots, zhSlots, `${k} 双语占位必须一致`)
+  }
+})

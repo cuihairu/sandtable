@@ -11,6 +11,8 @@
 import type { JSX } from 'react'
 import type { ScenarioStats, ScenarioLeaf } from './designerLogic.ts'
 import type { DesignerMethod } from './designerLogic.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type ScenarioFormProps = {
   method: DesignerMethod
@@ -70,23 +72,24 @@ export function ScenarioForm({
   sampling,
   onSamplingChange,
 }: ScenarioFormProps): JSX.Element {
+  const locale = useLocale()
   const mixField = (label: string, leaf: ScenarioLeaf, raw: number | null): JSX.Element => (
     <div className="field">
       <label htmlFor={`scenario-${leaf}`}>{label}(%)</label>
       <NumField
         id={`scenario-${leaf}`}
         value={raw === null ? null : Math.round(raw * 100 * 100) / 100}
-        ariaLabel={`${label}配比(UI 百分数)`}
+        ariaLabel={t(locale, 'experiment.mixAria', { label })}
         onCommit={(text) => onScenarioEdit(leaf, text)}
       />
-      <small>UI 百分数输入,YAML 写比例(÷100);缺值不回退默认</small>
+      <small>{t(locale, 'experiment.mixNote')}</small>
     </div>
   )
   return (
     <section className="form-section">
       <div className="form-section-heading">
         <span className="step">03</span>
-        <h2>场景与统计样本(读 scenario 节 · 缺值如实显示)</h2>
+        <h2>{t(locale, 'experiment.scenarioSectionTitle')}</h2>
       </div>
       {stats.errors.length > 0 && (
         <div className="note-block" role="alert">
@@ -97,60 +100,62 @@ export function ScenarioForm({
       )}
       <div className="form-grid">
         <div className="field">
-          <label htmlFor="scenario-players">玩家数(规模)</label>
+          <label htmlFor="scenario-players">{t(locale, 'experiment.playersLabel')}</label>
           <NumField
             id="scenario-players"
             value={stats.players}
-            ariaLabel="玩家数(单次运行规模)"
-            onCommit={(t) => onScenarioEdit('population', t)}
+            ariaLabel={t(locale, 'experiment.playersAria')}
+            onCommit={(text) => onScenarioEdit('population', text)}
           />
-          <small>scenario.population;群体规模 ≠ 统计样本量</small>
+          <small>{t(locale, 'experiment.playersNote')}</small>
         </div>
         <div className="field">
-          <label htmlFor="scenario-days">仿真天数(规模)</label>
+          <label htmlFor="scenario-days">{t(locale, 'experiment.daysLabel')}</label>
           <NumField
             id="scenario-days"
             value={stats.days}
-            ariaLabel="仿真天数"
-            onCommit={(t) => onScenarioEdit('duration_days', t)}
+            ariaLabel={t(locale, 'experiment.daysAria')}
+            onCommit={(text) => onScenarioEdit('duration_days', text)}
           />
-          <small>scenario.duration「{stats.durationText ?? '缺值'}」;不足 7 天时 D7 指标不可用</small>
+          <small>
+            {t(locale, 'experiment.daysNote', { text: stats.durationText ?? t(locale, 'params.missing') })}
+          </small>
         </div>
         <div className="field">
-          <label htmlFor="scenario-seed">场景 seed(CRN 基准)</label>
+          <label htmlFor="scenario-seed">{t(locale, 'experiment.seedLabel')}</label>
           <NumField
             id="scenario-seed"
             value={stats.seed}
-            ariaLabel="场景基础种子"
-            onCommit={(t) => onScenarioEdit('seed', t)}
+            ariaLabel={t(locale, 'experiment.seedAria')}
+            onCommit={(text) => onScenarioEdit('seed', text)}
           />
-          <small>scenario.seed(u64 文本提交,防大整数精度丢失);A/B 两侧共用 = CRN 配对</small>
+          <small>{t(locale, 'experiment.seedNote')}</small>
         </div>
-        {mixField('casual 配比', 'mix_casual', stats.mix.casual)}
-        {mixField('core 配比', 'mix_core', stats.mix.core)}
-        {mixField('whale 配比', 'mix_whale', stats.mix.whale)}
+        {mixField(t(locale, 'experiment.mixCasual'), 'mix_casual', stats.mix.casual)}
+        {mixField(t(locale, 'experiment.mixCore'), 'mix_core', stats.mix.core)}
+        {mixField(t(locale, 'experiment.mixWhale'), 'mix_whale', stats.mix.whale)}
         <div className="field">
-          <label htmlFor="scenario-reps">replicates(统计样本量)</label>
+          <label htmlFor="scenario-reps">{t(locale, 'experiment.repsLabel')}</label>
           <NumField
             id="scenario-reps"
             value={reps}
-            ariaLabel="replicates(每个候选的独立重复运行次数)"
-            onCommit={(t) => onRepsChange(Number(t))}
+            ariaLabel={t(locale, 'experiment.repsAria')}
+            onCommit={(text) => onRepsChange(Number(text))}
           />
-          <small>{repsError ?? '每候选独立重复运行次数(内核 sweep.replicates)'}</small>
+          <small>{repsError ?? t(locale, 'experiment.repsNote')}</small>
         </div>
         {method === 'random' && onSamplingChange !== undefined && (
           <div className="field">
-            <label htmlFor="scenario-sampling">随机采样策略(仅 Random / LHS 方法)</label>
+            <label htmlFor="scenario-sampling">{t(locale, 'experiment.samplingLabel')}</label>
             <select
               id="scenario-sampling"
               value={sampling ?? 'lhc'}
               onChange={(e) => onSamplingChange(e.target.value as 'lhc' | 'uniform')}
             >
-              <option value="lhc">拉丁超立方(latin_hypercube)</option>
-              <option value="uniform">均匀随机(random)</option>
+              <option value="lhc">{t(locale, 'experiment.sampling.lhc')}</option>
+              <option value="uniform">{t(locale, 'experiment.sampling.uniform')}</option>
             </select>
-            <small>LHS 逐维分层采样,与普通均匀随机语义不同(内核执行,不前端口算)。</small>
+            <small>{t(locale, 'experiment.samplingNote')}</small>
           </div>
         )}
       </div>

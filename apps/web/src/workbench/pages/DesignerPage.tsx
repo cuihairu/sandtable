@@ -42,6 +42,8 @@ import { dispatch } from '../state/workbenchStore.ts'
 import { paramYamlView } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
 import { notify } from '../state/notifications.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 import { classifyWasmError } from '../../lib/errors.ts'
 import { planSweep } from '../../lib/wasm.ts'
 import { parseConfig, numericValuesOf } from '../params/configYaml.ts'
@@ -83,6 +85,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
   const { design } = state
   const view = paramYamlView(state)
   const doc = state.project
+  const locale = useLocale()
 
   /* —— 计划预览(WB-06.10/11):请求版本 stamp,晚返回的旧计划不落位;ok 结果
    *  以输入 YAML 指纹对齐,WB-06.14 的「失效」在渲染期推导(无需同步 setState) —— */
@@ -151,7 +154,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
     lastLoadedExperiment.current = experimentPath
     const sweep = readSweepDesign(yaml)
     if (!sweep.ok) {
-      notify('info', `实验对象 ${experimentPath}:${sweep.reason};保留当前表单草稿`)
+      notify('info', t(locale, 'experiment.objectLoadFailed', { path: experimentPath, reason: sweep.reason }))
       return
     }
     dispatch({
@@ -164,8 +167,9 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
         reps: sweep.reps,
       },
     })
-    // 对象选择切换是本合并的全部触发(草稿编辑/方法切换不重复读入)
-  }, [experimentPath, design.method, doc, state.objectDrafts])
+    // 对象选择切换是本合并的全部触发(草稿编辑/方法切换不重复读入;
+    // locale 入依赖只为 lint 完整性,同路径重跑被 lastLoaded 挡回,不会重放提示)
+  }, [experimentPath, design.method, doc, state.objectDrafts, locale])
 
   /* —— 校验与派生 —— */
   const stats = scenarioStats(view.cand)
@@ -196,7 +200,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
 
   const onFactorAdd = (path: string): void => {
     if (design.factors.some((f) => f.path === path)) {
-      notify('warning', `因子 ${path} 已存在(路径重复不产生第二个轴)`)
+      notify('warning', t(locale, 'experiment.factorExists', { path }))
       return
     }
     // 起始域以候选当前值 ±20(整数类)或 ±20%(浮点类)为起点,可自由编辑;
@@ -214,7 +218,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
         patch: { factors: [...design.factors, { path, min: center - half, max: center + half, step: intKind ? 10 : Math.max(half / 10, 0.25) }] },
       })
     } else {
-      notify('info', `${path} 候选缺值:起始域取「候选值参考起点 ±20」并就地标注,请手动修正`)
+      notify('info', t(locale, 'experiment.factorFallback', { path }))
       dispatch({
         type: 'design/set',
         patch: { factors: [...design.factors, { path, min: intKind ? 1 : 0.5, max: intKind ? 21 : 1.5, step: intKind ? 10 : 0.25 }] },
@@ -229,7 +233,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
       return
     }
     if (!submitGuardRef.current!()) {
-      notify('warning', '提交进行中;重复点击已忽略(双击只创建一个任务)')
+      notify('warning', t(locale, 'experiment.submitBusy'))
       return
     }
     setSubmitting(true)
@@ -242,7 +246,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
           const check = await kernelCheck(view.cand)
           if (!check.ok) {
             dispatch({ type: 'param/kernel-error', error: { path: check.path, message: check.message } })
-            notify('error', `A/B 输入被内核校验阻止:${check.message}`)
+            notify('error', t(locale, 'experiment.abKernelBlocked', { message: check.message }))
             finish()
             return
           }
@@ -280,7 +284,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
           })
           if (job) {
             dispatch({ type: 'toggle-drawer', open: true })
-            notify('info', 'A/B 已提交真实执行:双臂逐 replicate 仿真;统计比较走内核 Comparison 桥接(WB-03.10/11 发布前如实报「桥接未接入」,不冒充统计判定)')
+            notify('info', t(locale, 'experiment.abSubmitted'))
           }
         } finally {
           finish()
@@ -299,14 +303,14 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
         } catch (e) {
           const msg = classifyWasmError(String(e)).message
           setResolved({ yaml: snapYaml, stamp: 0, error: msg })
-          notify('error', `内核计划失败:${msg}`)
+          notify('error', t(locale, 'experiment.planFailed', { message: msg }))
           finish()
           return
         }
         const check = await kernelCheck(view.cand)
         if (!check.ok) {
           dispatch({ type: 'param/kernel-error', error: { path: check.path, message: check.message } })
-          notify('error', `运行被内核校验阻止:${check.message}`)
+          notify('error', t(locale, 'experiment.runKernelBlocked', { message: check.message }))
           finish()
           return
         }
@@ -360,7 +364,9 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
         })
         if (job) {
           dispatch({ type: 'toggle-drawer', open: true })
-          notify('info', `内核计划绑定:真实执行 ${plan.candidates.length} 候选 × ${plan.replicates} replicates = ${plan.sims} 次运行(逐候选 runSweepCandidate;进度只在候选边界更新)`)
+          notify('info', t(locale, 'experiment.planBound', {
+            candidates: plan.candidates.length, replicates: plan.replicates, sims: plan.sims,
+          }))
         }
       } finally {
         finish()
@@ -372,8 +378,8 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
   const paramRows = buildRowModels(parseConfig(view.base), parseConfig(view.cand))
   const changedDraft = diffRows(paramRows)
   const baselineLabel = doc && view.scenarioPath
-    ? `项目场景 ${view.scenarioPath}(打开时原文)`
-    : '注册表默认基线(演示基线)'
+    ? t(locale, 'experiment.baselineLabelProject', { path: view.scenarioPath })
+    : t(locale, 'experiment.baselineLabelDefault')
   const candidateOid = (() => {
     const baseId = doc && view.scenarioPath
       ? candidateIdFor(hashId(ID_PREFIXES.baseline, doc.projectId, view.scenarioPath) as BaselineId, numericValuesOf(parseConfig(view.cand)))
@@ -426,13 +432,13 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
   return (
     <>
       <WorkspaceHeading
-        title={design.name.trim() === '' ? '未命名实验' : design.name}
-        crumb="实验 / 新建运行"
-        badge={{ text: state.designDirty ? 'DRAFT · 已修改' : 'DRAFT' }}
+        title={design.name.trim() === '' ? t(locale, 'experiment.unnamed') : design.name}
+        crumb={t(locale, 'experiment.crumb')}
+        badge={{ text: state.designDirty ? t(locale, 'experiment.draftModified') : 'DRAFT' }}
         actions={
           <button className="btn" onClick={() => dispatch({ type: 'navigate', page: 'analysis' })}>
             <WbIcon name="chart" />
-            查看结果样例
+            {t(locale, 'experiment.viewResults')}
           </button>
         }
       />
@@ -443,17 +449,17 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
           <section className="form-section">
             <div className="form-section-heading">
               <span className="step">01</span>
-              <h2>引用、名称与实验方法</h2>
+              <h2>{t(locale, 'experiment.sectionRefs')}</h2>
             </div>
             <div className="note-block">
-              <strong>引用(WB-06.01,来自共享草稿)</strong>
-              <div>场景: {view.scenarioPath ? `项目对象 ${view.scenarioPath}` : '演示候选场景(参数草稿 YAML)'}</div>
-              <div>基线: {doc && view.scenarioPath ? `项目场景原文(只读基线) ${view.scenarioPath}` : '注册表默认基线 = 注册表默认 YAML'}</div>
-              <div>候选: {view.scenarioPath ? '该场景的编辑草稿' : '参数编辑器草稿'} · 候选 ID {candidateOid.slice(0, 12)}…</div>
-              <div>实验: {design.name.trim() || '(未命名)'} · 方法 {design.method} · 实验身份 = 方法+名称+项目派生(非固定样例对象)</div>
+              <strong>{t(locale, 'experiment.refsTitle')}</strong>
+              <div>{t(locale, 'experiment.refScenario')} {view.scenarioPath ? t(locale, 'experiment.refScenarioProject', { path: view.scenarioPath }) : t(locale, 'experiment.refScenarioDemo')}</div>
+              <div>{t(locale, 'experiment.refBaseline')} {doc && view.scenarioPath ? t(locale, 'experiment.refBaselineProject', { path: view.scenarioPath }) : t(locale, 'experiment.refBaselineDefault')}</div>
+              <div>{t(locale, 'experiment.refCandidate')} {view.scenarioPath ? t(locale, 'experiment.refCandidateScenario') : t(locale, 'experiment.refCandidateEditor')} {t(locale, 'experiment.candidateIdLabel', { id: candidateOid.slice(0, 12) })}</div>
+              <div>{t(locale, 'experiment.refExperiment', { name: design.name.trim() || t(locale, 'experiment.unnamedParens'), method: design.method })}</div>
             </div>
             <div className="field" style={{ marginBottom: 15 }}>
-              <label htmlFor="design-name">实验名称</label>
+              <label htmlFor="design-name">{t(locale, 'experiment.nameLabel')}</label>
               <input
                 id="design-name"
                 value={design.name}
@@ -468,21 +474,21 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
             <section className="form-section">
               <div className="form-section-heading">
                 <span className="step">02</span>
-                <h2>A/B 双方快照与参数差异(WB-06.02)</h2>
+                <h2>{t(locale, 'experiment.abSectionTitle')}</h2>
               </div>
               <div className="note-block">
-                <strong>双侧快照</strong>
-                <div>基线臂快照: {baselineLabel}</div>
-                <div>候选臂快照: {view.scenarioPath ? '场景候选草稿(内容寻址)' : '参数编辑器候选草稿(内容寻址)'} · {candidateOid.slice(0, 16)}…</div>
-                <div>CRN 配对:两侧共用 scenario.seed = {stats.seed ?? '(缺值)'};replicates = {design.reps}。</div>
-                <div style={{ marginTop: 6 }}>本次比较的参数 diff:共 {changedDraft.length} 项变化。</div>
+                <strong>{t(locale, 'experiment.abSnapshots')}</strong>
+                <div>{t(locale, 'experiment.abBaselineArm', { label: baselineLabel })}</div>
+                <div>{t(locale, 'experiment.abCandidateArm', { label: view.scenarioPath ? t(locale, 'experiment.abCandScenario') : t(locale, 'experiment.abCandEditor') })} {candidateOid.slice(0, 16)}…</div>
+                <div>{t(locale, 'experiment.abCrn', { seed: stats.seed ?? t(locale, 'params.missing'), reps: design.reps })}</div>
+                <div style={{ marginTop: 6 }}>{t(locale, 'experiment.abDiffCount', { n: changedDraft.length })}</div>
               </div>
               <table style={{ marginTop: 10, width: '100%' }}>
                 <thead>
                   <tr>
-                    <th>参数路径</th>
-                    <th className="numeric">基线值</th>
-                    <th className="numeric">候选值</th>
+                    <th>{t(locale, 'experiment.colPath')}</th>
+                    <th className="numeric">{t(locale, 'experiment.colBaselineValue')}</th>
+                    <th className="numeric">{t(locale, 'experiment.colCandidateValue')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -490,24 +496,24 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
                     changedDraft.map((d) => (
                       <tr key={d.path}>
                         <td className="mono" style={{ fontSize: 11 }}>{d.path}</td>
-                        <td className="numeric">{d.baseline.present ? d.baseline.text : '缺值'}</td>
-                        <td className="numeric">{d.candidate.present ? d.candidate.text : '缺值'}</td>
+                        <td className="numeric">{d.baseline.present ? d.baseline.text : t(locale, 'params.missing')}</td>
+                        <td className="numeric">{d.candidate.present ? d.candidate.text : t(locale, 'params.missing')}</td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={3}>两臂当前没有参数差异(候选值与基线一致),可先前往参数编辑器修改候选。</td>
+                      <td colSpan={3}>{t(locale, 'experiment.abNoDiff')}</td>
                     </tr>
                   )}
                 </tbody>
               </table>
-              <p className="note">统计判定(配对差 CI / 效应量)调用内核 Comparison 桥接(WB-03.10/11 发布,调用点已接入执行器 WB-07.03);桥接发布前 A/B 任务双臂真跑后如实报「桥接未接入」,不冒充结果。</p>
+              <p className="note">{t(locale, 'experiment.abStatsNote')}</p>
             </section>
           ) : (
             <section className="form-section">
               <div className="form-section-heading">
                 <span className="step">02</span>
-                <h2>实验因子与取值域(内核模式 {sweepMode})</h2>
+                <h2>{t(locale, 'experiment.factorSectionTitle', { mode: sweepMode ?? '' })}</h2>
               </div>
               <FactorTable
                 method={design.method}

@@ -8,6 +8,8 @@
 import type { JSX } from 'react'
 import { sweepableParams, METHOD_LABEL } from './designerLogic.ts'
 import type { DesignerMethod, FactorDraft } from './designerLogic.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type FactorRowView = {
   draft: FactorDraft
@@ -40,20 +42,21 @@ export function FactorTable({
   onFactorRemove,
   onSamplesChange,
 }: FactorTableProps): JSX.Element {
+  const locale = useLocale()
   const sweep = method !== 'ab'
   const showStep = method === 'grid'
   return (
-    <div className="factor-grid" role="grid" aria-label="实验因子">
-      <span role="rowheader">因子 / 参数路径</span>
+    <div className="factor-grid" role="grid" aria-label={t(locale, 'experiment.factorsAria')}>
+      <span role="rowheader">{t(locale, 'experiment.colFactorPath')}</span>
       <label className="muted" style={{ fontSize: 10 }} htmlFor="factor-min-0">
-        最小值
+        {t(locale, 'experiment.colMin')}
       </label>
       <label className="muted" style={{ fontSize: 10 }} htmlFor="factor-max-0">
-        最大值
+        {t(locale, 'experiment.colMax')}
       </label>
       {showStep && (
         <label className="muted" style={{ fontSize: 10 }} htmlFor="factor-step-0">
-          步长
+          {t(locale, 'experiment.colStep')}
         </label>
       )}
       <span className="muted" style={{ fontSize: 10 }} />
@@ -70,18 +73,18 @@ export function FactorTable({
       {sweep && (
         <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <label className="muted" htmlFor="factor-add" style={{ fontSize: 10 }}>
-            添加因子
+            {t(locale, 'experiment.addFactor')}
           </label>
           <select
             id="factor-add"
             value={''}
-            aria-label="添加扫描因子(参数注册表)"
+            aria-label={t(locale, 'experiment.addFactorAria')}
             onChange={(e) => {
               if (e.target.value !== '') onFactorAdd(e.target.value)
               e.target.value = ''
             }}
           >
-            <option value="">选择注册表参数…</option>
+            <option value="">{t(locale, 'experiment.pickParam')}</option>
             {REGISTRY_PARAMS.map((p) => (
               <option key={p.path} value={p.path}>
                 {p.path} · {p.kind} · {p.desc}
@@ -93,7 +96,7 @@ export function FactorTable({
       {method === 'random' && (
         <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, alignItems: 'center' }}>
           <label className="muted" htmlFor="factor-samples" style={{ fontSize: 10 }}>
-            采样数 samples(候选量;LHS/Random 共用)
+            {t(locale, 'experiment.samplesLabel')}
           </label>
           <input
             id="factor-samples"
@@ -127,18 +130,21 @@ function FactorCells({
   onChange: (draft: FactorDraft) => void
   onRemove?: () => void
 }): JSX.Element {
+  const locale = useLocale()
   return (
     <>
       <span className="factor-name" role="gridcell">
         {row.draft.path}
         <br />
-        <span style={{ color: '#82939a' }}>{`注册表参数 · ${METHOD_LABEL[showStep ? 'grid' : 'random']} 模式`}</span>
+        <span style={{ color: '#82939a' }}>
+          {t(locale, 'experiment.registryParamLine', { mode: METHOD_LABEL[showStep ? 'grid' : 'random'] })}
+        </span>
       </span>
       <input
         id={`factor-min-${index}`}
         type="number"
         value={row.draft.min}
-        aria-label={`${row.draft.path} 最小值`}
+        aria-label={t(locale, 'experiment.minAria', { path: row.draft.path })}
         aria-invalid={row.error !== undefined}
         onChange={(e) => onChange({ ...row.draft, min: Number(e.target.value) })}
       />
@@ -146,7 +152,7 @@ function FactorCells({
         id={`factor-max-${index}`}
         type="number"
         value={row.draft.max}
-        aria-label={`${row.draft.path} 最大值`}
+        aria-label={t(locale, 'experiment.maxAria', { path: row.draft.path })}
         aria-invalid={row.error !== undefined}
         onChange={(e) => onChange({ ...row.draft, max: Number(e.target.value) })}
       />
@@ -155,7 +161,7 @@ function FactorCells({
           id={`factor-step-${index}`}
           type="number"
           value={row.draft.step}
-          aria-label={`${row.draft.path} 步长`}
+          aria-label={t(locale, 'experiment.stepAria', { path: row.draft.path })}
           aria-invalid={row.error !== undefined}
           onChange={(e) => onChange({ ...row.draft, step: Number(e.target.value) })}
         />
@@ -167,8 +173,13 @@ function FactorCells({
           </span>
         )}
         {onRemove && (
-          <button type="button" className="btn subtle" aria-label={`移除因子 ${row.draft.path}`} onClick={onRemove}>
-            移除
+          <button
+            type="button"
+            className="btn subtle"
+            aria-label={t(locale, 'experiment.removeFactorAria', { path: row.draft.path })}
+            onClick={onRemove}
+          >
+            {t(locale, 'experiment.remove')}
           </button>
         )}
       </span>
