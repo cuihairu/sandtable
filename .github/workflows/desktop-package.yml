@@ -384,13 +384,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          find dist -type f
+          # download-artifact 保留制品内部目录(bundle/msi、bundle/nsis 等),发布只取安装器、
+          # 不收 .app 目录;用 find 收平层 glob 会漏配(no matches found 即整步失败)
+          files=()
+          while IFS= read -r -d '' f; do
+            files+=("$f")
+          done < <(find dist -type f \
+            \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o -name '*.deb' \) -print0)
+          [ "${#files[@]}" -gt 0 ] || { echo "no installer found"; exit 1; }
+          printf '%s\n' "${files[@]}"
           sha8="${GITHUB_SHA::8}"
           gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
           gh release create nightly \
             --title "nightly ${sha8}" \
-            --notes "滚动每日构建(检测到更新才发布),commit ${sha8},出自 run ${{ github.run_number }}。预发布:未走完整验收,仅用于真机走查与冒烟排障;正式版本由用户手动触发。" \
+            --notes "滚动每日构建(检测到更新才发布),commit ${sha8},出自 run ${{ github.run_id }}。预发布:未走完整验收,仅用于真机走查与冒烟排障;正式版本由用户手动触发。" \
             --prerelease --latest=false \
             --target "$GITHUB_SHA" \
-            dist/*.msi dist/*.exe dist/*.dmg dist/*.deb
+            "${files[@]}"
           echo "nightly release published at commit ${sha8}"
