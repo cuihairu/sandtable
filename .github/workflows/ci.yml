@@ -144,9 +144,9 @@ jobs:
       # 项目打包/解包闭环 + 路径纪律(打包产物过真实内核 validate)
       - name: 前端守卫(node --test)
         run: |
-          node --test apps/web/tests/columns.test.mjs apps/web/tests/tokens.test.mjs apps/web/tests/workbench-ids.test.mjs apps/web/tests/workbench-logic.test.mjs apps/web/tests/i18n.test.mjs apps/web/tests/params-config.test.mjs apps/web/tests/sweep-view.test.mjs
+          node --test apps/web/tests/columns.test.mjs apps/web/tests/tokens.test.mjs apps/web/tests/workbench-ids.test.mjs apps/web/tests/workbench-logic.test.mjs apps/web/tests/i18n.test.mjs apps/web/tests/params-config.test.mjs apps/web/tests/sweep-view.test.mjs apps/web/tests/machine-export.test.mjs apps/web/tests/execution.test.mjs
           wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
-          node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs apps/web/tests/contracts.test.mjs
+          node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs apps/web/tests/contracts.test.mjs apps/web/tests/execution-kernel.test.mjs
 
   # 桌面启动链守卫(2026-10-13 接入):无 custom-protocol 的构建是开发形态——窗口
   # 加载 build.devUrl(localhost:5173),独立运行只显示错误页;这个坑此前只被

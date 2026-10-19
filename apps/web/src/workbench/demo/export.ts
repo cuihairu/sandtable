@@ -8,11 +8,9 @@ import type { DemoCandidate, MetricKey, ParamValues } from './sampleProject.ts'
 import { verdictOf } from './sampleProject.ts'
 import type { DesignDraft } from '../designer/designerLogic.ts'
 import { METHOD_LABEL } from '../designer/designerLogic.ts'
-
-function csvCell(v: string | number): string {
-  if (typeof v === 'number') return String(Number(v.toFixed(4)))
-  return `"${String(v).replaceAll('"', '""')}"`
-}
+// WB-11.22/.23 · 机器导出口径共用点:规范十进制(不再四舍五入到 4 位)、
+// RFC4180 引号、非有限数值明确报错;可读 SVG 记录导出时 locale
+import { csvCell, machineJson, svgLanguageMeta } from '../../lib/machineExport.ts'
 
 export function demoCsv(rows: readonly DemoCandidate[]): string {
   const cols = [
@@ -37,7 +35,8 @@ export function demoSnapshot(
   rows: readonly DemoCandidate[],
   draft: { values: ParamValues; design: DesignDraft },
 ): string {
-  return JSON.stringify(
+  // machineJson:非有限数值明确报错,不静默变 null;输出 locale 无关(WB-11.22)
+  return machineJson(
     {
       prototype: 'sandtable-workbench-v2-react',
       data_source: DATA_SOURCE,
@@ -84,10 +83,22 @@ export function demoSnapshot(
   )
 }
 
-/** 从 React 渲染出的主图 SVG 元素序列化为独立 SVG 文件(带来源标注)。 */
-export function svgFromElement(svg: SVGSVGElement, metricLabel: string, metricId: string): string {
+/** 从 React 渲染出的主图 SVG 元素序列化为独立 SVG 文件(带来源标注)。
+ * WB-11.23:传入 locale 时把导出语言记录进产物根节点(xml:lang + data-locale),
+ * 可读标注文案由调用方按同一 locale 渲染;不传则不记录(保持旧调用兼容)。 */
+export function svgFromElement(
+  svg: SVGSVGElement,
+  metricLabel: string,
+  metricId: string,
+  locale?: string,
+): string {
   const clone = svg.cloneNode(true) as SVGSVGElement
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  if (locale !== undefined) {
+    for (const [name, value] of Object.entries(svgLanguageMeta(locale))) {
+      clone.setAttribute(name, value)
+    }
+  }
   const title = document.createElementNS('http://www.w3.org/2000/svg', 'title')
   title.textContent = `${metricLabel} · 合成演示数据`
   const desc = document.createElementNS('http://www.w3.org/2000/svg', 'desc')

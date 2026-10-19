@@ -132,11 +132,11 @@
 - [ ] WB-11.16：翻译导入导出对话框、范围/格式选项、成功/失败提示和商业软件互通说明。
 - [x] WB-11.17：动态文案使用参数化模板；计数/复数规则按 locale 处理，不拼接中文或英文碎片。(2026-10-20,`lib/i18n`:t() 命名占位插值+未提供参数原样保留,即参数化模板;plural.ts 走 Intl.PluralRules 选形,tPlural 按词典 `<key>.<category>` 取形、失败回退 .other、{n} 自动注入;en 形句整体重写不做词缀拼接,zh 恒 other、.one 形仅为键集对齐;词典增 tasks.remaining/data.rowsExported 复数对,守卫测试 12/12)
 - [ ] WB-11.18：使用 `Intl` 统一显示数字、百分比、日期、时间和时长；语言切换不改变底层数值。
-- [ ] WB-11.19：参数路径、KPI ID、文件路径、哈希、seed 和用户输入名称保持原始内容；仅翻译系统显示名与辅助文字。
+- [x] WB-11.19：参数路径、KPI ID、文件路径、哈希、seed 和用户输入名称保持原始内容；仅翻译系统显示名与辅助文字。(2026-10-20,`lib/machineExport.ts`:RAW_FIELD_KINDS 登记六类原始字段 + isRawFieldKind 守卫;机器输出(machineNumber/machineJson/csvCell/toCsv)一律不收 locale 参数,本地化只走显示层 t/tPlural/displayName(未翻译的原始 desc 由 WB-11.20 回显);守卫测试锁六类清单不漂移)
 - [ ] WB-11.20：区分“原始注册表 desc”与“已翻译展示文案”；未翻译的项目自定义描述显示原文，不假装自动翻译。
 - [x] WB-11.21：为可识别校验/运行错误提供稳定错误码与参数化翻译；保留原始内核错误详情供定位，未知错误使用本地化兜底。(2026-10-20,`lib/i18n/errorText.ts`:错误码 config_error/param_error/serialize_error/unknown_error 稳定不变,复用 lib/errors.ts 前缀分类;词典 errors.* 改 {detail} 参数化模板,localizeWasmError(locale, err)→{code,text,detail},detail=原始内核消息逐字保留;未知走 errors.unknown 本地化兜底,缺词纪律(WB-11.25)对错误词条同样生效;守卫测试 16/16)
-- [ ] WB-11.22：机器可读导出保持稳定字段名、枚举值与小数点；CSV/JSON 不能因切换语言改变 schema。
-- [ ] WB-11.23：SVG/可读报告使用导出时选定语言并记录 locale；不把本地化显示文本写回实验配置。
+- [x] WB-11.22：机器可读导出保持稳定字段名、枚举值与小数点；CSV/JSON 不能因切换语言改变 schema。(2026-10-20,`lib/machineExport.ts`:machineNumber 规范十进制(点小数、无千分位、-0 归一)、toCsv/csvCell RFC4180(表头原样、行宽不齐明确报错、CRLF、null=空单元格非 0)、machineJson 递归拒非有限数值(JSON.stringify 的 NaN→null 是静默造假);全部函数无 locale 参数=编译期保证 schema 不随语言漂移;demo 导出(csvCell/JSON)切到共用口径,不再四舍五入;守卫测试 7 条)
+- [ ] WB-11.23：SVG/可读报告使用导出时选定语言并记录 locale；不把本地化显示文本写回实验配置。(2026-10-20 部分推进:`lib/machineExport.ts` exportLocale/svgLanguageMeta——记录值与渲染语言同源,未知 locale 退 en-US;`demo/export.ts` svgFromElement 已加可选 locale 参数写入 xml:lang+data-locale;调用侧传导出时 locale 需改 WorkbenchApp(并行会话在改,未接),机器快照继续只收原始草稿不经词典)
 - [ ] WB-11.24：核对英文长标签、中文行高、按钮/表头/图例布局；两种语言下宽表和小屏都可操作。
 - [x] WB-11.25：检查词典缺 key/空字符串；开发环境报告缺失项，正式界面不直接展示翻译 key。(2026-10-20,词典缺 key/空串已有 WB-11.03 守卫(key 集合一致+非空)锁死;缺词双形态:t()/tPlural 经 reportMissing——正式界面回显当前语言的 `errors.missingText` 兜底文案绝不回显 key,开发环境回显原 key 可 grep 且按 `locale|key` 每键只 console.warn 一次;dev 判定默认 Vite import.meta.env.DEV,configureI18n 可覆盖(应用入口/测试用);守卫测试 14/14)
 - [ ] WB-11.26：检查首屏语言、手动切换、刷新恢复、设置不可写与未知 locale 的回退行为。
