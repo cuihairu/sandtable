@@ -3,6 +3,7 @@
 // 编辑语义,任何焦点位置都由应用接管。
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 const { globalShortcutFor, isEditableTarget } = await import('../src/workbench/keyboard.ts')
 
@@ -60,4 +61,13 @@ test('WB-02.14 目标大小写不敏感,异常目标视为非输入', () => {
   assert.equal(isEditableTarget(undefined), false)
   // 非输入焦点(如 document/BODY)撤销仍归应用
   assert.equal(globalShortcutFor({ ...plain, target: { tagName: 'BODY' } }), 'undo')
+})
+
+test('WB-02.14 命令面板保留原生对话框 Esc 关闭路径', () => {
+  // 命令面板是可自由进出的导航面(非强制选择),Esc/X 必须可用;
+  // dismissable=false 会 preventDefault 掉原生 <dialog> 的 cancel(Esc),
+  // 面板将无法用键盘退出——只允许确认类对话框使用强制选择。
+  const src = readFileSync(new URL('../src/workbench/overlays/CommandSearch.tsx', import.meta.url), 'utf8')
+  assert.ok(src.includes('<OverlayDialog'), '命令面板走 OverlayDialog 基座')
+  assert.ok(!src.includes('dismissable={false}'), '命令面板不得禁用 Esc 关闭')
 })

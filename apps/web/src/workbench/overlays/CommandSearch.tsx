@@ -56,7 +56,7 @@ export function CommandSearch({ open, onClose, commands }: CommandSearchProps): 
   }
 
   return (
-    <OverlayDialog open={open} onClose={onClose} title={t(locale, 'common.commandSearchTitle')} dismissable={false}>
+    <OverlayDialog open={open} onClose={onClose} title={t(locale, 'common.commandSearchTitle')}>
       <div onKeyDown={onKeyDown}>
         <label htmlFor="command-input" className="muted" style={{ fontSize: 11 }}>
           {t(locale, 'common.commandSearchHint')}
