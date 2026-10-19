@@ -36,6 +36,38 @@ footer:
   copyright: Apache-2.0
 ---
 
+## Workbench preview
+
+The five workspaces of the V2 numerical-experiment workbench (`apps/web` interactive prototype, built-in synthetic sample data). The same design is the baseline for the desktop (Tauri) implementation (see the [desktop alignment baseline](./专业工作台桌面对齐基准.md), Chinese):
+
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:8px">
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="./assets/screenshots/analysis.png" alt="Result analysis workspace" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>Result analysis</strong> — parameter response chart with 95% CI, candidate table, and inspector working in sync; scan outcomes and constraint verdicts at a glance.</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="./assets/screenshots/parameters.png" alt="Parameter editing workspace" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>Parameter editing</strong> — registry-driven parameter grid: read-only baseline, editable candidate values, bulk edits and type validation.</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="./assets/screenshots/designer.png" alt="Experiment design workspace" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>Experiment design</strong> — A/B / Grid / Random-LHS method choice, run budget, and pre-flight checks.</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="./assets/screenshots/runs.png" alt="Run tasks workspace" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>Run tasks</strong> — queue progress and cancellation; existing sample results stay independent.</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="./assets/screenshots/exchange.png" alt="Data and export workspace" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>Data and export</strong> — CSV / JSON / SVG downloads that keep parameter IDs, metric conventions, and CIs.</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="./assets/screenshots/analysis-768.png" alt="Result analysis workspace at 768px width" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>Narrow screens</strong> — at 768px the chart, candidate table, and inspector still fit on screen.</figcaption>
+  </figure>
+</div>
+
+
 <script setup lang="ts">
 // 首次访问按浏览器语言选择文档语言（vitepress 无此能力，GitHub Pages 不支持 _redirects）
 // 优先级：localStorage 手动选择 > navigator.language > 保持当前 locale

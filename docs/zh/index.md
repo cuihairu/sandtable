@@ -35,3 +35,35 @@ footer:
   message: "本页为中文首页；请使用导航栏语言切换器访问英文站点。"
   copyright: Apache-2.0
 ---
+
+## 界面预览
+
+数值实验工作台 V2（`apps/web` 交互原型，内置合成样例数据）的五个工作区，也是桌面（Tauri）端实现的设计基准（见[桌面对齐基准](../专业工作台桌面对齐基准.md)）：
+
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:8px">
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="../assets/screenshots/analysis.png" alt="结果分析工作区" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>结果分析</strong> —— 参数响应图 + 95% CI、候选表与检查器三方联动，看扫描结果与约束判定。</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="../assets/screenshots/parameters.png" alt="参数编辑工作区" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>参数编辑</strong> —— 注册表参数宽表：基线只读、候选值可编辑，支持批量修改与类型校验。</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="../assets/screenshots/designer.png" alt="实验设计工作区" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>实验设计</strong> —— A/B / Grid / Random-LHS 方法选择、运行预算与运行前基础校验。</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="../assets/screenshots/runs.png" alt="运行任务工作区" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>运行任务</strong> —— 任务队列的进度与取消；已有样例结果独立保留。</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="../assets/screenshots/exchange.png" alt="数据与导出工作区" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>数据与导出</strong> —— CSV / JSON / SVG 下载，保留参数 ID、指标口径与 CI。</figcaption>
+  </figure>
+  <figure style="flex:1 1 460px;margin:0">
+    <img src="../assets/screenshots/analysis-768.png" alt="768px 窄屏下的结果分析工作区" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+    <figcaption><strong>窄屏适配</strong> —— 768px 下图表、候选表与检查器仍可同屏操作。</figcaption>
+  </figure>
+</div>
+
