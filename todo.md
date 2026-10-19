@@ -104,9 +104,10 @@
 - [x] WB-02.12：将筛选、排序、激活 KPI、候选选择、检查器开关作为 UI 状态，避免污染实验输入。(2026-10-20,上述各键均为 WorkbenchState 独立字段,reducer 各 case 只写自身字段;tests/workbench-store.test.mjs:14 个 UI 动作连发后实验输入三层(演示候选/项目对象草稿/实验设计)逐项不变,同时抽查 UI 字段落位证明测试不空转)
 - [x] WB-02.13：切换页面、标签、项目资源时保留相应草稿；关闭/切换有未保存内容的文档时可恢复。(2026-10-20,navigate 不动任何草稿字段;项目模式 objectDrafts 按归档路径隔离(WB-04.06);关项目只清内存,浏览器草稿记录保留,重开同 projectId 经 restoreObjectDrafts 恢复未保存内容;object/undo 撤销栈与重做栈保留;tests/workbench-store.test.mjs 三条恢复路径锁定)
 - [x] WB-02.14：迁入命令搜索、Tab/方向键/Home/End、保存/撤销快捷键，输入框内不抢占原生编辑快捷键。(2026-10-20,命令搜索 Ctrl/Cmd+K、保存 Ctrl/Cmd+S、撤销 Ctrl/Cmd+Z 在 WorkbenchApp 全局层,新增重做 Ctrl/Cmd+Shift+Z·Ctrl/Cmd+Y;裁决提为纯函数 `workbench/keyboard.ts` globalShortcutFor——输入框/文本区/contentEditable 内撤销与重做交还浏览器原生行为,Ctrl+S/K 无原生文本编辑语义任何焦点都接管,修复原实现无条件 preventDefault 抢占输入框 Ctrl+Z 的缺陷;Tab/←/→/Home/End 走 DocumentTabs roving tabindex;空历史时撤销/重做不再谎报「已撤销」;tests/workbench-shortcuts.test.mjs 6 测 + 快捷键说明弹层同步更新)
-- [ ] WB-02.15：为各状态接入加载、禁用、错误边界与重试；删除只有“已完成”提示却未执行动作的事件。
-- [ ] WB-02.16：迁入侧栏/检查器收起与窄屏局部滚动，保证桌面图表和候选表可同时操作。
-- [ ] WB-02.17：将已有查询、Parquet 导出等能力放入合理入口，避免更换壳后丢失功能。
+- [x] WB-02.15：为各状态接入加载、禁用、错误边界与重试；删除只有“已完成”提示却未执行动作的事件。(2026-10-20 审计落账:错误边界 main.tsx ErrorBoundary 包住两套界面,白屏换可读文案(2026-10-13 无头走查即此路径);重试 runManager.retryJob 同一执行快照重新入队(WB-07.14,RunsPage 与 TaskList「重试」按钮);禁用——RunPlanSidebar canSubmit、查询/Parquet 按钮 busy 期 disabled;演示任务完成提示明示「未执行仿真,未生成新的结果产物」不冒充真实完成,真实完成提示伴随候选数与 A/B 产物;查询引擎初始化失败 toast 报错且按钮保持可点即重试)
+- [x] WB-02.16：迁入侧栏/检查器收起与窄屏局部滚动，保证桌面图表和候选表可同时操作。(2026-10-20,资源树收起 explorerCollapsed + 状态栏切换 + 1060px 断点处理;检查器 toggle-inspector 在分析页工具栏(收起/显示,aria-label 同步);页面内容 .page-scroll overflow:auto 局部滚动,应用根 100dvh overflow:hidden 不整页滚;1250px/1060px 断点 analysis-body 保持图表+检查器两列网格,图表与候选表不互斥)
+- [x] WB-02.17：将已有查询、Parquet 导出等能力放入合理入口，避免更换壳后丢失功能。(2026-10-20,数据交换页新增两入口:SQL 查询——按需动态加载 duckdb-wasm 与 QueryPanel,打开即把演示候选 CSV 注册为内存表 sandtable_demo_candidates,也可载入 .sandtable 项目 / CSV 产物查自己的数据;Parquet 导出——exportCsvAsParquet 与 CSV 同列,CLI query 可 read_parquet 直接续分析;两入口 busy 期禁用、失败 toast 且可重试;桌面壳原生本地查询仍在现役单页界面未丢,见 WB-02.18)
+- [ ] WB-02.18：把桌面壳的原生本地查询（LocalQuery：多选对话框 + 手输路径读磁盘产物，万级行不经前端内存）迁入工作台数据交换页。(2026-10-20 审计 WB-02.17 时发现,独立成行;当前工作台提供浏览器内 duckdb 查询等价入口)
 
 验收：正式 React 应用可操作五个工作区；状态不因切页丢失，视觉遵循 V2，演示与真实数据来源清晰。
 
