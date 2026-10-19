@@ -442,3 +442,46 @@ test('WB-11.14:KPI 显示名与单位后缀双语齐全(指标 id 稳定,显示�
   assert.equal(zh['analysis.kpi.retention_d7'], 'D7 留存率')
   assert.equal(en['analysis.kpi.retention_d7'], 'D7 retention')
 })
+
+test('WB-11.15:队列面文案——状态/进度/错误/恢复经词典双语可解', async () => {
+  const { statusLabel, errorClassLabel, recoveryText } = await import('../src/workbench/tasks/taskText.ts')
+  // 六态:zh 真值源 + en 自然语,缺省 zh(演示面板/节点测试口径)
+  assert.equal(statusLabel('cancelling', 'zh-CN'), zh['tasks.cancelling'])
+  assert.equal(statusLabel('cancelling', 'en-US'), en['tasks.cancelling'])
+  assert.equal(statusLabel('failed', 'zh-CN'), '已失败')
+  assert.equal(statusLabel('failed', 'en-US'), 'Failed')
+  // 错误分类 + 恢复动作(缺省 zh;execFsm 侧 zh 简表由 execution 测试另行锁定)
+  assert.equal(errorClassLabel('init', 'zh-CN'), '初始化失败')
+  assert.equal(errorClassLabel('init', 'en-US'), 'Initialization failed')
+  assert.match(recoveryText('budget', 'sweep'), /缩小实验规模/)
+  assert.equal(recoveryText('budget', 'sweep', 'en-US'), en['tasks.recovery.budget'])
+  assert.equal(recoveryText('bridge', 'ab', 'en-US'), en['tasks.recovery.bridgeAb'])
+  // 模板键双语占位一致
+  for (const k of ['tasks.progress.candidates', 'tasks.footer.succeeded', 'tasks.toast.realDone',
+    'tasks.toast.failed', 'tasks.demo.cancelled', 'tasks.toast.stoppedCandidatePartial']) {
+    const zs = [...zh[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+    const es = [...en[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+    assert.deepEqual(es, zs, `${k} 双语占位必须一致`)
+  }
+})
+
+test('WB-11.15:执行域 toast 发结构化词条,入队时按当前 locale 解析', async () => {
+  const { notify, listNotices, resetForTest } = await import('../src/workbench/state/notifications.ts')
+  const { setLocale, localeSession } = await import('../src/workbench/state/localeStore.ts')
+  const before = localeSession.get()
+  try {
+    resetForTest()
+    setLocale('zh-CN')
+    notify('info', { key: 'tasks.toast.demoDone', params: { name: '扫描任务' } })
+    assert.equal(listNotices().at(-1).message, '任务「扫描任务」演示结束:未执行仿真,未生成新的结果产物')
+    setLocale('en-US')
+    notify('success', { key: 'tasks.toast.realDoneComparison', params: { name: 'sweep', n: 3 } })
+    assert.equal(listNotices().at(-1).message, 'Task "sweep" real execution finished: 3 candidates; A/B comparison is ready')
+    // 直排字符串照旧透传(既有调用方不受影响)
+    notify('warning', 'plain text stays verbatim')
+    assert.equal(listNotices().at(-1).message, 'plain text stays verbatim')
+  } finally {
+    setLocale(before)
+    resetForTest()
+  }
+})

@@ -16,9 +16,19 @@ import { startExec, resolveBackends } from './executor.ts'
 import type { ExecBackends, ExecJobPatch, ExecOutcome } from './executor.ts'
 import { canTransition, terminalOutcome } from './execFsm.ts'
 import { notify } from './notifications.ts'
+// WB-11.15:本文件在 WB-07.17 守卫清单内,不得 import i18n——toast 发结构化
+// 词条 { key, params },由 notifications 在入队时按当前 locale 解析。
 
 const TICK_MS = 700
 const DEMO_RATIO = 18
+
+/** 终局取消 toast 的整句词条表:边界种类 × 部分结果(WB-11.15)。
+ *  字面量常量,词条按当前 locale 在 notifications.notify 入队时解析。 */
+const STOPPED_TOAST_KEYS = {
+  candidate: { full: 'tasks.toast.stoppedCandidate', partial: 'tasks.toast.stoppedCandidatePartial' },
+  replicate: { full: 'tasks.toast.stoppedReplicate', partial: 'tasks.toast.stoppedReplicatePartial' },
+  arm: { full: 'tasks.toast.stoppedArm', partial: 'tasks.toast.stoppedArmPartial' },
+} as const
 
 let jobs: Job[] = []
 const listeners = new Set<() => void>()
@@ -38,10 +48,10 @@ function startTimer(): void {
     jobs = logic.settleJobs(logic.tickJobs(before, DEMO_RATIO))
     for (const [beforeJob, afterJob] of zip(before, jobs)) {
       if (beforeJob.status !== 'succeeded' && afterJob.status === 'succeeded') {
-        notify('info', `任务「${afterJob.name}」演示结束:未执行仿真,未生成新的结果产物`)
+        notify('info', { key: 'tasks.toast.demoDone', params: { name: afterJob.name } })
       }
       if (beforeJob.status !== 'cancelled' && afterJob.status === 'cancelled') {
-        notify('info', `任务「${afterJob.name}」已在边界停止(保留 ${afterJob.done}/${afterJob.total} 演示进度)`)
+        notify('info', { key: 'tasks.toast.demoCancelled', params: { name: afterJob.name, done: afterJob.done, total: afterJob.total } })
       }
     }
     emit()
@@ -124,14 +134,26 @@ function applyOutcome(id: JobId, out: ExecOutcome): void {
   }
   // 终局 toast:取消/成功/失败各一个口径(与演示队列同风格)
   const kept = terminalOutcome(jobs.find((j) => j.id === id) ?? job)
+  // 终局 toast 词条整句成形(边界种类 × 部分结果 × A/B 各为独立词条,
+  // 不在状态层拼字符串);词条解析见 notifications.notify
   if (status === 'succeeded') {
-    notify('success', `任务「${job.name}」真实执行完成:${out.results.length} 候选${out.comparison !== null ? ',A/B 比较已出' : ''}`)
+    notify('success', {
+      key: out.comparison !== null ? 'tasks.toast.realDoneComparison' : 'tasks.toast.realDone',
+      params: { name: job.name, n: out.results.length },
+    })
   } else if (status === 'cancelled') {
     const b = out.boundary
-    const where = b === null ? '' : b.kind === 'candidate' ? `候选边界(${b.done}/${b.total})` : b.kind === 'replicate' ? `replicate 边界(${b.done}/${b.total})` : `臂边界(${b.done}/${b.total})`
-    notify('info', `任务「${job.name}」已在${where}停止${kept === 'partial' ? ',已完成的候选已保留' : ''}`)
+    const key = b === null
+      ? (kept === 'partial' ? 'tasks.toast.stoppedPartial' : 'tasks.toast.stopped')
+      : kept === 'partial' ? STOPPED_TOAST_KEYS[b.kind].partial : STOPPED_TOAST_KEYS[b.kind].full
+    notify('info', {
+      key,
+      params: b === null ? { name: job.name } : { name: job.name, done: b.done, total: b.total },
+    })
+  } else if (out.message === null) {
+    notify('error', { key: 'tasks.toast.failedUnknown', params: { name: job.name, class: out.errorClass ?? 'run' } })
   } else {
-    notify('error', `任务「${job.name}」失败(${out.errorClass ?? 'run'}):${out.message ?? '未知错误'}`)
+    notify('error', { key: 'tasks.toast.failed', params: { name: job.name, class: out.errorClass ?? 'run', detail: out.message } })
   }
 }
 
@@ -160,7 +182,7 @@ export function enqueueRun(input: {
   backends?: Promise<ExecBackends> | ExecBackends
 }): Job | null {
   if (logic.runningCount(jobs) > 0) {
-    notify('warning', '已有任务运行中(单活动任务约束):等待完成或取消后再提交')
+    notify('warning', { key: 'tasks.toast.busyReal' })
     return null
   }
   const job: Job = {
@@ -215,7 +237,7 @@ export function enqueueDemo(input: {
   total: number
 }): Job | null {
   if (logic.runningCount(jobs) > 0) {
-    notify('warning', '已有演示任务运行中,请等待完成或取消后再添加')
+    notify('warning', { key: 'tasks.toast.busyDemo' })
     return null
   }
   const job: Job = {
