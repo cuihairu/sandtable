@@ -494,6 +494,26 @@ test('WB-05.15 编辑后 round-trip 保留 damage_model/loot/公式/未编辑结
   assert.equal(readText(parsedAfter, 'model.formulas.xp_needed'), 'xp_base * level ^ xp_pow')
 })
 
+/* ————— WB-11.20 原始 desc 与已翻译展示文案的边界 ————— */
+
+test('WB-11.20 zh 展示名=注册表原文;en 全量独立译表;未登记路径回显原文不造假', () => {
+  // zh 侧:展示名就是注册表原始 desc(详情/搜索直接引用同一原文,不做二次包装)
+  for (const p of PARAM_REGISTRY) {
+    assert.equal(displayParamName(p.path, 'zh-CN'), p.desc)
+  }
+  // en 侧:全部注册项有独立英文展示名——既不回显路径,也不拿 zh 原文冒充译文
+  for (const p of PARAM_REGISTRY) {
+    const name = displayParamName(p.path, 'en-US')
+    assert.notEqual(name, p.path, `${p.path} en 展示名不应回显路径`)
+    assert.notEqual(name, p.desc, `${p.path} en 展示名不应拿 zh 原文冒充`)
+    assert.ok(name.length > 0)
+  }
+  // 未登记路径(项目自定义参数位):如实回显标识本身,不虚构译文
+  assert.equal(displayParamName('custom.future_param', 'en-US'), 'custom.future_param')
+  assert.equal(displayParamName('custom.future_param', 'zh-CN'), 'custom.future_param')
+  // 词典侧同口径(有译词用译词,未知 key 回显原始 desc)由 displayName 在 i18n 测试锁定
+})
+
 test('WB-05.15 仓库全部示例 YAML 可解析;恢复单项走基线文本或删除', () => {
   const dir = `${REPO_ROOT}examples`
   for (const f of readdirSync(dir).filter((n) => n.endsWith('.yaml'))) {
