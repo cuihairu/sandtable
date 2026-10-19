@@ -6,12 +6,17 @@
 // - RunRegistry:运行提交时登记的不可变输入快照(配置哈希/版本/seed/
 //   实验条件)与产物路径(WB-04.09/08)。内核执行接入前(WB-07)如实
 //   标注:只有输入快照,没有产物。
+// WB-11.16 · 面板文案走词典(data.project.*);report schema 版本行与
+// unknown-version 的内核消息保持原文(内核契约)。
 import type { JSX } from 'react'
 import { WbIcon } from '../components/icons.tsx'
 import { dispatch } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
 import { baseContentOf, draftOf } from '../state/projectDoc.ts'
 import type { ResultFileStatus } from '../state/projectDoc.ts'
+import { t } from '../../lib/i18n/index.ts'
+import type { Locale } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 function DraftEditor({
   state, path, label, icon,
@@ -21,35 +26,36 @@ function DraftEditor({
   label: string
   icon: string
 }): JSX.Element {
+  const locale = useLocale()
   const doc = state.project!
   const base = baseContentOf(doc, path)
   const d = draftOf(state.objectDrafts, path, base)
   const dirty = d.content !== base
   return (
-    <section className="form-section" aria-label={`${label}配置草稿`} data-wb-object={path}>
+    <section className="form-section" aria-label={t(locale, 'data.project.draftAria', { label })} data-wb-object={path}>
       <div className="form-section-heading">
         <span className="step">{icon === 'flask' ? '02' : '01'}</span>
         <h2>{label}:<span className="mono" style={{ fontSize: 12 }}>{path}</span></h2>
         <span className={`badge${d.saved ? '' : ' amber'}`} role="status">
-          {d.saved ? '与项目文件一致' : '未保存'}
+          {d.saved ? t(locale, 'data.project.saved') : t(locale, 'common.unsaved')}
         </span>
       </div>
       <textarea
         value={d.content}
         rows={10}
         spellCheck={false}
-        aria-label={`${label}配置 YAML(${path})`}
+        aria-label={t(locale, 'data.project.draftAriaYaml', { label, path })}
         onChange={(e) => dispatch({ type: 'object/draft', key: path, content: e.target.value })}
       />
       {dirty && (
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <button className="btn" onClick={() => dispatch({ type: 'object/undo', key: path })}>
             <WbIcon name="undo" />
-            撤销本次修改
+            {t(locale, 'data.project.undoEdit')}
           </button>
           <button className="btn" onClick={() => dispatch({ type: 'object/reset', key: path })}>
             <WbIcon name="reset" />
-            放弃修改(回到项目文件)
+            {t(locale, 'data.project.discardEdit')}
           </button>
         </div>
       )}
@@ -59,6 +65,7 @@ function DraftEditor({
 
 /** WB-04.06 · 项目配置草稿编辑器:每个对象独立缓冲,互不覆盖。 */
 export function ProjectConfigEditors({ state }: { state: WorkbenchState }): JSX.Element | null {
+  const locale = useLocale()
   const doc = state.project
   if (!doc) return null
   const scenarioPath = state.selection.scenario || null
@@ -66,35 +73,36 @@ export function ProjectConfigEditors({ state }: { state: WorkbenchState }): JSX.
   if (!scenarioPath && !experimentPath) return null
   return (
     <>
-      {scenarioPath && <DraftEditor state={state} path={scenarioPath} label="场景" icon="sliders" />}
-      {experimentPath && <DraftEditor state={state} path={experimentPath} label="实验" icon="flask" />}
+      {scenarioPath && <DraftEditor state={state} path={scenarioPath} label={t(locale, 'data.project.labelScenario')} icon="sliders" />}
+      {experimentPath && <DraftEditor state={state} path={experimentPath} label={t(locale, 'data.project.labelExperiment')} icon="flask" />}
     </>
   )
 }
 
-function statusText(st: ResultFileStatus | undefined): { text: string; error: boolean } {
-  if (!st) return { text: '产物', error: false }
+function statusText(st: ResultFileStatus | undefined, locale: Locale): { text: string; error: boolean } {
+  if (!st) return { text: t(locale, 'data.project.artifact'), error: false }
   if (st.state === 'known') return { text: `report schema ${st.version}`, error: false }
   if (st.state === 'unknown-version') return { text: st.message, error: true }
-  return { text: '产物(按字节保留,不解析)', error: false }
+  return { text: t(locale, 'data.project.artifactRaw'), error: false }
 }
 
 /** WB-04.04 · 已保存结果:打开项目时全部载入并列出版本状态。 */
 export function ProjectResultsPanel({ state }: { state: WorkbenchState }): JSX.Element | null {
+  const locale = useLocale()
   const doc = state.project
   if (!doc) return null
   const results = doc.objects.filter((o) => o.kind === 'result')
   return (
-    <section className="form-section" aria-label="项目已保存结果">
+    <section className="form-section" aria-label={t(locale, 'data.project.resultsAria')}>
       <div className="form-section-heading">
-        <h2>项目已保存结果({results.length})</h2>
+        <h2>{t(locale, 'data.project.resultsTitle', { n: results.length })}</h2>
       </div>
       {results.length === 0 ? (
-        <p className="muted">项目内没有已保存结果;运行并保存后这里会出现结果条目。</p>
+        <p className="muted">{t(locale, 'data.project.resultsEmpty')}</p>
       ) : (
         <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
           {results.map((o) => {
-            const st = statusText(doc.resultStatus[o.path])
+            const st = statusText(doc.resultStatus[o.path], locale)
             return (
               <li key={o.path} className="mono" style={{ fontSize: 12, lineHeight: 1.9 }}>
                 {o.path}
@@ -116,25 +124,26 @@ export function ProjectResultsPanel({ state }: { state: WorkbenchState }): JSX.E
 
 /** WB-04.09/08 · 运行快照登记簿:提交时生成的不可变输入快照。 */
 export function RunRegistry({ state }: { state: WorkbenchState }): JSX.Element | null {
+  const locale = useLocale()
   if (!state.project) return null
   const runs = state.runs
   return (
-    <section className="form-section" aria-label="运行快照登记">
+    <section className="form-section" aria-label={t(locale, 'data.project.registryAria')}>
       <div className="form-section-heading">
-        <h2>运行快照登记({runs.length})</h2>
+        <h2>{t(locale, 'data.project.registryTitle', { n: runs.length })}</h2>
       </div>
       {runs.length === 0 ? (
-        <p className="muted">尚无登记的运行;提交运行时会生成不可变输入快照(配置哈希 / 模型与 schema 版本 / seed / 实验条件)。</p>
+        <p className="muted">{t(locale, 'data.project.registryEmpty')}</p>
       ) : (
         <table style={{ width: '100%', marginTop: 8, fontSize: 12 }}>
           <thead>
             <tr>
               <th>run ID</th>
-              <th>输入 sha256</th>
+              <th>{t(locale, 'data.project.colInputHash')}</th>
               <th>seed</th>
               <th>model / schema</th>
-              <th>实验条件</th>
-              <th>产物路径</th>
+              <th>{t(locale, 'data.project.colConditions')}</th>
+              <th>{t(locale, 'data.project.colArtifacts')}</th>
             </tr>
           </thead>
           <tbody>
@@ -147,15 +156,14 @@ export function RunRegistry({ state }: { state: WorkbenchState }): JSX.Element |
                 <td className="mono">
                   {Object.entries(r.conditions).map(([k, v]) => `${k}=${String(v)}`).join(', ')}
                 </td>
-                <td className="mono">{r.files.join(' ') || '—(执行接入后补充)'}</td>
+                <td className="mono">{r.files.join(' ') || t(locale, 'data.project.noFiles')}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
       <p className="muted" style={{ marginTop: 8 }}>
-        快照在提交时冻结(同输入恒得同 run ID);内核执行接入前如实标注 model/schema = unknown,不冒充已知版本。
-        保存项目时登记与产物按 results/&lt;run_id&gt;.&lt;产物&gt; 平铺写入,并附 results/runs.json 索引。
+        {t(locale, 'data.project.registryNote')}
       </p>
     </section>
   )

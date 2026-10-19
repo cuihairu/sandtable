@@ -3,6 +3,8 @@
 // WB-02.17 · 已有能力入位不丢:SQL 查询面板与 Parquet 导出从现役单页应用
 // 迁入本页(duckdb-wasm 按需加载,首次打开才进包;演示候选注册为内存表,
 // 也可载入 .sandtable 项目 / CSV 产物查自己的数据)。
+// WB-11.16 · 导出入口/格式说明/互通边界走词典(data.exchange.*;提示走
+// 结构化词条,与 runManager 同口径)。表名与 CLI 命令保持原文。
 import { useState } from 'react'
 import type { ComponentProps, JSX } from 'react'
 import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
@@ -11,6 +13,8 @@ import { DEMO_RESULT } from '../demo/sampleProject.ts'
 import { demoCsv, download } from '../demo/export.ts'
 import { notify } from '../state/notifications.ts'
 import type { QueryColumn } from '../../lib/duck.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 /** 查询面板组件类型(仅类型引用,运行时动态导入)。 */
 type QueryPanelComponent = (typeof import('../../components/QueryPanel.tsx'))['default']
@@ -20,6 +24,7 @@ export type ExchangePageProps = {
 }
 
 export function ExchangePage({ onExport }: ExchangePageProps): JSX.Element {
+  const locale = useLocale()
   // WB-02.17 · 查询面板按需挂载:duckdb-wasm 只在首次打开时进包
   const [query, setQuery] = useState<{ Panel: QueryPanelComponent; run: (sql: string) => Promise<QueryColumn[]> } | null>(null)
   const [queryOpen, setQueryOpen] = useState(false)
@@ -47,10 +52,10 @@ export function ExchangePage({ onExport }: ExchangePageProps): JSX.Element {
       ])
       setQuery({ Panel, run: (sql) => runQuery(sql) })
       setQueryOpen(true)
-      notify('info', `查询已就绪:内置演示候选注册为表 ${tables.join(', ')}(载入项目 / CSV 会清旧表)`)
+      notify('info', { key: 'data.exchange.toastQueryReady', params: { tables: tables.join(', ') } })
     } catch (e) {
       // 初始化失败按钮回到可点状态,再点即重试(WB-02.15)
-      notify('error', `查询引擎初始化失败:${String(e)}`)
+      notify('error', { key: 'data.exchange.toastQueryInit', params: { detail: String(e) } })
     } finally {
       setQueryBusy(false)
     }
@@ -63,9 +68,9 @@ export function ExchangePage({ onExport }: ExchangePageProps): JSX.Element {
       const { exportCsvAsParquet } = await import('../../lib/duck.ts')
       const bytes = await exportCsvAsParquet(demoCsv(DEMO_RESULT.candidates), 'sandtable-demo-candidates')
       download('sandtable-demo-candidates.parquet', bytes, 'application/octet-stream')
-      notify('success', '已下载 sandtable-demo-candidates.parquet(与 CSV 同列,CLI query 可直接续分析)')
+      notify('success', { key: 'data.exchange.toastParquetDone', params: { file: 'sandtable-demo-candidates.parquet' } })
     } catch (e) {
-      notify('error', `Parquet 导出失败:${String(e)}`)
+      notify('error', { key: 'data.exchange.toastParquetFailed', params: { detail: String(e) } })
     } finally {
       setParquetBusy(false)
     }
@@ -74,97 +79,96 @@ export function ExchangePage({ onExport }: ExchangePageProps): JSX.Element {
   return (
     <>
       <WorkspaceHeading
-        title="数据与导出"
-        crumb="数据交换"
+        title={t(locale, 'nav.exchange')}
+        crumb={t(locale, 'nav.tab.exchange')}
         actions={
           <button className="btn primary" onClick={onExport}>
             <WbIcon name="download" />
-            导出向导
+            {t(locale, 'data.exchange.wizard')}
           </button>
         }
       />
       <div className="page-scroll">
         <div className="exchange-page">
           <p className="exchange-intro">
-            把当前分析带到熟悉的工具。导出内容标明样例数据来源,保留参数 ID、指标口径和展示区间。
+            {t(locale, 'data.exchange.intro')}
           </p>
           <div className="exchange-row">
             <div className="exchange-icon">CSV</div>
             <div>
-              <h2>候选结果表</h2>
+              <h2>{t(locale, 'data.exchange.csvTitle')}</h2>
               <p>
-                11 个候选、参数值、3 个 KPI 及展示区间、约束判定。
+                {t(locale, 'data.exchange.csvBody')}
                 <br />
-                <span className="mono">UTF-8 BOM · 逗号分隔 · 百分比用 0–100 数值</span>
+                <span className="mono">{t(locale, 'data.exchange.csvMeta')}</span>
               </p>
             </div>
             <div className="actions">
               <button className="btn" onClick={onExport}>
                 <WbIcon name="download" />
-                下载 CSV
+                {t(locale, 'data.download.csv')}
               </button>
             </div>
           </div>
           <div className="exchange-row">
             <div className="exchange-icon">JSON</div>
             <div>
-              <h2>实验与候选方案快照</h2>
+              <h2>{t(locale, 'data.exchange.jsonTitle')}</h2>
               <p>
-                当前参数草稿、实验设置、内置样例结果与来源说明。
+                {t(locale, 'data.exchange.jsonBody1')}
                 <br />
-                样例结果绑定其默认实验设置,不会被当前草稿覆盖。
+                {t(locale, 'data.exchange.jsonBody2')}
               </p>
             </div>
             <div className="actions">
               <button className="btn" onClick={onExport}>
                 <WbIcon name="download" />
-                下载 JSON
+                {t(locale, 'data.download.json')}
               </button>
             </div>
           </div>
           <div className="exchange-row">
             <div className="exchange-icon">PQ</div>
             <div>
-              <h2>候选结果表(Parquet)</h2>
+              <h2>{t(locale, 'data.exchange.pqTitle')}</h2>
               <p>
-                与 CSV 同列的列式二进制;命令行 query 可直接 read_parquet 续分析。
+                {t(locale, 'data.exchange.pqBody')}
                 <br />
-                <span className="mono">DuckDB COPY · 演示数据 synthetic_demo</span>
+                <span className="mono">{t(locale, 'data.exchange.pqMeta')}</span>
               </p>
             </div>
             <div className="actions">
               <button className="btn" onClick={() => void downloadParquet()} disabled={parquetBusy}>
                 <WbIcon name="download" />
-                {parquetBusy ? '转换中…' : '下载 Parquet'}
+                {parquetBusy ? t(locale, 'data.exchange.converting') : t(locale, 'data.download.parquet')}
               </button>
             </div>
           </div>
           <div className="exchange-row">
             <div className="exchange-icon">SVG</div>
             <div>
-              <h2>参数响应图</h2>
+              <h2>{t(locale, 'data.exchange.svgTitle')}</h2>
               <p>
-                导出当前主指标图,包含观测点、区间线、基线与目标线。
+                {t(locale, 'data.exchange.svgBody1')}
                 <br />
-                矢量格式可供报告排版、放大与进一步编辑。
+                {t(locale, 'data.exchange.svgBody2')}
               </p>
             </div>
             <div className="actions">
               <button className="btn" onClick={onExport}>
                 <WbIcon name="download" />
-                下载 SVG
+                {t(locale, 'data.download.svg')}
               </button>
             </div>
           </div>
           <div className="exchange-row">
             <div className="exchange-icon">SQL</div>
             <div>
-              <h2>结果查询(SQL)</h2>
+              <h2>{t(locale, 'data.exchange.sqlTitle')}</h2>
               <p>
-                浏览器内 DuckDB 查询;打开时内置演示候选已注册为表,也可载入
-                .sandtable 项目或 CSV 产物查自己的数据。
+                {t(locale, 'data.exchange.sqlBody')}
                 <br />
-                <span className="mono">查询引擎首次打开时加载(duckdb-wasm)</span>
+                <span className="mono">{t(locale, 'data.exchange.sqlMeta')}</span>
               </p>
             </div>
             <div className="actions">
@@ -174,7 +178,7 @@ export function ExchangePage({ onExport }: ExchangePageProps): JSX.Element {
                 disabled={queryBusy}
               >
                 <WbIcon name="terminal" />
-                {queryBusy ? '初始化…' : queryOpen ? '收起查询' : '打开 SQL 查询'}
+                {queryBusy ? t(locale, 'data.exchange.initializing') : queryOpen ? t(locale, 'data.exchange.collapseQuery') : t(locale, 'data.exchange.openQuery')}
               </button>
             </div>
           </div>
@@ -183,16 +187,16 @@ export function ExchangePage({ onExport }: ExchangePageProps): JSX.Element {
               <query.Panel
                 run={query.run}
                 initialSql="SELECT * FROM sandtable_demo_candidates"
-                hint="演示候选在表 sandtable_demo_candidates;载入 .sandtable / CSV 会清旧表再注册(解包校验同 CLI project check)"
+                hint={t(locale, 'data.exchange.queryHint')}
               />
             </div>
           )}
           <div className="integration-note">
-            <strong>与商业软件的衔接</strong>
+            <strong>{t(locale, 'data.exchange.integrationTitle')}</strong>
             <br />
-            Excel / Origin / JMP:导入 CSV 继续分析。MATLAB:使用 readtable 读取 CSV,或 jsondecode 读取 JSON。
+            {t(locale, 'data.exchange.integrationBody1')}
             <br />
-            “直接打开软件”、MATLAB Engine、JMP 自动化和原生工作簿连接尚未接入;当前提供文件交换。
+            {t(locale, 'data.exchange.integrationBody2')}
           </div>
         </div>
       </div>
