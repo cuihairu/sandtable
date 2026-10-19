@@ -19,7 +19,7 @@ Real-side data arrives as three CSV/YAML artifacts plus one optional. Column nam
 | `meta.yaml` (required) | population, observation window days, cohort mix shares, win definition + `win_rate` series if tracked | anchors `win_rate`; documents the semantic alignment ("what counts as a win" real-side vs sim-side) |
 | `gacha_pulls.csv` (optional) | `account_id, pulls_to_first_hit` | `gacha_pulls_to_hit` (only if the real case has gacha; the public closed-form reconciliation already covers the synthetic case) |
 
-**Open mapping, decided only when data arrives**: `power_p50_final` has no universal real-side observable (power is a model construct). If the real game has a progression proxy (level, stage, battle power), the mapping is fixed at intake time in `meta.yaml`; if not, the anchor is marked **unmapped** and excluded — never estimated from a public case.
+**Open mapping, decided only when data arrives**: `power_p50` (the final-day power p50) has no universal real-side observable (power is a model construct). If the real game has a progression proxy (level, stage, battle power), the mapping is fixed at intake time in `meta.yaml`; if not, the anchor is marked **unmapped** and excluded — never estimated from a public case.
 
 A missing required artifact ⇒ its anchors are marked unmapped. Missing anchors narrow the fit; they never get substituted.
 
