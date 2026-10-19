@@ -1,7 +1,9 @@
 // WB-02.08 · 任务领域逻辑(纯函数,runManager 与节点测试共用)。
 // 状态机:queued → running → (cancelling → cancelled | succeeded | failed)。
-// 演示任务的"成功/取消"只推进进度沙漏,不执行内核、不产生新结果产物——
-// 真实执行与进度(WB-07)接入同一状态机。
+// 演示任务的"成功/取消"只推进进度沙漏,不执行内核、不产生新结果产物。
+// WB-07 · 真实执行接入同一状态机:进度只来自内核事件(无原型定时器),
+// 取消/错误分类与部分结果语义见 execFsm.ts,执行引擎见 executor.ts。
+import type { CandidateResult, Comparison, SimOutput, SweepRecOutput } from '../../lib/types.ts'
 import type { JobId } from '../ids.ts'
 
 export type JobStatus =
@@ -11,6 +13,44 @@ export type JobStatus =
   | 'cancelled'
   | 'succeeded'
   | 'failed'
+
+/** WB-07.01 · 状态机六态不变;真实任务的状态推进由 executor 按内核事件驱动。 */
+export type ExecKind = 'sweep' | 'ab' | 'single'
+
+/** 进度来源口径:replicates=桌面 Channel 逐 replicate;candidates=扫描候选边界;none=该执行端无进度面 */
+export type ExecProgressKind = 'replicates' | 'candidates' | 'none'
+
+/** WB-07.14 · 错误分类:init=Worker 初始化失败 / run=内核运行错误 / budget=内存预算 / bridge=内核桥接未接入。取消不是错误(状态机 cancelled)。 */
+export type ExecErrorClass = 'init' | 'run' | 'budget' | 'bridge'
+
+/** WB-07.03 · 执行输入快照(数据自足:切项目/切页不读 store,任务重试同 spec)。 */
+export type ExecSpec =
+  | { kind: 'sweep'; yaml: string; plan: { candidates: ReadonlyArray<Record<string, number>>; replicates: number; sims: number } }
+  | { kind: 'ab'; baseYaml: string; candYaml: string; replicates: number }
+  | { kind: 'single'; yaml: string; replicates: number }
+
+/** WB-07.02 · 真实执行任务的扩展视图(演示任务无此字段)。绑定 run ID + 保留执行输入。 */
+export type JobExec = {
+  runId: string
+  kind: ExecKind
+  spec: ExecSpec
+  progressKind: ExecProgressKind
+  replicates: number
+  /** 扫描:已完成(已出结果)候选数,含 config_error 候选 */
+  candidatesDone: number
+  candidatesTotal: number
+  /** WB-07.07/14 · 保留的候选结果(取消/失败不清空;config_error 留在结果集) */
+  results: readonly CandidateResult[]
+  recommendation: SweepRecOutput | null
+  /** WB-07.14 · 推荐调用失败时如实记录(不重算、不伪装成 null 区间) */
+  recommendationError: string | null
+  comparison: Comparison | null
+  /** A/B 双臂输出(桥接未接入时保留为部分结果,不冒充统计判定);单臂完成也如实保留 */
+  arms: { base: SimOutput | null; cand: SimOutput | null } | null
+  sim: SimOutput | null
+  errorClass: ExecErrorClass | null
+  errorMessage: string | null
+}
 
 export type Job = {
   id: JobId
@@ -24,6 +64,8 @@ export type Job = {
   /** demo 任务只演示进度/取消流程 */
   demo: boolean
   createdAt: number
+  /** WB-07 · 真实执行视图;undefined = 演示任务 */
+  exec?: JobExec
 }
 
 export function isTerminal(status: JobStatus): boolean {

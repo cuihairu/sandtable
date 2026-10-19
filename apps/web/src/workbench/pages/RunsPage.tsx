@@ -1,5 +1,7 @@
 // WB-02.04 · 运行任务页容器:任务列表(订阅运行管理器)+ 样例结果卡。
 // 运行管理器是模块级单例——切页只换这个视图组件,队列与定时器不受影响。
+// WB-07.02/13 · 真实执行任务在此列表(与抽屉/状态栏同一数据源,切页不丢);
+// WB-07.14 · 失败任务的重试动作(同一执行快照重新入队)接 runManager.retryJob。
 import { useSyncExternalStore } from 'react'
 import type { JSX } from 'react'
 import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
@@ -13,13 +15,15 @@ import type { Job } from '../state/jobLogic.ts'
 
 export function RunsPage({ state }: { state?: WorkbenchState }): JSX.Element {
   const jobs = useSyncExternalStore(runManager.subscribe, runManager.listJobs)
-  const cancel = (id: Job['id']): void => runManager.cancelJob(id)
+  const cancel = (id: Job['id']): void => {
+    void runManager.cancelJob(id)
+  }
   return (
     <>
       <WorkspaceHeading
         title="运行任务"
         crumb="任务队列"
-        badge={{ text: '演示队列', tone: 'amber' }}
+        badge={{ text: '真实执行 + 演示标注', tone: 'amber' }}
         actions={
           <button className="btn primary" onClick={() => dispatch({ type: 'navigate', page: 'designer' })}>
             <WbIcon name="plus" />
@@ -33,14 +37,15 @@ export function RunsPage({ state }: { state?: WorkbenchState }): JSX.Element {
         <div className="runs-heading">
           <h2>当前会话任务</h2>
           <p className="note" style={{ margin: '7px 0 0' }}>
-            演示队列在工作区切换时持续运行(运行管理器为模块级单例,不随页面卸载)。
-            刷新页面会清空队列;已有样例结果始终独立保留。
+            任务队列在工作区切换时持续运行(运行管理器为模块级单例,不随页面卸载)。
+            真实执行任务的进度来自内核事件;演示任务明确标注「演示」。刷新页面会清空队列;已有样例结果始终独立保留。
           </p>
         </div>
         <div id="jobs-list">
           <TaskList
             jobs={jobs}
             onCancel={cancel}
+            onRetry={(id) => runManager.retryJob(id)}
             emptyAction={
               <button className="btn" onClick={() => dispatch({ type: 'navigate', page: 'designer' })}>
                 <WbIcon name="flask" />

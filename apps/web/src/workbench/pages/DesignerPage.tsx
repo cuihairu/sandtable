@@ -3,8 +3,10 @@
 //   场景对象,演示模式用参数草稿;实验身份按 草稿内容+名称 派生(ID 前缀
 //   体系),不再用固定演示样例对象(WB-06.01);
 // - 02 方法 A/B = 双方真实快照对比(基线=项目场景原文/注册默认基线;候选
-//   =当前参数草稿,内容寻址候选 ID),差异表 = 参数级 diff(WB-06.02;
-//   统计 A/B 执行桥接在 WB-03.10/WB-07,此处不冒充);
+//   =当前参数草稿,内容寻址候选 ID),差异表 = 参数级 diff(WB-06.02);
+//   WB-07.03:提交即真实执行——双臂逐 replicate 仿真,统计比较走内核
+//   Comparison 桥接调用点(桥接由 WB-03.10/11 发布,未发布前任务如实报
+//   bridge 错误类,不冒充统计判定);
 // - 06.03/04/05 Grid/Random/LHS 因子表走注册表,Kernel 模式名序列化;
 // - 06.06 场景表单读写 scenario 节(population/duration/seed/population_mix);
 // - 06.07 KPI 限当前配置可用指标(days<7 的 D7 明示不可用并阻止提交);
@@ -15,6 +17,8 @@
 //   标「已失效」;06.12 计划数字全来自内核;06.13 预算原因接禁用并给
 //   可行操作提示;06.15 提交重新走内核校验并绑定输入快照+计划+实验 ID,
 //   单飞守卫防双击双建。
+// - WB-07.03:提交 = 真实执行任务(绑定 run ID,按已校验计划逐候选调用
+//   runSweepCandidate;进度在候选边界更新)——不再是演示队列。
 import type { JSX } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
@@ -27,7 +31,7 @@ import { KpiConstraintTable } from '../designer/KpiConstraintTable.tsx'
 import { RunPlanSidebar } from '../designer/RunPlanSidebar.tsx'
 import type { PlanState } from '../designer/RunPlanSidebar.tsx'
 import {
-  designErrors, factorRowError, sweepModeOf, abTaskCount,
+  designErrors, factorRowError, sweepModeOf,
   scenarioStats, kpiAvailability, createSubmitGuard, createPlanGate,
   applyScenarioLeaf, thresholdFromUi, experimentScopedId,
 } from '../designer/designerLogic.ts'
@@ -261,15 +265,18 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
             },
           })
           dispatch({ type: 'run/register', entry: runIndexEntryOf(snap, info?.config_hash) })
-          const job = runManager.enqueueDemo({
+          // WB-07.03 · A/B 真实执行:双臂逐 replicate 仿真 + 内核 Comparison
+          // 桥接调用点(桥接由 WB-03.10/11 发布;未发布前如实报 bridge)
+          const job = runManager.enqueueRun({
             experimentId,
+            runId: snap.runId,
             name: design.name,
             method: 'AB',
-            total: abTaskCount(design.reps),
+            spec: { kind: 'ab', baseYaml: view.base, candYaml: view.cand, replicates: design.reps },
           })
           if (job) {
             dispatch({ type: 'toggle-drawer', open: true })
-            notify('info', 'A/B 输入已校验冻结并登记快照;统计比较执行桥接接 WB-07(演示队列不产真实结果)')
+            notify('info', 'A/B 已提交真实执行:双臂逐 replicate 仿真;统计比较走内核 Comparison 桥接(WB-03.10/11 发布前如实报「桥接未接入」,不冒充统计判定)')
           }
         } finally {
           finish()
@@ -330,15 +337,21 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
           },
         })
         dispatch({ type: 'run/register', entry: runIndexEntryOf(snap, info?.config_hash) })
-        const job = runManager.enqueueDemo({
+        // WB-07.03 · 扫描真实执行:按已校验计划逐候选调用 runSweepCandidate
+        const job = runManager.enqueueRun({
           experimentId,
+          runId: snap.runId,
           name: design.name,
           method: String(sweep).toUpperCase(),
-          total: plan.sims,
+          spec: {
+            kind: 'sweep',
+            yaml: snapYaml,
+            plan: { candidates: plan.candidates, replicates: plan.replicates, sims: plan.sims },
+          },
         })
         if (job) {
           dispatch({ type: 'toggle-drawer', open: true })
-          notify('info', `内核计划绑定:${plan.candidates.length} 候选 × ${plan.replicates} replicates = ${plan.sims} 次运行;演示队列(WB-07 前不产真实产物)`)
+          notify('info', `内核计划绑定:真实执行 ${plan.candidates.length} 候选 × ${plan.replicates} replicates = ${plan.sims} 次运行(逐候选 runSweepCandidate;进度只在候选边界更新)`)
         }
       } finally {
         finish()
@@ -479,7 +492,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
                   )}
                 </tbody>
               </table>
-              <p className="note">统计判定(配对差 CI / 效应量)为内核 Comparison 桥接(WB-03.10/11 + WB-07.03),当前界面只呈现输入侧 diff,不冒充结果。</p>
+              <p className="note">统计判定(配对差 CI / 效应量)调用内核 Comparison 桥接(WB-03.10/11 发布,调用点已接入执行器 WB-07.03);桥接发布前 A/B 任务双臂真跑后如实报「桥接未接入」,不冒充结果。</p>
             </section>
           ) : (
             <section className="form-section">

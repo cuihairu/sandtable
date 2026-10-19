@@ -240,23 +240,23 @@
 
 依赖：WB-03/WB-06。
 
-- [ ] WB-07.01：定义任务状态机：queued/running/cancelling/cancelled/succeeded/failed，区分有部分结果的状态。
-- [ ] WB-07.02：建立应用级运行管理器，绑定 job/experiment/run ID，切页不丢执行引用。
-- [ ] WB-07.03：A/B 调用真实比较桥接；扫描按已校验计划逐候选调用 `runSweepCandidate`。
-- [ ] WB-07.04：桌面仿真接 Channel 进度，显示实际 done/total，不使用原型定时器。
-- [ ] WB-07.05：扫描进度按已完成候选与其 replicates 表达；内核未提供的候选内进度不得推算成真进度。
-- [ ] WB-07.06：桌面取消接 `cancelRun`，区分“取消请求已发出”与“已在 replicate 边界停止”。
-- [ ] WB-07.07：扫描取消沿用候选边界检查，保留已完成候选，停止后不对不完整数据生成完整推荐。
-- [ ] WB-07.08：建立浏览器 Worker 消息协议，包含请求/任务 ID、输入、结果、错误与可用的进度事件。
-- [ ] WB-07.09：在 Worker 内初始化并复用 WASM，主线程保持可交互；初始化失败可重试。
-- [ ] WB-07.10：明确浏览器取消语义：边界停止或终止 Worker；无法返回中间状态时如实提示。
-- [ ] WB-07.11：Worker 终止后清理执行上下文，下一次运行可重新初始化，旧消息不写入新任务。
-- [ ] WB-07.12：控制单次活动任务/并发与内存预算，遵守当前桌面取消令牌只对应活动任务的约束。
-- [ ] WB-07.13：统一任务页、底部状态栏与抽屉进度，当前工作区切换后仍显示同一个任务。
-- [ ] WB-07.14：单候选配置错误留在结果集中；取消、运行错误、初始化错误采用不同展示和恢复动作。
-- [ ] WB-07.15：任务结束/失败/取消后清理 busy、监听器与令牌，支持再次提交。
-- [ ] WB-07.16：处理取消与完成同时发生、重复取消、失败后重试、切项目时仍运行等竞争条件。
-- [ ] WB-07.17：语言切换只更新显示文案，任务对象和执行 Promise/Worker 不被重建。
+- [x] WB-07.01：定义任务状态机：queued/running/cancelling/cancelled/succeeded/failed，区分有部分结果的状态。(2026-10-20,execFsm.ts 迁移守卫表 canTransition(六态不变,cancelling→succeeded 留给取消/完成竞争)+终态三分 terminalOutcome: complete/partial/empty(保留 ok 候选/双臂/单次输出 = 部分结果;config_error 候选不算可用产物但留在结果集);断言 tests/execution.test.mjs WB-07.01×2)
+- [x] WB-07.02：建立应用级运行管理器，绑定 job/experiment/run ID，切页不丢执行引用。(2026-10-20,runManager.enqueueRun 真实任务绑定 experimentId+runId(内容派生,同输入同 run 引用)+spec 执行输入快照自足(切页/切项目不读 store);模块级单例不变,断言 tests/execution.test.mjs WB-07.02/12/15 与 WB-07.13)
+- [x] WB-07.03：A/B 调用真实比较桥接；扫描按已校验计划逐候选调用 `runSweepCandidate`。(2026-10-20,扫描侧全真:executor.runSweep 按提交时 planSweep 已校验计划逐候选调用 runSweepCandidate,完成后真实 recommendSweep(推荐失败如实记 recommendationError);A/B 侧=双臂 runSimulation 真跑+内核 Comparison 桥接唯一调用点 ExecBackends.compare,桥接导出由 WB-03.10/11/12 发布,pkg 未含前任务如实报 bridge 错误类并保留双臂输出(不冒充统计判定,不前端另算);真内核断言 tests/execution-kernel.test.mjs 3 条(pkg-node 真跑:3 候选全 ok/与直调逐值一致/双臂 config_hash=validate_config))
+- [x] WB-07.04：桌面仿真接 Channel 进度，显示实际 done/total，不使用原型定时器。(2026-10-20,真实任务无定时器:executor 单次/双臂桌面路径接 run_simulation 的 Channel onProgress,done 只随内核事件推进(断言 dones=[1..n] 且补丁数=事件数,演示队列定时器保留但演示任务明确标注「演示」);桌面契约 lib.rs Channel 逐 replicate 上报 + Rust 测试 12/12 绿)
+- [x] WB-07.05：扫描进度按已完成候选与其 replicates 表达；内核未提供的候选内进度不得推算成真进度。(2026-10-20,扫描进度 = 已完成 ok 候选 × replicates 的边界跳变(dones=[2,4,6] 断言),候选内无中间值;progressKind=candidates 上墙「N/M 候选 × reps」;协议含 progress 事件形态但 Worker 端不伪造(内核未提供候选内进度,connection 丢弃 progress);断言 tests/execution.test.mjs WB-07.03/05)
+- [x] WB-07.06：桌面取消接 `cancelRun`，区分“取消请求已发出”与“已在 replicate 边界停止”。(2026-10-20,executor.cancel 桌面接 cancelRun;classifyKernelCancel 锁内核错误串契约「已取消: 完成 X/Y replicate」→ 状态两段:running→cancelling(请求已发出)→cancelled(边界落地,done=内核真实计数);TaskCancelButton 文案区分两段并提示再点=升级终止;断言 tests/execution.test.mjs WB-07.06 + lib.rs 边界取消测试)
+- [x] WB-07.07：扫描取消沿用候选边界检查，保留已完成候选，停止后不对不完整数据生成完整推荐。(2026-10-20,扫描取消 = 主线程候选边界检查(下一候选不再派发),已完成候选保留在 job.exec.results,outcome.boundary 记录真实边界计数;取消后不调 recommendSweep(不完整数据不出完整推荐);断言 tests/execution.test.mjs WB-07.07)
+- [x] WB-07.08：建立浏览器 Worker 消息协议，包含请求/任务 ID、输入、结果、错误与可用的进度事件。(2026-10-20,workerProtocol.ts 版本化信封 protocol:1+taskId,四种请求 plan/sim/candidate/recommend(输入快照自足),result/error/progress 三种响应,error 带 errorClass+retryable;isWorkerRequest/isWorkerResponse 守卫逐字段校验(版本/空 taskId/未知 kind/scope 越界全拒);断言 tests/execution.test.mjs WB-07.08)
+- [x] WB-07.09：在 Worker 内初始化并复用 WASM，主线程保持可交互；初始化失败可重试。(2026-10-20,sweepWorker.entry.ts 在 Worker 线程 init WASM,initPromise 缓存复用(同实例只 init 一次);失败清缓存+结构化 init 错误 retryable:true,下一请求重新初始化(重试真通);主线程仅经协议收发;断言 tests/execution.test.mjs WB-07.09×2)
+- [x] WB-07.10：明确浏览器取消语义：边界停止或终止 Worker；无法返回中间状态时如实提示。(2026-10-20,浏览器取消默认 = 边界停止(主线程停止派发下一候选;在途候选真完成则保留);cancelling 中再点取消 = 升级终止 Worker;Worker 内同步 wasm 不可中断如实标注(progressKind=none 说明「此执行端无逐 replicate 进度面」,不伪造);断言 tests/execution.test.mjs WB-07.07/11)
+- [x] WB-07.11：Worker 终止后清理执行上下文，下一次运行可重新初始化，旧消息不写入新任务。(2026-10-20,WorkerConnection.terminate 清 pending+拒绝在途请求+worker=null;下一次 request 重新创建实例重新初始化(creations 计数断言);响应按 taskId 路由,无主/旧消息丢弃(断言 stale taskId 与 garbage 均不写入);tests/execution.test.mjs WB-07.11)
+- [x] WB-07.12：控制单次活动任务/并发与内存预算，遵守当前桌面取消令牌只对应活动任务的约束。(2026-10-20,单活动任务门 = runningCount>0 拒绝入队(真实与演示同门);内存预算 MAX_CANDIDATE_RESULTS_IN_MEMORY=1000 超限开跑前失败(budget 类,内核零调用);桌面 cancelRun 令牌纪律:仅 run_simulation 活动任务持有(lib.rs TaskRegistry 单槽),扫描取消绝不调用内核取消(断言 kernelCancel=0),未启动任务取消为本地终态不经内核)
+- [x] WB-07.13：统一任务页、底部状态栏与抽屉进度，当前工作区切换后仍显示同一个任务。(2026-10-20,任务页(RunsPage)/状态栏(StatusBar)/抽屉(GlobalTaskDrawer)同订 runManager 单例 + 同一 activeJob 判定(execFsm.activeJob 最新非终态);抽屉当前任务置顶,状态栏显示同任务名+done/total,切工作区不换;断言 tests/execution.test.mjs WB-07.13)
+- [x] WB-07.14：单候选配置错误留在结果集中；取消、运行错误、初始化错误采用不同展示和恢复动作。(2026-10-20,候选 config_error 留在结果集并计数展示(不是任务失败,done 只计 ok 的 replicates);错误四类分展示与恢复动作:ERROR_CLASS_LABEL+recoveryFor(init=重试初始化/run=修配置重提交(保留已完成候选)/budget=缩小规模/bridge=待 WB-03.10/11 或改扫描);失败任务出「重试」按钮(runManager.retryJob 同快照重入队);断言 tests/execution.test.mjs WB-07.14+WB-07.12)
+- [x] WB-07.15：任务结束/失败/取消后清理 busy、监听器与令牌，支持再次提交。(2026-10-20,终局 applyOutcome:activeControls 清除、状态落终态(单向闸防再写)、toast 收尾;并发门随即解除(断言终态后再次 enqueueRun 成功);执行器 settled 后 update/cancel 全部 no-op;断言 tests/execution.test.mjs WB-07.02/12/15)
+- [x] WB-07.16：处理取消与完成同时发生、重复取消、失败后重试、切项目时仍运行等竞争条件。(2026-10-20,竞争全收:取消 vs 完成 = 终态先到先得(cancelling→succeeded 合法迁移,全部候选完成后取消请求不改结局);重复取消幂等;入队即取消(queued)不触碰内核落 cancelled-empty;失败后重试同 spec ⇒ 同 run 引用新 job;切项目/切页 = spec 自足不受影响;断言 tests/execution.test.mjs WB-07.16×3)
+- [x] WB-07.17：语言切换只更新显示文案，任务对象和执行 Promise/Worker 不被重建。(2026-10-20,状态层六个文件源级断言不 import lib/i18n;locale 状态不进 runManager/executor,任务身份与执行后端引用在语言切换(订阅重渲染)下不变(不重建任务/Promise/Worker);STATUS_LABEL 与徽标均为渲染期查表;断言 tests/execution.test.mjs WB-07.17)
 
 验收：真实运行时界面可操作，进度真实，取消边界明确，切页/切语言不丢任务，结束后可再次运行。
 

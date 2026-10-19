@@ -339,7 +339,9 @@ export default function WorkbenchApp(): JSX.Element {
     patchOverlays({ exportDialog: { open: false, scope: 'all' } })
   }
 
-  const cancelJob = (id: Job['id']): void => runManager.cancelJob(id)
+  const cancelJob = (id: Job['id']): void => {
+    void runManager.cancelJob(id) // WB-07 · 真实任务取消 = 异步语义(边界落地)
+  }
 
   /* —— WB-04 · 项目模式派生:应用栏/浏览器挂接真实项目文档 —— */
   // 演示数据标注保持显示(分析页图表仍来自内置演示结果集,WB-08 才替换)
