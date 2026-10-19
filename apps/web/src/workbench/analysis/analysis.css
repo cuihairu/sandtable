@@ -1,0 +1,19 @@
+.wb-app .real-analysis { padding: var(--wb-pad-panel-lg); min-width: 0; }
+.wb-app .result-toolbar { flex-wrap: wrap; height: auto; min-height: var(--wb-control-h); gap: calc(var(--wb-space-1) * 2); padding-block: var(--wb-pad-panel); }
+.wb-app .result-toolbar select { max-width: 100%; min-width: 0; }
+.wb-app .real-result-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 290px); gap: var(--wb-pad-panel-lg); }
+.wb-app .real-result-main { min-width: 0; }
+.wb-app .real-inspector { border-inline-start: 1px solid var(--wb-line); padding-inline-start: var(--wb-pad-panel); overflow-wrap: anywhere; }
+.wb-app .real-analysis h2 { font-size: var(--wb-fs-title); margin-block: var(--wb-pad-panel-lg) var(--wb-pad-panel); }
+.wb-app .real-analysis h3 { font-size: var(--wb-fs-body); margin-block: var(--wb-pad-panel-lg) var(--wb-space-1); }
+.wb-app .real-analysis p { line-height: var(--wb-lh); overflow-wrap: anywhere; }
+.wb-app .real-analysis dl > div { border-bottom: 1px solid var(--wb-soft-line); padding-block: var(--wb-space-1); }
+.wb-app .real-analysis dd { margin: var(--wb-space-1) 0; overflow-wrap: anywhere; }
+.wb-app .real-analysis dt { color: var(--wb-muted); }
+.wb-app .real-analysis .main-chart, .wb-app .real-analysis .mini-chart { width: 100%; height: auto; display: block; }
+.wb-app .real-analysis .candidate-table-wrap { max-height: none; overflow: auto; }
+.wb-app .real-analysis .candidate-table { white-space: nowrap; }
+.wb-app .real-analysis .mini-figures { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.wb-app .result-draft { border-top: 1px solid var(--wb-line); padding-block: var(--wb-pad-panel); }
+.wb-app .result-draft textarea { display: block; width: 100%; font-family: var(--wb-mono); background: var(--wb-canvas); border: 1px solid var(--wb-line); padding: var(--wb-pad-panel); }
+@media (max-width: 1100px) { .wb-app .real-result-grid { grid-template-columns: minmax(0, 1fr); } .wb-app .real-inspector { border-inline-start: 0; border-top: 1px solid var(--wb-line); padding-inline-start: 0; } }

@@ -5,6 +5,7 @@
 // 取消/错误分类与部分结果语义见 execFsm.ts,执行引擎见 executor.ts。
 import type { CandidateResult, Comparison, SimOutput, SweepRecOutput } from '../../lib/types.ts'
 import type { JobId } from '../ids.ts'
+import type { AnalysisContext } from '../analysis/resultModel.ts'
 
 export type JobStatus =
   | 'queued'
@@ -24,10 +25,11 @@ export type ExecProgressKind = 'replicates' | 'candidates' | 'none'
 export type ExecErrorClass = 'init' | 'run' | 'budget' | 'bridge'
 
 /** WB-07.03 · 执行输入快照(数据自足:切项目/切页不读 store,任务重试同 spec)。 */
-export type ExecSpec =
+export type ExecSpec = (
   | { kind: 'sweep'; yaml: string; plan: { candidates: ReadonlyArray<Record<string, number>>; replicates: number; sims: number } }
   | { kind: 'ab'; baseYaml: string; candYaml: string; replicates: number }
   | { kind: 'single'; yaml: string; replicates: number }
+) & { readonly analysis?: AnalysisContext }
 
 /** WB-07.02 · 真实执行任务的扩展视图(演示任务无此字段)。绑定 run ID + 保留执行输入。 */
 export type JobExec = {

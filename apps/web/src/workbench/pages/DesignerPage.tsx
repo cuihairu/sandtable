@@ -54,6 +54,8 @@ import { ProjectConfigEditors } from '../project/ProjectPanels.tsx'
 import { runArtifactPaths, snapshotRun, baseContentOf, draftOf } from '../state/projectDoc.ts'
 import type { RunIndexEntry, RunSnapshot } from '../state/projectDoc.ts'
 import * as runManager from '../state/runManager.ts'
+import type { SweepPlan } from '../../lib/types.ts'
+import { baselineOfProject } from '../state/projectDoc.ts'
 
 /* —— 提交登记的运行索引条目(口径同 WB-04.08) —— */
 
@@ -272,7 +274,9 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
             runId: snap.runId,
             name: design.name,
             method: 'AB',
-            spec: { kind: 'ab', baseYaml: view.base, candYaml: view.cand, replicates: design.reps },
+            spec: { kind: 'ab', baseYaml: view.base, candYaml: view.cand, replicates: design.reps,
+              analysis: { baselineId: doc && view.scenarioPath ? baselineOfProject(doc, view.scenarioPath).baselineId : DEMO_BASELINE_ID,
+                baselineYaml: view.base, scenarioYaml: view.cand, modelVersion: info?.model_version, schemaVersion: info?.schema_version } },
           })
           if (job) {
             dispatch({ type: 'toggle-drawer', open: true })
@@ -289,9 +293,9 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
       try {
         const snapYaml = experimentYaml as string
         // 提交时重新取得内核计划 = 本次送达的输入快照被内核完整校验的凭据
-        let plan: PlanShape
+        let plan: SweepPlan
         try {
-          plan = (await planSweep(snapYaml, 0)) as unknown as PlanShape
+          plan = await planSweep(snapYaml, 0)
         } catch (e) {
           const msg = classifyWasmError(String(e)).message
           setResolved({ yaml: snapYaml, stamp: 0, error: msg })
@@ -347,6 +351,11 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
             kind: 'sweep',
             yaml: snapYaml,
             plan: { candidates: plan.candidates, replicates: plan.replicates, sims: plan.sims },
+            analysis: {
+              baselineId: doc && view.scenarioPath ? baselineOfProject(doc, view.scenarioPath).baselineId : DEMO_BASELINE_ID,
+              baselineYaml: view.base, scenarioYaml: view.cand, plan,
+              modelVersion: info?.model_version, schemaVersion: info?.schema_version,
+            },
           },
         })
         if (job) {

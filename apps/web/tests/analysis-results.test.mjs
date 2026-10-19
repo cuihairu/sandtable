@@ -1,0 +1,217 @@
+import test, { after } from 'node:test'
+import strictAssert from 'node:assert/strict'
+import * as wasm from '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js'
+import { candidateViews } from '../src/lib/sweepView.ts'
+import { METRIC_META } from '../src/lib/metricMeta.ts'
+import { METRIC_KEYS } from '../src/lib/types.ts'
+import { abView, availableMetrics, dailyRows, findCandidate, inspectorSources, interpolationText, orderViews, overallOutcome, recommendationView, responsePoints, stepSelection, targetSpan, xAxisDomain, yAutoDomain } from '../src/lib/analysisView.ts'
+import { candidateIdFor } from '../src/workbench/ids.ts'
+import { copyCandidate, feasibility, formatMetric, fullValues, orderedRows, ranBaseline, resultRows, rowState, statText } from '../src/workbench/analysis/resultModel.ts'
+import { addCandidateDraft, analysisSnapshot, editCandidateDraft, patchResultUI, setAnalysisJob } from '../src/workbench/analysis/analysisStore.ts'
+
+let assertions = 0
+const assert = new Proxy(strictAssert, { get(target, key) { const value = target[key]; return typeof value === 'function' ? (...args) => { assertions++; return value(...args) } : value } })
+after(() => console.log(`WB08_ASSERTIONS=${assertions}`))
+const yaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\nmodel:\n  warrior:\n    attack: 100 # preserve comment\n'
+const experiment = `${yaml}sweep:\n  replicates: 2\n  parameters:\n    model.warrior.attack: {min: 90, max: 110, step: 10}\n  targets:\n    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n    - {metric: gold_per_player, min: 1.0, kind: soft}\n`
+const plan = JSON.parse(wasm.sweep_plan(experiment, 0))
+const results = plan.candidates.map((values) => JSON.parse(wasm.sweep_candidate(experiment, plan.replicates, JSON.stringify(values))))
+const context = { baselineId: 'bls_analysis0001', baselineYaml: yaml, scenarioYaml: yaml, plan, modelVersion: 'v-from-kernel-validation', schemaVersion: '1' }
+const job = { id: 'job_analysis0001', name: 'real kernel', demo: false, status: 'succeeded', exec: { kind: 'sweep', runId: 'run_analysis0001', spec: { kind: 'sweep', yaml: experiment, plan, analysis: context }, replicates: plan.replicates, results } }
+const all = resultRows(job)
+const views = all.map((r) => r.result)
+const cloneJob = (patch) => ({ ...job, ...patch, exec: { ...job.exec, ...patch.exec } })
+const stat = (mean) => ({ n: 2, mean, sd: 0.1, ci95_lo: mean - 0.02, ci95_hi: mean + 0.08 })
+
+test('08.02: every planned candidate has the same content ID before/after partial return', () => {
+  const partial = resultRows(cloneJob({ status: 'running', exec: { results: [results[0]] } }))
+  assert.equal(partial.length, plan.candidates.length)
+  assert.deepEqual(partial.map((r) => r.id), all.map((r) => r.id))
+  assert.equal(partial[1].result, null)
+  assert.equal(all[0].id, candidateIdFor(context.baselineId, fullValues(job, all[0].values)))
+  assert.equal(findCandidate(views, all[1].id).index, 1)
+})
+test('08.03: metric columns follow actual kernel stats and missing metrics stay unavailable', () => {
+  const metrics = availableMetrics(views)
+  assert.ok(metrics.includes('win_rate'))
+  assert.ok(metrics.includes('gold_per_player'))
+  assert.equal(views[0].stats.get('retention_d7'), undefined)
+  assert.match(statText(undefined, 'retention_d7'), /不可用/)
+  assert.match(statText(views[0].stats.get('win_rate'), 'win_rate'), /95% CI.*n=2/)
+})
+test('08.04: points exactly preserve real coordinates, mean and CI endpoints', () => {
+  const points = responsePoints(views, 'win_rate', plan.axes[0].path).drawable
+  assert.equal(points.length, 3)
+  for (const [i, p] of points.entries()) {
+    const raw = results[i].metric_stats.find(([k]) => k === 'win_rate')[1]
+    assert.equal(p.x, plan.candidates[i][plan.axes[0].path])
+    assert.equal(p.mean, raw.mean)
+    assert.equal(p.ci95_lo, raw.ci95_lo)
+    assert.equal(p.ci95_hi, raw.ci95_hi)
+  }
+})
+test('08.04: singleton, constant and empty axis domains are safe', () => {
+  assert.equal(xAxisDomain([]), null)
+  assert.deepEqual(xAxisDomain([100]), { min: 99, max: 101 })
+  assert.deepEqual(xAxisDomain([0, 0]), { min: -1, max: 1 })
+  const y = yAutoDomain([stat(0.5)], [0, 1])
+  assert.ok(y.min < 0 && y.max > 1)
+  assert.equal(yAutoDomain([], [1]), null)
+  const constant = yAutoDomain([{ mean: 0, ci95_lo: 0, ci95_hi: 0 }], [])
+  assert.ok(constant.min < 0 && constant.max > 0)
+})
+test('08.05: only submitted constraints and an actually observed identical baseline are references', () => {
+  assert.deepEqual(targetSpan(plan, 'win_rate'), { min: 0, max: 1, kind: 'hard' })
+  assert.equal(targetSpan(plan, 'power_p50'), null)
+  assert.equal(ranBaseline(job, all).values['model.warrior.attack'], 100)
+  assert.equal(ranBaseline(job, [all[0], all[2]]), null)
+  const structuralChange = cloneJob({ exec: { spec: { ...job.exec.spec, analysis: { ...context, baselineYaml: yaml + 'formulas: {xp_needed: "100"}\n' } } } })
+  assert.equal(ranBaseline(structuralChange, all), null)
+})
+test('08.06/11: every KPI has consistent labels, dimensions, units and display-only conversion', () => {
+  assert.deepEqual(Object.keys(METRIC_META).sort(), [...METRIC_KEYS].sort())
+  assert.equal(formatMetric(0.0034, 'win_rate'), '0.3%')
+  assert.equal(formatMetric(0.0034, 'win_rate', true), '0.34 pp')
+  assert.match(formatMetric(120, 'gold_per_player'), /金币\/玩家/)
+  assert.match(formatMetric(120, 'power_p50'), /功率/)
+  assert.equal(formatMetric(null, 'win_rate'), '不可用')
+  assert.equal(views[0].stats.get('win_rate').mean, results[0].metric_stats.find(([k]) => k === 'win_rate')[1].mean)
+})
+test('08.07: keyboard navigation follows displayed stable IDs, clamped at both ends', () => {
+  const reversed = [...all].reverse()
+  assert.equal(stepSelection(reversed, null, 1), all[2].id)
+  assert.equal(stepSelection(reversed, all[2].id, 1), all[1].id)
+  assert.equal(stepSelection(reversed, all[0].id, 1), all[0].id)
+  assert.equal(stepSelection([], null, -1), null)
+})
+test('08.08: pass aggregation does not become null; soft failures do not overwrite hard verdict', () => {
+  const v = { outcomes: [{ kind: 'hard', verdict: 'pass' }, { kind: 'soft', verdict: 'fail' }] }
+  assert.deepEqual(overallOutcome(v), { hard: 'pass', soft: 'fail', overall: 'pass' })
+  assert.deepEqual(overallOutcome({ outcomes: [] }), { hard: null, soft: null, overall: null })
+  assert.equal(overallOutcome({ outcomes: [{ kind: 'hard', verdict: 'borderline' }, { kind: 'hard', verdict: 'pass' }] }).overall, 'borderline')
+  assert.match(feasibility({ result: v }), /hard: pass.*soft: fail/)
+})
+test('08.08: arbitrary kernel verdict survives even when stats would suggest the opposite', () => {
+  const outcome = { metric: 'win_rate', kind: 'hard', min: 0.5, max: null, stats: stat(0.9), verdict: 'fail' }
+  const [v] = candidateViews(plan, [{ ...results[0], target_outcomes: [outcome] }], (values) => candidateIdFor(context.baselineId, values))
+  assert.equal(overallOutcome(v).overall, 'fail')
+  assert.equal(v.outcomes[0], outcome)
+})
+test('08.09: filter/sort are shared projection and do not erase hidden selection or mutate input', () => {
+  const before = JSON.stringify(job)
+  const id = all[1].id
+  const sorted = orderedRows(all, { filter: 'all', by: 'metric:win_rate', dir: -1 })
+  assert.equal(sorted.find((r) => r.id === id).result, all[1].result)
+  patchResultUI(job.id, { selectedId: id, order: { filter: 'fail', by: 'index', dir: 1 } })
+  assert.equal(analysisSnapshot().byJob[job.id].selectedId, id)
+  const filtered = orderedRows(all, analysisSnapshot().byJob[job.id].order)
+  assert.ok(!filtered.some((r) => r.id === id))
+  patchResultUI(job.id, { order: { filter: 'all', by: 'index', dir: 1 } })
+  assert.equal(orderedRows(all, analysisSnapshot().byJob[job.id].order).find((r) => r.id === id).id, id)
+  assert.equal(JSON.stringify(job), before)
+})
+test('08.10: kernel config_error and cancelled/failed unfinished slots remain visible without zero points', () => {
+  const error = JSON.parse(wasm.sweep_candidate(experiment, 2, JSON.stringify({ 'model.combat.p_hit': 2 })))
+  assert.equal(typeof error.status, 'object')
+  const partialJob = cloneJob({ status: 'cancelled', exec: { results: [error] } })
+  const rows = resultRows(partialJob)
+  assert.equal(rows.length, 3)
+  assert.match(rowState(rows[0], partialJob), /config_error/)
+  assert.match(rowState(rows[1], partialJob), /取消/)
+  const points = responsePoints(rows.flatMap((r) => r.result ? [r.result] : []), 'win_rate', plan.axes[0].path)
+  assert.equal(points.drawable.length, 0)
+  assert.equal(points.withheld.length, 1)
+  const failed = cloneJob({ status: 'failed', exec: { results: [], errorMessage: 'kernel failure' } })
+  assert.match(rowState(resultRows(failed)[0], failed), /kernel failure/)
+})
+test('08.09/10: unavailable metrics sort last in both directions', () => {
+  const missing = { ...views[0], id: 'missing', stats: new Map() }
+  for (const dir of [1, -1]) assert.equal(orderViews([missing, views[1]], { filter: 'all', by: 'metric:win_rate', dir }).at(-1).id, 'missing')
+})
+test('08.12: Comparison fields pass through without computing independent or unpaired CI', () => {
+  const raw = { metric: 'win_rate', arm_a: stat(0.3), arm_b: stat(0.4), diff_mean: 0.123456, diff_ci95_lo: -0.01234, diff_ci95_hi: 0.21, effect_size_d: 0.789, verdict: 'NoDifference' }
+  const view = abView(raw)
+  assert.equal(view.diffMean, raw.diff_mean)
+  assert.equal(view.diffCi95Lo, raw.diff_ci95_lo)
+  assert.equal(view.diffCi95Hi, raw.diff_ci95_hi)
+  assert.equal(view.effectSizeD, raw.effect_size_d)
+  assert.equal(view.verdict, raw.verdict)
+  assert.equal(view.armA, raw.arm_a)
+})
+test('08.13: real kernel replicate indices are zero-based and daily selection is explicit', () => {
+  const sim = JSON.parse(wasm.run_simulation(yaml, 2))
+  assert.deepEqual(sim.results.map((r) => r.replicate), [0, 1])
+  for (const replicate of [0, 1]) {
+    const daily = dailyRows(sim, replicate)
+    assert.equal(daily.ok, true)
+    assert.equal(daily.rows.length, 3)
+    assert.deepEqual(daily.rows.map((d) => d.win_rate), sim.results[replicate].day_stats.map((d) => d.win_rate))
+    assert.ok(daily.rows.every((r) => !('ci95_lo' in r)))
+  }
+  assert.equal(dailyRows(sim, 99).ok, false)
+  assert.equal(dailyRows(null, 0).ok, false)
+})
+test('08.14: recommendation and sensitivities come directly from real recommendSweep', () => {
+  const raw = JSON.parse(wasm.sweep_recommend(experiment, JSON.stringify(results)))
+  const v = recommendationView(raw)
+  assert.equal(v.interval, raw.recommendation.interval)
+  assert.equal(v.elasticities, raw.elasticities)
+  assert.equal(v.reasons, raw.recommendation.reasons)
+  assert.ok(v.elasticities.length > 0)
+  assert.match(interpolationText({ ...v, interval: [90, 110], interpolated: [true, false] }), /下端插值.*上端观测/)
+  assert.match(interpolationText({ ...v, interval: null }), /无可推荐区间/)
+})
+test('08.15: copy keeps baseline, full domain and arbitrary YAML, creates editable independent draft', () => {
+  const before = JSON.stringify(job)
+  const draft = copyCandidate(job, all[2], 'cnd_newdraft0001')
+  assert.equal(draft.baselineId, context.baselineId)
+  assert.equal(draft.baselineYaml, yaml)
+  assert.equal(draft.values['model.warrior.attack'], 110)
+  assert.match(draft.yaml, /attack: 110 # preserve comment/)
+  assert.equal(draft.sourceCandidateId, all[2].id)
+  const validation = JSON.parse(wasm.validate_config(draft.yaml))
+  assert.ok(validation.config_hash)
+  addCandidateDraft(draft)
+  editCandidateDraft(draft.id, draft.yaml.replace('attack: 110', 'attack: 120'))
+  assert.match(analysisSnapshot().drafts.at(-1).yaml, /attack: 120/)
+  assert.equal(JSON.stringify(job), before)
+  assert.throws(() => copyCandidate(cloneJob({ exec: { spec: { ...job.exec.spec, analysis: undefined } } }), all[0], 'x'), /缺少/)
+})
+test('08.16: missing version/hash is explicit, not invented; n is replicate count', () => {
+  const source = inspectorSources({ plan: { configHash: plan.config_hash, mode: plan.mode, baseSeed: plan.base_seed }, runEntry: { modelVersion: 'unknown' }, stats: { replicates: 2, n: 2 } })
+  assert.equal(source.configHash, plan.config_hash)
+  assert.equal(source.modelVersion, null)
+  assert.equal(source.schemaVersion, null)
+  assert.match(source.statUnit, /2 replicates.*n=2/)
+})
+test('08.17: independent result UI survives job switching and does not touch source results', () => {
+  const before = JSON.stringify(results)
+  setAnalysisJob(job.id)
+  patchResultUI(job.id, { metric: 'gold_per_player', selectedId: all[2].id })
+  setAnalysisJob('job_other0001')
+  setAnalysisJob(job.id)
+  assert.equal(analysisSnapshot().byJob[job.id].metric, 'gold_per_player')
+  assert.equal(analysisSnapshot().byJob[job.id].selectedId, all[2].id)
+  assert.equal(JSON.stringify(results), before)
+})
+test('08.15: draft persistence keeps source metadata and quota failure keeps editable buffer', async () => {
+  const previousWindow = globalThis.window
+  const data = new Map()
+  globalThis.window = { localStorage: { getItem: (key) => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) } }
+  try {
+    const draft = copyCandidate(job, all[0], 'cnd_persist0001')
+    addCandidateDraft(draft)
+    editCandidateDraft(draft.id, draft.yaml + '# new draft edit\n')
+    const { CANDIDATE_DRAFTS_KEY } = await import('../src/workbench/analysis/analysisStore.ts')
+    const saved = JSON.parse(data.get(CANDIDATE_DRAFTS_KEY)).find((d) => d.id === draft.id)
+    assert.equal(saved.baselineYaml, context.baselineYaml)
+    assert.equal(saved.sourceRunId, job.exec.runId)
+    assert.match(saved.yaml, /new draft edit/)
+    const restored = await import('../src/workbench/analysis/analysisStore.ts?restore-test')
+    assert.equal(restored.analysisSnapshot().drafts.find((d) => d.id === draft.id).sourceCandidateId, all[0].id)
+    globalThis.window.localStorage.setItem = () => { throw new Error('quota') }
+    editCandidateDraft(draft.id, '# current buffer\n')
+    assert.equal(analysisSnapshot().drafts.find((d) => d.id === draft.id).yaml, '# current buffer\n')
+    assert.match(analysisSnapshot().draftPersistenceError, /暂存失败/)
+  } finally { if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow }
+})

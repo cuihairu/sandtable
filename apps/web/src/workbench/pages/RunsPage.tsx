@@ -12,6 +12,7 @@ import type { WorkbenchState } from '../state/workbenchStore.ts'
 import { RunRegistry } from '../project/ProjectPanels.tsx'
 import * as runManager from '../state/runManager.ts'
 import type { Job } from '../state/jobLogic.ts'
+import { setAnalysisJob } from '../analysis/analysisStore.ts'
 
 export function RunsPage({ state }: { state?: WorkbenchState }): JSX.Element {
   const jobs = useSyncExternalStore(runManager.subscribe, runManager.listJobs)
@@ -38,7 +39,7 @@ export function RunsPage({ state }: { state?: WorkbenchState }): JSX.Element {
           <h2>当前会话任务</h2>
           <p className="note" style={{ margin: '7px 0 0' }}>
             任务队列在工作区切换时持续运行(运行管理器为模块级单例,不随页面卸载)。
-            真实执行任务的进度来自内核事件;演示任务明确标注「演示」。刷新页面会清空队列;已有样例结果始终独立保留。
+            真实执行任务的进度来自内核事件;演示任务明确标注「演示」。刷新页面会清空当前会话队列；已登记到项目的产物按项目文件保留。
           </p>
         </div>
         <div id="jobs-list">
@@ -54,29 +55,20 @@ export function RunsPage({ state }: { state?: WorkbenchState }): JSX.Element {
             }
           />
         </div>
-        <div style={{ marginTop: 28 }}>
-          <h2 style={{ marginBottom: 12 }}>已有结果样例</h2>
-          <div className="job">
-            <div className="job-title">
-              <WbIcon name="chart" />
-              <strong>初始攻击力扫描 · 内置样例</strong>
-              <span className="badge teal">可查看</span>
-              <div className="actions">
-                <button className="btn" onClick={() => dispatch({ type: 'navigate', page: 'analysis' })}>
-                  打开结果
-                  <WbIcon name="arrow" />
-                </button>
-              </div>
+        <section className="runs-heading">
+          <h2>真实运行结果</h2>
+          {jobs.filter((j) => !j.demo && j.exec).length === 0 && <p className="note">尚无真实运行，提交实验后可打开结果。</p>}
+          {jobs.filter((j) => !j.demo && j.exec).map((j) => <div className="job" key={j.id}>
+            <div className="job-title"><strong>{j.name}</strong><span>{j.status}</span>
+              <button className="btn" onClick={() => {
+                setAnalysisJob(j.id)
+                dispatch({ type: 'selection', patch: { source: 'kernel', run: j.exec!.runId } })
+                dispatch({ type: 'navigate', page: 'analysis' })
+              }}>打开真实结果 / 部分结果</button>
             </div>
-            <div className="job-body">
-              <span className="mono">11 候选 × 20 replicates</span>
-              <span className="muted" style={{ fontSize: 11 }}>3 个观察指标 · 展示区间为演示对称区间</span>
-            </div>
-            <div className="job-footer">
-              合成数据用于评审图表、表格和检查器之间的联动。没有执行记录与可复现哈希。
-            </div>
-          </div>
-        </div>
+            <p className="job-body mono">{j.exec!.runId} · {j.exec!.results.length}/{j.exec!.candidatesTotal} 候选已返回 · {j.exec!.replicates} replicates</p>
+          </div>)}
+        </section>
       </div>
     </>
   )
