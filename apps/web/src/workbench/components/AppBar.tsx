@@ -4,6 +4,7 @@
 // 取消选择不产生错误(选择器关闭即无事发生,见 projectDoc.readPickedFile)。
 import type { JSX, MouseEventHandler } from 'react'
 import { WbIcon } from './icons.tsx'
+import { LanguageSwitcher } from './LanguageSwitcher.tsx'
 
 export type AppBarProps = {
   projectName: string
@@ -65,6 +66,8 @@ export function AppBar({
         <span>查找参数、命令…</span>
         <kbd>Ctrl K</kbd>
       </button>
+      {/* WB-11.05 · 语言切换入口(自包含:直连 locale 会话,不经 props) */}
+      <LanguageSwitcher />
       {demoMode && (
         <button className="prototype-label" onClick={onAbout}>
           <span className="status-dot amber" />

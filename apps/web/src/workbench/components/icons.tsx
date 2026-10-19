@@ -34,6 +34,8 @@ const PATHS: Record<string, string> = {
   clock: 'M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',
   eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   filter: 'M3 5h18M6 12h12M9 19h6',
+  // WB-11.05 · 语言切换入口(双环语言标记,单线风格与表内其余图标一致)
+  languages: 'M2 5h9M7 3v2M4 5c0 3 3 6 7 7M10 5c-1 3-4 6-8 7M14 20l3-8 3 8M14.8 17h4.4',
 }
 
 export type IconName = keyof typeof PATHS & string

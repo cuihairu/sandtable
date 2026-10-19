@@ -11,7 +11,9 @@ import assert from 'node:assert/strict'
 import { LOCALES, DEFAULT_LOCALE, isLocale } from '../src/lib/i18n/locales.ts'
 import { zh } from '../src/lib/i18n/dict/zh.ts'
 import { en } from '../src/lib/i18n/dict/en.ts'
-import { t, tPlural, displayName, createLocaleStore, configureI18n } from '../src/lib/i18n/index.ts'
+import {
+  t, tPlural, displayName, createLocaleStore, configureI18n, openLocaleSession, applyDocumentLocale,
+} from '../src/lib/i18n/index.ts'
 import {
   detectFromLanguages,
   resolveInitialLocale,
@@ -230,4 +232,89 @@ test('WB-11.20:显示名——有译词用译词,自定义/未翻译回显原始
   // 项目自定义参数:key 无译词 → 回显注册表原始 desc,不假装自动翻译
   assert.equal(displayName('zh-CN', 'custom.param.bonus', 'Special bonus'), 'Special bonus')
   assert.equal(displayName('fr-FR', 'custom.param.bonus', '原始描述'), '原始描述', '未知 locale 也不吞原文')
+})
+
+// —— 会话装配(WB-11.05/.06/.07 接线的库侧内核) ——
+// openLocaleSession 是应用入口与组件之间唯一的 locale 状态面:
+// 引导(持久化 > 系统语言 > en-US)、手动选择落持久化、文档头应用。
+const memStorage = (saved) => ({
+  getItem: (k) => (k === LOCALE_STORAGE_KEY ? saved : null),
+  setItem: () => {},
+})
+
+test('WB-11.06/.07:会话引导——持久化压过系统语言,坏存值视同未选择', () => {
+  assert.equal(openLocaleSession({ storage: memStorage('zh-CN'), languages: ['en-US'] }).get(), 'zh-CN', '手动选择压过系统语言')
+  assert.equal(openLocaleSession({ storage: memStorage('garbage'), languages: ['en-US'] }).get(), 'en-US')
+  assert.equal(openLocaleSession({ storage: null, languages: ['zh-CN'] }).get(), 'zh-CN', '无存储直接按系统语言')
+  assert.equal(openLocaleSession({ storage: memStorage(null), languages: ['fr-FR'] }).get(), 'en-US', '无命中兜底 en-US')
+})
+
+test('WB-11.07:手动选择写入持久化;同值不写不发通知', () => {
+  const writes = []
+  const sink = { getItem: () => null, setItem: (k, v) => writes.push([k, v]) }
+  const session = openLocaleSession({ storage: sink, languages: [] })
+  let fired = 0
+  session.subscribe(() => fired++)
+  session.set('zh-CN')
+  assert.equal(session.get(), 'zh-CN')
+  assert.equal(fired, 1)
+  assert.deepEqual(writes, [[LOCALE_STORAGE_KEY, 'zh-CN']], '手动选择落持久化')
+  session.set('zh-CN') // 同值:不重复写存储,不重复通知
+  assert.equal(fired, 1)
+  assert.equal(writes.length, 1)
+})
+
+test('WB-11.29:持久化写失败不中断切换,开发形态每会话只告警一次', () => {
+  // 正式形态:存储不可写(隐私模式/满配额)静默降级,语言照常切换
+  const boom = { getItem: () => null, setItem: () => { throw new Error('quota') } }
+  const session = openLocaleSession({ storage: boom, languages: [], dev: false })
+  assert.doesNotThrow(() => session.set('zh-CN'))
+  assert.equal(session.get(), 'zh-CN', '存储不可写时切换仍生效')
+  // 开发形态:告警一次,不刷屏
+  const seen = []
+  const origWarn = console.warn
+  console.warn = (msg) => seen.push(String(msg))
+  try {
+    const devSession = openLocaleSession({ storage: boom, languages: [], dev: true })
+    devSession.set('zh-CN')
+    devSession.set('en-US')
+    devSession.set('zh-CN')
+  } finally {
+    console.warn = origWarn
+  }
+  assert.equal(seen.filter((m) => m.includes('locale')).length, 1, '写失败只告警一次')
+})
+
+test('WB-11.10(部分):文档 lang 与标题跟随 locale,创建/切换即应用,未知 locale 退 en-US', () => {
+  const makeDoc = () => {
+    const d = { lang: '', title: '' }
+    return { d, target: { setLang: (l) => (d.lang = l), setTitle: (t) => (d.title = t) } }
+  }
+  // 创建即应用(引导阶段同步设置,不等首帧渲染)
+  const a = makeDoc()
+  openLocaleSession({ storage: memStorage('zh-CN'), languages: ['en-US'], doc: a.target })
+  assert.equal(a.d.lang, 'zh-CN')
+  assert.equal(a.d.title, zh['common.appTitle'], '标题走词典,不散落硬编码')
+  // 切换即应用(订阅者在同一通知里读到新文档头)
+  const b = makeDoc()
+  const session = openLocaleSession({ storage: memStorage(null), languages: ['en-US'], doc: b.target })
+  session.set('zh-CN')
+  assert.equal(b.d.lang, 'zh-CN')
+  assert.equal(b.d.title, zh['common.appTitle'])
+  session.set('en-US')
+  assert.equal(b.d.title, en['common.appTitle'], '英文界面英文标题')
+  // 未知 locale:按 en-US 应用,不把非法值写进文档头
+  const c = makeDoc()
+  applyDocumentLocale('fr-FR', c.target)
+  assert.equal(c.d.lang, 'en-US')
+  assert.equal(c.d.title, en['common.appTitle'])
+  // setLang 可选:正文语言与 locale 尚不一致时(WB-11.11~16 未完成)浏览器侧
+  // 只同步标题,不带 setLang 的目标也照常工作
+  const titleOnly = { title: '' }
+  const titleTarget = { setTitle: (t) => (titleOnly.title = t) }
+  applyDocumentLocale('zh-CN', titleTarget)
+  assert.equal(titleOnly.title, zh['common.appTitle'])
+  assert.doesNotThrow(() =>
+    openLocaleSession({ storage: memStorage(null), languages: ['zh-CN'], doc: titleTarget }).set('en-US'),
+  )
 })

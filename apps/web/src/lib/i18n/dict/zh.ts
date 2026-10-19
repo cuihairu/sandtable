@@ -6,6 +6,8 @@
 export const zh = {
   // 公共控件
   'common.language': '语言',
+  // 文档标题(WB-11.10 部分项):<title> 随 locale 走,与 index.html 的 zh 初值一致
+  'common.appTitle': 'sandtable · 数字沙盘',
   'common.confirm': '确认',
   'common.cancel': '取消',
   'common.retry': '重试',

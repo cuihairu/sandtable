@@ -16,3 +16,9 @@
 @keyframes wb-toast-in{ from{ opacity: 0; transform: translateY(6px); } to{ opacity: 1; transform: none; } }
 @media (prefers-reduced-motion:reduce){ .wb-app .toast-region .toast{ animation: none; } }
 .wb-app .document-tab:focus-visible{ outline-offset: -3px; }
+/* WB-11.05 · 语言切换入口:应用栏内相对定位 + 深色下拉菜单(与应用栏同色系) */
+.wb-app .lang-switch{ position: relative; margin-left: auto; }
+.wb-app .lang-menu{ position: absolute; top: calc(100% + 6px); right: 0; z-index: 70; min-width: 168px; padding: 5px; display: flex; flex-direction: column; gap: 2px; background: #2b373c; border: 1px solid #3c4a50; border-radius: 8px; box-shadow: 0 10px 26px rgba(0, 0, 0, .38); }
+.wb-app .lang-option{ display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 10px; border-radius: 6px; color: #dde7e9; text-align: left; white-space: nowrap; }
+.wb-app .lang-option:hover{ background: #35444a; }
+.wb-app .lang-option[aria-selected="true"]{ color: #65c5c5; font-weight: 600; }

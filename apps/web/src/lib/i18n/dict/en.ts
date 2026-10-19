@@ -7,6 +7,7 @@ import { zh } from './zh.ts'
 export const en = {
   // 公共控件
   'common.language': 'Language',
+  'common.appTitle': 'sandtable · Digital Sandbox',
   'common.confirm': 'Confirm',
   'common.cancel': 'Cancel',
   'common.retry': 'Retry',
