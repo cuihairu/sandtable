@@ -79,16 +79,27 @@
 
 > 桌面对齐：桌面（Tauri）侧工作区实现以 apps/web V2 设计与 tokens 为基准，见[专业工作台桌面对齐基准](docs/专业工作台桌面对齐基准.md)。
 
-- [ ] WB-02.01：把原型颜色、字体、间距、边框、状态色整理为正式应用的 CSS tokens。
-- [ ] WB-02.02：建立应用框架组件：应用栏、功能轨、项目浏览器、工作区容器、状态栏。
-- [ ] WB-02.03：建立文档标签组件；标签记录对象 ID、标题、未保存状态与当前激活项。
-- [ ] WB-02.04：建立分析、参数、实验、任务、数据五个页面容器，页面路由/深链可恢复当前位置。
-- [ ] WB-02.05：拆出响应图、候选表、选择检查器三个可独立接数据的分析组件。
-- [ ] WB-02.06：拆出参数筛选栏、参数表、参数详情与批量操作栏。
-- [ ] WB-02.07：拆出实验方法选择、因子表、场景设置、KPI 约束表与运行计划栏。
-- [ ] WB-02.08：拆出任务列表、任务进度、取消操作与全局任务抽屉；切页不卸载运行管理器。
-- [ ] WB-02.09：建立导出对话框、确认框、命令搜索与统一通知组件，接替直接 DOM 拼接。
-- [ ] WB-02.10：定义 `Project/Baseline/Candidate/Experiment/Run/Job` 标识及相互引用，不用数组下标充当持久 ID。
+- [x] WB-02.01：把原型颜色、字体、间距、边框、状态色整理为正式应用的 CSS tokens。
+  - 证据：`apps/web/src/tokens.css`(新增 `--wb-` 前缀 :root custom property 层,取值源=原型 `wb.css` :root + 设计系统 MASTER.md 视觉 token 表;零元素规则——现役 Phase 6 界面零视觉变化)+ `main.tsx` 入口导入 + `apps/web/tests/tokens.test.mjs` 5 测(原型 token 逐位收录 / 字体栈一致 / MASTER 语义色与字阶间距 / 前缀与去重 / 只 :root 块)+ CI 前端守卫接入。测试:`node --test` tokens 5 passed(columns 4 + presets/project 8 不变)、`oxlint` 过、`pnpm build` 绿。
+- [x] WB-02.02：建立应用框架组件：应用栏、功能轨、项目浏览器、工作区容器、状态栏。
+  - 证据:`apps/web/src/workbench/components/`——AppBar.tsx:17(应用栏)、ActivityRail.tsx:13(功能轨)、ProjectExplorer.tsx:36(资源树以稳定 ID 为身份,当前项= activeId 非下标)、WorkspaceContainer.tsx:40(tabpanel + 切页聚焦)、StatusBar.tsx:18;WorkbenchApp.tsx:182-310 组装,`.wb-app` 作用域样式 workbench.css(取值全走 e016dfa 的 `--wb-` tokens,与 540af41 桌面截图基准对齐)。
+- [x] WB-02.03：建立文档标签组件；标签记录对象 ID、标题、未保存状态与当前激活项。
+  - 证据:components/DocumentTabs.tsx:18(role=tab/aria-selected)+ state/workbenchStore.ts:283 `deriveDocuments`——每个文档记录稳定对象 ID(候选=内容寻址 `cnd_*`、结果集=运行 `run_*`、实验草稿=`exp_*` 派生,非下标)、标题、unsaved 圆点(草稿未保存→显示)与激活页。
+- [x] WB-02.04：建立分析、参数、实验、任务、数据五个页面容器，页面路由/深链可恢复当前位置。
+  - 证据:pages/ 下 AnalysisPage/ParametersPage/DesignerPage/RunsPage/ExchangePage 五容器;routing.ts:46 `parseHash/formatHash` 深链 `#/workbench/<page>?k=v`(每页白名单键:候选/主指标/视图/筛选/排序/检查器、参数焦点、方法等),WorkbenchApp.tsx:72 订阅 hashchange,store `navigate` 写 hash——刷新/新开标签恢复页面与页内位置,草稿值不进 URL。
+- [x] WB-02.05：拆出响应图、候选表、选择检查器三个可独立接数据的分析组件。
+  - 证据:analysis/ResponseChart.tsx:43(全 props:metric/xAxis/points/selectedId,不读全局)、CandidateTable.tsx:40(泛型 `<T>`,rows+id 注入)、SelectionInspector.tsx:36;AnalysisPage.tsx 仅组装,数据源=props 可替换(WB-03 换真实内核结果时组件零改动)。
+- [x] WB-02.06：拆出参数筛选栏、参数表、参数详情与批量操作栏。
+  - 证据:params/ParamFilterBar.tsx:19、ParamTable.tsx:22(行内编辑+变更/非法态)、ParamDetail.tsx:18、BulkActionBar.tsx:13;校验/批量纯函数在 paramsLogic.ts(整批失败不产生半批修改——tests/workbench-logic.test.mjs 锁定)。
+- [x] WB-02.07：拆出实验方法选择、因子表、场景设置、KPI 约束表与运行计划栏。
+  - 证据:designer/MethodSelect.tsx:13、FactorTable.tsx:24、ScenarioForm.tsx:25、KpiConstraintTable.tsx:14、RunPlanSidebar.tsx:16(入队经运行管理器);预算/校验纯函数 designerLogic.ts(缺名/坏域/超演示预算给可读错误,测试锁定)。
+- [x] WB-02.08：拆出任务列表、任务进度、取消操作与全局任务抽屉；切页不卸载运行管理器。
+  - 证据:tasks/TaskList.tsx:59(列表)/:9(TaskProgress)/:37(TaskCancelButton)+ GlobalTaskDrawer.tsx:20(状态栏直达);运行管理器 state/runManager.ts 为**模块级单例**——任务状态与定时器不入 React 树,RunsPage.tsx:13 与抽屉同源 `useSyncExternalStore(runManager.subscribe)` 订阅,切页只换订阅者;红线:演示任务明示「未执行仿真,未生成新的结果产物」(runManager.ts:32),取消在 replicate 边界落账(数值设计工作台全局快照 WB-01.06 差异登记)。
+- [x] WB-02.09：建立导出对话框、确认框、命令搜索与统一通知组件，接替直接 DOM 拼接。
+  - 证据:overlays/ExportDialog.tsx:21(范围/格式化)、ConfirmDialog.tsx:17、CommandSearch.tsx:20(↑↓/Enter/Esc;匹配纯函数 commands.ts `matchCommands`)+ ToastStack/notifications.ts 统一通知;OverlayDialog.tsx:19 用原生 `<dialog>.showModal` 基座,内容全 React 渲染——接替原型的 openDialog/innerHTML 拼接(public/prototype/ 保留为只读设计参考)。导出文件标注 data_source=synthetic_demo,JSON 将草稿与样例快照分列。
+- [x] WB-02.10：定义 `Project/Baseline/Candidate/Experiment/Run/Job` 标识及相互引用，不用数组下标充当持久 ID。
+  - 证据:src/workbench/ids.ts——六类品牌 ID + `prj_/bls_/cnd_/exp_/run_/job_` 前缀与 `isStableId` 合法性;`candidateIdFor`(基线 ID+参数域内容寻址,键序无关)、`runIdFor`(实验 ID+配置哈希+seed+模型/schema 版本派生,重试同输入⇒同 run)、`createId` 创建型一次性;`hashId` 非有限数值直接拒绝;对象引用 ObjectRef 走文档标签/浏览器。演示项目全链用稳定 ID(tests/workbench-ids.test.mjs 8 测,含「候选 ID 两两不同、数组下标零充数」锁)。
+  - 本批实现说明(诚实口径):组件数据源为内置合成演示项目 synthetic_demo,统计区间为演示用对称区间——组件 props 化、WB-03 换真实内核/WB-05 接历史结果时替换数据注入,不改组件;运行管理器当前只演示任务生命周期,不产仿真结果。测试:`node --test` workbench-ids 8 passed + workbench-logic 7 passed(tokens 5/columns 4/presets/project 8 不变)、`oxlint` 0 错误、`tsc -b` 与 `pnpm build` 绿。入口:main.tsx 仅在 hash 以 `#/workbench/` 开头时进入 V2 工作台,现役 Phase 6 界面默认不变。
 - [ ] WB-02.11：建立共享状态与明确更新动作，区分输入草稿、运行快照、已完成结果和当前选择。
 - [ ] WB-02.12：将筛选、排序、激活 KPI、候选选择、检查器开关作为 UI 状态，避免污染实验输入。
 - [ ] WB-02.13：切换页面、标签、项目资源时保留相应草稿；关闭/切换有未保存内容的文档时可恢复。
