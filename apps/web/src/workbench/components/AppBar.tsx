@@ -3,7 +3,6 @@
 // 当前固定挂演示项目,标注"内置样例")。
 import type { JSX, MouseEventHandler } from 'react'
 import { WbIcon } from './icons.tsx'
-import { DEMO_PROJECT_ID } from '../demo/sampleProject.ts'
 
 export type AppBarProps = {
   projectName: string
@@ -52,4 +51,3 @@ export function AppBar({
   )
 }
 
-export { DEMO_PROJECT_ID }
