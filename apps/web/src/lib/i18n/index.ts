@@ -101,6 +101,16 @@ export function tPlural(
   return interpolate(template, { n, ...params })
 }
 
+/**
+ * WB-11.20:系统显示名与原始注册表 desc 的区分点。有译词走译词;
+ * 项目自定义/未翻译的参数回显调用方给的原始 desc——这不是缺词,
+ * 不触发缺失报告,也绝不假装自动翻译。
+ */
+export function displayName(locale: string, key: string, rawDescription: string): string {
+  const dict = DICTS[locale as Locale] ?? DICTS[DEFAULT_LOCALE]
+  return dict[key] ?? rawDescription
+}
+
 // 语言状态:最小订阅式存储,无框架依赖(WB-11.05 接到 AppBar、
 // WB-11.06 在应用入口按系统语言初始化、WB-11.07 做持久化)。
 export function createLocaleStore(initial: Locale = DEFAULT_LOCALE) {

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { LOCALES, DEFAULT_LOCALE, isLocale } from '../src/lib/i18n/locales.ts'
 import { zh } from '../src/lib/i18n/dict/zh.ts'
 import { en } from '../src/lib/i18n/dict/en.ts'
-import { t, tPlural, createLocaleStore, configureI18n } from '../src/lib/i18n/index.ts'
+import { t, tPlural, displayName, createLocaleStore, configureI18n } from '../src/lib/i18n/index.ts'
 import {
   detectFromLanguages,
   resolveInitialLocale,
@@ -222,4 +222,12 @@ test('WB-11.21:未知错误本地化兜底;非 Error 入参不抛错', () => {
     'std boom',
     'Error 实例取 message',
   )
+})
+
+test('WB-11.20:显示名——有译词用译词,自定义/未翻译回显原始 desc', () => {
+  assert.equal(displayName('zh-CN', 'common.language', 'Language'), zh['common.language'])
+  assert.equal(displayName('en-US', 'common.language', '语言'), en['common.language'])
+  // 项目自定义参数:key 无译词 → 回显注册表原始 desc,不假装自动翻译
+  assert.equal(displayName('zh-CN', 'custom.param.bonus', 'Special bonus'), 'Special bonus')
+  assert.equal(displayName('fr-FR', 'custom.param.bonus', '原始描述'), '原始描述', '未知 locale 也不吞原文')
 })
