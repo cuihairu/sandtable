@@ -20,7 +20,7 @@ import {
   persistLocale,
   LOCALE_STORAGE_KEY,
 } from '../src/lib/i18n/detect.ts'
-import { fmtNumber, fmtPercent, fmtDate } from '../src/lib/i18n/format.ts'
+import { fmtNumber, fmtNumberSig, fmtPercent, fmtDate } from '../src/lib/i18n/format.ts'
 import { pluralCategory } from '../src/lib/i18n/plural.ts'
 import { localizeWasmError } from '../src/lib/i18n/errorText.ts'
 
@@ -493,4 +493,32 @@ test('WB-11.10:浏览器壳同步 <html lang>(localeStore 接线;applyDocumentLo
   // (document 守卫),与 WB-07.17 同款源级守卫锁接线存在
   assert.match(src, /setLang: \(lang\) => \{/, 'localeStore 需接线 setLang')
   assert.match(src, /document\.documentElement\.lang = lang/)
+})
+
+test('WB-11.18:format 层 maxFractionDigits(封顶不补零)与有效数字封顶', () => {
+  assert.equal(fmtNumber('en-US', 1234.5678, { maxFractionDigits: 2 }), '1,234.57')
+  assert.equal(fmtNumber('en-US', 100, { maxFractionDigits: 1 }), '100', '整数不补零(沿用 maximumFractionDigits 口径)')
+  assert.equal(fmtNumberSig('en-US', 123456, 5), '123,460')
+  assert.equal(fmtNumberSig('en-US', 0.123456, 5), '0.12346')
+})
+
+test('WB-11.18:展示层不直接构造 Intl 数字/日期格式化器(统一走 lib/i18n/format)', async () => {
+  const { readdirSync, readFileSync } = await import('node:fs')
+  const path = await import('node:path')
+  const root = new URL('../src/', import.meta.url).pathname
+  const bad = []
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (/\.(ts|tsx)$/.test(e.name)) {
+        const s = readFileSync(p, 'utf8')
+        if (/new Intl\.(NumberFormat|DateTimeFormat)/.test(s) && !p.replaceAll('\\', '/').includes('lib/i18n')) {
+          bad.push(path.relative(root, p))
+        }
+      }
+    }
+  }
+  walk(root)
+  assert.deepEqual(bad, [], `绕过 format 层的文件: ${bad.join(', ')}`)
 })

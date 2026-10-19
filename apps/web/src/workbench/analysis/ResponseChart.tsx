@@ -1,6 +1,7 @@
 // Observed parameter coordinates and asymmetric kernel CI. No interpolated line.
 import type { JSX } from 'react'
 import { xAxisDomain, stepSelection } from '../../lib/analysisView.ts'
+import { fmtNumber, fmtNumberSig } from '../../lib/i18n/format.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 
@@ -30,7 +31,7 @@ export function ResponseChart({ metric, xAxis, points, selectedId, onSelect, min
   const xMin = domain?.min ?? 0, xMax = domain?.max ?? 1
   const x = (v: number): number => left + (v - xMin) / (xMax - xMin) * (W - left - right)
   const y = (v: number): number => top + (metric.max - v) / (metric.max - metric.min || 1) * (H - top - bottom)
-  const fmt = metric.format ?? ((v: number) => `${v.toFixed(metric.decimals)}${metric.unit}`)
+  const fmt = metric.format ?? ((v: number) => `${fmtNumber(locale, v, { fractionDigits: metric.decimals })}${metric.unit}`)
   const lo = (p: ResponsePoint): number => p.ci95_lo ?? p.mean - (p.ciHalf ?? 0)
   const hi = (p: ResponsePoint): number => p.ci95_hi ?? p.mean + (p.ciHalf ?? 0)
   const targets = metric.targets ?? (metric.target === undefined ? [] : [{ min: metric.op === '≥' ? metric.target : null, max: metric.op === '≤' ? metric.target : null, kind: 'hard' as const }])
@@ -44,7 +45,7 @@ export function ResponseChart({ metric, xAxis, points, selectedId, onSelect, min
     })}
     {domain && Array.from({ length: 5 }, (_, i) => {
       const val = xMin + (xMax - xMin) * i / 4
-      return <text key={i} x={x(val)} y={H - bottom + 20} textAnchor="middle" className="chart-text">{new Intl.NumberFormat('zh-CN', { maximumSignificantDigits: 5 }).format(val)}</text>
+      return <text key={i} x={x(val)} y={H - bottom + 20} textAnchor="middle" className="chart-text">{fmtNumberSig(locale, val, 5)}</text>
     })}
     {targets.flatMap((t, i) => [t.min, t.max].flatMap((v, j) => v === null ? [] : [
       <g key={`${i}-${j}`}><line data-reference="target" x1={left} x2={W - right} y1={y(v)} y2={y(v)} stroke="var(--wb-amber)" strokeDasharray={t.kind === 'hard' ? '5 4' : '2 5'} />

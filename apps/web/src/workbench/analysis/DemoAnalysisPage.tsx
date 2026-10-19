@@ -18,6 +18,7 @@ import {
 import type { MetricKey } from '../demo/sampleProject.ts'
 import type { MetricKey as KernelMetricKey } from '../../lib/types.ts'
 import { metricLabel } from '../../lib/metricMeta.ts'
+import { fmtNumber } from '../../lib/i18n/format.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 
@@ -241,7 +242,7 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
           onToggle={() => dispatch({ type: 'toggle-inspector' })}
           value={{
             display: String(selected.paramValue),
-            note: t(locale, 'analysis.demo.valueNote', { base: 100, sign: selected.paramValue >= 100 ? '+' : '', percent: (((selected.paramValue - 100) / 100) * 100).toFixed(0) }),
+            note: t(locale, 'analysis.demo.valueNote', { base: 100, sign: selected.paramValue >= 100 ? '+' : '', percent: fmtNumber(locale, selected.paramValue - 100, { fractionDigits: 0 }) }),
           }}
           actions={
             <button

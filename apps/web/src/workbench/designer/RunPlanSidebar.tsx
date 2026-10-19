@@ -11,6 +11,7 @@ import { WbIcon } from '../components/icons.tsx'
 import { METHOD_LABEL, planSummary, planErrorLines, budgetActions } from './designerLogic.ts'
 import type { DesignDraft, PlanShape } from './designerLogic.ts'
 import type { DesignError } from './designerLogic.ts'
+import { fmtNumber } from '../../lib/i18n/format.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 
@@ -86,7 +87,7 @@ export function RunPlanSidebar({
       {showPlan ? (
         <>
           <div className="budget-value">
-            {showPlan.tasks.toLocaleString()}
+            {fmtNumber(locale, showPlan.tasks)}
             {planObsolete && design.method !== 'ab' && (
               <span className="badge amber" style={{ marginLeft: 8, verticalAlign: 'middle' }}>{t(locale, 'experiment.planStale')}</span>
             )}
@@ -109,18 +110,18 @@ export function RunPlanSidebar({
           </div>
           <div className="inspector-kv">
             <span>{t(locale, 'experiment.planSims')}</span>
-            <span className="mono">{summary.sims.toLocaleString()}</span>
+            <span className="mono">{fmtNumber(locale, summary.sims)}</span>
           </div>
           <div className="inspector-kv">
             <span>{t(locale, 'experiment.planPlayerDays')}</span>
-            <span className="mono">{summary.playerDays.toLocaleString()}</span>
+            <span className="mono">{fmtNumber(locale, summary.playerDays)}</span>
           </div>
         </>
       )}
       <div className="inspector-kv">
         <span>{t(locale, 'experiment.planPerRun')}</span>
         <span>{design.method !== 'ab' && thePlan
-          ? t(locale, 'experiment.planPerRunValue', { players: thePlan.plan.players.toLocaleString(), days: thePlan.plan.days })
+          ? t(locale, 'experiment.planPerRunValue', { players: fmtNumber(locale, thePlan.plan.players), days: thePlan.plan.days })
           : t(locale, 'experiment.planPerRunPending')}
         </span>
       </div>

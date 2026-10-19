@@ -6,6 +6,7 @@ import { overallOutcome, orderViews } from '../../lib/analysisView.ts'
 import type { ResultOrder } from '../../lib/analysisView.ts'
 import { METRIC_META } from '../../lib/metricMeta.ts'
 import { metricUnit } from '../../lib/metricMeta.ts'
+import { fmtNumber } from '../../lib/i18n/format.ts'
 import { t } from '../../lib/i18n/index.ts'
 import type { Locale, TranslationKey, InterpolationParams } from '../../lib/i18n/index.ts'
 
@@ -89,7 +90,8 @@ export function formatMetric(value: number | null | undefined, key: MetricKey, d
   if (value === null || value === undefined || !Number.isFinite(value)) return msg(locale, 'analysis.unavailable')
   const meta = METRIC_META[key]
   const percent = meta.dimension === 'percent'
-  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: meta.decimals + (delta ? 1 : 0) }).format(percent ? value * 100 : value)
+  // WB-11.18:数字走 lib/i18n/format(封顶不补零口径不变,locale 生效)
+  return fmtNumber(locale ?? LOGIC_FALLBACK, percent ? value * 100 : value, { maxFractionDigits: meta.decimals + (delta ? 1 : 0) })
     + (percent ? delta ? ' pp' : '%' : ` ${metricUnit(key, locale)}`)
 }
 

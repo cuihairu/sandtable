@@ -11,6 +11,8 @@ import type { Locale } from './locales.ts'
 export interface FractionOptions {
   /** 固定小数位;不传则数字按原始精度、百分比按 1 位 */
   fractionDigits?: number
+  /** 只封顶小数位,不补零(沿用原 maximumFractionDigits 口径;与 fractionDigits 互斥) */
+  maxFractionDigits?: number
 }
 
 const DEFAULT_PERCENT_FRACTION = 1
@@ -21,17 +23,21 @@ function numberFormat(
   locale: Locale | string,
   style: 'decimal' | 'percent',
   fractionDigits?: number,
+  maxFractionDigits?: number,
 ): Intl.NumberFormat {
-  const key = `${locale}|${style}|${fractionDigits ?? -1}`
+  const key = `${locale}|${style}|${fractionDigits ?? -1}|${maxFractionDigits ?? -1}`
   let fmt = numberCache.get(key)
   if (!fmt) {
-    // 显式小数位 = 固定(min=max);百分比默认 0–1 位,既收口胜率精度又不把 0 打成 0.0%
+    // 显式小数位 = 固定(min=max);封顶位 = 只限不补;百分比默认 0–1 位,
+    // 既收口胜率精度又不把 0 打成 0.0%
     const fraction =
       style === 'percent'
         ? { min: fractionDigits ?? 0, max: fractionDigits ?? DEFAULT_PERCENT_FRACTION }
         : fractionDigits !== undefined
           ? { min: fractionDigits, max: fractionDigits }
-          : undefined
+          : maxFractionDigits !== undefined
+            ? { min: 0, max: maxFractionDigits }
+            : undefined
     fmt = new Intl.NumberFormat(locale, {
       style,
       ...(fraction ? { minimumFractionDigits: fraction.min, maximumFractionDigits: fraction.max } : {}),
@@ -43,7 +49,20 @@ function numberFormat(
 
 /** 普通数字:按 locale 分组与小数符号,不做任何换算 */
 export function fmtNumber(locale: Locale | string, value: number, opts?: FractionOptions): string {
-  return numberFormat(locale, 'decimal', opts?.fractionDigits).format(value)
+  return numberFormat(locale, 'decimal', opts?.fractionDigits, opts?.maxFractionDigits).format(value)
+}
+
+const sigCache = new Map<string, Intl.NumberFormat>()
+
+/** 有效数字封顶:坐标轴刻度等紧凑数值(不关心小数位) */
+export function fmtNumberSig(locale: Locale | string, value: number, maxSignificantDigits: number): string {
+  const key = `${locale}|${maxSignificantDigits}`
+  let fmt = sigCache.get(key)
+  if (!fmt) {
+    fmt = new Intl.NumberFormat(locale, { maximumSignificantDigits: maxSignificantDigits })
+    sigCache.set(key, fmt)
+  }
+  return fmt.format(value)
 }
 
 /** 比例(0–1)显示为百分数:此函数内做 ×100,别处不得再乘一次 */
