@@ -717,6 +717,9 @@ export const zh = {
   'data.download.json': '下载 JSON',
   'data.download.svg': '下载 SVG',
   'data.download.parquet': '下载 Parquet',
+  // WB-11.23 SVG 可读标注:随导出 locale 走词典,同一产物不混语言
+  'data.export.svgTitleNote': '合成演示数据',
+  'data.export.svgDescNote': '来源:synthetic_demo。非 Sandtable 内核产物。图为样本点与示意对称区间;不做插值。',
   'data.exportDialog.title': '导出分析数据',
   'data.exportDialog.download': '下载文件',
   'data.exportDialog.scope': '数据范围',

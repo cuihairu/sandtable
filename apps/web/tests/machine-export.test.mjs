@@ -16,6 +16,8 @@ import {
   svgLanguageMeta, exportLocale,
   RAW_FIELD_KINDS, isRawFieldKind,
 } from '../src/lib/machineExport.ts'
+import { svgAnnotation } from '../src/workbench/demo/export.ts'
+import { readFileSync } from 'node:fs'
 
 test('WB-11.22:machineNumber 规范十进制——小数点恒为点,无千分位,-0 归一', () => {
   assert.equal(machineNumber(0.534), '0.534')
@@ -70,6 +72,27 @@ test('WB-11.23:可读产物记录导出时 locale,记录值与渲染语言同源
   const locale = exportLocale('zh-CN')
   const meta = svgLanguageMeta(locale)
   assert.equal(meta['data-locale'], locale, '记录的 locale = 渲染可读文本所用 locale,同一入参派生')
+})
+
+test('WB-11.23:SVG 标注随导出语言走词典,同一产物不混用两种语言', () => {
+  const zh = svgAnnotation('zh-CN', '胜率')
+  assert.equal(zh.title, '胜率 · 合成演示数据')
+  assert.match(zh.desc, /synthetic_demo/)
+  assert.match(zh.desc, /非/ , '中文 locale 标注是中文,不夹英文')
+  const en = svgAnnotation('en-US', 'Win rate')
+  assert.equal(en.title, 'Win rate · Synthetic demo data')
+  assert.match(en.desc, /synthetic_demo/)
+  assert.ok(!/[一-龥]/.test(en.title + en.desc), '英文 locale 标注无中文(不混语言、不冒充翻译)')
+  // 未知 locale 由词典侧回退,标注仍成形
+  assert.doesNotThrow(() => svgAnnotation('fr-FR', '指标'))
+})
+
+test('WB-11.23:调用侧把导出语言与本地化显示名传入 SVG 产物', () => {
+  // 源级守卫:WorkbenchApp 的 SVG 导出必须同时给显示名(metricLabel)与 locale,
+  // 缺一即产物不记录语言或标题回退 zh 原文——两处接线一起锁
+  const app = readFileSync(new URL('../src/workbench/WorkbenchApp.tsx', import.meta.url), 'utf8')
+  assert.ok(app.includes("svgFromElement(mainChart, metricLabel(metric.id"), 'SVG 标题用导出语言的指标显示名,不写死 zh label')
+  assert.match(app, /svgFromElement\([\s\S]{0,200}?,\s*locale\)/, 'SVG 导出传入导出时 locale')
 })
 
 test('WB-11.19:原始字段六类登记在册,机器导出只收原始值', () => {

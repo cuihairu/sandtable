@@ -46,6 +46,8 @@ import { PARAM_REGISTRY, displayParamName } from './params/paramRegistry.ts'
 import { numericValuesOf, parseConfig } from './params/configYaml.ts'
 import { kernelCheck, modifiedPaths } from './params/paramsLogic.ts'
 import { svgFromElement, demoCsv, demoSnapshot, download } from './demo/export.ts'
+import { metricLabel } from '../lib/metricMeta.ts'
+import type { MetricKey as KernelMetricKey } from '../lib/types.ts'
 import { packProject } from '../lib/project.ts'
 // WB-04 · 项目打开/保存/草稿/快照(纯逻辑见 state/projectDoc.ts)
 import {
@@ -343,7 +345,12 @@ export default function WorkbenchApp(): JSX.Element {
       notify('success', t(locale, 'common.notifyJsonDownloaded'))
     } else if (mainChart !== null) {
       const metric = METRICS[state.metric]
-      download(`sandtable-demo-${metric.id}.svg`, svgFromElement(mainChart, metric.label, metric.id), 'image/svg+xml')
+      // WB-11.23:标题用导出语言的指标显示名,并把导出 locale 记进产物根节点
+      download(
+        `sandtable-demo-${metric.id}.svg`,
+        svgFromElement(mainChart, metricLabel(metric.id as KernelMetricKey, locale), metric.id, locale),
+        'image/svg+xml',
+      )
       notify('success', t(locale, 'common.notifySvgDownloaded', { id: metric.id }))
     } else {
       notify('warning', t(locale, 'common.notifyNoMainChart'))
