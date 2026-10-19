@@ -1,7 +1,8 @@
 // WB-11.02:统一翻译入口 + 语言状态。组件只经此模块取词、读写当前 locale,
 // 不在组件内散落语言判断。词典解析规则:
 // - 未知 locale → 退 en-US 词典(WB-11.06 的兜底语义,不抛错);
-// - 未知 key → 原样返回 key(缺词在界面上可见,便于发现;缺失报告是 WB-11.25);
+// - 未知 key → WB-11.25 两种形态:开发环境回显原 key(可 grep)并告警一次;
+//   正式界面回显本地化兜底文案,绝不把翻译 key 摆上界面;
 // - 插值用 {name} 命名占位,未提供的参数原样保留。
 import { zh, type ZhDict } from './dict/zh.ts'
 import { en } from './dict/en.ts'
@@ -33,6 +34,33 @@ const DICTS: Record<Locale, Record<string, string>> = { 'zh-CN': zh, 'en-US': en
 
 export type InterpolationParams = Record<string, string | number>
 
+// WB-11.25:开发形态判定。默认取 Vite 的 import.meta.env.DEV(node 下无此
+// 字段即视为正式形态),应用入口/测试可用 configureI18n 覆盖。
+// 缺词告警按 `locale|key` 去重,同一缺失只刷一次。
+let devMode: boolean = !!(
+  import.meta as unknown as { env?: { DEV?: boolean } }
+).env?.DEV
+
+export function configureI18n(opts: { dev?: boolean }): void {
+  if (opts.dev !== undefined) devMode = opts.dev
+}
+
+const warnedKeys = new Set<string>()
+
+function reportMissing(locale: string, missingKey: string): string {
+  if (devMode) {
+    const tag = `${locale}|${missingKey}`
+    if (!warnedKeys.has(tag)) {
+      warnedKeys.add(tag)
+      console.warn(`[i18n] missing key: ${missingKey} (locale=${locale})`)
+    }
+    return missingKey
+  }
+  // 正式界面:兜底文案跟当前语言走(未知 locale 已在 DICTS 解析层退 en-US)
+  const fallbackDict = DICTS[locale as Locale] ?? DICTS[DEFAULT_LOCALE]
+  return fallbackDict['errors.missingText']
+}
+
 /** 命名占位插值:未提供的参数原样保留 {name},绝不拼接语言碎片 */
 function interpolate(template: string, params?: InterpolationParams): string {
   if (!params) return template
@@ -47,7 +75,7 @@ export function t(
   params?: InterpolationParams,
 ): string {
   const dict = DICTS[locale as Locale] ?? DICTS[DEFAULT_LOCALE]
-  const template = dict[key] ?? key
+  const template = dict[key] ?? reportMissing(locale, key)
   return interpolate(template, params)
 }
 
@@ -66,7 +94,8 @@ export function tPlural(
 ): string {
   const dict = DICTS[locale as Locale] ?? DICTS[DEFAULT_LOCALE]
   const category = pluralCategory(locale, n)
-  const template = dict[`${key}.${category}`] ?? dict[`${key}.other`] ?? key
+  const formKey = `${key}.${category}`
+  const template = dict[formKey] ?? dict[`${key}.other`] ?? reportMissing(locale, formKey)
   return interpolate(template, { n, ...params })
 }
 

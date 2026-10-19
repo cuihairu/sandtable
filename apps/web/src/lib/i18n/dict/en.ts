@@ -60,4 +60,6 @@ export const en = {
   'errors.param': 'Parameter error',
   'errors.serialize': 'Failed to serialize candidate results',
   'errors.unknown': 'Unknown error',
+  // 缺词兜底(WB-11.25):正式界面绝不回显翻译 key
+  'errors.missingText': '(missing text)',
 } satisfies Record<keyof typeof zh, string>

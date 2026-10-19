@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { LOCALES, DEFAULT_LOCALE, isLocale } from '../src/lib/i18n/locales.ts'
 import { zh } from '../src/lib/i18n/dict/zh.ts'
 import { en } from '../src/lib/i18n/dict/en.ts'
-import { t, createLocaleStore } from '../src/lib/i18n/index.ts'
+import { t, tPlural, createLocaleStore, configureI18n } from '../src/lib/i18n/index.ts'
 import {
   detectFromLanguages,
   resolveInitialLocale,
@@ -20,7 +20,6 @@ import {
 } from '../src/lib/i18n/detect.ts'
 import { fmtNumber, fmtPercent, fmtDate } from '../src/lib/i18n/format.ts'
 import { pluralCategory } from '../src/lib/i18n/plural.ts'
-import { tPlural } from '../src/lib/i18n/index.ts'
 
 test('WB-11.01:locale 定义——zh-CN/en-US、固定显示名、en-US 兜底', () => {
   assert.deepEqual(
@@ -65,8 +64,8 @@ test('WB-11.02:t() 解析、未知 key/locale 兜底、命名参数插值', () =
   assert.equal(t('en-US', 'common.language'), en['common.language'])
   // 未知 locale → en-US 兜底(不抛错)
   assert.equal(t('fr-FR', 'common.language'), en['common.language'])
-  // 未知 key → 原样返回 key(不抛错,缺失报告是 WB-11.25 的事)
-  assert.equal(t('zh-CN', 'no.such.key'), 'no.such.key')
+  // 未知 key → 不抛错(WB-11.25 定的正式/开发两种形态见专属测试)
+  assert.doesNotThrow(() => t('zh-CN', 'no.such.key'))
   // 命名参数插值 {name},不靠字符串拼接(计数/复数规则是 WB-11.17)
   assert.equal(
     t('zh-CN', 'params.changed', { n: '3' }),
@@ -163,4 +162,34 @@ test('WB-11.17:tPlural 按词典 .one/.other 选形,{n} 自动注入', () => {
     tPlural('en-US', 'data.rowsExported', 2, { where: 'CSV' }),
     en['data.rowsExported.other'].replace('{n}', '2').replace('{where}', 'CSV'),
   )
+})
+
+test('WB-11.25:缺词——正式界面不回显翻译 key,走本地化兜底', () => {
+  // 节点测试默认非 dev(即正式形态)
+  assert.equal(t('zh-CN', 'no.such.key'), zh['errors.missingText'], 'zh 界面兜底中文文案')
+  assert.equal(t('en-US', 'no.such.key'), en['errors.missingText'])
+  assert.equal(t('fr-FR', 'no.such.key'), en['errors.missingText'], '未知 locale 退 en-US 词典后照样兜底')
+  assert.equal(tPlural('en-US', 'no.such', 3), en['errors.missingText'], '复数形缺词同样兜底')
+  // 在库词条不受影响
+  assert.equal(t('zh-CN', 'params.changed', { n: '3' }), zh['params.changed'].replace('{n}', '3'))
+})
+
+test('WB-11.25:开发环境回显原 key 定位缺失,每键每 locale 只告警一次', () => {
+  configureI18n({ dev: true })
+  const seen = []
+  const origWarn = console.warn
+  console.warn = (msg) => seen.push(String(msg))
+  try {
+    assert.equal(t('zh-CN', 'no.such.key'), 'no.such.key', 'dev 回显 key 便于 grep')
+    assert.equal(t('zh-CN', 'no.such.key'), 'no.such.key', '重复调用不再刷屏')
+    assert.equal(t('en-US', 'no.such.key'), 'no.such.key')
+    assert.equal(tPlural('zh-CN', 'no.such', 1), 'no.such.other', '复数缺词回显全形键')
+  } finally {
+    console.warn = origWarn
+    configureI18n({ dev: false })
+  }
+  assert.equal(seen.filter((m) => m.includes('no.such.key')).length, 2, 'zh|en 各报一次')
+  assert.equal(seen.filter((m) => m.includes('no.such.other')).length, 1)
+  // 恢复正式形态
+  assert.equal(t('zh-CN', 'no.such.key'), zh['errors.missingText'])
 })

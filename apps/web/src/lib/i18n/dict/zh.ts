@@ -59,6 +59,8 @@ export const zh = {
   'errors.param': '参数错误',
   'errors.serialize': '候选结果序列化失败',
   'errors.unknown': '未知错误',
+  // 缺词兜底(WB-11.25):正式界面绝不回显翻译 key
+  'errors.missingText': '（文案缺失）',
 } as const
 
 export type ZhDict = typeof zh
