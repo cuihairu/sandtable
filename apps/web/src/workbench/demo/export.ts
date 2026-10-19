@@ -102,8 +102,9 @@ export function svgFromElement(svg: SVGSVGElement, metricLabel: string, metricId
   return new XMLSerializer().serializeToString(clone)
 }
 
-export function download(name: string, data: string, mime: string): void {
-  const blob = new Blob([data], { type: mime })
+export function download(name: string, data: string | Uint8Array, mime: string): void {
+  // cast:Uint8Array<ArrayBufferLike> → BlobPart 收窄与 App.tsx 同口径(TS 5.7)
+  const blob = new Blob([data as BlobPart], { type: mime })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url

@@ -173,20 +173,20 @@
 
 依赖：WB-02/WB-03。入口：`src/lib/project.ts`、现有 `App.tsx::importFile/pack`。
 
-- [ ] WB-04.01：将 YAML 与 `.sandtable` 文件选择迁入新应用栏/项目入口，保留取消选择的正常行为。
-- [ ] WB-04.02：复用 `unpackProject` 验证 manifest、路径、文件集合与 sha256；失败不替换当前项目。
-- [ ] WB-04.03：把归档内 scenario/experiment/result 列表映射到项目浏览器，支持选择多个配置。
-- [ ] WB-04.04：打开项目时加载其已保存结果，不只加载两个配置编辑器；未知结果版本给出可读提示。
-- [ ] WB-04.05：建立只读基线与候选派生关系；新候选保存基线引用、当前值和修改状态。
-- [ ] WB-04.06：为当前选中的场景/候选分别保留草稿，切换对象不覆盖另一对象的内容。
-- [ ] WB-04.07：扩展当前打包只写单个 scenario/experiment 的输入，保存多配置时不丢未选中的条目。
-- [ ] WB-04.08：按现有归档路径纪律保存多次运行与索引；需要扩展格式时先明确兼容性，不直接制造非法嵌套路径。
-- [ ] WB-04.09：运行提交时生成不可变输入快照，记录配置哈希、模型/schema 版本、seed 与实验条件。
-- [ ] WB-04.10：保存采用已选对象与完整产物；下载/写盘成功后才更新相应保存状态，失败保留草稿。
-- [ ] WB-04.11：浏览器草稿与项目文件已保存分别记录；刷新恢复时按项目/对象区分，防止跨项目串数据。
-- [ ] WB-04.12：处理打开其他项目、关闭文档、退出页面时的未保存变更与恢复动作。
-- [ ] WB-04.13：桌面文件对话框复用已有插件与下载处理；取消不报错，路径权限失败说明原因。
-- [ ] WB-04.14：验证多配置归档保存再打开、历史结果恢复、损坏归档、保存失败和旧版本读取。
+- [x] WB-04.01：将 YAML 与 `.sandtable` 文件选择迁入新应用栏/项目入口，保留取消选择的正常行为。(2026-10-20,AppBar 新增「打开项目…/保存项目」入口(components/AppBar.tsx:49-60);WorkbenchApp 隐藏 file input 打开系统选择器(WorkbenchApp.tsx:114-116,418-420),取消=无 change 事件=无事发生;readPickedFile 对空选择显式返回 cancel(state/projectDoc.ts:562),tests/workbench-logic.test.mjs WB-04.13 断言)
+- [x] WB-04.02：复用 `unpackProject` 验证 manifest、路径、文件集合与 sha256；失败不替换当前项目。(2026-10-20,openProject 包装 unpackProject 并返回 {ok:false,error}(state/projectDoc.ts:91);store 仅记 project/open-failed,项目与草稿原样保留(workbenchStore.ts:315);坏档/纯结果归档拒绝断言 tests/workbench-logic.test.mjs WB-04.02)
+- [x] WB-04.03：把归档内 scenario/experiment/result 列表映射到项目浏览器，支持选择多个配置。(2026-10-20,explorerGroupsFor 把三目录逐条映射为浏览器分组、路径当 ID(workbenchStore.ts:461);点选写 object/select + 深链选择键 designer:scenario/experiment(routing.ts:38-44);多配置归档全量映射断言 tests/workbench-logic.test.mjs WB-04.02/03/04)
+- [x] WB-04.04：打开项目时加载其已保存结果，不只加载两个配置编辑器；未知结果版本给出可读提示。(2026-10-20,inspectResult 解析 report.json 的 meta.schema_version,未知版本生成可读 message 且条目按字节保留(state/projectDoc.ts:63);结果状态进 ProjectDoc.resultStatus,分析页 ProjectResultsPanel 列出(project/ProjectPanels.tsx:83);known/unknown/opaque 三态断言 tests/workbench-logic.test.mjs)
+- [x] WB-04.05：建立只读基线与候选派生关系；新候选保存基线引用、当前值和修改状态。(2026-10-20,baselineOfProject 冻结只读基线(projectDoc.ts:176),deriveCandidate 产出 {candidateId,baselineId,values,modified,saved},候选 ID 沿用 WB-02.10 内容寻址(projectDoc.ts:186);冻结/引用/修改清单/同域恒等断言 tests/workbench-logic.test.mjs WB-04.05)
+- [x] WB-04.06：为当前选中的场景/候选分别保留草稿，切换对象不覆盖另一对象的内容。(2026-10-20,ObjectDraft 按 归档路径 为键隔离:writeDraft/draftOf/undoDraft/resetDraft(projectDoc.ts:217-249),store 新 objectDrafts 与 object/draft|undo|reset 动作(workbenchStore.ts:318);互不覆盖+undo+reset 断言 tests/workbench-logic.test.mjs;编辑器 UI project/ProjectPanels.tsx:22)
+- [x] WB-04.07：扩展当前打包只写单个 scenario/experiment 的输入，保存多配置时不丢未选中的条目。(2026-10-20,PackInput 增 configs.scenarios/experiments,与单配置字段合并、路径冲突即拒(lib/project.ts:113-150);buildProjectSave 把全部条目+既有结果一次进归档(projectDoc.ts:398);多配置闭环与未选中条目字节保真断言 tests/project.test.mjs + workbench-logic.test.mjs)
+- [x] WB-04.08：按现有归档路径纪律保存多次运行与索引；需要扩展格式时先明确兼容性，不直接制造非法嵌套路径。(2026-10-20,产物平铺 results/<run_id>.<产物> 两段路径,索引 results/runs.json 为 kind:result 条目——旧读取端按契约「result 字节不解析」兼容,manifest 维持 schema '1'(projectDoc.ts:342-394 模块头有兼容性说明);索引 roundtrip/未知 schema 可读错误/三段路径即拒断言 tests/workbench-logic.test.mjs WB-04.08、project.test.mjs)
+- [x] WB-04.09：运行提交时生成不可变输入快照，记录配置哈希、模型/schema 版本、seed 与实验条件。(2026-10-20,snapshotRun 生成 deep-freeze 快照:configHash=输入 YAML sha256、seed 取自 YAML、实验条件入册、runId 沿 runIdFor 内容派生;内核执行接入前 model/schema 如实标 unknown(projectDoc.ts:295-339);DesignerPage 提交时登记(DesignerPage.tsx:58,77),runs.json 随保存落档;不可变/哈希/同输入同 runId 断言 tests/workbench-logic.test.mjs)
+- [x] WB-04.10：保存采用已选对象与完整产物；下载/写盘成功后才更新相应保存状态，失败保留草稿。(2026-10-20,saveProject:buildProjectSave+packProject+download 全部成功才 dispatch project/mark-saved,catch 保留草稿并报错(WorkbenchApp.tsx:177);markSaved 只置位写盘对象(projectDoc.ts:252);全量/失败路径断言 tests/workbench-logic.test.mjs WB-04.10)
+- [x] WB-04.11：浏览器草稿与项目文件已保存分别记录；刷新恢复时按项目/对象区分，防止跨项目串数据。(2026-10-20,persistObjectDrafts/restoreObjectDrafts 按 projectId 隔离键,载荷 version/projectId 不符或损坏一律丢弃,只恢复本项目对象键(projectDoc.ts:489-537);dispatch 内草稿即改即存、saved 单独承载文件保存状态(workbenchStore.ts:362);跨项目/损坏/异项目载荷丢弃断言 tests/workbench-logic.test.mjs WB-04.11)
+- [x] WB-04.12：处理打开其他项目、关闭文档、退出页面时的未保存变更与恢复动作。(2026-10-20,hasUnsavedWork(项目草稿+参数草稿+实验草稿)驱动三处守卫:打开其他项目前 ConfirmDialog(可取消)、关闭项目前确认(项目信息弹层入口)、beforeunload 拦截退出;浏览器草稿记录保留,重开同一项目可恢复(WorkbenchApp.tsx:100-111,149-169,201,531-570);unsavedKeys 断言 tests/workbench-logic.test.mjs)
+- [x] WB-04.13：桌面文件对话框复用已有插件与下载处理；取消不报错，路径权限失败说明原因。(2026-10-20,打开走 webview 文件选择(桌面 WebView2/WebKit 同实现,取消语义一致),native 对话框(dialog:default 能力,桌面壳 lib.rs:64)继续用于路径型本地查询;下载复用既有 blob→壳层 on_download→~/Downloads 链路(demo/export.ts:105 扩展二进制);describeFileError 把权限/不可读/取消映射为可读文案(projectDoc.ts:562-576);断言 tests/workbench-logic.test.mjs WB-04.13)
+- [x] WB-04.14：验证多配置归档保存再打开、历史结果恢复、损坏归档、保存失败和旧版本读取。(2026-10-20,tests/project.test.mjs:多配置保存→再打开闭环、路径冲突拒、runs.json 入档可读、旧 schema '2' 与未声明条目拒;tests/workbench-logic.test.mjs:坏档保留当前项目、保存失败(路径越界/打包失败)保草稿、结果版本三态、索引 roundtrip。web 全套 55/55 绿、tsc 0 错、oxlint 0 警、build 绿)
 
 验收：修改、运行、保存并重开后，配置与结果关联完整；基线及旧运行快照未被覆盖。
 

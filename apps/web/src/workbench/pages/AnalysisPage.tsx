@@ -10,6 +10,7 @@ import { CandidateTable } from '../analysis/CandidateTable.tsx'
 import { SelectionInspector } from '../analysis/SelectionInspector.tsx'
 import { dispatch } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
+import { ProjectResultsPanel } from '../project/ProjectPanels.tsx'
 import {
   DEMO_RESULT, METRICS, METRIC_KEYS, ciText, filterAndSort, fmtMetric,
   metricValues, verdictFor, verdictOf,
@@ -55,6 +56,12 @@ export function AnalysisPage({ state, onExport }: AnalysisPageProps): JSX.Elemen
           </>
         }
       />
+      {/* WB-04.04 · 打开的项目:已保存结果一并载入,版本状态可读 */}
+      {state.project && (
+        <div style={{ padding: '13px 21px 0' }}>
+          <ProjectResultsPanel state={state} />
+        </div>
+      )}
       <div className="workspace-toolbar">
         <div className="segmented" aria-label="结果显示方式">
           <button data-view="chart" className={resultView === 'chart' ? 'active' : ''} aria-pressed={resultView === 'chart'} onClick={() => dispatch({ type: 'candidate/view', view: 'chart' })}>

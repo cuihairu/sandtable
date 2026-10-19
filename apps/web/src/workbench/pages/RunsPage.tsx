@@ -6,10 +6,12 @@ import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
 import { WbIcon } from '../components/icons.tsx'
 import { TaskList } from '../tasks/TaskList.tsx'
 import { dispatch } from '../state/workbenchStore.ts'
+import type { WorkbenchState } from '../state/workbenchStore.ts'
+import { RunRegistry } from '../project/ProjectPanels.tsx'
 import * as runManager from '../state/runManager.ts'
 import type { Job } from '../state/jobLogic.ts'
 
-export function RunsPage(): JSX.Element {
+export function RunsPage({ state }: { state?: WorkbenchState }): JSX.Element {
   const jobs = useSyncExternalStore(runManager.subscribe, runManager.listJobs)
   const cancel = (id: Job['id']): void => runManager.cancelJob(id)
   return (
@@ -26,6 +28,8 @@ export function RunsPage(): JSX.Element {
         }
       />
       <div className="page-scroll runs-page">
+        {/* WB-04.09/08 · 项目模式:运行快照登记簿(输入快照 + 产物路径) */}
+        {state?.project && <RunRegistry state={state} />}
         <div className="runs-heading">
           <h2>当前会话任务</h2>
           <p className="note" style={{ margin: '7px 0 0' }}>

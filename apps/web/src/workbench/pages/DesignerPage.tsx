@@ -17,6 +17,12 @@ import type { DesignDraft, ExperimentMethod } from '../designer/designerLogic.ts
 import { DEMO_EXPERIMENT_ID, PARAM_DEFS } from '../demo/sampleProject.ts'
 import * as runManager from '../state/runManager.ts'
 import { notify } from '../state/notifications.ts'
+// WB-04 · 项目模式:配置草稿编辑器(按对象隔离)+ 提交时登记不可变输入快照
+import { ProjectConfigEditors } from '../project/ProjectPanels.tsx'
+import { baseContentOf, draftOf, runArtifactPaths, snapshotRun } from '../state/projectDoc.ts'
+import type { RunIndexEntry } from '../state/projectDoc.ts'
+import { hashId, ID_PREFIXES } from '../ids.ts'
+import type { ProjectId } from '../ids.ts'
 
 export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element {
   const { design } = state
@@ -45,16 +51,65 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
       return
     }
     const counts = designCounts(design)
+    // WB-04.09 · 运行提交时登记不可变输入快照(项目模式):所选场景 YAML 的
+    // sha256 + seed + 实验条件。内核执行接入前(WB-07)模型/schema 版本如实
+    // 标注 unknown;演示模式(无项目)不登记——快照属于真实项目运行流程。
+    if (state.project) {
+      void registerRunSnapshot(state, counts.tasks)
+    }
     const job = runManager.enqueueDemo({
-      experimentId: DEMO_EXPERIMENT_ID,
+      experimentId: state.project
+        ? String(hashId(ID_PREFIXES.experiment, state.project.projectId, design.name) as ProjectId)
+        : DEMO_EXPERIMENT_ID,
       name: design.name,
       method: design.method.toUpperCase(),
       total: counts.tasks,
     })
     if (job) {
       dispatch({ type: 'toggle-drawer', open: true })
-      notify('info', '已加入演示队列;不会执行真实仿真')
+      notify('info', state.project
+        ? '已登记输入快照并加入演示队列;内核执行接入前不产生真实产物(WB-07)'
+        : '已加入演示队列;不会执行真实仿真')
     }
+  }
+
+  /** WB-04.09:快照登记(异步:sha256 经 WebCrypto)。失败不阻塞入队。 */
+  async function registerRunSnapshot(state: WorkbenchState, tasks: number): Promise<void> {
+    const doc = state.project
+    if (!doc) return
+    const scenarioPath = state.selection.scenario
+    if (!scenarioPath) return
+    const yaml = draftOf(state.objectDrafts, scenarioPath, baseContentOf(doc, scenarioPath)).content
+    const snap = await snapshotRun({
+      experimentId: String(hashId(ID_PREFIXES.experiment, doc.projectId, design.name) as ProjectId),
+      scenarioPath,
+      experimentPath: state.selection.experiment || null,
+      yaml,
+      conditions: {
+        method: design.method,
+        replicates: design.reps,
+        players: design.players,
+        days: design.days,
+        tasks,
+        paired: design.paired,
+        sampling: design.sampling,
+      },
+    })
+    const entry: RunIndexEntry = {
+      run_id: snap.runId,
+      experiment_id: snap.experimentId,
+      scenario_path: snap.scenarioPath,
+      experiment_path: snap.experimentPath,
+      config_hash: snap.configHash,
+      model_version: snap.modelVersion,
+      schema_version: snap.schemaVersion,
+      seed: snap.seed,
+      conditions: { ...snap.conditions },
+      created_at_unix: snap.createdAtUnix,
+      // 产物路径按运行索引纪律预留(平铺两段);执行接入后填实际产物
+      files: runArtifactPaths(snap.runId, []),
+    }
+    dispatch({ type: 'run/register', entry })
   }
 
   const changedDraft = PARAM_DEFS.filter((p) => state.draft.values[p.id] !== p.base)
@@ -74,6 +129,8 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
       />
       <div className="form-layout">
         <div className="form-main">
+          {/* WB-04.06 · 打开的项目:所选场景/实验 YAML 草稿(按对象隔离) */}
+          <ProjectConfigEditors state={state} />
           <section className="form-section">
             <div className="form-section-heading">
               <span className="step">01</span>

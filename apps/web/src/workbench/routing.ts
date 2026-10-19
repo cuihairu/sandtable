@@ -36,9 +36,10 @@ export type WorkbenchDeepLink = {
 
 /** 允许进深链的选择键(每页当前位置的白名单,避免把整份草稿塞进 URL)。 */
 const SELECTION_KEYS: Record<PageId, readonly string[]> = {
-  analysis: ['candidate', 'metric', 'view', 'filter', 'sort', 'inspector'],
+  analysis: ['candidate', 'metric', 'view', 'filter', 'sort', 'inspector', 'result'],
   parameters: ['param', 'group', 'search'],
-  designer: ['method'],
+  // WB-04.03:项目内场景/实验选择用归档路径当值(稳定路径,不用下标)
+  designer: ['method', 'scenario', 'experiment'],
   runs: ['drawer'],
   exchange: [],
 }

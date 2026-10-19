@@ -19,6 +19,11 @@ import type { PageId } from '../routing.ts'
 import type { DesignDraft } from '../designer/designerLogic.ts'
 import { bulkMultiply } from '../params/paramsLogic.ts'
 import type { CandidateSortKey } from '../demo/sampleProject.ts'
+// WB-04 · 项目文档层:打开/保存/草稿/运行快照(纯逻辑,见 projectDoc.ts)
+import {
+  baseContentOf, markSaved, persistObjectDrafts, restoreObjectDrafts, resetDraft, undoDraft, unsavedKeys, writeDraft,
+} from './projectDoc.ts'
+import type { DraftMap, ProjectDoc, RunIndexEntry } from './projectDoc.ts'
 
 export const DRAFT_STORAGE_KEY = 'sandtable-workbench-v2-react'
 
@@ -36,6 +41,16 @@ export type WorkbenchState = {
     saved: boolean
     history: ParamValues[]
   }
+  /** WB-04 · 打开的项目文档(null = 内置演示项目) */
+  project: ProjectDoc | null
+  /** WB-04.06 · 按对象(归档路径)隔离的项目配置草稿,切换对象互不覆盖 */
+  objectDrafts: DraftMap
+  /** WB-04.08/09 · 已登记的运行快照(提交时不可变快照 + 产物路径) */
+  runs: readonly RunIndexEntry[]
+  /** 运行产物(键 = 归档内路径 results/<run_id>.<名>) */
+  runArtifacts: Readonly<Record<string, string | Uint8Array>>
+  /** WB-04.02 · 最近一次打开失败的提示(当前项目未被替换) */
+  projectNotice: string | null
   /** 页内选择(筛选/排序/激活 KPI 是 UI 状态,不进实验输入) */
   selectedCandidateId: CandidateId | null
   metric: MetricKey
@@ -95,6 +110,11 @@ function initialState(): WorkbenchState {
     paramSelected: [],
     design: initialDesign(),
     designDirty: false,
+    project: null,
+    objectDrafts: {},
+    runs: [],
+    runArtifacts: {},
+    projectNotice: null,
   }
 }
 
@@ -155,6 +175,24 @@ export type WorkbenchAction =
   | { type: 'param/changed-only'; on: boolean }
   | { type: 'design/set'; patch: Partial<DesignDraft> }
   | { type: 'design/reset' }
+  // —— WB-04 · 项目打开 / 保存 / 草稿 / 运行快照 ——
+  /** 打开成功:替换项目文档并按项目恢复浏览器草稿(WB-04.02/11) */
+  | { type: 'project/open'; doc: ProjectDoc; initialDrafts?: DraftMap }
+  /** 打开失败:当前项目与草稿原样保留,只记录提示(WB-04.02) */
+  | { type: 'project/open-failed'; error: string }
+  /** 关闭项目回到演示项目(未保存守卫由 UI 层确认后触发,WB-04.12) */
+  | { type: 'project/close' }
+  /** 选中项目内对象(场景/实验用归档路径当 ID,不用下标,WB-04.03) */
+  | { type: 'object/select'; kind: 'scenario' | 'experiment'; path: string }
+  /** 写某对象的配置草稿:只动该键,切换对象不覆盖另一对象(WB-04.06) */
+  | { type: 'object/draft'; key: string; content: string }
+  | { type: 'object/undo'; key: string }
+  /** 关闭文档 / 放弃修改:该对象草稿回到项目文件原文 */
+  | { type: 'object/reset'; key: string }
+  /** WB-04.10 · 写盘成功后标记保存状态(失败路径绝不触发) */
+  | { type: 'project/mark-saved' }
+  /** WB-04.09/08 · 登记运行提交时的不可变输入快照与产物路径 */
+  | { type: 'run/register'; entry: RunIndexEntry; artifacts?: Record<string, string | Uint8Array> }
 
 function withHistory(state: WorkbenchState, next: ParamValues): WorkbenchState {
   return {
@@ -245,6 +283,65 @@ export function reduce(state: WorkbenchState, action: WorkbenchAction): Workbenc
       return { ...state, design: { ...state.design, ...action.patch }, designDirty: true }
     case 'design/reset':
       return { ...state, design: initialDesign(), designDirty: false }
+    case 'project/open': {
+      // 换项目:草稿按新项目恢复(projectId 不一致一律丢弃,防串数据 WB-04.11);
+      // 选区回到路径序首个场景/实验(稳定路径当 ID,不用下标)。
+      // 上一项目的浏览器草稿记录保留——重开同一项目时仍可恢复(WB-04.12 恢复动作)。
+      const first = (kind: 'scenario' | 'experiment') =>
+        action.doc.objects.find((o) => o.kind === kind)?.path ?? null
+      const selection = {
+        ...state.selection,
+        scenario: first('scenario') ?? '',
+        experiment: first('experiment') ?? '',
+      }
+      return {
+        ...state,
+        project: action.doc,
+        // 持久草稿优先(重开同一项目);无记录时用调用方给的起始草稿
+        // (如 YAML 新建草稿 = 未保存起笔),都没有则空
+        objectDrafts: ((): DraftMap => {
+          const restored = restoreObjectDrafts(window.localStorage, action.doc)
+          return Object.keys(restored).length > 0 ? restored : action.initialDrafts ?? {}
+        })(),
+        runs: [],
+        runArtifacts: {},
+        projectNotice: null,
+        selection,
+      }
+    }
+    case 'project/open-failed':
+      return { ...state, projectNotice: action.error }
+    case 'project/close':
+      return { ...state, project: null, objectDrafts: {}, runs: [], runArtifacts: {}, projectNotice: null }
+    case 'object/select':
+      return { ...state, selection: { ...state.selection, [action.kind]: action.path } }
+    case 'object/draft':
+      if (!state.project) return state
+      return {
+        ...state,
+        objectDrafts: writeDraft(state.objectDrafts, action.key, baseContentOf(state.project, action.key), action.content),
+      }
+    case 'object/undo':
+      if (!state.project) return state
+      return {
+        ...state,
+        objectDrafts: undoDraft(state.objectDrafts, action.key, baseContentOf(state.project, action.key)),
+      }
+    case 'object/reset':
+      return {
+        ...state,
+        objectDrafts: resetDraft(state.objectDrafts, action.key),
+      }
+    case 'project/mark-saved':
+      return { ...state, objectDrafts: markSaved(state.objectDrafts, Object.keys(state.objectDrafts)) }
+    case 'run/register':
+      return {
+        ...state,
+        runs: state.runs.some((r) => r.run_id === action.entry.run_id)
+          ? state.runs
+          : [...state.runs, action.entry],
+        runArtifacts: { ...state.runArtifacts, ...action.artifacts },
+      }
     default:
       return state
   }
@@ -260,6 +357,17 @@ export function getState(): WorkbenchState {
 
 export function dispatch(action: WorkbenchAction): void {
   state = reduce(state, action)
+  // WB-04.11 · 浏览器草稿层与项目文件保存层分开记录:项目配置草稿每次
+  // 变更即落本地(按项目隔离);「已保存到项目文件」由 ObjectDraft.saved
+  // 单独承载,写盘成功才置位。恢复/清理由 project/open、close 等动作处理。
+  if (
+    state.project &&
+    (action.type === 'project/open' || action.type === 'object/draft' ||
+      action.type === 'object/undo' || action.type === 'object/reset' ||
+      action.type === 'project/mark-saved')
+  ) {
+    persistObjectDrafts(window.localStorage, state.project, state.objectDrafts)
+  }
   for (const listener of listeners) listener()
 }
 
@@ -324,4 +432,91 @@ export function deriveDocuments(state: WorkbenchState): OpenDocument[] {
       meta: '数据交换',
     },
   ]
+}
+
+/* —— WB-04 · 项目打开状态的派生(纯函数,WorkbenchApp 与测试共用) —— */
+
+/** 是否存在任何未保存工作(项目草稿 / 参数草稿 / 实验草稿;WB-04.12 守卫依据)。 */
+export function hasUnsavedWork(state: WorkbenchState): boolean {
+  return unsavedKeys(state.objectDrafts).length > 0 || !state.draft.saved || state.designDirty
+}
+
+export type ExplorerGroupView = {
+  id: string
+  title: string
+  resources: Array<{
+    id: string
+    page: PageId
+    icon: string
+    title: string
+    meta?: string
+    dirty?: boolean
+    /** 选中对象路径(scenario/experiment;选择用路径不用下标,WB-04.03) */
+    objectKind?: 'scenario' | 'experiment' | 'result'
+  }>
+  open?: boolean
+}
+
+/** 打开的项目 → 项目浏览器分组:scenario/experiment/result 全量映射(WB-04.03/04)。 */
+export function explorerGroupsFor(state: WorkbenchState): ExplorerGroupView[] | null {
+  const doc = state.project
+  if (!doc) return null
+  const dirtyMeta = (path: string): { meta: string; dirty?: boolean } => {
+    const d = state.objectDrafts[path]
+    const base = baseContentOf(doc, path)
+    if (d && d.content !== base) {
+      return { meta: d.saved ? '已修改 · 已保存' : '已修改 · 未保存', dirty: !d.saved }
+    }
+    return { meta: '与项目文件一致' }
+  }
+  const groups: ExplorerGroupView[] = []
+  const scenarios = doc.objects.filter((o) => o.kind === 'scenario')
+  const experiments = doc.objects.filter((o) => o.kind === 'experiment')
+  const results = doc.objects.filter((o) => o.kind === 'result')
+  groups.push({
+    id: 'config',
+    title: '模型与配置(场景)',
+    open: true,
+    resources: scenarios.map((o) => ({
+      id: o.path,
+      page: 'designer' as PageId,
+      icon: 'sliders',
+      title: o.name,
+      objectKind: 'scenario' as const,
+      ...dirtyMeta(o.path),
+    })),
+  })
+  groups.push({
+    id: 'experiments',
+    title: '实验配置',
+    open: true,
+    resources: experiments.map((o) => ({
+      id: o.path,
+      page: 'designer' as PageId,
+      icon: 'flask',
+      title: o.name,
+      objectKind: 'experiment' as const,
+      ...dirtyMeta(o.path),
+    })),
+  })
+  groups.push({
+    id: 'results',
+    title: '已保存结果',
+    open: true,
+    resources: results.map((o) => {
+      const st = doc.resultStatus[o.path]
+      const meta = st?.state === 'unknown-version'
+        ? `未知版本 ${st.version}`
+        : st?.state === 'known' ? `report schema ${st.version}` : '产物'
+      return {
+        id: o.path,
+        page: 'analysis' as PageId,
+        icon: 'chart',
+        title: o.name,
+        meta,
+        objectKind: 'result' as const,
+      }
+    }),
+  })
+  return groups
 }

@@ -35,6 +35,9 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
     .join('')
 }
 
+/** 内容哈希(WebCrypto sha256 hex);打包校验与运行快照(WB-04.09)共用。 */
+export { sha256Hex }
+
 /** 与 CLI check_entry_path 同规;返回 null 表示通过。 */
 function checkEntryPath(path: string, kind: EntryKind): string | null {
   if (path.includes('\\')) return `路径须用正斜杠: ${path}`
@@ -111,6 +114,16 @@ export interface PackInput {
   name: string
   scenario?: string
   experiment?: string
+  /**
+   * WB-04.07 · 多配置:完整归档相对路径 → YAML 内容。
+   * 与单配置字段合并写入;保存多配置时不丢未选中条目——调用方把项目里
+   * 全部 scenario / experiment(选中与未选中)都放进这里。同一路径在
+   * 单配置字段与多配置映射同时出现属于调用方歧义,报错不静默覆盖。
+   */
+  configs?: {
+    scenarios?: Record<string, string>
+    experiments?: Record<string, string>
+  }
   results?: Record<string, string | Uint8Array>
 }
 
@@ -126,6 +139,15 @@ export async function packProject(input: PackInput): Promise<Uint8Array> {
   const enc = (s: string) => new TextEncoder().encode(s)
   if (input.scenario) raw['scenarios/scenario.yaml'] = enc(input.scenario)
   if (input.experiment) raw['experiments/experiment.yaml'] = enc(input.experiment)
+  // WB-04.07:多配置合并——全部条目都进归档,路径纪律逐条复检
+  for (const [path, content] of Object.entries(input.configs?.scenarios ?? {})) {
+    if (raw[path] !== undefined) throw new Error(`配置路径重复: ${path}`)
+    raw[path] = enc(content)
+  }
+  for (const [path, content] of Object.entries(input.configs?.experiments ?? {})) {
+    if (raw[path] !== undefined) throw new Error(`配置路径重复: ${path}`)
+    raw[path] = enc(content)
+  }
   for (const [file, data] of Object.entries(input.results ?? {})) {
     raw[`results/${file}`] = typeof data === 'string' ? enc(data) : data
   }
