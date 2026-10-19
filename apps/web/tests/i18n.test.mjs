@@ -18,6 +18,7 @@ import {
   persistLocale,
   LOCALE_STORAGE_KEY,
 } from '../src/lib/i18n/detect.ts'
+import { fmtNumber, fmtPercent, fmtDate } from '../src/lib/i18n/format.ts'
 
 test('WB-11.01:locale 定义——zh-CN/en-US、固定显示名、en-US 兜底', () => {
   assert.deepEqual(
@@ -106,4 +107,27 @@ test('WB-11.07:持久化优先于系统语言;坏存值视同未选择', () => {
   const sink = { getItem: () => null, setItem: (k, v) => writes.push([k, v]) }
   persistLocale(sink, 'en-US')
   assert.deepEqual(writes, [[LOCALE_STORAGE_KEY, 'en-US']], '持久化键固定')
+})
+
+test('WB-11.18:数字按 locale 走 Intl,语言切换不改底层数值', () => {
+  assert.equal(fmtNumber('en-US', 1234.5), '1,234.5')
+  assert.equal(fmtNumber('zh-CN', 1234.5), '1,234.5', '中文与英文同用千分位,显示不同不改值')
+  assert.equal(fmtNumber('en-US', 0.53), '0.53', '比例值原样显示,不乘 100')
+  assert.equal(fmtNumber('en-US', 3, { fractionDigits: 2 }), '3.00')
+  assert.doesNotThrow(() => fmtNumber('xx-XX', 1.5), '非法 locale 由 Intl 回退,不抛错')
+})
+
+test('WB-11.18:百分比是唯一的比例→百分数转换点,百分点不标成百分比', () => {
+  assert.equal(fmtPercent('en-US', 0.534), '53.4%')
+  assert.equal(fmtPercent('zh-CN', 0.534), '53.4%')
+  assert.equal(fmtPercent('en-US', 0), '0%')
+  assert.notEqual(fmtPercent('en-US', 0.534), fmtNumber('en-US', 0.534), '百分比必然乘 100')
+  // 绝对差是百分点:走数字格式,不加 %
+  assert.equal(fmtNumber('en-US', 0.034), '0.034')
+  assert.doesNotThrow(() => fmtPercent('xx-XX', 0.5), '非法 locale 回退')
+})
+
+test('WB-11.18:日期用 UTC 显式格式化,不随本机时区漂移', () => {
+  assert.equal(fmtDate('en-US', '2026-10-20'), '10/20/2026')
+  assert.equal(fmtDate('zh-CN', '2026-10-20'), '2026/10/20')
 })
