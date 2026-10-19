@@ -78,8 +78,6 @@ export function demoSnapshot(
         })),
       },
     },
-    null,
-    2,
   )
 }
 
