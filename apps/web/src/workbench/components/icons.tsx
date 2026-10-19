@@ -26,6 +26,7 @@ const PATHS: Record<string, string> = {
   copy: 'M8 8h13v13H8zM16 8V3H3v13h5',
   save: 'M4 3h13l4 4v14H3V3h1Zm3 0v7h10V3M7 21v-7h10v7',
   undo: 'm8 4-5 5 5 5M3 9h11a6 6 0 0 1 0 12',
+  redo: 'm16 4 5 5-5 5M21 9H10a6 6 0 0 0 0 12',
   reset: 'M3 11a9 9 0 1 1 2 7M3 3v8h8',
   plus: 'M12 4v16M4 12h16',
   settings: 'M4 5h16M4 12h16M4 19h16M8 2v6M16 9v6M10 16v6',

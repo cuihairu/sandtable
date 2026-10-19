@@ -9,8 +9,11 @@ import { DEFAULT_PAGE, formatHash, parseHash, PAGES, HASH_BASE } from '../src/wo
 import { filterAndSort, verdictFor, verdictOf } from '../src/workbench/demo/sampleProject.ts'
 import { DEMO_RESULT } from '../src/workbench/demo/sampleProject.ts'
 import { isTerminal, requestCancel, runningCount, settleJobs, tickJobs } from '../src/workbench/state/jobLogic.ts'
-import { bulkMultiply, relativeChange, validateParam } from '../src/workbench/params/paramsLogic.ts'
-import { PARAM_DEFS } from '../src/workbench/demo/sampleProject.ts'
+import { bulkPreview, validateParam } from '../src/workbench/params/paramsLogic.ts'
+import { buildRowModels } from '../src/workbench/params/paramsLogic.ts'
+import { paramDelta } from '../src/workbench/params/configYaml.ts'
+import { registryParam } from '../src/workbench/params/paramRegistry.ts'
+import { buildDefaultYaml, parseConfig } from '../src/workbench/params/configYaml.ts'
 import { designCounts, designErrors, gridFactorValues } from '../src/workbench/designer/designerLogic.ts'
 import { matchCommands } from '../src/workbench/overlays/commands.ts'
 
@@ -82,28 +85,31 @@ test('任务状态机:queued→running→succeeded;cancelling 落边界为 cance
   assert.equal(runningCount([...cancelFlow, { ...job(5), status: 'queued' }]), 1)
 })
 
-test('参数校验与批量:整批校验失败不产生半批修改', () => {
-  const defs = PARAM_DEFS
-  const attack = defs.find((p) => p.id === 'model.warrior.attack')
-  const pHit = defs.find((p) => p.id === 'model.combat.p_hit')
+test('参数校验与批量:整批校验失败不产生半批修改(WB-05.06/05.11/05.08)', () => {
+  const attack = registryParam('model.warrior.attack')
+  const pHit = registryParam('model.combat.p_hit')
   assert.ok(attack && pHit)
   assert.equal(validateParam(attack, 1.5), '需要安全范围内的整数')
   assert.equal(validateParam(pHit, 1.2), '概率范围为 0–1')
   assert.equal(validateParam(attack, 110), '')
-  const values = Object.fromEntries(defs.map((p) => [p.id, p.base]))
+  // 行模型:注册默认 YAML 作两侧,基线/候选数值视图可用
+  const baseYaml = buildDefaultYaml()
+  const parsed = parseConfig(baseYaml)
+  const rows = buildRowModels(parsed, parsed)
   // 倍率把 p_hit 推过 1 → 整批拒绝
-  const bad = bulkMultiply(defs, values, [attack.id, pHit.id], 1.3)
+  const bad = bulkPreview(rows, [attack.path, pHit.path], 1.3)
   assert.equal(bad.ok, false)
-  if (!bad.ok) assert.match(bad.error, /未应用批量修改/)
+  assert.ok(bad.rows.some((r) => r.error !== ''))
   // 倍率 0.9:attack 90(整数取整)、p_hit 0.765(合法)→ 全过
-  const good = bulkMultiply(defs, values, [attack.id, pHit.id], 0.9)
+  const good = bulkPreview(rows, [attack.path, pHit.path], 0.9)
   assert.equal(good.ok, true)
-  if (good.ok) {
-    assert.equal(good.next[attack.id], 90)
-    assert.equal(good.next[pHit.id], 0.765)
-  }
+  assert.deepEqual(
+    Object.fromEntries(good.edits.map((e) => [e.path, e.text])),
+    { 'model.warrior.attack': '90', 'model.combat.p_hit': '0.765' },
+  )
   // 基线为 0 时不给百分比(红线)
-  assert.equal(relativeChange({ ...attack, base: 0 }, 5), '+5')
+  assert.equal(paramDelta(0, 5).rel, null)
+  assert.equal(paramDelta(0, 5).text, '+5')
 })
 
 test('实验预算与校验:缺名/坏域/超预算给出可读错误', () => {

@@ -1,6 +1,6 @@
-// WB-02.06 · 参数筛选栏:搜索 / 系统分组 / 只看变更。
-// 受控组件,状态由页面容器(或共享 store)持有;筛选是 UI 状态,
-// 不写进实验输入(WB-02.12 会再统一)。
+// WB-02.06 · 参数筛选栏:搜索 / 系统分组 / 只看变更 / 只看错误(WB-05.10)。
+// 受控组件,状态由页面容器(共享 store)持有;筛选是 UI 状态,不进实验输入。
+// 搜索占位与匹配口径:注册路径 + 原始描述 + 当前语言显示名(WB-05.09)。
 import type { JSX } from 'react'
 import { WbIcon } from '../components/icons.tsx'
 
@@ -13,6 +13,10 @@ export type ParamFilterBarProps = {
   changedOnly: boolean
   changedCount: number
   onChangedOnly: (on: boolean) => void
+  /** WB-05.10 · 只看错误(编辑缓冲非法 / 内核校验失败) */
+  errorsOnly: boolean
+  errorCount: number
+  onErrorsOnly: (on: boolean) => void
   onResetAll?: () => void
 }
 
@@ -25,6 +29,9 @@ export function ParamFilterBar({
   changedOnly,
   changedCount,
   onChangedOnly,
+  errorsOnly,
+  errorCount,
+  onErrorsOnly,
   onResetAll,
 }: ParamFilterBarProps): JSX.Element {
   return (
@@ -33,8 +40,8 @@ export function ParamFilterBar({
         <WbIcon name="search" />
         <input
           type="search"
-          placeholder="搜索名称或参数路径"
-          aria-label="搜索参数"
+          placeholder="搜索路径 / 描述 / 显示名"
+          aria-label="搜索参数(匹配注册路径、原始描述与当前语言显示名)"
           value={search}
           onChange={(e) => onSearch(e.target.value)}
         />
@@ -59,6 +66,15 @@ export function ParamFilterBar({
           onChange={(e) => onChangedOnly(e.target.checked)}
         />
         仅变更 <span className="mono">{changedCount}</span>
+      </label>
+      <label className="checkbox-line" style={{ margin: 0 }}>
+        <input
+          className="checkbox"
+          type="checkbox"
+          checked={errorsOnly}
+          onChange={(e) => onErrorsOnly(e.target.checked)}
+        />
+        仅错误 <span className="mono">{errorCount}</span>
       </label>
       <div className="toolbar-end">
         {onResetAll && (

@@ -239,7 +239,8 @@ export function AnalysisPage({ state, onExport }: AnalysisPageProps): JSX.Elemen
             <button
               className="btn inspector-action"
               onClick={() => {
-                dispatch({ type: 'draft/adopt', attack: selected.paramValue })
+                // WB-05 · 采纳走参数文档历史(单项编辑同一撤销/重做通道)
+                dispatch({ type: 'param/adopt', path: 'model.warrior.attack', value: selected.paramValue })
                 dispatch({ type: 'navigate', page: 'parameters' })
               }}
             >

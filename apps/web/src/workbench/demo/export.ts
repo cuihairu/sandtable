@@ -2,7 +2,8 @@
 // 红线:导出内容必须标明 synthetic_demo 来源;JSON 把"当前编辑草稿"与
 // "样例结果快照"分开,未运行的修改绝不冒充样例结果的输入。
 // WB-09 接真实 run 时替换为真实产物导出(列契约在 WB-09.02 展开)。
-import { DATA_SOURCE, METRICS, METRIC_KEYS, PARAM_DEFS, PARAM_GROUPS } from './sampleProject.ts'
+import { DATA_SOURCE, METRICS, METRIC_KEYS } from './sampleProject.ts'
+import { PARAM_REGISTRY, displayParamName, paramGroups } from '../params/paramRegistry.ts'
 import type { DemoCandidate, MetricKey, ParamValues } from './sampleProject.ts'
 import { verdictOf } from './sampleProject.ts'
 import type { DesignDraft } from '../designer/designerLogic.ts'
@@ -113,17 +114,16 @@ export function download(name: string, data: string | Uint8Array, mime: string):
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-/** 命令搜索用的参数条目(标签/路径匹配)。 */
-export function paramCommandEntries(values: ParamValues): Array<{ id: string; label: string; hint: string }> {
-  void values
-  return PARAM_DEFS.map((p) => ({
-    id: p.id,
-    label: p.name,
-    hint: p.id,
+/** 命令搜索用的参数条目(WB-05:全量注册表,不再用 18 项原型)。 */
+export function paramCommandEntries(): Array<{ id: string; label: string; hint: string }> {
+  return PARAM_REGISTRY.map((p) => ({
+    id: p.path,
+    label: displayParamName(p.path, 'zh-CN'),
+    hint: p.path,
   }))
 }
 
-export const EXPORT_GROUP_LABEL = (g: string): string => (PARAM_GROUPS.includes(g) ? g : 'all')
+export const EXPORT_GROUP_LABEL = (g: string): string => (paramGroups().includes(g) ? g : 'all')
 
 export function metricById(id: string): MetricKey | undefined {
   return METRIC_KEYS.find((k) => METRICS[k].id === id)

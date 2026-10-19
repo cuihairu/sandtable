@@ -1,18 +1,40 @@
-// WB-02.04 · 参数编辑页容器:组合 WB-02.06 四组件 + 撤销/保存。
-// 保存目标 = 浏览器本地草稿(刷新可恢复);真实项目保存是 WB-04 范围,
-// 状态栏与标签的未保存标记都从 store 的 draft.saved 读取。
+// WB-02.04 · 参数编辑页容器(WB-05 重写):数据源 = 注册表 × 基线/候选 YAML。
+// - 全量注册项入表(64 项),不再使用原型 18 项硬编码(WB-05.01);
+// - 基线列读基线 YAML、候选列读候选 YAML,缺值不回退默认值(WB-05.03);
+// - 单元格提交 → 结构化编辑同步候选 YAML → 内核完整校验定位失败(WB-05.06/07);
+// - 高级 YAML 编辑:成功解析更新参数表,语法错误保留原文(WB-05.02/05.13);
+// - 批量倍率:先预览/校验整批,再一次写入(WB-05.11);撤销/重做统一历史
+//   (WB-05.12);保存/运行使用冻结的已校验版本(WB-05.14,冻结动作在
+//   WorkbenchApp/DesignerPage 提交时发生)。
+import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
 import { WbIcon } from '../components/icons.tsx'
+import { OverlayDialog } from '../overlays/OverlayDialog.tsx'
 import { ParamFilterBar } from '../params/ParamFilterBar.tsx'
 import { ParamTable } from '../params/ParamTable.tsx'
 import { ParamDetail } from '../params/ParamDetail.tsx'
 import { BulkActionBar } from '../params/BulkActionBar.tsx'
-import { dispatch, persistDraft } from '../state/workbenchStore.ts'
+import { dispatch, paramYamlView, persistDraft } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
-import { DEFAULT_VALUES, PARAM_DEFS, PARAM_GROUPS } from '../demo/sampleProject.ts'
-import { changedParams, bulkMultiply, validateParam, visibilityFilter } from '../params/paramsLogic.ts'
+import { applyParamEdits, parseConfig } from '../params/configYaml.ts'
+import type { ParamRowModel } from '../params/paramsLogic.ts'
+import {
+  buildRowModels, bulkPreview, kernelCheck, parseCellInput, visibilityFilter,
+} from '../params/paramsLogic.ts'
+import { paramGroups } from '../params/paramRegistry.ts'
+import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, isLocale } from '../../lib/i18n/index.ts'
 import { notify } from '../state/notifications.ts'
+
+/** 当前语言:WB-11 持久化就绪时读取其键,否则默认语言(本层不改 i18n 文件)。 */
+function pageLocale(): string {
+  try {
+    const raw = window.localStorage.getItem(LOCALE_STORAGE_KEY)
+    return raw !== null && isLocale(raw) ? raw : DEFAULT_LOCALE
+  } catch {
+    return DEFAULT_LOCALE
+  }
+}
 
 export type ParametersPageProps = {
   state: WorkbenchState
@@ -20,66 +42,161 @@ export type ParametersPageProps = {
 }
 
 export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps): JSX.Element {
-  const { draft, paramSearch, paramGroup, changedOnly, paramSelected, paramFocusId } = state
-  const visible = visibilityFilter(PARAM_DEFS, draft.values, { search: paramSearch, group: paramGroup, changedOnly })
-  const changed = changedParams(PARAM_DEFS, draft.values)
-  const focusDef = PARAM_DEFS.find((p) => p.id === paramFocusId) ?? PARAM_DEFS[0]
+  const { paramSearch, paramGroup, changedOnly, errorsOnly, paramSelected, paramFocusId } = state
+  const locale = pageLocale()
+  const view = paramYamlView(state)
+  const baseParsed = parseConfig(view.base)
+  const candParsed = parseConfig(view.cand)
+  const rows = buildRowModels(baseParsed, candParsed)
+  const invalidPaths = new Set<string>(
+    state.paramKernelError?.path !== null && state.paramKernelError !== null
+      ? [state.paramKernelError.path as string]
+      : [],
+  )
+  const visible = visibilityFilter(rows, {
+    search: paramSearch, group: paramGroup, changedOnly, errorsOnly, invalidPaths, locale,
+  })
+  const changedCount = rows.filter((r) => r.modified).length
+  const focusRow = rows.find((r) => r.def.path === paramFocusId) ?? rows[0]
   const selectedSet = new Set(paramSelected)
+  const groups = paramGroups().filter((g) => rows.some((r) => r.group === g))
 
-  const commit = (def: (typeof PARAM_DEFS)[number], value: number): boolean => {
-    const error = validateParam(def, value)
-    if (error) {
-      notify('error', `${def.name}:${error}`)
-      return false
+  // 批量预览状态(页面持有;整批一次性应用,WB-05.11)
+  const [bulk, setBulk] = useState<{ preview: ReturnType<typeof bulkPreview> | null; checking: boolean }>({
+    preview: null, checking: false,
+  })
+  // 高级 YAML 编辑状态(WB-05.13):语法错误时保留原文,不写候选
+  const [yamlEdit, setYamlEdit] = useState<{ open: boolean; text: string; error: string | null; focusPath: string | null }>({
+    open: false, text: '', error: null, focusPath: null,
+  })
+
+  // —— 内核完整校验(WB-05.06/07):候选变化后异步校验,失败定位参数 ——
+  const checkSeq = useRef(0)
+  const lastChecked = useRef<string | null>(null)
+  useEffect(() => {
+    if (lastChecked.current === view.cand) return
+    lastChecked.current = view.cand
+    const seq = ++checkSeq.current
+    void kernelCheck(view.cand).then((result) => {
+      if (seq !== checkSeq.current) return // 过期结果丢弃(快速连续编辑)
+      if (result.ok) {
+        dispatch({ type: 'param/kernel-error', error: null })
+      } else {
+        dispatch({ type: 'param/kernel-error', error: { path: result.path, message: result.message } })
+      }
+    })
+  }, [view.cand])
+
+  const commit = (row: ParamRowModel, input: string): string => {
+    const parsed = parseCellInput(input, row.def)
+    if (parsed.state !== 'ok') return parsed.error
+    const outcome = applyParamEdits(view.cand, [{ path: row.def.path, text: parsed.text }])
+    if (!outcome.ok) return outcome.error
+    dispatch({ type: 'param/write', yaml: outcome.yaml })
+    return ''
+  }
+
+  const openAdvancedEdit = (row?: ParamRowModel): void => {
+    setYamlEdit({ open: true, text: view.cand, error: null, focusPath: row?.def.path ?? null })
+  }
+
+  const applyAdvancedEdit = (): void => {
+    // 语法错误:保留原文(编辑框内容不动),给出定位;成功才更新参数表
+    const parsed = parseConfig(yamlEdit.text)
+    if (parsed.errors.length > 0) {
+      setYamlEdit((s) => ({ ...s, error: `第 ${parsed.errors[0].line} 行:${parsed.errors[0].message}` }))
+      return
     }
-    if (draft.values[def.id] !== value) {
-      dispatch({ type: 'draft/set', id: def.id, value })
+    dispatch({ type: 'param/write', yaml: yamlEdit.text })
+    notify('success', 'YAML 已解析并更新参数表')
+    setYamlEdit({ open: false, text: '', error: null, focusPath: null })
+  }
+
+  const previewBulk = (factor: number): void => {
+    // 第一步:前端逐项预演
+    const preview = bulkPreview(rows, paramSelected, factor)
+    setBulk({ preview, checking: !preview.ok ? false : true })
+    if (!preview.ok) return
+    // 第二步:整批草稿交内核完整校验(任一失败 → 应用按钮保持禁用)
+    const scratch = applyParamEdits(view.cand, preview.edits)
+    if (!scratch.ok) {
+      setBulk({ preview: { ...preview, ok: false, error: scratch.error }, checking: false })
+      return
     }
-    return true
+    void kernelCheck(scratch.yaml).then((result) => {
+      setBulk((s) => {
+        if (!s.preview) return s
+        if (result.ok) return { ...s, checking: false, preview: { ...s.preview, ok: true } }
+        const where = result.path ? `${result.path}: ` : ''
+        return {
+          ...s,
+          checking: false,
+          preview: { ...s.preview, ok: false, error: `内核校验失败,未应用批量修改:${where}${result.message}` },
+        }
+      })
+    })
+  }
+
+  const applyBulk = (): void => {
+    if (!bulk.preview?.ok) return
+    const outcome = applyParamEdits(view.cand, bulk.preview.edits)
+    if (!outcome.ok) {
+      notify('error', outcome.error)
+      return
+    }
+    dispatch({ type: 'param/write', yaml: outcome.yaml })
+    notify('success', `已批量修改 ${bulk.preview.edits.length} 个参数,可撤销`)
+    setBulk({ preview: null, checking: false })
+    dispatch({ type: 'param/select', ids: [] })
   }
 
   const save = (): void => {
     if (persistDraft(state)) {
-      dispatch({ type: 'draft/save' })
+      dispatch({ type: 'param/save' })
       notify('success', '候选方案已保存到当前浏览器')
     } else {
       notify('warning', '浏览器存储不可用,草稿仍保留在当前页面')
     }
   }
 
-  const undo = (): void => {
-    if (draft.history.length === 0) {
-      notify('info', '当前会话没有可撤销的修改')
-      return
-    }
-    dispatch({ type: 'draft/undo' })
-    notify('info', '已撤销上一次参数修改')
-  }
-
-  const resetAll = (): void => {
-    // 确认框由 WorkbenchApp 顶层统一管理(确认后才应用 reset-all)
-    onRequestResetAll()
-  }
+  const canUndo = state.project
+    ? view.scenarioPath !== null
+      ? (state.objectDrafts[view.scenarioPath]?.history.length ?? 0) > 0
+      : false
+    : state.paramDraft.history.length > 0
+  const canRedo = state.project
+    ? view.scenarioPath !== null
+      ? (state.objectDrafts[view.scenarioPath]?.future.length ?? 0) > 0
+      : false
+    : state.paramDraft.future.length > 0
 
   return (
     <>
       <WorkspaceHeading
-        title="候选方案 A"
+        title={state.project ? '候选方案(项目场景)' : '候选方案 A'}
         crumb="模型与配置 / 参数表"
-        badge={{ text: '本地草稿', tone: 'amber' }}
+        badge={{ text: state.project ? '项目场景草稿' : '本地草稿', tone: 'amber' }}
         actions={
           <>
             <span className="muted" style={{ fontSize: 10 }}>
-              {draft.saved ? '浏览器草稿已保存' : '存在未保存修改'}
+              {state.project
+                ? (view.scenarioPath ?? '未选择场景')
+                : state.paramDraft.saved ? '浏览器草稿已保存' : '存在未保存修改'}
             </span>
-            <button className="btn" onClick={undo}>
+            <button className="btn" disabled={!canUndo} onClick={() => dispatch({ type: 'param/undo' })} title="撤销(Ctrl+Z)">
               <WbIcon name="undo" />
               撤销
             </button>
-            <button className="btn primary" onClick={save}>
-              <WbIcon name="save" />
-              保存草稿
+            <button className="btn" disabled={!canRedo} onClick={() => dispatch({ type: 'param/redo' })} title="重做">
+              <WbIcon name="redo" />
+              重做
             </button>
+            {!state.project && (
+              <button className="btn primary" onClick={save}>
+                <WbIcon name="save" />
+                保存草稿
+              </button>
+            )}
           </>
         }
       />
@@ -90,75 +207,107 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
           dispatch({ type: 'selection', patch: { search: q } })
         }}
         group={paramGroup}
-        groups={PARAM_GROUPS}
+        groups={groups}
         onGroup={(g) => {
           dispatch({ type: 'param/group', group: g })
           dispatch({ type: 'selection', patch: { group: g } })
         }}
         changedOnly={changedOnly}
-        changedCount={changed.length}
+        changedCount={changedCount}
         onChangedOnly={(on) => dispatch({ type: 'param/changed-only', on })}
-        onResetAll={resetAll}
+        errorsOnly={errorsOnly}
+        errorCount={invalidPaths.size}
+        onErrorsOnly={(on) => dispatch({ type: 'param/errors-only', on })}
+        onResetAll={onRequestResetAll}
       />
       {paramSelected.length > 0 && (
         <BulkActionBar
           count={paramSelected.length}
-          onApply={(factor) => {
-            // 先整批校验(bulkMultiply 纯函数),失败不产生半批修改、给出可读错误
-            const result = bulkMultiply(PARAM_DEFS, draft.values, paramSelected, factor)
-            if (!result.ok) {
-              notify('error', result.error)
-              return
-            }
-            dispatch({ type: 'draft/bulk', factor, ids: paramSelected })
-            notify('success', `已批量修改 ${result.applied} 个参数,可撤销`)
+          preview={bulk.preview}
+          checking={bulk.checking}
+          onPreview={previewBulk}
+          onApply={applyBulk}
+          onClear={() => {
+            dispatch({ type: 'param/select', ids: [] })
+            setBulk({ preview: null, checking: false })
           }}
-          onClear={() => dispatch({ type: 'param/select', ids: [] })}
         />
       )}
       <div className="parameters-body">
         <div className="parameters-center">
           <ParamTable
             id="parameter-table"
-            defs={visible}
-            values={draft.values}
+            rows={visible}
             selected={selectedSet}
             focusId={paramFocusId}
+            kernelErrorPath={state.paramKernelError?.path ?? null}
             onCommit={commit}
-            onSelect={(id, checked) => {
+            onSelect={(path, checked) => {
               dispatch({
                 type: 'param/select',
-                ids: checked ? [...paramSelected, id] : paramSelected.filter((p) => p !== id),
+                ids: checked ? [...paramSelected, path] : paramSelected.filter((p) => p !== path),
               })
             }}
             onSelectAll={(checked) => {
-              dispatch({ type: 'param/select', ids: checked ? visible.map((p) => p.id) : [] })
+              // 全选只作用于当前可见项(WB-05.10)
+              dispatch({ type: 'param/select', ids: checked ? visible.map((p) => p.def.path) : [] })
             }}
-            onFocusRow={(id) => dispatch({ type: 'param/focus', id })}
+            onFocusRow={(path) => dispatch({ type: 'param/focus', id: path })}
+            onAdvancedEdit={(row) => openAdvancedEdit(row)}
+            locale={locale}
           />
           <div className="table-foot">
-            <span>{`${visible.length} / ${PARAM_DEFS.length} 个示例参数`}</span>
-            <span>基线只读 · 候选值可编辑 · 完整校验在运行/保存时由内核执行</span>
+            <span>{`${visible.length} / ${rows.length} 个注册参数`}</span>
+            <span>
+              {state.project
+                ? '基线 = 项目场景文件 · 候选 = 场景草稿(YAML 同步)'
+                : '基线 = 注册表默认配置 · 完整校验在应用/保存/运行时由内核执行'}
+            </span>
           </div>
         </div>
         <ParamDetail
-          def={focusDef}
-          value={draft.values[focusDef.id]}
-          baseline={focusDef.base}
-          changedCount={changed.length}
-          savedLabel={draft.saved ? '当前浏览器(已保存)' : '当前浏览器(未保存)'}
-          onResetOne={() => {
-            const error = validateParam(focusDef, DEFAULT_VALUES[focusDef.id])
-            if (error) {
-              notify('error', error)
-              return
-            }
-            dispatch({ type: 'draft/set', id: focusDef.id, value: DEFAULT_VALUES[focusDef.id] })
-            notify('info', '已恢复此项基线值,可撤销')
-          }}
+          row={focusRow}
+          changedCount={changedCount}
+          savedLabel={state.project
+            ? '项目场景草稿(随项目保存)'
+            : state.paramDraft.saved ? '当前浏览器(已保存)' : '当前浏览器(未保存)'}
+          kernelError={state.paramKernelError}
+          onResetOne={() => dispatch({ type: 'param/reset-one', path: focusRow.def.path })}
+          onAdvancedEdit={() => openAdvancedEdit(focusRow)}
           onNewExperiment={() => dispatch({ type: 'navigate', page: 'designer' })}
+          locale={locale}
         />
       </div>
+      <OverlayDialog
+        open={yamlEdit.open}
+        onClose={() => setYamlEdit({ open: false, text: '', error: null, focusPath: null })}
+        title={yamlEdit.focusPath ? `高级 YAML 编辑:${yamlEdit.focusPath}` : '高级 YAML 编辑(候选配置)'}
+        footer={
+          <>
+            <button className="btn" onClick={() => setYamlEdit({ open: false, text: '', error: null, focusPath: null })}>
+              取消
+            </button>
+            <button className="btn primary" onClick={applyAdvancedEdit}>
+              解析并应用
+            </button>
+          </>
+        }
+      >
+        <p className="note" style={{ marginBottom: 8 }}>
+          直接编辑候选配置 YAML;成功解析后参数表随之更新。语法错误时保留原文,不写入候选。
+          结构参数(loot 表 / 公式 / damage_model 等)在此修改,内核校验在应用后进行。
+        </p>
+        <textarea
+          aria-label="候选配置 YAML"
+          value={yamlEdit.text}
+          onChange={(e) => setYamlEdit((s) => ({ ...s, text: e.target.value }))}
+          spellCheck={false}
+          style={{ width: '100%', minHeight: 320, fontFamily: 'var(--wb-mono)', fontSize: 12 }}
+        />
+        {yamlEdit.error && (
+          <p className="parameter-error" role="alert">{yamlEdit.error}</p>
+        )}
+      </OverlayDialog>
     </>
   )
 }

@@ -8,20 +8,21 @@
 // WB-02.11 将把这里明确细化为"输入草稿 / 运行快照 / 已完成结果 / 当前选择",
 // 本批先保证组件有单一可信来源可用。
 import {
-  DEMO_RESULT, DEFAULT_VALUES, PARAM_DEFS,
+  DEMO_RESULT,
   DEMO_BASELINE_ID, DEMO_EXPERIMENT_ID,
 } from '../demo/sampleProject.ts'
-import type { MetricKey, MetricValues, ParamValues } from '../demo/sampleProject.ts'
+import type { CandidateSortKey, MetricKey, MetricValues } from '../demo/sampleProject.ts'
 import { candidateIdFor } from '../ids.ts'
 import type { CandidateId } from '../ids.ts'
 import { DEFAULT_PAGE, pageDef, formatHash, parseHash } from '../routing.ts'
 import type { PageId } from '../routing.ts'
 import type { DesignDraft } from '../designer/designerLogic.ts'
-import { bulkMultiply } from '../params/paramsLogic.ts'
-import type { CandidateSortKey } from '../demo/sampleProject.ts'
+// WB-05 · 参数表数据源:注册表 × 配置 YAML(纯逻辑,见 params/)
+import { applyParamEdit, applyParamEdits, buildDefaultYaml, numericValuesOf, parseConfig, readText, removeParam } from '../params/configYaml.ts'
+import { formatScalar, modifiedPaths } from '../params/paramsLogic.ts'
 // WB-04 · 项目文档层:打开/保存/草稿/运行快照(纯逻辑,见 projectDoc.ts)
 import {
-  baseContentOf, markSaved, persistObjectDrafts, restoreObjectDrafts, resetDraft, undoDraft, unsavedKeys, writeDraft,
+  baseContentOf, baselineOfProject, draftOf, markSaved, persistObjectDrafts, restoreObjectDrafts, resetDraft, undoDraft, redoDraft, unsavedKeys, writeDraft,
 } from './projectDoc.ts'
 import type { DraftMap, ProjectDoc, RunIndexEntry } from './projectDoc.ts'
 
@@ -35,12 +36,18 @@ export type WorkbenchState = {
   inspectorOpen: boolean
   /** 任务抽屉(状态栏/独立于页面) */
   drawerOpen: boolean
-  /** 参数草稿(候选方案 A) */
-  draft: {
-    values: ParamValues
+  /** WB-05 · 参数候选文档(演示模式的候选 YAML + 撤销/重做历史;
+   * 项目模式候选 = objectDrafts[scenario],见 paramYamlView) */
+  paramDraft: {
+    yaml: string
     saved: boolean
-    history: ParamValues[]
+    history: readonly string[]
+    future: readonly string[]
   }
+  /** WB-05.14 · 保存/运行时冻结的已校验配置版本(单元格后续编辑不影响它) */
+  paramFrozen: { yaml: string; configHash: string; at: number } | null
+  /** WB-05.07 · 最近一次内核完整校验失败(定位路径 + 原始错误详情) */
+  paramKernelError: { path: string | null; message: string } | null
   /** WB-04 · 打开的项目文档(null = 内置演示项目) */
   project: ProjectDoc | null
   /** WB-04.06 · 按对象(归档路径)隔离的项目配置草稿,切换对象互不覆盖 */
@@ -61,6 +68,8 @@ export type WorkbenchState = {
   paramSearch: string
   paramGroup: string
   changedOnly: boolean
+  /** WB-05.10 · 只看错误(编辑缓冲非法 / 内核校验失败的参数) */
+  errorsOnly: boolean
   paramFocusId: string | null
   paramSelected: readonly string[]
   /** 实验设计草稿(切页保留) */
@@ -89,14 +98,16 @@ function initialState(): WorkbenchState {
   // 深链优先:带 #/workbench/... 打开时恢复页面与选择
   const deepLink = parseHash(window.location.hash)
   const page = deepLink?.page ?? DEFAULT_PAGE
-  const restored = loadPersistedDraft()
+  const restored = loadPersistedParamDraft()
   return {
     page,
     selection: deepLink?.selection ?? {},
     explorerCollapsed: false,
     inspectorOpen: true,
     drawerOpen: false,
-    draft: restored,
+    paramDraft: restored,
+    paramFrozen: null,
+    paramKernelError: null,
     selectedCandidateId: null,
     metric: 'win',
     resultView: 'chart',
@@ -106,6 +117,7 @@ function initialState(): WorkbenchState {
     paramSearch: '',
     paramGroup: 'all',
     changedOnly: false,
+    errorsOnly: false,
     paramFocusId: null,
     paramSelected: [],
     design: initialDesign(),
@@ -118,20 +130,38 @@ function initialState(): WorkbenchState {
   }
 }
 
-function loadPersistedDraft(): WorkbenchState['draft'] {
-  const empty = { values: { ...DEFAULT_VALUES, 'model.warrior.attack': 110, 'model.combat.p_hit': 0.88 }, saved: true, history: [] as ParamValues[] }
+/** 演示模式基线:注册表默认配置(WB-05.01;非运行产物) */
+export const DEMO_BASE_YAML: string = buildDefaultYaml()
+
+/** 演示模式初始候选:注册默认 + 原演示草稿的两处偏移(可撤销可恢复)。 */
+function initialDemoYaml(): string {
+  const applied = applyParamEdits(DEMO_BASE_YAML, [
+    { path: 'model.warrior.attack', text: '110' },
+    { path: 'model.combat.p_hit', text: '0.88' },
+  ])
+  return applied.ok ? applied.yaml : DEMO_BASE_YAML
+}
+
+function loadPersistedParamDraft(): WorkbenchState['paramDraft'] {
+  const empty = { yaml: initialDemoYaml(), saved: true, history: [] as readonly string[], future: [] as readonly string[] }
   try {
     const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY)
     if (!raw) return empty
-    const parsed = JSON.parse(raw) as { values?: ParamValues }
-    const values: ParamValues = { ...empty.values }
-    if (parsed.values) {
-      for (const def of PARAM_DEFS) {
-        const v = parsed.values[def.id]
-        if (typeof v === 'number' && Number.isFinite(v)) values[def.id] = v
-      }
+    const parsed = JSON.parse(raw) as { yaml?: string; values?: Record<string, number> }
+    if (typeof parsed.yaml === 'string' && parseConfig(parsed.yaml).errors.length === 0) {
+      // 新载荷:候选 YAML 原文
+      return { yaml: parsed.yaml, saved: true, history: [], future: [] }
     }
-    return { values, saved: true, history: [] }
+    if (parsed.values) {
+      // 旧载荷迁移(WB-02 数值草稿):逐项写到注册默认 YAML 上
+      const base = DEMO_BASE_YAML
+      const edits = Object.entries(parsed.values)
+        .filter(([path, v]) => typeof v === 'number' && Number.isFinite(v) && readText(parseConfig(base), path) !== null)
+        .map(([path, v]) => ({ path, text: formatScalar(v) }))
+      const applied = applyParamEdits(base, edits)
+      if (applied.ok) return { yaml: applied.yaml, saved: true, history: [], future: [] }
+    }
+    return empty
   } catch {
     // 损坏的本地草稿不能阻止打开工作台
     return empty
@@ -142,7 +172,7 @@ export function persistDraft(state: WorkbenchState): boolean {
   try {
     window.localStorage.setItem(
       DRAFT_STORAGE_KEY,
-      JSON.stringify({ values: state.draft.values, savedAt: Date.now() }),
+      JSON.stringify({ yaml: state.paramDraft.yaml, savedAt: Date.now() }),
     )
     return true
   } catch {
@@ -157,12 +187,23 @@ export type WorkbenchAction =
   | { type: 'toggle-explorer' }
   | { type: 'toggle-inspector' }
   | { type: 'toggle-drawer'; open?: boolean }
-  | { type: 'draft/set'; id: string; value: number }
-  | { type: 'draft/undo' }
-  | { type: 'draft/save' }
-  | { type: 'draft/reset-all' }
-  | { type: 'draft/bulk'; factor: number; ids: readonly string[] }
-  | { type: 'draft/adopt'; attack: number }
+  // —— WB-05 · 参数表(候选 = YAML 文档;演示/项目两模式统一入口) ——
+  /** 写候选 YAML(页面侧用纯函数算好新文档;每次写入 = 一条历史) */
+  | { type: 'param/write'; yaml: string }
+  | { type: 'param/undo' }
+  | { type: 'param/redo' }
+  | { type: 'param/save' }
+  /** 恢复全部:候选回到基线 YAML(可撤销) */
+  | { type: 'param/reset-all' }
+  /** 单项恢复基线(基线缺值时删除候选键;可撤销) */
+  | { type: 'param/reset-one'; path: string }
+  /** 结果页采纳参数值(WB-02.08 adopt;走同一条历史) */
+  | { type: 'param/adopt'; path: string; value: number }
+  /** WB-05.14 · 冻结已过内核校验的配置版本(保存/运行提交时) */
+  | { type: 'param/frozen'; yaml: string; configHash: string }
+  /** WB-05.07 · 内核校验失败(定位路径 + 原始详情);null = 清除 */
+  | { type: 'param/kernel-error'; error: { path: string | null; message: string } | null }
+  | { type: 'param/errors-only'; on: boolean }
   | { type: 'candidate/select'; id: CandidateId | null }
   | { type: 'candidate/metric'; metric: MetricKey }
   | { type: 'candidate/view'; view: 'chart' | 'table' }
@@ -194,13 +235,84 @@ export type WorkbenchAction =
   /** WB-04.09/08 · 登记运行提交时的不可变输入快照与产物路径 */
   | { type: 'run/register'; entry: RunIndexEntry; artifacts?: Record<string, string | Uint8Array> }
 
-function withHistory(state: WorkbenchState, next: ParamValues): WorkbenchState {
+/* —— WB-05 · 参数候选 YAML 的统一写入/撤销/重做(演示与项目两模式) —— */
+
+/** 当前参数文档的 YAML 视图:基线 + 候选 + 场景路径(项目模式)。 */
+export function paramYamlView(state: WorkbenchState): {
+  base: string
+  cand: string
+  scenarioPath: string | null
+} {
+  const doc = state.project
+  if (doc) {
+    const scenarioPath = state.selection.scenario
+    if (scenarioPath && doc.objects.some((o) => o.path === scenarioPath && o.kind === 'scenario')) {
+      const base = baseContentOf(doc, scenarioPath)
+      return { base, cand: draftOf(state.objectDrafts, scenarioPath, base).content, scenarioPath }
+    }
+  }
+  return { base: DEMO_BASE_YAML, cand: state.paramDraft.yaml, scenarioPath: null }
+}
+
+/** 写候选 YAML:演示模式走 paramDraft;项目模式写穿到对象草稿(同一历史)。
+ * WB-05.14:冻结版本是提交时刻的独立拷贝,后续单元格编辑不影响它
+ * (只有下一次保存/运行重新冻结,或换场景/关项目时失效)。 */
+function writeParamYaml(state: WorkbenchState, nextYaml: string): WorkbenchState {
+  const view = paramYamlView(state)
+  if (nextYaml === view.cand) return state
+  if (state.project && view.scenarioPath) {
+    return {
+      ...state,
+      objectDrafts: writeDraft(state.objectDrafts, view.scenarioPath, view.base, nextYaml),
+    }
+  }
   return {
     ...state,
-    draft: {
-      values: next,
+    paramDraft: {
+      yaml: nextYaml,
       saved: false,
-      history: [...state.draft.history, state.draft.values].slice(-50),
+      history: [...state.paramDraft.history, state.paramDraft.yaml].slice(-50),
+      future: [],
+    },
+  }
+}
+
+function paramUndo(state: WorkbenchState): WorkbenchState {
+  if (state.project) {
+    const view = paramYamlView(state)
+    if (!view.scenarioPath) return state
+    return { ...state, objectDrafts: undoDraft(state.objectDrafts, view.scenarioPath, view.base) }
+  }
+  if (state.paramDraft.history.length === 0) return state
+  const history = [...state.paramDraft.history]
+  const yaml = history.pop() as string
+  return {
+    ...state,
+    paramDraft: {
+      yaml,
+      saved: false,
+      history,
+      future: [state.paramDraft.yaml, ...state.paramDraft.future].slice(0, 50),
+    },
+  }
+}
+
+function paramRedo(state: WorkbenchState): WorkbenchState {
+  if (state.project) {
+    const view = paramYamlView(state)
+    if (!view.scenarioPath) return state
+    return { ...state, objectDrafts: redoDraft(state.objectDrafts, view.scenarioPath, view.base) }
+  }
+  if (state.paramDraft.future.length === 0) return state
+  const future = [...state.paramDraft.future]
+  const yaml = future.shift() as string
+  return {
+    ...state,
+    paramDraft: {
+      yaml,
+      saved: false,
+      history: [...state.paramDraft.history, state.paramDraft.yaml].slice(-50),
+      future,
     },
   }
 }
@@ -223,38 +335,48 @@ export function reduce(state: WorkbenchState, action: WorkbenchAction): Workbenc
       return { ...state, inspectorOpen: !state.inspectorOpen }
     case 'toggle-drawer':
       return { ...state, drawerOpen: action.open ?? !state.drawerOpen }
-    case 'draft/set': {
-      const next = { ...state.draft.values, [action.id]: action.value }
-      const contaminated = state.paramSelected.includes(action.id)
-        ? state.paramSelected.filter((pid) => pid !== action.id)
-        : state.paramSelected
-      return { ...withHistory(state, next), paramSelected: contaminated, paramFocusId: action.id }
+    // —— WB-05 · 参数表(候选 YAML 统一历史:单项/批量/恢复/采纳) ——
+    case 'param/write':
+      return writeParamYaml(state, action.yaml)
+    case 'param/undo':
+      return paramUndo(state)
+    case 'param/redo':
+      return paramRedo(state)
+    case 'param/save':
+      if (state.project) return state // 项目模式保存状态由 project/mark-saved 承载
+      return { ...state, paramDraft: { ...state.paramDraft, saved: true } }
+    case 'param/reset-all':
+      return { ...writeParamYaml(state, paramYamlView(state).base), paramSelected: [] }
+    case 'param/reset-one': {
+      const view = paramYamlView(state)
+      const parsed = parseConfig(view.cand)
+      // 基线有值 → 写回基线文本;基线无值 → 删除候选键(不回退默认值)
+      const baselineText = readText(parseConfig(view.base), action.path)
+      const outcome = baselineText !== null
+        ? applyParamEdit(view.cand, parsed, action.path, baselineText)
+        : removeParam(view.cand, parsed, action.path)
+      if (!outcome.ok) return state
+      return writeParamYaml(state, outcome.yaml)
     }
-    case 'draft/undo': {
-      if (state.draft.history.length === 0) return state
-      const history = [...state.draft.history]
-      const values = history.pop() as ParamValues
-      return { ...state, draft: { values, saved: false, history } }
-    }
-    case 'draft/save':
-      return { ...state, draft: { ...state.draft, saved: true } }
-    case 'draft/reset-all':
-      return { ...withHistory(state, { ...DEFAULT_VALUES }), paramSelected: [] }
-    case 'draft/bulk': {
-      const result = bulkMultiply(PARAM_DEFS, state.draft.values, action.ids, action.factor)
-      if (!result.ok) return state
-      return { ...withHistory(state, result.next), paramSelected: [] }
-    }
-    case 'draft/adopt': {
-      const id = 'model.warrior.attack'
+    case 'param/adopt': {
+      const view = paramYamlView(state)
+      const outcome = applyParamEdit(view.cand, parseConfig(view.cand), action.path, formatScalar(action.value))
+      if (!outcome.ok) return state
       return {
-        ...withHistory(state, { ...state.draft.values, [id]: action.attack }),
+        ...writeParamYaml(state, outcome.yaml),
         paramGroup: 'all',
         paramSearch: '',
         changedOnly: false,
-        paramFocusId: id,
+        errorsOnly: false,
+        paramFocusId: action.path,
       }
     }
+    case 'param/frozen':
+      return { ...state, paramFrozen: { yaml: action.yaml, configHash: action.configHash, at: Date.now() } }
+    case 'param/kernel-error':
+      return { ...state, paramKernelError: action.error }
+    case 'param/errors-only':
+      return { ...state, errorsOnly: action.on }
     case 'candidate/select':
       return { ...state, selectedCandidateId: action.id }
     case 'candidate/metric':
@@ -312,9 +434,20 @@ export function reduce(state: WorkbenchState, action: WorkbenchAction): Workbenc
     case 'project/open-failed':
       return { ...state, projectNotice: action.error }
     case 'project/close':
-      return { ...state, project: null, objectDrafts: {}, runs: [], runArtifacts: {}, projectNotice: null }
+      return {
+        ...state,
+        project: null, objectDrafts: {}, runs: [], runArtifacts: {}, projectNotice: null,
+        // 冻结版本属于已关闭项目(WB-05.14)
+        paramFrozen: null, paramKernelError: null,
+      }
     case 'object/select':
-      return { ...state, selection: { ...state.selection, [action.kind]: action.path } }
+      return {
+        ...state,
+        selection: { ...state.selection, [action.kind]: action.path },
+        // 换对象:参数冻结版本属于前一场景的提交时刻,不再适用(WB-05.14)
+        paramFrozen: null,
+        paramKernelError: null,
+      }
     case 'object/draft':
       if (!state.project) return state
       return {
@@ -388,16 +521,22 @@ export type OpenDocument = {
 }
 
 export function deriveDocuments(state: WorkbenchState): OpenDocument[] {
-  const draftChanges = PARAM_DEFS.filter((p) => state.draft.values[p.id] !== p.base).length
+  // WB-05 · 候选文档身份 = 基线引用 + 候选 YAML 的参数域(内容寻址不变)
+  const view = paramYamlView(state)
+  const candValues = numericValuesOf(parseConfig(view.cand))
+  const baselineId = state.project && view.scenarioPath
+    ? baselineOfProject(state.project, view.scenarioPath).baselineId
+    : DEMO_BASELINE_ID
+  const changes = modifiedPaths(parseConfig(view.base), parseConfig(view.cand)).length
   return [
     {
       // 候选草稿文档:内容寻址 ID(参数域变 → 文档身份变)
-      id: candidateIdFor(DEMO_BASELINE_ID, state.draft.values),
+      id: candidateIdFor(baselineId, candValues),
       page: 'parameters',
       title: pageDef('parameters').tab,
       icon: 'file-code',
-      unsaved: !state.draft.saved,
-      meta: draftChanges > 0 ? `${draftChanges} 项参数变更` : '与基线一致',
+      unsaved: !state.paramDraft.saved,
+      meta: changes > 0 ? `${changes} 项参数变更` : '与基线一致',
     },
     {
       id: String(DEMO_RESULT.runId),
@@ -438,7 +577,7 @@ export function deriveDocuments(state: WorkbenchState): OpenDocument[] {
 
 /** 是否存在任何未保存工作(项目草稿 / 参数草稿 / 实验草稿;WB-04.12 守卫依据)。 */
 export function hasUnsavedWork(state: WorkbenchState): boolean {
-  return unsavedKeys(state.objectDrafts).length > 0 || !state.draft.saved || state.designDirty
+  return unsavedKeys(state.objectDrafts).length > 0 || !state.paramDraft.saved || state.designDirty
 }
 
 export type ExplorerGroupView = {

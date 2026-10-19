@@ -31,20 +31,24 @@ import { DesignerPage } from './pages/DesignerPage.tsx'
 import { RunsPage } from './pages/RunsPage.tsx'
 import { ExchangePage } from './pages/ExchangePage.tsx'
 import {
-  deriveDocuments, explorerGroupsFor, getState, hasUnsavedWork, persistDraft, subscribe, dispatch,
+  deriveDocuments, explorerGroupsFor, getState, hasUnsavedWork, paramYamlView, persistDraft, subscribe, dispatch,
 } from './state/workbenchStore.ts'
 import type { WorkbenchState } from './state/workbenchStore.ts'
 import { parseHash, pageDef } from './routing.ts'
 import type { PageId } from './routing.ts'
 import {
   DEMO_PROJECT_ID, DEMO_RESULT,
-  METRICS, PARAM_DEFS, filterAndSort,
+  METRICS, filterAndSort,
 } from './demo/sampleProject.ts'
+// WB-05 · 参数表数据源(注册表 × 配置 YAML)
+import { PARAM_REGISTRY, displayParamName } from './params/paramRegistry.ts'
+import { numericValuesOf, parseConfig } from './params/configYaml.ts'
+import { kernelCheck, modifiedPaths } from './params/paramsLogic.ts'
 import { svgFromElement, demoCsv, demoSnapshot, download } from './demo/export.ts'
 import { packProject } from '../lib/project.ts'
 // WB-04 · 项目打开/保存/草稿/快照(纯逻辑见 state/projectDoc.ts)
 import {
-  buildProjectSave, openProject, projectFromYaml, readPickedFile, runsIndexFile, unsavedKeys,
+  baseContentOf, buildProjectSave, openProject, projectFromYaml, readPickedFile, runsIndexFile, unsavedKeys,
 } from './state/projectDoc.ts'
 import * as runManager from './state/runManager.ts'
 import type { Job } from './state/jobLogic.ts'
@@ -139,7 +143,7 @@ export default function WorkbenchApp(): JSX.Element {
       doc,
       // YAML 是新草稿:尚未存在对应的项目文件 → 未保存状态起笔(WB-04.11)
       initialDrafts: {
-        [doc.objects[0].path]: { content: yaml, saved: false, history: [] },
+        [doc.objects[0].path]: { content: yaml, saved: false, history: [], future: [] },
       },
     })
     notify('info', `YAML 已迁入工作台:「${doc.name}」(单场景草稿,实验页可编辑)`)
@@ -173,12 +177,37 @@ export default function WorkbenchApp(): JSX.Element {
     else await openArchive(pick.name, pick.bytes)
   }
 
-  /** WB-04.10 · 保存项目:所选对象 + 完整产物一次打包;下载成功才置已保存。 */
+  /** WB-04.10 · 保存项目:所选对象 + 完整产物一次打包;下载成功才置已保存。
+   * WB-05.14 · 保存前对全部场景候选做内核完整校验,冻结所选场景的已校验
+   * 版本(config_hash);任一校验失败 → 不打包,草稿保留,错误定位到参数。 */
   const saveProject = async (): Promise<void> => {
     const s = getState()
     const doc = s.project
     if (!doc) {
       notify('warning', '当前为内置演示项目,没有可保存的项目文件')
+      return
+    }
+    const failures: string[] = []
+    for (const o of doc.objects) {
+      if (o.kind !== 'scenario') continue
+      const d = s.objectDrafts[o.path]
+      const content = d ? d.content : baseContentOf(doc, o.path)
+      const check = await kernelCheck(content)
+      if (!check.ok) {
+        failures.push(`${o.path}${check.path ? `(${check.path})` : ''}: ${check.message}`)
+        if (o.path === s.selection.scenario) {
+          dispatch({ type: 'param/kernel-error', error: { path: check.path, message: check.message } })
+        }
+      } else if (o.path === s.selection.scenario) {
+        // 冻结已通过校验的配置版本(后续单元格编辑不影响该版本)
+        const info = check.info as { config_hash?: string } | null
+        if (info?.config_hash) {
+          dispatch({ type: 'param/frozen', yaml: content, configHash: String(info.config_hash) })
+        }
+      }
+    }
+    if (failures.length > 0) {
+      notify('error', `保存被内核校验阻止(配置非法,草稿保留):\n${failures.join('\n')}`)
       return
     }
     try {
@@ -220,14 +249,15 @@ export default function WorkbenchApp(): JSX.Element {
         if (s.project) {
           void saveProject()
         } else if (persistDraft(s)) {
-          dispatch({ type: 'draft/save' })
+          dispatch({ type: 'param/save' })
           notify('success', '候选方案已保存到当前浏览器')
         } else {
           notify('warning', '浏览器存储不可用,草稿仍保留在当前页面')
         }
       } else if (key === 'z') {
         e.preventDefault()
-        dispatch({ type: 'draft/undo' })
+        // WB-05.12:参数候选统一撤销(单项/批量/恢复共用一条历史)
+        dispatch({ type: 'param/undo' })
         notify('info', '已撤销上一次参数修改')
       }
     }
@@ -235,15 +265,18 @@ export default function WorkbenchApp(): JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  /* 恢复全部默认值(确认后) */
+  /* 恢复全部默认值(确认后)——WB-05.12:恢复也走同一条撤销/重做历史 */
   const confirmResetAll = (): void => {
-    dispatch({ type: 'draft/reset-all' })
-    notify('info', '已恢复默认基线值,可撤销')
+    dispatch({ type: 'param/reset-all' })
+    notify('info', '候选已恢复为基线配置,可撤销')
   }
 
   const documents = deriveDocuments(state)
   const activeDoc = documents.find((d) => d.page === state.page) ?? documents[0]
-  const draftChanges = PARAM_DEFS.filter((p) => state.draft.values[p.id] !== p.base).length
+  // WB-05 · 候选相对基线的参数变更数(注册表 × YAML,不再依赖 18 项原型)
+  const paramView = paramYamlView(state)
+  const draftChanges = modifiedPaths(parseConfig(paramView.base), parseConfig(paramView.cand)).length
+  const candValues = numericValuesOf(parseConfig(paramView.cand))
 
   /* 命令表:页面 + 文档 + 参数(可独立接数据——后续加动作命令) */
   const commands: CommandEntry[] = useMemo(() => {
@@ -258,15 +291,15 @@ export default function WorkbenchApp(): JSX.Element {
         run: () => dispatch({ type: 'navigate', page: p }),
       })
     }
-    for (const param of PARAM_DEFS) {
+    for (const param of PARAM_REGISTRY) {
       entries.push({
-        id: `param:${param.id}`,
-        label: param.name,
-        hint: param.id,
+        id: `param:${param.path}`,
+        label: displayParamName(param.path, 'zh-CN'),
+        hint: param.path,
         icon: 'table',
         run: () => {
-          dispatch({ type: 'navigate', page: 'parameters', selection: { param: param.id } })
-          dispatch({ type: 'param/focus', id: param.id })
+          dispatch({ type: 'navigate', page: 'parameters', selection: { param: param.path } })
+          dispatch({ type: 'param/focus', id: param.path })
         },
       })
     }
@@ -292,7 +325,7 @@ export default function WorkbenchApp(): JSX.Element {
     } else if (format === 'json') {
       download(
         'sandtable-demo-snapshot.json',
-        demoSnapshot(rows, { values: state.draft.values, design: state.design }),
+        demoSnapshot(rows, { values: candValues, design: state.design }),
         'application/json',
       )
       notify('success', '已下载 sandtable-demo-snapshot.json(草稿与样例快照分开标注)')
@@ -313,7 +346,7 @@ export default function WorkbenchApp(): JSX.Element {
   const demoMode = true
   const projectName = state.project?.name ?? 'RPG 平衡实验室'
   const projectId = state.project?.projectId ?? DEMO_PROJECT_ID
-  const unsavedCount = unsavedKeys(state.objectDrafts).length + (state.draft.saved ? 0 : 1) + (state.designDirty ? 1 : 0)
+  const unsavedCount = unsavedKeys(state.objectDrafts).length + (state.paramDraft.saved ? 0 : 1) + (state.designDirty ? 1 : 0)
   const saveLabel = state.project
     ? unsavedCount > 0 ? `${unsavedCount} 项未保存修改` : '与项目文件一致'
     : '演示项目无可保存文件'
@@ -331,13 +364,13 @@ export default function WorkbenchApp(): JSX.Element {
           meta: 'registry / defaults',
         },
         {
-          // 候选草稿文档:内容寻址 ID(与文档标签同源)
-          id: candidateIdFor(DEMO_BASELINE_ID, state.draft.values),
+          // 候选草稿文档:内容寻址 ID(与文档标签同源;WB-05 注册表×YAML 域)
+          id: candidateIdFor(DEMO_BASELINE_ID, candValues),
           page: 'parameters',
           icon: 'git-branch',
           title: '候选方案 A',
           meta: draftChanges > 0 ? `${draftChanges} 项参数变更` : '与基线一致',
-          dirty: !state.draft.saved,
+          dirty: !state.paramDraft.saved,
         },
         {
           id: 'resource:scenario',
@@ -487,13 +520,13 @@ export default function WorkbenchApp(): JSX.Element {
         onToggleExplorer={() => dispatch({ type: 'toggle-explorer' })}
         onToggleTasks={() => dispatch({ type: 'toggle-drawer' })}
         onShortcuts={() => patchOverlays({ shortcuts: true })}
-        draftSaved={state.project ? unsavedKeys(state.objectDrafts).length === 0 : state.draft.saved}
+        draftSaved={state.project ? unsavedKeys(state.objectDrafts).length === 0 : state.paramDraft.saved}
         draftSavedLabel={
           state.project
             ? unsavedKeys(state.objectDrafts).length === 0
               ? '项目配置与项目文件一致'
               : `项目配置有 ${unsavedKeys(state.objectDrafts).length} 个对象未保存`
-            : state.draft.saved ? '浏览器本地草稿已保存' : '存在未保存修改'
+            : state.paramDraft.saved ? '浏览器本地草稿已保存' : '存在未保存修改'
         }
       />
 

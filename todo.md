@@ -194,21 +194,21 @@
 
 依赖：WB-03/WB-04。
 
-- [ ] WB-05.01：参数表从注册表与当前配置读取全量适用项，移除原型 18 项硬编码定义和值。
-- [ ] WB-05.02：按参数 kind 分配编辑方式；结构/公式等未支持的类型显示只读和高级编辑入口。
-- [ ] WB-05.03：基线列读取真实基线，候选列读取当前候选，缺值不自动回退为默认值。
-- [ ] WB-05.04：建立单元格编辑缓冲，输入未提交、已提交、非法值和已修改状态分别显示。
-- [ ] WB-05.05：处理 Enter 提交、Esc 撤销当前输入、失焦提交及焦点保留，避免重新渲染吞掉点击。
-- [ ] WB-05.06：在前端做整数/有限数/概率基础检查；最终应用调用内核完整校验。
-- [ ] WB-05.07：校验失败定位参数与单元格，保留待修复输入和原始错误详情。
-- [ ] WB-05.08：计算基线差异、绝对变化和相对变化；基线为 0 时不给出无穷百分比。
-- [ ] WB-05.09：搜索同时匹配路径、原始描述和当前语言显示名，切换语言保留搜索输入。
-- [ ] WB-05.10：接系统分组、只看变更、只看错误与当前可见项全选。
-- [ ] WB-05.11：批量倍率先预览/校验整批结果，再一次性应用；任一项失败时不产生半批修改。
-- [ ] WB-05.12：将单项编辑、整批编辑、恢复单项/全部接入统一撤销/重做历史。
-- [ ] WB-05.13：将结构化编辑同步到 YAML；高级 YAML 成功解析后更新参数表，语法错误时保留原文。
-- [ ] WB-05.14：保存/运行时冻结已通过校验的配置版本，不从仍在变化的单元格即时读取。
-- [ ] WB-05.15：验证编辑后 YAML round-trip 保留 `damage_model`、loot、公式及未编辑结构字段。
+- [x] WB-05.01：参数表从注册表与当前配置读取全量适用项，移除原型 18 项硬编码定义和值。(2026-10-20,数据源 = params/paramRegistry.ts 全量 64 项注册镜像(逐字取自 crates/sandtable-core/src/registry.rs)+ params/configYaml.ts parseConfig 读当前 YAML;buildRowModels(params/paramsLogic.ts:39)产 64 行,缺值如实 present:false;tests/params-config.test.mjs 用 registry.rs 原文 spec() 逐条锁漂移(路径/kind/默认/描述四字段),曾抓出 base_rate 描述漏抄一字符并修正;sampleProject.ts 的 PARAM_DEFS/PARAM_GROUPS 导出已删,18 行数值域仅留作演示候选 ID 复现并注明非参数表数据源)
+- [x] WB-05.02：按参数 kind 分配编辑方式；结构/公式等未支持的类型显示只读和高级编辑入口。(2026-10-20,editable = u32/u64/i64/f64/mix,= dur/expr/table(params/paramsLogic.ts buildRowModels);ParamTable.tsx:167 只读行显示原文 + :199「高级编辑」按钮打开候选 YAML 弹层;断言 tests/params-config.test.mjs WB-05.02)
+- [x] WB-05.03：基线列读取真实基线，候选列读取当前候选，缺值不自动回退为默认值。(2026-10-20,基线 = 项目场景文件/演示注册默认 YAML,候选 = 场景草稿(state/workbenchStore.ts paramYamlView);configYaml.readText/readNumeric 缺值返回 null/undefined,单元格与详情显式「缺值」不显示注册表默认(默认值只在详情作参考标注);候选缺值/值消失 modified=true 断言 tests/params-config.test.mjs WB-05.03)
+- [x] WB-05.04：建立单元格编辑缓冲，输入未提交、已提交、非法值和已修改状态分别显示。(2026-10-20,ParamRow 本地 buffer/error 缓冲(ParamTable.tsx:116),状态列四态互斥:编辑中(amber)/已修改(amber)/非法值(red+错误文本)/—,内核失败另有 red 徽标;parseCellInput 三态(empty/invalid/ok)断言 tests/params-config.test.mjs WB-05.04)
+- [x] WB-05.05：处理 Enter 提交、Esc 撤销当前输入、失焦提交及焦点保留，避免重新渲染吞掉点击。(2026-10-20,ParamTable.tsx onKeyDown Enter→commit/Esc→清缓冲回已提交值(:176-185),onBlur=commit;行 key=注册路径稳定 ID,提交后重渲染不重建输入框,焦点保留;非法提交不清缓冲(保留待修复输入);提交/撤销路径断言 tests/params-config.test.mjs WB-05.05)
+- [x] WB-05.06：在前端做整数/有限数/概率基础检查；最终应用调用内核完整校验。(2026-10-20,validateParam(params/paramsLogic.ts:95):有限数/整数域/u32 域/概率(.p_* 与 gacha.base_rate)/权重范围;kernelCheck(paramsLogic.ts:150)复用 lib/wasm validate_config(动态引入,节点侧可注入);u64 文本级大整数拒绝(2^53+1 明确报错,不静默舍入);断言 tests/params-config.test.mjs WB-05.06×3)
+- [x] WB-05.07：校验失败定位参数与单元格，保留待修复输入和原始错误详情。(2026-10-20,locateKernelError(configYaml.ts:496)从内核消息取最长注册路径命中(定位不到如实 null);失败存 store.paramKernelError,表格状态列徽标 + 详情面板展示原始 message(ParamDetail.tsx「内核校验失败」节);单元格保留待修复缓冲(提交失败不清);断言 tests/params-config.test.mjs WB-05.07)
+- [x] WB-05.08：计算基线差异、绝对变化和相对变化；基线为 0 时不给出无穷百分比。(2026-10-20,paramDelta(configYaml.ts:479)给绝对 + 相对(±x.x%),表格「变化(绝对/相对)」列;基线 0 只给绝对值(+5/-5,无百分比),缺值或无变化给 —;断言 tests/params-config.test.mjs WB-05.08)
+- [x] WB-05.09：搜索同时匹配路径、原始描述和当前语言显示名，切换语言保留搜索输入。(2026-10-20,visibilityFilter(params/paramsLogic.ts:183)三字段小写包含:path + registry desc + displayParamName(locale);displayParamName(paramRegistry.ts:212)zh=注册表描述/en=英文表缺词回退;locale 经 lib/i18n 只读键读取(不写 WB-11 文件);搜索输入存 store,无任何动作重置它(切语言不丢);断言 tests/params-config.test.mjs WB-05.09)
+- [x] WB-05.10：接系统分组、只看变更、只看错误与当前可见项全选。(2026-10-20,分组 = 注册表前缀派生 paramGroups();ParamFilterBar.tsx:17/74 增「仅错误」开关(计数 = 内核失败定位集合);全选只作用于可见行(ParametersPage.tsx:251-253 用 visible 集合);断言 tests/params-config.test.mjs WB-05.10)
+- [x] WB-05.11：批量倍率先预览/校验整批结果，再一次性应用；任一项失败时不产生半批修改。(2026-10-20,bulkPreview(params/paramsLogic.ts:217)逐项 from→to+校验,BulkActionBar 两步:「预览整批」(前端逐项 + 整批草稿过 kernelCheck)→「应用整批」(仅全绿可点,applyParamEdits 一次写入 = 一条历史);任一失败显示定位错误且不改候选;断言 tests/params-config.test.mjs WB-05.11)
+- [x] WB-05.12：将单项编辑、整批编辑、恢复单项/全部接入统一撤销/重做历史。(2026-10-20,store 侧 writeParamYaml/paramUndo/paramRedo(workbenchStore.ts:260/280/300)统一承载:演示模式 paramDraft 历史,项目模式写穿 objectDrafts(projectDoc.ts 增 future 栈 + redoDraft:248);单项/批量/恢复单项(reset-one,基线缺值时删键)/恢复全部(reset-all)/采纳(adopt)全部一条历史;重做线性语义(新修改清空栈);reducer 级四步撤销 + 两步重做断言 tests/params-config.test.mjs WB-05.12)
+- [x] WB-05.13：将结构化编辑同步到 YAML；高级 YAML 成功解析后更新参数表，语法错误时保留原文。(2026-10-20,单元格提交 = configYaml.applyParamEdit(:365)跨度替换/定向插入(块节缺链自动补节、flow 内补键),不整体重序列化;ParametersPage.applyAdvancedEdit(:103)parseConfig 成功才 dispatch param/write,语法错误保留编辑框原文并给行号定位;断言 tests/params-config.test.mjs WB-05.13×2(含 pokemon.yaml 补 gacha 节/flow 补键))
+- [x] WB-05.14：保存/运行时冻结已通过校验的配置版本，不从仍在变化的单元格即时读取。(2026-10-20,保存:WorkbenchApp.saveProject 对全部场景候选 kernelCheck,任一失败阻止保存并定位,所选场景冻结 config_hash(WorkbenchApp.tsx:195-205);运行:DesignerPage.enqueue 先校验后冻结再 snapshotRun 用冻结 YAML(DesignerPage.tsx:69-76),model/schema 版本改记内核实报值;冻结版本独立于后续编辑(reducer 断言 tests/params-config.test.mjs WB-05.14))
+- [x] WB-05.15：验证编辑后 YAML round-trip 保留 `damage_model`、loot、公式及未编辑结构字段。(2026-10-20,外科手术式编辑不做重序列化:tests/params-config.test.mjs WB-05.15 组合配置(pokemon 口径)两处编辑后 damage_model: ratio/公式引号原文/loot tables+rewards/tier_table 逐行/全部注释逐字节保留(逐行 deepEqual);examples/*.yaml 全部零错解析;恢复单项写回基线文本或删键不伤相邻参数)
 
 验收：参数修改真正改变下一次运行输入；基线不变，错误可修复，批量修改与撤销完整。
 

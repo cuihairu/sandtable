@@ -209,16 +209,19 @@ export type ObjectDraft = {
   saved: boolean
   /** 撤销栈(逐次修改前内容) */
   history: readonly string[]
+  /** 重做栈(WB-05.12 统一撤销/重做;撤销时压入) */
+  future: readonly string[]
 }
 
 export type DraftMap = Readonly<Record<string, ObjectDraft>>
 
 /** 取对象草稿:无记录时回落到项目文件原文(saved = 与文件一致)。 */
 export function draftOf(drafts: DraftMap, key: string, baseContent: string): ObjectDraft {
-  return drafts[key] ?? { content: baseContent, saved: true, history: [] }
+  return drafts[key] ?? { content: baseContent, saved: true, history: [], future: [] }
 }
 
-/** 只写该对象的草稿:切换对象不覆盖其他对象的缓冲(WB-04.06)。 */
+/** 只写该对象的草稿:切换对象不覆盖其他对象的缓冲(WB-04.06);
+ * 新修改使重做栈失效(WB-05.12 线性历史语义)。 */
 export function writeDraft(
   drafts: DraftMap,
   key: string,
@@ -229,7 +232,7 @@ export function writeDraft(
   if (prev.content === content) return drafts
   return {
     ...drafts,
-    [key]: { content, saved: false, history: [...prev.history, prev.content].slice(-50) },
+    [key]: { content, saved: false, history: [...prev.history, prev.content].slice(-50), future: [] },
   }
 }
 
@@ -238,7 +241,16 @@ export function undoDraft(drafts: DraftMap, key: string, baseContent: string): D
   if (prev.history.length === 0) return drafts
   const history = [...prev.history]
   const content = history.pop() as string
-  return { ...drafts, [key]: { content, saved: false, history } }
+  return { ...drafts, [key]: { content, saved: false, history, future: [prev.content, ...prev.future].slice(0, 50) } }
+}
+
+/** WB-05.12 · 重做:撤销过的内容按后进先出恢复;新修改(见 writeDraft)清空。 */
+export function redoDraft(drafts: DraftMap, key: string, baseContent: string): DraftMap {
+  const prev = draftOf(drafts, key, baseContent)
+  if (prev.future.length === 0) return drafts
+  const future = [...prev.future]
+  const content = future.shift() as string
+  return { ...drafts, [key]: { content, saved: false, history: [...prev.history, prev.content].slice(-50), future } }
 }
 
 /** 关闭文档 / 放弃修改:该对象草稿回到项目文件原文。 */
@@ -531,7 +543,7 @@ export function restoreObjectDrafts(storage: StorageLike, doc: ProjectDoc): Draf
   for (const [key, d] of Object.entries(parsed.drafts ?? {})) {
     if (!ownPaths.has(key)) continue
     if (typeof d?.content !== 'string' || typeof d?.saved !== 'boolean') continue
-    drafts[key] = { content: d.content, saved: d.saved, history: [] }
+    drafts[key] = { content: d.content, saved: d.saved, history: [], future: [] }
   }
   return drafts
 }

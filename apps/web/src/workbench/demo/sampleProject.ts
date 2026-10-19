@@ -9,7 +9,10 @@ import type { Baseline, BaselineId, CandidateId, ExperimentId, ProjectId, RunId 
 
 export const DATA_SOURCE = 'synthetic_demo'
 
-/* —— 参数定义(注册表样例) —— */
+/* —— 演示候选参数域(WB-05.01 起仅供演示结果 ID 复现,非参数表数据源) ——
+ * WB-05 起参数表的数据源 = params/paramRegistry.ts 注册表全量项 × 配置
+ * YAML;本表 18 项硬编码不再进入参数表。保留只为内置演示候选(synthetic_demo)
+ * 的内容寻址 ID 保持历史稳定(候选 ID 覆盖这 18 项数值域)。 */
 export type ParamDef = {
   id: string
   type: string
@@ -39,11 +42,7 @@ const PARAM_ROWS: Array<[string, string, number, string, string]> = [
   ['model.churn.stall_days', 'u32', 2, '连续无增长天数判停滞', '流失'],
 ]
 
-export const PARAM_DEFS: readonly ParamDef[] = PARAM_ROWS.map(([id, type, base, name, group]) => ({
-  id, type, base, name, group,
-}))
-
-export const PARAM_GROUPS = [...new Set(PARAM_DEFS.map((p) => p.group))]
+export const PARAM_GROUPS = [...new Set(PARAM_ROWS.map(([, , , , group]) => group))]
 export type ParamValues = Record<string, number>
 
 /* —— 演示项目 / 基线 / 实验(内容派生稳定 ID) —— */
@@ -64,7 +63,7 @@ export const DEMO_BASELINE: Baseline = {
   readonly: true,
 }
 export const DEFAULT_VALUES: ParamValues = Object.fromEntries(
-  PARAM_DEFS.map((p) => [p.id, p.base]),
+  PARAM_ROWS.map(([id, , base]) => [id, base]),
 )
 
 /* —— 观察指标与扫描候选(合成) —— */
