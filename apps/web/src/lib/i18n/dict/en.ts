@@ -55,11 +55,11 @@ export const en = {
   'data.rowsExported.one': '{n} row exported as {where}',
   'data.rowsExported.other': '{n} rows exported as {where}',
 
-  // 错误信息
-  'errors.config': 'Configuration error',
-  'errors.param': 'Parameter error',
-  'errors.serialize': 'Failed to serialize candidate results',
-  'errors.unknown': 'Unknown error',
+  // 错误信息({detail} = raw kernel message)
+  'errors.config': 'Configuration error: {detail}',
+  'errors.param': 'Parameter error: {detail}',
+  'errors.serialize': 'Failed to serialize candidate results: {detail}',
+  'errors.unknown': 'Unknown error: {detail}',
   // 缺词兜底(WB-11.25):正式界面绝不回显翻译 key
   'errors.missingText': '(missing text)',
 } satisfies Record<keyof typeof zh, string>

@@ -20,6 +20,7 @@ import {
 } from '../src/lib/i18n/detect.ts'
 import { fmtNumber, fmtPercent, fmtDate } from '../src/lib/i18n/format.ts'
 import { pluralCategory } from '../src/lib/i18n/plural.ts'
+import { localizeWasmError } from '../src/lib/i18n/errorText.ts'
 
 test('WB-11.01:locale 定义——zh-CN/en-US、固定显示名、en-US 兜底', () => {
   assert.deepEqual(
@@ -192,4 +193,33 @@ test('WB-11.25:开发环境回显原 key 定位缺失,每键每 locale 只告警
   assert.equal(seen.filter((m) => m.includes('no.such.other')).length, 1)
   // 恢复正式形态
   assert.equal(t('zh-CN', 'no.such.key'), zh['errors.missingText'])
+})
+
+test('WB-11.21:错误码稳定,参数化翻译携带原始内核详情', () => {
+  const raw = '配置错误: 表 damage_model 不存在'
+  const e = localizeWasmError('zh-CN', raw)
+  assert.equal(e.code, 'config_error', '稳定错误码,不随界面语言变')
+  assert.equal(e.detail, raw, '原始内核错误逐字保留,供定位')
+  assert.equal(
+    e.text,
+    zh['errors.config'].replace('{detail}', raw),
+    '文本走词典参数化模板,不拼碎片',
+  )
+  assert.equal(localizeWasmError('zh-CN', '参数错误: replicates 超出预算').code, 'param_error')
+  assert.equal(localizeWasmError('en-US', '候选结果序列化失败: boom').code, 'serialize_error')
+  assert.match(localizeWasmError('en-US', '参数错误: too big').text, /^Parameter error:/)
+})
+
+test('WB-11.21:未知错误本地化兜底;非 Error 入参不抛错', () => {
+  const weird = 'something totally unexpected'
+  const e = localizeWasmError('zh-CN', weird)
+  assert.equal(e.code, 'unknown_error')
+  assert.equal(e.text, zh['errors.unknown'].replace('{detail}', weird))
+  assert.doesNotThrow(() => localizeWasmError('en-US', undefined))
+  assert.doesNotThrow(() => localizeWasmError('en-US', new Error('std boom')))
+  assert.equal(
+    localizeWasmError('en-US', new Error('std boom')).detail,
+    'std boom',
+    'Error 实例取 message',
+  )
 })

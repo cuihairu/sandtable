@@ -24,6 +24,8 @@ export { fmtNumber, fmtPercent, fmtDate } from './format.ts'
 export type { FractionOptions } from './format.ts'
 export { pluralCategory } from './plural.ts'
 export type { PluralCategory } from './plural.ts'
+export { localizeWasmError } from './errorText.ts'
+export type { LocalizedError, ErrorCode } from './errorText.ts'
 
 /** 翻译 key 类型 = 中文词典 key 集合(真值源),en 侧编译期已锁同集合 */
 export type TranslationKey = keyof ZhDict

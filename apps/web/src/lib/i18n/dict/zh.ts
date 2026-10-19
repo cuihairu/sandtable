@@ -54,11 +54,11 @@ export const zh = {
   'data.rowsExported.one': '已按 {where} 导出 {n} 行',
   'data.rowsExported.other': '已按 {where} 导出 {n} 行',
 
-  // 错误信息(前缀与绑定层错误串对齐,见 lib/errors.ts)
-  'errors.config': '配置错误',
-  'errors.param': '参数错误',
-  'errors.serialize': '候选结果序列化失败',
-  'errors.unknown': '未知错误',
+  // 错误信息(前缀与绑定层错误串对齐,见 lib/errors.ts;{detail}=原始内核消息)
+  'errors.config': '配置错误：{detail}',
+  'errors.param': '参数错误：{detail}',
+  'errors.serialize': '候选结果序列化失败：{detail}',
+  'errors.unknown': '未知错误：{detail}',
   // 缺词兜底(WB-11.25):正式界面绝不回显翻译 key
   'errors.missingText': '（文案缺失）',
 } as const
