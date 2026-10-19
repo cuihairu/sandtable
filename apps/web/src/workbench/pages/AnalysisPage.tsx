@@ -3,7 +3,7 @@ import { useSyncExternalStore } from 'react'
 import type { JSX } from 'react'
 import { METRIC_KEYS } from '../../lib/types.ts'
 import type { MetricKey } from '../../lib/types.ts'
-import { METRIC_META } from '../../lib/metricMeta.ts'
+import { METRIC_META, metricLabel, metricUnit } from '../../lib/metricMeta.ts'
 import { abView, dailyRows, interpolationText, overallOutcome, recommendationView, responsePoints, sensitivityNoteLabel, stepSelection, yAutoDomain } from '../../lib/analysisView.ts'
 import type { ResultFilter } from '../../lib/analysisView.ts'
 import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
@@ -24,32 +24,36 @@ import type { CandidateId } from '../ids.ts'
 import { download } from '../demo/export.ts'
 import { machineJson } from '../../lib/machineExport.ts'
 import { parseConfig } from '../params/configYaml.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 import '../analysis/analysis.css'
 
 export type AnalysisPageProps = { state: WorkbenchState; onExport: () => void }
 export function AnalysisPage({ state, onExport }: AnalysisPageProps): JSX.Element {
+  const locale = useLocale()
   const jobs = useSyncExternalStore(runManager.subscribe, runManager.listJobs)
   const a = useSyncExternalStore(subscribeAnalysis, analysisSnapshot)
   const realJobs = jobs.filter((j) => !j.demo && j.exec)
   const job = realJobs.find((j) => j.id === a.jobId) ?? realJobs.find((j) => j.exec?.runId === state.selection.run) ?? realJobs.at(-1)
   if (state.selection.source === 'synthetic_demo') return <>
-    <div className="workspace-toolbar" role="status"><strong>独立来源: synthetic_demo · 合成演示</strong><button className="btn" onClick={() => dispatch({ type: 'selection', patch: { source: 'kernel' } })}>返回真实运行</button></div>
+    <div className="workspace-toolbar" role="status"><strong>{t(locale, 'analysis.demoSourceBanner')}</strong><button className="btn" onClick={() => dispatch({ type: 'selection', patch: { source: 'kernel' } })}>{t(locale, 'analysis.backToReal')}</button></div>
     <DemoAnalysisPage state={state} onExport={onExport} />
   </>
   return <>
-    <WorkspaceHeading title={job?.name ?? '真实结果分析'} crumb="结果 / 内核运行" badge={{ text: 'KERNEL', tone: 'teal' }} actions={<button className="btn" onClick={() => dispatch({ type: 'navigate', page: 'designer' })}>配置实验</button>} />
+    <WorkspaceHeading title={job?.name ?? t(locale, 'analysis.realTitle')} crumb={t(locale, 'analysis.realCrumb')} badge={{ text: 'KERNEL', tone: 'teal' }} actions={<button className="btn" onClick={() => dispatch({ type: 'navigate', page: 'designer' })}>{t(locale, 'analysis.configureExperiment')}</button>} />
     <div className="workspace-toolbar result-toolbar">
-      <label htmlFor="analysis-run">运行</label><select id="analysis-run" value={job?.id ?? ''} onChange={(e) => setAnalysisJob(e.target.value)}>
-        {!realJobs.length && <option value="">尚无真实运行</option>}
+      <label htmlFor="analysis-run">{t(locale, 'analysis.runLabel')}</label><select id="analysis-run" value={job?.id ?? ''} onChange={(e) => setAnalysisJob(e.target.value)}>
+        {!realJobs.length && <option value="">{t(locale, 'analysis.noRealRuns')}</option>}
         {realJobs.map((j) => <option key={j.id} value={j.id}>{j.name} · {j.exec!.runId} · {j.status}</option>)}
       </select>
-      <button className="btn" onClick={() => dispatch({ type: 'selection', patch: { source: 'synthetic_demo' } })}>打开合成演示（独立来源）</button>
+      <button className="btn" onClick={() => dispatch({ type: 'selection', patch: { source: 'synthetic_demo' } })}>{t(locale, 'analysis.openDemo')}</button>
     </div>
-    {job ? <RealResult key={job.id} job={job} state={state} /> : <div className="empty-state">尚无真实执行结果。请配置并提交实验；运行中和取消后的部分结果也可在此查看。</div>}
+    {job ? <RealResult key={job.id} job={job} state={state} /> : <div className="empty-state">{t(locale, 'analysis.emptyState')}</div>}
   </>
 }
 
 function RealResult({ job, state }: { job: Job; state: WorkbenchState }): JSX.Element {
+  const locale = useLocale()
   const a = useSyncExternalStore(subscribeAnalysis, analysisSnapshot)
   const ui = a.byJob[job.id] ?? defaultResultUI
   const exec = job.exec!
@@ -78,57 +82,57 @@ function RealResult({ job, state }: { job: Job; state: WorkbenchState }): JSX.El
     const base = baseline?.result?.stats.get(key)?.mean
     const domain = yAutoDomain(points, [...targets.flatMap((t) => [t.min, t.max]), base ?? null])
     return <div key={key} className={mini ? 'mini-figure' : 'chart-viewport'}>
-      <h3>{meta.label} · {meta.unit}</h3>
-      <ResponseChart mini={mini} metric={{ id: key, label: meta.label, unit: meta.unit, decimals: meta.decimals,
-        min: domain?.min ?? 0, max: domain?.max ?? 1, targets, baseline: base, format: (v) => formatMetric(v, key) }}
+      <h3>{metricLabel(key, locale)} · {metricUnit(key, locale)}</h3>
+      <ResponseChart mini={mini} metric={{ id: key, label: metricLabel(key, locale), unit: metricUnit(key, locale), decimals: meta.decimals,
+        min: domain?.min ?? 0, max: domain?.max ?? 1, targets, baseline: base, format: (v) => formatMetric(v, key, false, locale) }}
         xAxis={{ label: axis, path: axis }} points={points} selectedId={selected?.id ?? null} onSelect={select}
-        sourceTitle={`kernel · run ${exec.runId} · ${key} · 观测均值与内核 95% CI`} />
-      <p className="note">{points.length} 个观测点 · {rows.length - points.length} 个未绘制候选（等待/失败/指标不可用，见表） · 独立纵轴 {meta.unit}</p>
+        sourceTitle={`kernel · run ${exec.runId} · ${key} · ${t(locale, 'analysis.chart.title', { label: metricLabel(key, locale) })}`} />
+      <p className="note">{t(locale, 'analysis.chartNote', { points: points.length, hidden: rows.length - points.length, unit: metricUnit(key, locale) })}</p>
     </div>
   }
   const columns: CandidateColumn<ResultRow>[] = [
-    ...axes.map((path) => ({ key: `param:${path}`, label: path, numeric: true, value: (r: ResultRow) => r.values[path] ?? '缺失坐标' })),
-    { key: 'status', label: '状态 / 原因', value: (r) => rowState(r, job) },
+    ...axes.map((path) => ({ key: `param:${path}`, label: path, numeric: true, value: (r: ResultRow) => r.values[path] ?? t(locale, 'analysis.missingCoord') })),
+    { key: 'status', label: t(locale, 'analysis.colStatus'), value: (r) => rowState(r, job, locale) },
     ...metrics.flatMap((key): CandidateColumn<ResultRow>[] => [
-      { key: `metric:${key}`, label: `${METRIC_META[key].label} / ${METRIC_META[key].unit}`, numeric: true,
-        value: (r) => r.result?.stats.get(key) ? formatMetric(r.result.stats.get(key)!.mean, key) : r.result ? '不可用 · 内核未产出' : '等待结果' },
-      { key: `ci:${key}`, label: `${key} · 95% CI / n（下界排序）`, ci: true, value: (r) => statText(r.result?.stats.get(key), key) },
-      { key: `outcome:${key}`, label: `${key} · 内核约束`, value: (r) => r.result?.outcomes.filter((o) => o.metric === key).map((o) => `${o.kind}: ${o.verdict}`).join(' / ') || '未判定 / 无约束' },
+      { key: `metric:${key}`, label: `${metricLabel(key, locale)} / ${metricUnit(key, locale)}`, numeric: true,
+        value: (r) => r.result?.stats.get(key) ? formatMetric(r.result.stats.get(key)!.mean, key, false, locale) : r.result ? t(locale, 'analysis.unavailableNoStat') : t(locale, 'analysis.rowPending') },
+      { key: `ci:${key}`, label: t(locale, 'analysis.colCi', { key }), ci: true, value: (r) => statText(r.result?.stats.get(key), key, locale) },
+      { key: `outcome:${key}`, label: t(locale, 'analysis.colOutcome', { key }), value: (r) => r.result?.outcomes.filter((o) => o.metric === key).map((o) => `${o.kind}: ${o.verdict}`).join(' / ') || t(locale, 'analysis.noVerdict') },
     ]),
-    { key: 'verdict', label: '整体可行（硬约束聚合）', value: feasibility },
+    { key: 'verdict', label: t(locale, 'analysis.colOverall'), value: (r) => feasibility(r, locale) },
   ]
   const runEntry = state.runs.find((r) => r.run_id === exec.runId)
   const sim = exec.sim ?? exec.arms?.[ui.arm] ?? null
-  const daily = dailyRows(sim, ui.replicate)
+  const daily = dailyRows(sim, ui.replicate, locale)
   const rec = exec.recommendation ? recommendationView(exec.recommendation) : null
   const completed = all.filter((r) => r.result).length
   const src = selected?.result
   const verdict = src ? overallOutcome(src) : null
   const copy = (): void => {
     if (!selected) return
-    try { addCandidateDraft(copyCandidate(job, selected, String(createId(ID_PREFIXES.candidate)))); notify('success', '已创建独立方案草稿，见本页下方；原输入与结果保留') }
+    try { addCandidateDraft(copyCandidate(job, selected, String(createId(ID_PREFIXES.candidate)))); notify('success', t(locale, 'analysis.copied')) }
     catch (e) { notify('error', String(e)) }
   }
   return <div className="real-analysis page-scroll">
-    <p role="status" className="note">来源 kernel · {exec.runId} · {job.status} · {exec.kind === 'sweep' ? `${completed}/${all.length} 候选已返回 · ${exec.replicates} replicates/候选` : `${exec.replicates} replicates/臂`}</p>
-    {exec.errorMessage && <p className="note-block" role="alert">{exec.errorClass}: {exec.errorMessage}。已收到的结果保留；未执行候选不会记为零。</p>}
+    <p role="status" className="note">{t(locale, 'analysis.sourceLabel')} kernel · {exec.runId} · {job.status} · {exec.kind === 'sweep' ? t(locale, 'analysis.sourceSweep', { completed, total: all.length, reps: exec.replicates }) : t(locale, 'analysis.sourceArms', { reps: exec.replicates })}</p>
+    {exec.errorMessage && <p className="note-block" role="alert">{t(locale, 'analysis.errorKept', { class: exec.errorClass ?? '', message: exec.errorMessage })}</p>}
     {exec.kind === 'sweep' ? <>
       <div className="workspace-toolbar result-toolbar">
-        <label htmlFor="real-metric">主指标</label><select id="real-metric" value={metric} onChange={(e) => patch({ metric: e.target.value as MetricKey })}>{METRIC_KEYS.map((m) => <option key={m} value={m}>{METRIC_META[m].label} · {METRIC_META[m].unit}</option>)}</select>
-        <label htmlFor="real-axis">参数轴</label><select id="real-axis" value={axis} onChange={(e) => patch({ axis: e.target.value })}>{axes.map((p) => <option key={p}>{p}</option>)}</select>
-        <label htmlFor="real-filter">筛选</label><select id="real-filter" value={ui.order.filter} onChange={(e) => patch({ order: { ...ui.order, filter: e.target.value as ResultFilter } })}>
-          <option value="all">全部（含未执行与失败）</option><option value="pass">hard pass</option><option value="borderline">hard borderline</option><option value="fail">hard fail</option>
+        <label htmlFor="real-metric">{t(locale, 'analysis.primaryMetric')}</label><select id="real-metric" value={metric} onChange={(e) => patch({ metric: e.target.value as MetricKey })}>{METRIC_KEYS.map((m) => <option key={m} value={m}>{metricLabel(m, locale)} · {metricUnit(m, locale)}</option>)}</select>
+        <label htmlFor="real-axis">{t(locale, 'analysis.paramAxis')}</label><select id="real-axis" value={axis} onChange={(e) => patch({ axis: e.target.value })}>{axes.map((p) => <option key={p}>{p}</option>)}</select>
+        <label htmlFor="real-filter">{t(locale, 'analysis.filter')}</label><select id="real-filter" value={ui.order.filter} onChange={(e) => patch({ order: { ...ui.order, filter: e.target.value as ResultFilter } })}>
+          <option value="all">{t(locale, 'analysis.filterAll')}</option><option value="pass">hard pass</option><option value="borderline">hard borderline</option><option value="fail">hard fail</option>
         </select>
-        <button className="btn" onClick={() => download(`${exec.runId}.json`, machineJson({ source: 'kernel', run_id: exec.runId, spec: exec.spec, status: job.status, results: exec.results, recommendation: exec.recommendation }), 'application/json')}>下载真实结果 JSON</button>
+        <button className="btn" onClick={() => download(`${exec.runId}.json`, machineJson({ source: 'kernel', run_id: exec.runId, spec: exec.spec, status: job.status, results: exec.results, recommendation: exec.recommendation }), 'application/json')}>{t(locale, 'analysis.downloadJson')}</button>
       </div>
-      {selected && !rows.some((r) => r.id === selected.id) && <p className="note-block" role="status">所选候选不在当前筛选中；检查器仍保留原选择。<button className="btn" onClick={() => patch({ order: { ...ui.order, filter: 'all' } })}>显示全部以恢复</button></p>}
+      {selected && !rows.some((r) => r.id === selected.id) && <p className="note-block" role="status">{t(locale, 'analysis.selectionFiltered')}<button className="btn" onClick={() => patch({ order: { ...ui.order, filter: 'all' } })}>{t(locale, 'analysis.showAllRestore')}</button></p>}
       <div className="real-result-grid">
         <section className="real-result-main">
-          <h2>{METRIC_META[metric].label} · 参数响应</h2>
-          <p className="note">观测均值 / 内核 95% CI；约束线来自提交计划；基线仅在扫描确实运行了同一基线配置时显示。hard 长虚线，soft 点线。多轴结果按所选轴投影，不插值。</p>
+          <h2>{t(locale, 'analysis.responseTitle', { label: metricLabel(metric, locale) })}</h2>
+          <p className="note">{t(locale, 'analysis.responseNote')}</p>
           {chart(metric)}
           <div className="mini-figures">{metrics.filter((m) => m !== metric).map((m) => chart(m, true))}</div>
-          <h2>候选结果 · {rows.length}/{all.length}</h2>
+          <h2>{t(locale, 'analysis.candidateCount', { shown: rows.length, total: all.length })}</h2>
           <div onKeyDown={(e) => {
             if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
             const target = (e.target as HTMLElement).closest<HTMLElement>('[data-candidate]')
@@ -143,55 +147,55 @@ function RealResult({ job, state }: { job: Job; state: WorkbenchState }): JSX.El
               isBaseline={(r) => r.id === baseline?.id} expanded />
           </div>
         </section>
-        <aside className="real-inspector" aria-label="真实候选检查器">
-          <h2>选择检查器</h2>
+        <aside className="real-inspector" aria-label={t(locale, 'analysis.realInspectorAria')}>
+          <h2>{t(locale, 'analysis.inspectorTitle')}</h2>
           {selected ? <>
-            <p className="mono">{selected.id}</p><p>{rowState(selected, job)}</p>
-            <p>{`hard: ${verdict?.hard ?? '未判定'} · soft: ${verdict?.soft ?? '未判定'} · 整体硬约束: ${verdict?.overall ?? '未判定'}`}</p>
-            <h3>候选参数快照</h3><dl>{Object.entries(fullValues(job, selected.values)).map(([p, v]) => <div key={p}><dt className="mono">{p}</dt><dd>{v}</dd></div>)}</dl>
-            <button className="btn" disabled={!context || src?.status !== 'ok'} onClick={copy}>复制到新方案草稿</button>
-            <h3>内核约束（原样判定）</h3>{src?.outcomes.map((o, i) => <p key={i}>{o.kind} · {o.metric} · {o.verdict}<br />{o.min !== null ? `≥ ${formatMetric(o.min, o.metric)} ` : ''}{o.max !== null ? `≤ ${formatMetric(o.max, o.metric)}` : ''}<br />{statText(o.stats, o.metric)}</p>)}
-            <p>{statText(src?.stats.get(metric), metric)}</p>
-          </> : <p>没有选中候选</p>}
-          <h3>统计来源</h3><dl>
+            <p className="mono">{selected.id}</p><p>{rowState(selected, job, locale)}</p>
+            <p>{t(locale, 'analysis.feasibilitySummary', { hard: verdict?.hard ?? t(locale, 'analysis.notJudged'), soft: verdict?.soft ?? t(locale, 'analysis.notJudged'), overall: verdict?.overall ?? t(locale, 'analysis.notJudged') })}</p>
+            <h3>{t(locale, 'analysis.paramSnapshot')}</h3><dl>{Object.entries(fullValues(job, selected.values)).map(([p, v]) => <div key={p}><dt className="mono">{p}</dt><dd>{v}</dd></div>)}</dl>
+            <button className="btn" disabled={!context || src?.status !== 'ok'} onClick={copy}>{t(locale, 'analysis.copyToDraft')}</button>
+            <h3>{t(locale, 'analysis.kernelConstraints')}</h3>{src?.outcomes.map((o, i) => <p key={i}>{o.kind} · {o.metric} · {o.verdict}<br />{o.min !== null ? `≥ ${formatMetric(o.min, o.metric, false, locale)} ` : ''}{o.max !== null ? `≤ ${formatMetric(o.max, o.metric, false, locale)}` : ''}<br />{statText(o.stats, o.metric, locale)}</p>)}
+            <p>{statText(src?.stats.get(metric), metric, locale)}</p>
+          </> : <p>{t(locale, 'analysis.noSelection')}</p>}
+          <h3>{t(locale, 'analysis.statSources')}</h3><dl>
             <div><dt>run</dt><dd className="mono">{exec.runId}</dd></div>
-            <div><dt>基线引用</dt><dd className="mono">{context?.baselineId ?? '缺失'}</dd></div>
-            <div><dt>计划配置哈希</dt><dd className="mono">{plan?.config_hash ?? '缺失'}</dd></div>
-            <div><dt>输入文件 SHA-256</dt><dd className="mono">{runEntry?.config_hash ?? '缺失'}</dd></div>
-            <div><dt>候选配置哈希</dt><dd>扫描内核未返回，不编造</dd></div>
-            <div><dt>model / schema</dt><dd>{context?.modelVersion ?? sim?.meta.model_version ?? '缺失'} / {context?.schemaVersion ?? sim?.meta.schema_version ?? '缺失'}</dd></div>
-            <div><dt>随机策略</dt><dd>{plan ? `${plan.mode} · 共用 base_seed ${plan.base_seed}（replicate 配对）` : '缺失'}</dd></div>
-            <div><dt>统计单位</dt><dd>replicate 均值；计划 {exec.replicates}；所选指标 n={src?.stats.get(metric)?.n ?? '不可用'}</dd></div>
-            <div><dt>场景</dt><dd>{plan ? `${plan.players} 玩家 × ${plan.days} 天` : '缺失'}</dd></div>
+            <div><dt>{t(locale, 'analysis.srcBaselineRef')}</dt><dd className="mono">{context?.baselineId ?? t(locale, 'analysis.missing')}</dd></div>
+            <div><dt>{t(locale, 'analysis.srcPlanHash')}</dt><dd className="mono">{plan?.config_hash ?? t(locale, 'analysis.missing')}</dd></div>
+            <div><dt>{t(locale, 'analysis.srcInputSha')}</dt><dd className="mono">{runEntry?.config_hash ?? t(locale, 'analysis.missing')}</dd></div>
+            <div><dt>{t(locale, 'analysis.srcCandHash')}</dt><dd>{t(locale, 'analysis.srcCandHashMissing')}</dd></div>
+            <div><dt>model / schema</dt><dd>{context?.modelVersion ?? sim?.meta.model_version ?? t(locale, 'analysis.missing')} / {context?.schemaVersion ?? sim?.meta.schema_version ?? t(locale, 'analysis.missing')}</dd></div>
+            <div><dt>{t(locale, 'analysis.srcStrategy')}</dt><dd>{plan ? t(locale, 'analysis.srcStrategyValue', { mode: plan.mode, seed: plan.base_seed }) : t(locale, 'analysis.missing')}</dd></div>
+            <div><dt>{t(locale, 'analysis.statUnit')}</dt><dd>{t(locale, 'analysis.srcStatUnitValue', { reps: exec.replicates, n: src?.stats.get(metric)?.n ?? t(locale, 'analysis.unavailable') })}</dd></div>
+            <div><dt>{t(locale, 'analysis.srcScenario')}</dt><dd>{plan ? t(locale, 'analysis.srcScenarioValue', { players: plan.players, days: plan.days }) : t(locale, 'analysis.missing')}</dd></div>
           </dl>
         </aside>
       </div>
-      <section className="result-recommendation"><h2>内核敏感性与单轴推荐</h2>
-        <p className="note">仅完整候选集的单轴区间可供推荐；多轴交互、缺失指标、无括号等限制以原始理由保留。区间端点插值不作为观测结果绘图。</p>
-        {rec ? <><p>{rec.param} · 基线 {rec.baseline ?? '不可用'} · 区间 {rec.interval ? `[${rec.interval.join(', ')}]` : '不可推荐'} · {rec.confidence}</p><p>{interpolationText(rec)}</p><ul>{rec.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
-          <div className="candidate-table-wrap"><table className="candidate-table"><thead><tr><th>参数</th><th>指标</th><th>弹性 / 区间</th><th>显著</th><th>限制</th></tr></thead><tbody>{rec.elasticities.map((e, i) => <tr key={i}><td>{e.param}</td><td>{e.metric}</td><td>{e.e ?? '不可用'} / [{e.e_lo ?? '不可用'}, {e.e_hi ?? '不可用'}]</td><td>{String(e.significant)}</td><td>{e.note}: {sensitivityNoteLabel(e.note)}</td></tr>)}</tbody></table></div>
-        </> : <p>{exec.recommendationError ?? (completed < all.length ? '结果不完整，尚无推荐；已返回候选可继续分析。' : '内核未提供推荐。')}</p>}
+      <section className="result-recommendation"><h2>{t(locale, 'analysis.recTitle')}</h2>
+        <p className="note">{t(locale, 'analysis.recNote')}</p>
+        {rec ? <><p>{t(locale, 'analysis.recLine', { param: rec.param, baseline: rec.baseline ?? t(locale, 'analysis.unavailable'), interval: rec.interval ? `[${rec.interval.join(', ')}]` : t(locale, 'analysis.notRecommendable'), confidence: rec.confidence })}</p><p>{interpolationText(rec, locale)}</p><ul>{rec.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+          <div className="candidate-table-wrap"><table className="candidate-table"><thead><tr><th>{t(locale, 'analysis.recColParam')}</th><th>{t(locale, 'analysis.recColMetric')}</th><th>{t(locale, 'analysis.recColElasticity')}</th><th>{t(locale, 'analysis.recColSignificant')}</th><th>{t(locale, 'analysis.recColNote')}</th></tr></thead><tbody>{rec.elasticities.map((e, i) => <tr key={i}><td>{e.param}</td><td>{e.metric}</td><td>{e.e ?? t(locale, 'analysis.unavailable')} / [{e.e_lo ?? t(locale, 'analysis.unavailable')}, {e.e_hi ?? t(locale, 'analysis.unavailable')}]</td><td>{String(e.significant)}</td><td>{e.note}: {sensitivityNoteLabel(e.note, locale)}</td></tr>)}</tbody></table></div>
+        </> : <p>{exec.recommendationError ?? (completed < all.length ? t(locale, 'analysis.recIncomplete') : t(locale, 'analysis.recNone'))}</p>}
       </section>
-    </> : <section><h2>{exec.kind === 'single' ? '单次运行观测' : 'A/B 配对差值（B − A）'}</h2>
-      {exec.kind === 'single' ? <p>单次运行逐日观测见下方；没有 A/B 差值统计。</p> : exec.comparison ? (() => { const v = abView(exec.comparison!); return <>
-        <p>{METRIC_META[v.metric].label} · 内核判定 {v.verdict}</p><p>A: {statText(v.armA, v.metric)}</p><p>B: {statText(v.armB, v.metric)}</p>
-        <p>配对差 {formatMetric(v.diffMean, v.metric, true)} · 95% CI [{formatMetric(v.diffCi95Lo, v.metric, true)}, {formatMetric(v.diffCi95Hi, v.metric, true)}] · 效应量 d={v.effectSizeD}</p>
-        <p className="note">配对差、CI 与效应量直接来自 Comparison；比例差显示百分点 pp。与扫描绝对值图分开展示。</p>
-      </> })() : <p>尚无真实 Comparison。{exec.errorMessage ?? '等待内核比较结果'}；不会从双臂均值自行推算差值 CI。</p>}
+    </> : <section><h2>{exec.kind === 'single' ? t(locale, 'analysis.singleTitle') : t(locale, 'analysis.abTitle')}</h2>
+      {exec.kind === 'single' ? <p>{t(locale, 'analysis.singleNote')}</p> : exec.comparison ? (() => { const v = abView(exec.comparison!); return <>
+        <p>{t(locale, 'analysis.abVerdict', { label: metricLabel(v.metric, locale), verdict: v.verdict })}</p><p>A: {statText(v.armA, v.metric, locale)}</p><p>B: {statText(v.armB, v.metric, locale)}</p>
+        <p>{t(locale, 'analysis.abStats', { diff: formatMetric(v.diffMean, v.metric, true, locale), lo: formatMetric(v.diffCi95Lo, v.metric, true, locale), hi: formatMetric(v.diffCi95Hi, v.metric, true, locale), d: v.effectSizeD })}</p>
+        <p className="note">{t(locale, 'analysis.abNote')}</p>
+      </> })() : <p>{t(locale, 'analysis.noComparison', { message: exec.errorMessage ?? t(locale, 'analysis.waitingComparison') })}</p>}
     </section>}
-    {(exec.sim || exec.arms) && <section><h2>逐日观测（无日级 CI）</h2>
-      <label>臂 <select value={ui.arm} onChange={(e) => patch({ arm: e.target.value as 'base' | 'cand' })}><option value="base">A / 单次运行</option><option value="cand">B</option></select></label>
-      <label>replicate <select value={ui.replicate} onChange={(e) => patch({ replicate: Number(e.target.value) })}>{(sim?.results ?? []).map((r) => <option key={r.replicate} value={r.replicate}>{r.replicate + 1}（kernel {r.replicate}）</option>)}</select></label>
-      <p className="note">run {exec.runId} · 只展示所选 replicate 的 results.day_stats；days_csv 默认仅为首个 replicate（UI 1 / kernel 0）。</p>
+    {(exec.sim || exec.arms) && <section><h2>{t(locale, 'analysis.dailyTitle')}</h2>
+      <label>{t(locale, 'analysis.armLabel')} <select value={ui.arm} onChange={(e) => patch({ arm: e.target.value as 'base' | 'cand' })}><option value="base">{t(locale, 'analysis.armA')}</option><option value="cand">B</option></select></label>
+      <label>replicate <select value={ui.replicate} onChange={(e) => patch({ replicate: Number(e.target.value) })}>{(sim?.results ?? []).map((r) => <option key={r.replicate} value={r.replicate}>{t(locale, 'analysis.replicateOption', { ui: r.replicate + 1, kernel: r.replicate })}</option>)}</select></label>
+      <p className="note">{t(locale, 'analysis.dailyNote', { run: exec.runId })}</p>
       {daily.ok ? <table className="candidate-table"><thead><tr><th>day</th><th>win_rate</th><th>inflation</th></tr></thead><tbody>{daily.rows.map((r) => <tr key={r.day}><td>{r.day}</td><td>{r.win_rate}</td><td>{r.inflation}</td></tr>)}</tbody></table> : <p>{daily.reason}</p>}
     </section>}
-    {a.drafts.length > 0 && <section><h2>复制的新方案草稿（未运行）</h2>{a.drafts.map((d) => <div key={d.id} className="result-draft">
-      <p>{d.id} · 来源 {d.sourceRunId} / {d.sourceCandidateId} · 基线 {d.baselineId}</p>
-      <label htmlFor={d.id}>方案 YAML（独立编辑缓冲）</label><textarea id={d.id} value={d.yaml} rows={12} onChange={(e) => editCandidateDraft(d.id, e.target.value)} />
-      <p className="note">只创建草稿，不改写原场景或运行。请将下载的 YAML 作为新场景打开，内核校验后再运行。</p>
-      <button className="btn" disabled={parseConfig(d.yaml).errors.length > 0} onClick={() => download(`${d.id}.yaml`, d.yaml, 'application/yaml')}>下载新方案草稿 YAML</button>
-      <button className="btn" onClick={() => download(`${d.id}.source.json`, machineJson(d), 'application/json')}>下载方案与来源 JSON</button>
-      {parseConfig(d.yaml).errors.length > 0 && <p role="alert">草稿解析失败，请修正后下载。</p>}
+    {a.drafts.length > 0 && <section><h2>{t(locale, 'analysis.draftsTitle')}</h2>{a.drafts.map((d) => <div key={d.id} className="result-draft">
+      <p>{t(locale, 'analysis.draftLine', { id: d.id, run: d.sourceRunId, cand: d.sourceCandidateId, base: d.baselineId })}</p>
+      <label htmlFor={d.id}>{t(locale, 'analysis.draftYamlLabel')}</label><textarea id={d.id} value={d.yaml} rows={12} onChange={(e) => editCandidateDraft(d.id, e.target.value)} />
+      <p className="note">{t(locale, 'analysis.draftNote')}</p>
+      <button className="btn" disabled={parseConfig(d.yaml).errors.length > 0} onClick={() => download(`${d.id}.yaml`, d.yaml, 'application/yaml')}>{t(locale, 'analysis.downloadDraftYaml')}</button>
+      <button className="btn" onClick={() => download(`${d.id}.source.json`, machineJson(d), 'application/json')}>{t(locale, 'analysis.downloadDraftJson')}</button>
+      {parseConfig(d.yaml).errors.length > 0 && <p role="alert">{t(locale, 'analysis.draftParseError')}</p>}
     </div>)}{a.draftPersistenceError && <p role="alert">{a.draftPersistenceError}</p>}</section>}
   </div>
 }

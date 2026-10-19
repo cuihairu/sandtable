@@ -1,6 +1,8 @@
 // Observed parameter coordinates and asymmetric kernel CI. No interpolated line.
 import type { JSX } from 'react'
 import { xAxisDomain, stepSelection } from '../../lib/analysisView.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type ResponsePoint = {
   id: string; x: number; mean: number
@@ -20,6 +22,8 @@ export type ResponseChartProps = {
   onSelect?: (id: string) => void; mini?: boolean; sourceTitle?: string
 }
 export function ResponseChart({ metric, xAxis, points, selectedId, onSelect, mini = false, sourceTitle }: ResponseChartProps): JSX.Element {
+  // WB-11.14:aria/标题/空态随当前语言;label/unit 等显示名由调用方传词典值
+  const locale = useLocale()
   const W = 870, H = mini ? 175 : 300
   const left = 95, right = 25, top = 30, bottom = 50
   const domain = xAxisDomain(points.map((p) => p.x))
@@ -31,8 +35,8 @@ export function ResponseChart({ metric, xAxis, points, selectedId, onSelect, min
   const hi = (p: ResponsePoint): number => p.ci95_hi ?? p.mean + (p.ciHalf ?? 0)
   const targets = metric.targets ?? (metric.target === undefined ? [] : [{ min: metric.op === '≥' ? metric.target : null, max: metric.op === '≤' ? metric.target : null, kind: 'hard' as const }])
   return <svg className={mini ? 'mini-chart' : 'main-chart'} viewBox={`0 0 ${W} ${H}`} role="group"
-    aria-label={`${metric.label} / ${metric.unit}，${points.length} 个观测候选及 95% CI，横轴 ${xAxis.path}`}>
-    <title>{sourceTitle ?? `${metric.label} · 观测均值与 95% CI`}</title>
+    aria-label={t(locale, 'analysis.chart.aria', { label: metric.label, unit: metric.unit, count: points.length, axis: xAxis.path })}>
+    <title>{sourceTitle ?? t(locale, 'analysis.chart.title', { label: metric.label })}</title>
     {Array.from({ length: 5 }, (_, i) => {
       const val = metric.min + (metric.max - metric.min) * i / 4
       return <g key={i}><line x1={left} x2={W - right} y1={y(val)} y2={y(val)} className="chart-grid" />
@@ -46,7 +50,7 @@ export function ResponseChart({ metric, xAxis, points, selectedId, onSelect, min
       <g key={`${i}-${j}`}><line data-reference="target" x1={left} x2={W - right} y1={y(v)} y2={y(v)} stroke="var(--wb-amber)" strokeDasharray={t.kind === 'hard' ? '5 4' : '2 5'} />
         <title>{`${t.kind} ${j === 0 ? '≥' : '≤'} ${fmt(v)}`}</title></g>,
     ]))}
-    {metric.baseline !== undefined && <line data-reference="baseline" x1={left} x2={W - right} y1={y(metric.baseline)} y2={y(metric.baseline)} stroke="var(--wb-muted)" strokeDasharray="3 4"><title>{`已运行基线 ${fmt(metric.baseline)}`}</title></line>}
+    {metric.baseline !== undefined && <line data-reference="baseline" x1={left} x2={W - right} y1={y(metric.baseline)} y2={y(metric.baseline)} stroke="var(--wb-muted)" strokeDasharray="3 4"><title>{t(locale, 'analysis.chart.baselineTitle', { value: fmt(metric.baseline) })}</title></line>}
     {points.map((p) => {
       const label = `${p.id} · ${xAxis.path}=${p.x} · ${metric.label} ${fmt(p.mean)} · 95% CI [${fmt(lo(p))}, ${fmt(hi(p))}]`
       return <g key={p.id} className={`chart-candidate${selectedId === p.id ? ' selected' : ''}`} role="button" tabIndex={onSelect ? 0 : -1}
@@ -66,6 +70,6 @@ export function ResponseChart({ metric, xAxis, points, selectedId, onSelect, min
     })}
     <text x={left} y={16} className="chart-label">{`${metric.label} / ${metric.unit}`}</text>
     <text x={(W + left - right) / 2} y={H - 7} textAnchor="middle" className="chart-label">{xAxis.path}</text>
-    {!points.length && <text x={W / 2} y={H / 2} textAnchor="middle" className="chart-text">没有可绘制结果 · 未返回与不可用候选保留在表中</text>}
+    {!points.length && <text x={W / 2} y={H / 2} textAnchor="middle" className="chart-text">{t(locale, 'analysis.chart.empty')}</text>}
   </svg>
 }

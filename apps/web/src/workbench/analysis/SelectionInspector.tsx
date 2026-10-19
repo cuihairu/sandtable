@@ -4,7 +4,8 @@
 import type { JSX, ReactNode } from 'react'
 import { WbIcon, WbVerdictIcon } from '../components/icons.tsx'
 import type { Verdict } from '../demo/sampleProject.ts'
-import { VERDICT_LABEL } from '../demo/sampleProject.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type InspectorConstraint = {
   label: string
@@ -47,14 +48,16 @@ export function SelectionInspector({
   sourceBadge,
   notes,
 }: SelectionInspectorProps): JSX.Element | null {
+  // WB-11.14:检查器自身 chrome 随当前语言;标题/约束/统计内容由调用方传已译文案
+  const locale = useLocale()
   if (!open) return null
   return (
-    <aside className="selection-inspector" aria-label="选择检查器">
+    <aside className="selection-inspector" aria-label={t(locale, 'analysis.inspectorTitle')}>
       <div className="inspector-header">
         <WbIcon name="sliders" />
-        选择检查器
+        {t(locale, 'analysis.inspectorTitle')}
         {onToggle && (
-          <button className="icon-button" onClick={onToggle} aria-label="收起选择检查器" title="收起检查器">
+          <button className="icon-button" onClick={onToggle} aria-label={t(locale, 'analysis.inspectorCollapse')} title={t(locale, 'analysis.inspectorCollapseTitle')}>
             <WbIcon name="panel-right" />
           </button>
         )}
@@ -76,7 +79,7 @@ export function SelectionInspector({
       </section>
       {constraints.length > 0 && (
         <section className="inspector-section">
-          <h3>硬约束 · 展示区间判定</h3>
+          <h3>{t(locale, 'analysis.inspectorHard')}</h3>
           {constraints.map((c) => (
             <div className="constraint-row" key={c.label}>
               <div>
@@ -93,7 +96,7 @@ export function SelectionInspector({
                 <span style={{ width: `${Math.min(100, Math.max(10, c.position))}%` }} />
               </div>
               <div className="constraint-values">
-                <span>展示区间</span>
+                <span>{t(locale, 'analysis.inspectorDisplayRange')}</span>
                 <span>{c.ci}</span>
               </div>
             </div>
@@ -102,7 +105,7 @@ export function SelectionInspector({
       )}
       {stats.length > 0 && (
         <section className="inspector-section">
-          <h3>统计口径</h3>
+          <h3>{t(locale, 'analysis.inspectorStats')}</h3>
           {stats.map(([k, v]) => (
             <div className="inspector-kv" key={k}>
               <span>{k}</span>
@@ -111,7 +114,7 @@ export function SelectionInspector({
           ))}
           {sourceBadge && (
             <div className="inspector-kv">
-              <span>数据来源</span>
+              <span>{t(locale, 'analysis.inspectorSource')}</span>
               <span className={`badge${sourceBadge.tone && sourceBadge.tone !== 'default' ? ` ${sourceBadge.tone}` : ''}`}>
                 {sourceBadge.text}
               </span>
@@ -124,11 +127,18 @@ export function SelectionInspector({
   )
 }
 
+const VERDICT_KEY: Record<Verdict, 'analysis.verdict.pass' | 'analysis.verdict.border' | 'analysis.verdict.fail'> = {
+  pass: 'analysis.verdict.pass',
+  border: 'analysis.verdict.border',
+  fail: 'analysis.verdict.fail',
+}
+
 function VerdictBadge({ verdict }: { verdict: Verdict }): JSX.Element {
+  const locale = useLocale()
   return (
     <span className={`verdict ${verdict}`}>
       <WbVerdictIcon verdict={verdict} />
-      {VERDICT_LABEL[verdict]}
+      {t(locale, VERDICT_KEY[verdict])}
     </span>
   )
 }

@@ -5,7 +5,8 @@
 import type { JSX } from 'react'
 import { WbIcon, WbVerdictIcon } from '../components/icons.tsx'
 import type { Verdict } from '../demo/sampleProject.ts'
-import { VERDICT_LABEL } from '../demo/sampleProject.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type CandidateColumn<T> = {
   key: string
@@ -49,17 +50,19 @@ export function CandidateTable<T>({
   sortDir = 1,
   onSort,
   isBaseline,
-  emptyMessage = '当前筛选没有候选。选择"全部候选"可恢复显示。',
+  emptyMessage,
   expanded = false,
 }: CandidateTableProps<T>): JSX.Element {
+  // WB-11.14:表头/空态/判定徽标随当前语言;列 label 由调用方传词典值
+  const locale = useLocale()
   const cols = columns.length
   const verdictCol = verdictOf !== undefined
   return (
     <div className="candidate-table-wrap" style={expanded ? { maxHeight: 'none' } : undefined}>
-      <table className="candidate-table" aria-label="参数扫描候选结果" id={id}>
+      <table className="candidate-table" aria-label={t(locale, 'analysis.table.aria')} id={id}>
         <thead>
           <tr>
-            <th>候选 / 对照</th>
+            <th>{t(locale, 'analysis.table.colCandidate')}</th>
             {columns.map((col) => (
               <th key={col.key} className={col.numeric === true ? 'numeric' : col.ci === true ? 'ci' : ''} aria-sort={sortKey === col.key ? (sortDir === 1 ? 'ascending' : 'descending') : 'none'}>
                 {onSort !== undefined ? (
@@ -76,10 +79,10 @@ export function CandidateTable<T>({
               <th>
                 {onSort !== undefined ? (
                   <button className="sort-button" onClick={() => onSort('verdict')}>
-                    约束判定 <span>↕</span>
+                    {t(locale, 'analysis.table.colVerdict')} <span>↕</span>
                   </button>
                 ) : (
-                  '约束判定'
+                  t(locale, 'analysis.table.colVerdict')
                 )}
               </th>
             )}
@@ -89,7 +92,7 @@ export function CandidateTable<T>({
           {rows.length === 0 && (
             <tr>
               <td colSpan={cols + 1 + (verdictCol ? 1 : 0)}>
-                <div className="empty-state">{emptyMessage}</div>
+                <div className="empty-state">{emptyMessage ?? t(locale, 'analysis.table.empty')}</div>
               </td>
             </tr>
           )}
@@ -108,7 +111,7 @@ export function CandidateTable<T>({
                   <div className="table-id">
                     <button
                       className="candidate-select"
-                      aria-label={`选择候选 ${rowId}`}
+                      aria-label={t(locale, 'analysis.table.selectAria', { id: rowId })}
                       onClick={(e) => {
                         e.stopPropagation()
                         onSelect?.(rowId)
@@ -116,7 +119,7 @@ export function CandidateTable<T>({
                     >
                       {rowId.slice(0, 11)}
                     </button>
-                    {isBaseline?.(row) === true && <span className="badge">基线</span>}
+                    {isBaseline?.(row) === true && <span className="badge">{t(locale, 'analysis.table.baselineBadge')}</span>}
                   </div>
                 </td>
                 {columns.map((col) => (
@@ -142,12 +145,20 @@ export function CandidateTable<T>({
 }
 
 export function VerdictChip({ verdict }: { verdict: Verdict }): JSX.Element {
+  const locale = useLocale()
+  // WB-11.14:判定徽标显示名走词典;verdict 枚举值稳定不翻译
   return (
     <span className={`verdict ${verdict}`}>
       <WbVerdictIcon verdict={verdict} />
-      {VERDICT_LABEL[verdict]}
+      {t(locale, VERDICT_KEY[verdict])}
     </span>
   )
+}
+
+const VERDICT_KEY: Record<Verdict, 'analysis.verdict.pass' | 'analysis.verdict.border' | 'analysis.verdict.fail'> = {
+  pass: 'analysis.verdict.pass',
+  border: 'analysis.verdict.border',
+  fail: 'analysis.verdict.fail',
 }
 
 export { WbIcon }

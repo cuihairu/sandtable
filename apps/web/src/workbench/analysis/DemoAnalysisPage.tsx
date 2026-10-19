@@ -16,6 +16,10 @@ import {
   metricValues, verdictFor, verdictOf,
 } from '../demo/sampleProject.ts'
 import type { MetricKey } from '../demo/sampleProject.ts'
+import type { MetricKey as KernelMetricKey } from '../../lib/types.ts'
+import { metricLabel } from '../../lib/metricMeta.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type AnalysisPageProps = {
   state: WorkbenchState
@@ -31,6 +35,10 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
   )
   const m = METRICS[metric]
   const others = METRIC_KEYS.filter((k) => k !== metric)
+  // WB-11.14:演示指标 label 从词典出(id = 内核指标 id,显示名同真实视图)
+  const locale = useLocale()
+  const kmLabel = (k: MetricKey): string => metricLabel(METRICS[k].id as KernelMetricKey, locale)
+  const kmMetric = (k: MetricKey) => ({ ...METRICS[k], label: kmLabel(k) })
 
   const selectCandidate = (id: string): void => {
     dispatch({ type: 'candidate/select', id: id as typeof selected.id })
@@ -40,18 +48,18 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
   return (
     <>
       <WorkspaceHeading
-        title="初始攻击力扫描"
-        crumb="结果集 / Grid 单参数"
+        title={t(locale, 'analysis.demo.title')}
+        crumb={t(locale, 'analysis.demo.crumb')}
         badge={{ text: 'GRID', tone: 'teal' }}
         actions={
           <>
             <button className="btn" onClick={() => dispatch({ type: 'navigate', page: 'designer' })}>
               <WbIcon name="flask" />
-              调整实验
+              {t(locale, 'analysis.demo.adjust')}
             </button>
             <button className="btn primary" onClick={onExport}>
               <WbIcon name="download" />
-              导出
+              {t(locale, 'data.export')}
             </button>
           </>
         }
@@ -63,21 +71,21 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
         </div>
       )}
       <div className="workspace-toolbar">
-        <div className="segmented" aria-label="结果显示方式">
+        <div className="segmented" aria-label={t(locale, 'analysis.demo.viewAria')}>
           <button data-view="chart" className={resultView === 'chart' ? 'active' : ''} aria-pressed={resultView === 'chart'} onClick={() => dispatch({ type: 'candidate/view', view: 'chart' })}>
             <WbIcon name="chart" />
-            响应图
+            {t(locale, 'analysis.demo.viewChart')}
           </button>
           <button data-view="table" className={resultView === 'table' ? 'active' : ''} aria-pressed={resultView === 'table'} onClick={() => dispatch({ type: 'candidate/view', view: 'table' })}>
             <WbIcon name="table" />
-            数据表
+            {t(locale, 'analysis.demo.viewTable')}
           </button>
         </div>
         <span className="divider" />
-        <label className="toolbar-label" htmlFor="metric-select">主指标</label>
+        <label className="toolbar-label" htmlFor="metric-select">{t(locale, 'analysis.primaryMetric')}</label>
         <select
           id="metric-select"
-          aria-label="主图指标"
+          aria-label={t(locale, 'analysis.demo.metricAria')}
           value={metric}
           onChange={(e) => {
             const key = e.target.value as MetricKey
@@ -86,14 +94,14 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
           }}
         >
           {METRIC_KEYS.map((k) => (
-            <option key={k} value={k}>{METRICS[k].label}</option>
+            <option key={k} value={k}>{kmLabel(k)}</option>
           ))}
         </select>
         <div className="toolbar-end">
           <span className="muted" style={{ fontSize: 10 }}>
-            {DEMO_RESULT.candidates.length} 候选 · 20 replicates / 候选
+            {t(locale, 'analysis.demo.counts', { count: DEMO_RESULT.candidates.length })}
           </span>
-          <button className="icon-button" onClick={() => dispatch({ type: 'toggle-inspector' })} aria-label={`${inspectorOpen ? '收起' : '显示'}选择检查器`}>
+          <button className="icon-button" onClick={() => dispatch({ type: 'toggle-inspector' })} aria-label={t(locale, 'analysis.demo.toggleInspector', { action: inspectorOpen ? t(locale, 'analysis.demo.collapse') : t(locale, 'analysis.demo.show') })}>
             <WbIcon name="panel-right" />
           </button>
         </div>
@@ -104,41 +112,41 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
             <section className="figure-section">
               <div className="section-heading">
                 <div>
-                  <h2>{`参数响应 · ${m.label}`}</h2>
+                  <h2>{t(locale, 'analysis.demo.responseTitle', { label: kmLabel(metric) })}</h2>
                   <div className="figure-subtitle">
-                    单参数观测点与展示区间 <span className="muted">/</span> 选点查看候选
+                    {t(locale, 'analysis.demo.responseSubtitle')}
                   </div>
                 </div>
                 <div className="legend">
-                  <span><i className="legend-dot" />候选均值</span>
-                  <span><i className="legend-ci" />展示区间</span>
-                  <span><i className="legend-line" />目标边界</span>
+                  <span><i className="legend-dot" />{t(locale, 'analysis.demo.legendMean')}</span>
+                  <span><i className="legend-ci" />{t(locale, 'analysis.demo.legendRange')}</span>
+                  <span><i className="legend-line" />{t(locale, 'analysis.demo.legendTarget')}</span>
                 </div>
               </div>
               <div className="chart-viewport">
                 <ResponseChart
-                  metric={m}
-                  xAxis={{ label: '初始攻击力', path: 'model.warrior.attack' }}
+                  metric={kmMetric(metric)}
+                  xAxis={{ label: t(locale, 'analysis.demo.axisLabel'), path: 'model.warrior.attack' }}
                   points={DEMO_RESULT.candidates.map((c) => ({ id: c.id, x: c.paramValue, mean: c[metric], ciHalf: m.ci }))}
                   selectedId={selected.id}
                   onSelect={selectCandidate}
                 />
               </div>
               <div className="chart-footer">
-                <span>浅绿区域:当前指标的目标范围 · 虚线:约束 / 基线</span>
-                <span>离散采样 · 无插值</span>
+                <span>{t(locale, 'analysis.demo.chartFootRange')}</span>
+                <span>{t(locale, 'analysis.demo.chartFootSample')}</span>
               </div>
               <div className="mini-figures">
                 {others.map((k) => (
                   <div className="mini-figure" key={k}>
                     <div className="mini-figure-header">
-                      <strong>{METRICS[k].label}</strong>
-                      <span className="mono">{`${fmtMetric(selected[k], k)} · 展示区间 ${ciText(selected, k)}`}</span>
+                      <strong>{kmLabel(k)}</strong>
+                      <span className="mono">{t(locale, 'analysis.demo.miniStat', { stat: fmtMetric(selected[k], k), range: ciText(selected, k) })}</span>
                     </div>
                     <ResponseChart
                       mini
-                      metric={METRICS[k]}
-                      xAxis={{ label: '初始攻击力', path: 'model.warrior.attack' }}
+                      metric={kmMetric(k)}
+                      xAxis={{ label: t(locale, 'analysis.demo.axisLabel'), path: 'model.warrior.attack' }}
                       points={DEMO_RESULT.candidates.map((c) => ({ id: c.id, x: c.paramValue, mean: c[k], ciHalf: METRICS[k].ci }))}
                       selectedId={selected.id}
                       onSelect={selectCandidate}
@@ -151,8 +159,8 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
             <div className="figure-section">
               <div className="section-heading">
                 <div>
-                  <h2>候选结果数据表</h2>
-                  <div className="figure-subtitle">全部候选 · 展示区间与判定</div>
+                  <h2>{t(locale, 'analysis.demo.tableTitle')}</h2>
+                  <div className="figure-subtitle">{t(locale, 'analysis.demo.tableSubtitle')}</div>
                 </div>
               </div>
               <CandidateTable
@@ -165,11 +173,11 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
                 isBaseline={(c) => c.paramValue === 100}
                 expanded
                 columns={[
-                  { key: 'paramValue', label: '初始攻击力', numeric: true, value: (c) => c.paramValue },
-                  { key: 'win', label: '战斗胜率', numeric: true, value: (c) => fmtMetric(c.win, 'win') },
-                  { key: 'retention', label: 'D7 留存率', numeric: true, value: (c) => fmtMetric(c.retention, 'retention') },
-                  { key: 'gold', label: '人均金币产出', numeric: true, value: (c) => fmtMetric(c.gold, 'gold') },
-                  { key: 'win_ci', label: '胜率展示区间', value: (c) => ciText(c, 'win'), ci: true },
+                  { key: 'paramValue', label: t(locale, 'analysis.demo.axisLabel'), numeric: true, value: (c) => c.paramValue },
+                  { key: 'win', label: kmLabel('win'), numeric: true, value: (c) => fmtMetric(c.win, 'win') },
+                  { key: 'retention', label: kmLabel('retention'), numeric: true, value: (c) => fmtMetric(c.retention, 'retention') },
+                  { key: 'gold', label: kmLabel('gold'), numeric: true, value: (c) => fmtMetric(c.gold, 'gold') },
+                  { key: 'win_ci', label: t(locale, 'analysis.demo.ciCol'), value: (c) => ciText(c, 'win'), ci: true },
                 ]}
               />
             </div>
@@ -178,24 +186,24 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
             <div className="section-heading">
               <div>
                 <h2>
-                  候选表
+                  {t(locale, 'analysis.demo.candidatesTitle')}
                   <span className="muted" style={{ fontSize: 10 }}>
-                    {` ${rows.length} / ${DEMO_RESULT.candidates.length} 候选`}
+                    {` ${t(locale, 'analysis.demo.candidateCount', { shown: rows.length, total: DEMO_RESULT.candidates.length })}`}
                   </span>
                 </h2>
               </div>
               <div className="actions">
-                <label className="toolbar-label" htmlFor="filter-verdict">筛选</label>
+                <label className="toolbar-label" htmlFor="filter-verdict">{t(locale, 'analysis.filter')}</label>
                 <select
                   id="filter-verdict"
                   value={resultFilter}
-                  aria-label="按约束判定筛选"
+                  aria-label={t(locale, 'analysis.demo.filterAria')}
                   onChange={(e) => dispatch({ type: 'candidate/filter', filter: e.target.value as typeof resultFilter })}
                 >
-                  <option value="all">全部候选</option>
-                  <option value="pass">仅通过</option>
-                  <option value="border">仅临界</option>
-                  <option value="fail">仅未通过</option>
+                  <option value="all">{t(locale, 'analysis.demo.filterAll')}</option>
+                  <option value="pass">{t(locale, 'analysis.demo.filterPass')}</option>
+                  <option value="border">{t(locale, 'analysis.demo.filterBorder')}</option>
+                  <option value="fail">{t(locale, 'analysis.demo.filterFail')}</option>
                 </select>
               </div>
             </div>
@@ -211,16 +219,16 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
               sortDir={sortDir}
               onSort={(key) => dispatch({ type: 'candidate/sort', key: key as typeof sortKey })}
               columns={[
-                { key: 'paramValue', label: '初始攻击力', numeric: true, value: (c) => c.paramValue },
-                { key: 'win', label: '战斗胜率', numeric: true, value: (c) => fmtMetric(c.win, 'win') },
-                { key: 'retention', label: 'D7 留存率', numeric: true, value: (c) => fmtMetric(c.retention, 'retention') },
-                { key: 'gold', label: '人均金币产出', numeric: true, value: (c) => fmtMetric(c.gold, 'gold') },
-                { key: 'win_ci', label: '胜率展示区间', value: (c) => ciText(c, 'win'), ci: true },
+                { key: 'paramValue', label: t(locale, 'analysis.demo.axisLabel'), numeric: true, value: (c) => c.paramValue },
+                { key: 'win', label: kmLabel('win'), numeric: true, value: (c) => fmtMetric(c.win, 'win') },
+                { key: 'retention', label: kmLabel('retention'), numeric: true, value: (c) => fmtMetric(c.retention, 'retention') },
+                { key: 'gold', label: kmLabel('gold'), numeric: true, value: (c) => fmtMetric(c.gold, 'gold') },
+                { key: 'win_ci', label: t(locale, 'analysis.demo.ciCol'), value: (c) => ciText(c, 'win'), ci: true },
               ]}
             />
             <div className="table-foot">
-              <span>来源:内置合成样例(synthetic_demo)· 展示区间为演示对称区间</span>
-              <span>选择与筛选/排序均为 UI 状态,不写进实验输入</span>
+              <span>{t(locale, 'analysis.demo.sourceNote')}</span>
+              <span>{t(locale, 'analysis.demo.uiStateNote')}</span>
             </div>
           </section>
         </div>
@@ -233,7 +241,7 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
           onToggle={() => dispatch({ type: 'toggle-inspector' })}
           value={{
             display: String(selected.paramValue),
-            note: `基线 100 · ${selected.paramValue >= 100 ? '+' : ''}${(((selected.paramValue - 100) / 100) * 100).toFixed(0)}%`,
+            note: t(locale, 'analysis.demo.valueNote', { base: 100, sign: selected.paramValue >= 100 ? '+' : '', percent: (((selected.paramValue - 100) / 100) * 100).toFixed(0) }),
           }}
           actions={
             <button
@@ -245,14 +253,14 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
               }}
             >
               <WbIcon name="copy" />
-              复制参数到候选方案 A
+              {t(locale, 'analysis.demo.adopt')}
             </button>
           }
           constraints={METRIC_KEYS.map((k) => {
             const km = METRICS[k]
             const verdict = verdictFor(selected[k], k)
             return {
-              label: km.label,
+              label: kmLabel(k),
               verdict,
               value: fmtMetric(selected[k], k),
               op: km.op,
@@ -262,12 +270,12 @@ export function DemoAnalysisPage({ state, onExport }: AnalysisPageProps): JSX.El
             }
           })}
           stats={[
-            ['方法', 'Grid / 离散观测'],
-            ['统计单位', <span className="mono" key="rep">20 replicates</span>],
-            ['场景规模', '10,000 玩家 × 30 天'],
+            [t(locale, 'analysis.demo.statMethod'), t(locale, 'analysis.demo.methodValue')],
+            [t(locale, 'analysis.statUnit'), <span className="mono" key="rep">20 replicates</span>],
+            [t(locale, 'analysis.srcScenario'), t(locale, 'analysis.demo.scaleValue')],
           ]}
-          sourceBadge={{ text: '内置合成样例', tone: 'amber' }}
-          notes={'展示区间完全满足阈值才判"通过";区间与边界相交判"临界"。图中点之间不做插值。'}
+          sourceBadge={{ text: t(locale, 'analysis.demo.sourceBadge'), tone: 'amber' }}
+          notes={t(locale, 'analysis.demo.notes')}
         />
       </div>
     </>
