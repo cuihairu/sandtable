@@ -36,6 +36,7 @@ import {
 import type { WorkbenchState } from './state/workbenchStore.ts'
 import { parseHash, pageDef } from './routing.ts'
 import type { PageId } from './routing.ts'
+import { globalShortcutFor } from './keyboard.ts'
 import {
   DEMO_PROJECT_ID, DEMO_RESULT,
   METRICS, filterAndSort,
@@ -234,16 +235,19 @@ export default function WorkbenchApp(): JSX.Element {
     else void openYamlDraft(pending.name, pending.yaml)
   }
 
-  /* 全局快捷键(基础集):Ctrl/Cmd+K 命令搜索、Ctrl/Cmd+S 保存、Ctrl/Cmd+Z 撤销 */
+  /* 全局快捷键(WB-02.14):Ctrl/Cmd+K 命令搜索、Ctrl/Cmd+S 保存、
+   * Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z / Ctrl/Cmd+Y 重做。
+   * 输入框/文本区内撤销与重做交还浏览器原生行为(裁决见 keyboard.ts)。 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (!(e.ctrlKey || e.metaKey)) return
-      const key = e.key.toLowerCase()
-      if (key === 'k') {
-        e.preventDefault()
+      const shortcut = globalShortcutFor(e)
+      if (shortcut === null) return
+      e.preventDefault()
+      if (shortcut === 'command-search') {
         patchOverlays({ commandSearch: true })
-      } else if (key === 's') {
-        e.preventDefault()
+        return
+      }
+      if (shortcut === 'save') {
         const s = getState()
         // WB-04.10:项目模式 Ctrl+S = 保存项目文件;演示模式 = 浏览器草稿
         if (s.project) {
@@ -254,11 +258,14 @@ export default function WorkbenchApp(): JSX.Element {
         } else {
           notify('warning', '浏览器存储不可用,草稿仍保留在当前页面')
         }
-      } else if (key === 'z') {
-        e.preventDefault()
-        // WB-05.12:参数候选统一撤销(单项/批量/恢复共用一条历史)
-        dispatch({ type: 'param/undo' })
-        notify('info', '已撤销上一次参数修改')
+        return
+      }
+      // WB-05.12:参数候选统一撤销/重做(单项/批量/恢复共用一条历史)
+      const before = getState()
+      dispatch({ type: shortcut === 'undo' ? 'param/undo' : 'param/redo' })
+      // 历史为空时是空操作,不报「已撤销/已重做」(无动作不给提示)
+      if (getState() !== before) {
+        notify('info', shortcut === 'undo' ? '已撤销上一次参数修改' : '已重做上一次参数修改')
       }
     }
     window.addEventListener('keydown', onKey)
@@ -699,6 +706,8 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
     ['查找参数与命令', 'Ctrl / ⌘ + K'],
     ['保存参数草稿', 'Ctrl / ⌘ + S'],
     ['撤销参数修改', 'Ctrl / ⌘ + Z'],
+    ['重做参数修改', 'Ctrl / ⌘ + Shift + Z · Ctrl / ⌘ + Y'],
+    ['输入框内的撤销 / 重做', '浏览器原生行为,工作台不接管'],
     ['候选表选择上一项 / 下一项', '↑ / ↓'],
     ['文档标签切换', '← / → · Home / End'],
     ['图中观测点选择', 'Tab → Enter'],

@@ -103,7 +103,7 @@
 - [x] WB-02.11：建立共享状态与明确更新动作，区分输入草稿、运行快照、已完成结果和当前选择。(2026-10-20,`state/workbenchStore.ts` 四类分区:输入草稿 = paramDraft/objectDrafts/design、运行快照 = runs(WB-04.09 不可变条目)、已完成结果 = runArtifacts(归档产物路径键)、当前选择 = page/selection/metric/filter/sort;全部变更走 WorkbenchAction 显式动作;tests/workbench-store.test.mjs 锁定:编辑不动快照与结果、登记不碰草稿、同 run_id 重复登记幂等、选择变化三类数据引用不变)
 - [x] WB-02.12：将筛选、排序、激活 KPI、候选选择、检查器开关作为 UI 状态，避免污染实验输入。(2026-10-20,上述各键均为 WorkbenchState 独立字段,reducer 各 case 只写自身字段;tests/workbench-store.test.mjs:14 个 UI 动作连发后实验输入三层(演示候选/项目对象草稿/实验设计)逐项不变,同时抽查 UI 字段落位证明测试不空转)
 - [x] WB-02.13：切换页面、标签、项目资源时保留相应草稿；关闭/切换有未保存内容的文档时可恢复。(2026-10-20,navigate 不动任何草稿字段;项目模式 objectDrafts 按归档路径隔离(WB-04.06);关项目只清内存,浏览器草稿记录保留,重开同 projectId 经 restoreObjectDrafts 恢复未保存内容;object/undo 撤销栈与重做栈保留;tests/workbench-store.test.mjs 三条恢复路径锁定)
-- [ ] WB-02.14：迁入命令搜索、Tab/方向键/Home/End、保存/撤销快捷键，输入框内不抢占原生编辑快捷键。
+- [x] WB-02.14：迁入命令搜索、Tab/方向键/Home/End、保存/撤销快捷键，输入框内不抢占原生编辑快捷键。(2026-10-20,命令搜索 Ctrl/Cmd+K、保存 Ctrl/Cmd+S、撤销 Ctrl/Cmd+Z 在 WorkbenchApp 全局层,新增重做 Ctrl/Cmd+Shift+Z·Ctrl/Cmd+Y;裁决提为纯函数 `workbench/keyboard.ts` globalShortcutFor——输入框/文本区/contentEditable 内撤销与重做交还浏览器原生行为,Ctrl+S/K 无原生文本编辑语义任何焦点都接管,修复原实现无条件 preventDefault 抢占输入框 Ctrl+Z 的缺陷;Tab/←/→/Home/End 走 DocumentTabs roving tabindex;空历史时撤销/重做不再谎报「已撤销」;tests/workbench-shortcuts.test.mjs 6 测 + 快捷键说明弹层同步更新)
 - [ ] WB-02.15：为各状态接入加载、禁用、错误边界与重试；删除只有“已完成”提示却未执行动作的事件。
 - [ ] WB-02.16：迁入侧栏/检查器收起与窄屏局部滚动，保证桌面图表和候选表可同时操作。
 - [ ] WB-02.17：将已有查询、Parquet 导出等能力放入合理入口，避免更换壳后丢失功能。
