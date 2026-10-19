@@ -505,6 +505,12 @@ export function locateKernelError(message: string): string | null {
 
 /** 由注册表合成注册默认场景 YAML(演示模式基线;逐项来自 PARAM_REGISTRY,
  * 非运行产物)。结构类缺省('—')不写入;公式以引号字符串书写。 */
+/** 默认基线故意不物化的注册项。
+ * 内核对可选段取显式性契约(config.rs):`model.loot` 一旦在场,on_victory 必须指名
+ * tables 中的键,不猜默认表;只物化 rate_mult 会把 loot 变成半配置 → 内核校验红。
+ * 内核侧 loot 缺省时 rate_mult 隐式取 1.0(registry.rs),不发该段行为等价。 */
+export const DEFAULT_YAML_OMITTED: readonly string[] = ['model.loot.rate_mult']
+
 export function buildDefaultYaml(): string {
   const lines: string[] = [
     '# 参数表内置基线:逐项取自参数注册表默认值(crates/sandtable-core/src/registry.rs)。',
@@ -515,6 +521,7 @@ export function buildDefaultYaml(): string {
   const emitted = new Set<string>([''])
   for (const p of PARAM_REGISTRY) {
     if (p.default === '—') continue
+    if (DEFAULT_YAML_OMITTED.includes(p.path)) continue
     const segs = p.path.split('.')
     for (let d = 0; d < segs.length - 1; d++) {
       const sub = segs.slice(0, d + 1).join('.')

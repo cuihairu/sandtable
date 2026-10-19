@@ -21,6 +21,7 @@ import { PARAM_REGISTRY, registryParam, displayParamName, paramGroups } from '..
 import {
   parseConfig, applyParamEdit, applyParamEdits, readNumeric, readText, hasParam,
   removeParam, restoreParam, numericValuesOf, paramDelta, locateKernelError, buildDefaultYaml,
+  DEFAULT_YAML_OMITTED,
 } from '../src/workbench/params/configYaml.ts'
 import {
   buildRowModels, validateParam, parseCellInput, kernelCheck, visibilityFilter, bulkPreview,
@@ -44,11 +45,15 @@ test('WB-05.01 注册表镜像与 registry.rs 逐条一致(路径数 + 四字段
     assert.equal(mirror.default, def, `${path} 默认值漂移`)
     assert.equal(mirror.desc, desc, `${path} 描述漂移`)
   }
-  // 注册表默认配置:全部数值默认项可解析(演示基线来源)
+  // 注册表默认配置:全部数值默认项可解析(演示基线来源);
+  // DEFAULT_YAML_OMITTED 除外——loot.rate_mult 等只在段整体配置时才有意义,
+  // 单独物化会违反内核显式性契约(见下方专测)
   const parsed = parseConfig(buildDefaultYaml())
   assert.equal(parsed.errors.length, 0)
   const numericKinds = new Set(['u32', 'u64', 'i64', 'f64', 'mix'])
-  const expectNumeric = PARAM_REGISTRY.filter((p) => numericKinds.has(p.kind) && p.default !== '—').length
+  const expectNumeric = PARAM_REGISTRY.filter(
+    (p) => numericKinds.has(p.kind) && p.default !== '—' && !DEFAULT_YAML_OMITTED.includes(p.path),
+  ).length
   assert.equal(Object.keys(numericValuesOf(parsed)).length, expectNumeric)
 })
 
@@ -512,6 +517,18 @@ test('WB-11.20 zh 展示名=注册表原文;en 全量独立译表;未登记路�
   assert.equal(displayParamName('custom.future_param', 'en-US'), 'custom.future_param')
   assert.equal(displayParamName('custom.future_param', 'zh-CN'), 'custom.future_param')
   // 词典侧同口径(有译词用译词,未知 key 回显原始 desc)由 displayName 在 i18n 测试锁定
+})
+
+/* ————— 默认基线 vs 内核显式性契约 ————— */
+
+test('默认基线不物化 loot 半配置段(内核显式性:loot 在场必须整配)', () => {
+  // 内核契约(config.rs):loot = Some 时 on_victory 必须指名 tables 中的键,
+  // 不猜默认表。rate_mult 单独物化会把 loot 变成半配置 → 内核校验红。
+  // 内核侧 loot 缺省时 rate_mult 隐式 1.0(registry.rs),基线不发该段行为等价。
+  assert.deepEqual([...DEFAULT_YAML_OMITTED], ['model.loot.rate_mult'])
+  const yaml = buildDefaultYaml()
+  assert.ok(!yaml.includes('loot:'), '默认基线不含 loot 段')
+  assert.equal(readNumeric(parseConfig(yaml), 'model.loot.rate_mult'), undefined)
 })
 
 test('WB-05.15 仓库全部示例 YAML 可解析;恢复单项走基线文本或删除', () => {
