@@ -144,7 +144,7 @@ jobs:
       # 项目打包/解包闭环 + 路径纪律(打包产物过真实内核 validate)
       - name: 前端守卫(node --test)
         run: |
-          node --test apps/web/tests/columns.test.mjs apps/web/tests/tokens.test.mjs apps/web/tests/workbench-ids.test.mjs apps/web/tests/workbench-logic.test.mjs apps/web/tests/i18n.test.mjs apps/web/tests/params-config.test.mjs apps/web/tests/sweep-view.test.mjs apps/web/tests/machine-export.test.mjs apps/web/tests/execution.test.mjs apps/web/tests/workbench-store.test.mjs apps/web/tests/workbench-shortcuts.test.mjs
+          node --test apps/web/tests/columns.test.mjs apps/web/tests/tokens.test.mjs apps/web/tests/workbench-ids.test.mjs apps/web/tests/workbench-logic.test.mjs apps/web/tests/i18n.test.mjs apps/web/tests/params-config.test.mjs apps/web/tests/sweep-view.test.mjs apps/web/tests/machine-export.test.mjs apps/web/tests/execution.test.mjs apps/web/tests/workbench-store.test.mjs apps/web/tests/workbench-shortcuts.test.mjs apps/web/tests/workbench-locale.test.mjs
           wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
           node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs apps/web/tests/contracts.test.mjs apps/web/tests/execution-kernel.test.mjs
           node --test apps/web/tests/analysis-results.test.mjs
