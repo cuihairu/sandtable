@@ -113,6 +113,7 @@ export const zh = {
   'nav.exchange': '数据与导出',
   // nav 增补(WB-11.11):功能轨短标签、文档标签标题
   'nav.workspaces': '功能工作区',
+  'nav.workspace': '当前工作区',
   'nav.shortcuts': '快捷键',
   'nav.short.analysis': '分析',
   'nav.short.parameters': '参数',

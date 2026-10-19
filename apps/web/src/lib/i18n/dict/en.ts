@@ -113,6 +113,7 @@ export const en = {
   'nav.exchange': 'Data & Export',
   // nav extras (WB-11.11): rail short labels and document tab titles
   'nav.workspaces': 'Workspaces',
+  'nav.workspace': 'Current workspace',
   'nav.shortcuts': 'Shortcuts',
   'nav.short.analysis': 'Analysis',
   'nav.short.parameters': 'Params',

@@ -485,3 +485,12 @@ test('WB-11.15:执行域 toast 发结构化词条,入队时按当前 locale 解�
     resetForTest()
   }
 })
+
+test('WB-11.10:浏览器壳同步 <html lang>(localeStore 接线;applyDocumentLocale 行为另测)', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/workbench/state/localeStore.ts', import.meta.url), 'utf8')
+  // 正文翻译(WB-11.11~16)落地后 domDoc 必须带 setLang:setLang 在节点不可测
+  // (document 守卫),与 WB-07.17 同款源级守卫锁接线存在
+  assert.match(src, /setLang: \(lang\) => \{/, 'localeStore 需接线 setLang')
+  assert.match(src, /document\.documentElement\.lang = lang/)
+})

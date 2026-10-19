@@ -23,11 +23,17 @@ function browserLanguages(): readonly string[] {
   return navigator.language ? [navigator.language] : []
 }
 
-// WB-11.10 只接标题:<html lang> 决定读屏器发音,正文翻译(WB-11.11~16)
-// 未完成前切英文会让读屏器按英文读中文正文,属可访问性回退——正文翻译落地后
-// 在此补一行 setLang: (lang) => { document.documentElement.lang = lang } 即可。
+// WB-11.10 · 正文翻译(WB-11.11~16)落地后接上 setLang:<html lang> 决定读屏器
+// 发音,正文语言与 locale 一致时同步才不是可访问性回退(标题此前已接)。
 const domDoc: LocaleDocument | null =
-  typeof document === 'undefined' ? null : { setTitle: (title) => (document.title = title) }
+  typeof document === 'undefined'
+    ? null
+    : {
+        setTitle: (title) => (document.title = title),
+        setLang: (lang) => {
+          document.documentElement.lang = lang
+        },
+      }
 
 export const localeSession = openLocaleSession({
   storage: browserStorage(),

@@ -3,6 +3,8 @@
 // 页面切换即替换子组件;运行管理器等跨页状态不在这里(在模块级 store/管理器)。
 import { useEffect, useRef } from 'react'
 import type { JSX, ReactNode } from 'react'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type WorkspaceHeadingProps = {
   title: string
@@ -38,6 +40,7 @@ export type WorkspaceContainerProps = {
 }
 
 export function WorkspaceContainer({ labelledBy, focusKey, children }: WorkspaceContainerProps): JSX.Element {
+  const locale = useLocale()
   const ref = useRef<HTMLElement>(null)
   useEffect(() => {
     ref.current?.focus({ preventScroll: true })
@@ -50,7 +53,7 @@ export function WorkspaceContainer({ labelledBy, focusKey, children }: Workspace
       id="workspace"
       aria-labelledby={labelledBy}
       tabIndex={-1}
-      aria-label="当前工作区"
+      aria-label={t(locale, 'nav.workspace')}
     >
       {children}
     </section>
