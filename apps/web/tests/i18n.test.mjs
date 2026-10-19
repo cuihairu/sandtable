@@ -12,6 +12,12 @@ import { LOCALES, DEFAULT_LOCALE, isLocale } from '../src/lib/i18n/locales.ts'
 import { zh } from '../src/lib/i18n/dict/zh.ts'
 import { en } from '../src/lib/i18n/dict/en.ts'
 import { t, createLocaleStore } from '../src/lib/i18n/index.ts'
+import {
+  detectFromLanguages,
+  resolveInitialLocale,
+  persistLocale,
+  LOCALE_STORAGE_KEY,
+} from '../src/lib/i18n/detect.ts'
 
 test('WB-11.01:locale 定义——zh-CN/en-US、固定显示名、en-US 兜底', () => {
   assert.deepEqual(
@@ -78,4 +84,26 @@ test('WB-11.02:语言状态存储——set 换值并通知,同值不通知,退�
   off()
   store.set('zh-CN')
   assert.equal(fired, 1, '退订后不再通知')
+})
+
+test('WB-11.06:系统语言探测——zh/en 前缀按序取首个,无命中兜底 en-US', () => {
+  assert.equal(detectFromLanguages(['zh-CN', 'en-US']), 'zh-CN')
+  assert.equal(detectFromLanguages(['en-US', 'zh-CN']), 'en-US', '按偏好顺序取首个命中')
+  assert.equal(detectFromLanguages(['ZH-TW', 'fr']), 'zh-CN', '大小写不敏感,zh 系归 zh-CN')
+  assert.equal(detectFromLanguages(['fr-FR', 'de-DE']), 'en-US', '无命中兜底 en-US')
+  assert.equal(detectFromLanguages([]), 'en-US', '空偏好列表兜底 en-US')
+})
+
+test('WB-11.07:持久化优先于系统语言;坏存值视同未选择', () => {
+  const mem = (saved) => ({
+    getItem: (k) => (k === LOCALE_STORAGE_KEY ? saved : null),
+    setItem: () => {},
+  })
+  assert.equal(resolveInitialLocale(mem('zh-CN'), ['en-US']), 'zh-CN', '手动选择压过系统语言')
+  assert.equal(resolveInitialLocale(mem('garbage'), ['en-US']), 'en-US', '非法存值视同未选择,落系统语言')
+  assert.equal(resolveInitialLocale(null, ['zh-CN']), 'zh-CN', '无存储(隐私模式)直接探测')
+  const writes = []
+  const sink = { getItem: () => null, setItem: (k, v) => writes.push([k, v]) }
+  persistLocale(sink, 'en-US')
+  assert.deepEqual(writes, [[LOCALE_STORAGE_KEY, 'en-US']], '持久化键固定')
 })

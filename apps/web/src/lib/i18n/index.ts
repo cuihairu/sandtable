@@ -11,6 +11,13 @@ export { LOCALES, DEFAULT_LOCALE, isLocale } from './locales.ts'
 export type { Locale } from './locales.ts'
 export { zh } from './dict/zh.ts'
 export { en } from './dict/en.ts'
+export {
+  detectFromLanguages,
+  resolveInitialLocale,
+  persistLocale,
+  LOCALE_STORAGE_KEY,
+} from './detect.ts'
+export type { LocaleStorage } from './detect.ts'
 
 /** 翻译 key 类型 = 中文词典 key 集合(真值源),en 侧编译期已锁同集合 */
 export type TranslationKey = keyof ZhDict
