@@ -100,9 +100,9 @@
 - [x] WB-02.10：定义 `Project/Baseline/Candidate/Experiment/Run/Job` 标识及相互引用，不用数组下标充当持久 ID。
   - 证据:src/workbench/ids.ts——六类品牌 ID + `prj_/bls_/cnd_/exp_/run_/job_` 前缀与 `isStableId` 合法性;`candidateIdFor`(基线 ID+参数域内容寻址,键序无关)、`runIdFor`(实验 ID+配置哈希+seed+模型/schema 版本派生,重试同输入⇒同 run)、`createId` 创建型一次性;`hashId` 非有限数值直接拒绝;对象引用 ObjectRef 走文档标签/浏览器。演示项目全链用稳定 ID(tests/workbench-ids.test.mjs 8 测,含「候选 ID 两两不同、数组下标零充数」锁)。
   - 本批实现说明(诚实口径):组件数据源为内置合成演示项目 synthetic_demo,统计区间为演示用对称区间——组件 props 化、WB-03 换真实内核/WB-05 接历史结果时替换数据注入,不改组件;运行管理器当前只演示任务生命周期,不产仿真结果。测试:`node --test` workbench-ids 8 passed + workbench-logic 7 passed(tokens 5/columns 4/presets/project 8 不变)、`oxlint` 0 错误、`tsc -b` 与 `pnpm build` 绿。入口:main.tsx 仅在 hash 以 `#/workbench/` 开头时进入 V2 工作台,现役 Phase 6 界面默认不变。
-- [ ] WB-02.11：建立共享状态与明确更新动作，区分输入草稿、运行快照、已完成结果和当前选择。
-- [ ] WB-02.12：将筛选、排序、激活 KPI、候选选择、检查器开关作为 UI 状态，避免污染实验输入。
-- [ ] WB-02.13：切换页面、标签、项目资源时保留相应草稿；关闭/切换有未保存内容的文档时可恢复。
+- [x] WB-02.11：建立共享状态与明确更新动作，区分输入草稿、运行快照、已完成结果和当前选择。(2026-10-20,`state/workbenchStore.ts` 四类分区:输入草稿 = paramDraft/objectDrafts/design、运行快照 = runs(WB-04.09 不可变条目)、已完成结果 = runArtifacts(归档产物路径键)、当前选择 = page/selection/metric/filter/sort;全部变更走 WorkbenchAction 显式动作;tests/workbench-store.test.mjs 锁定:编辑不动快照与结果、登记不碰草稿、同 run_id 重复登记幂等、选择变化三类数据引用不变)
+- [x] WB-02.12：将筛选、排序、激活 KPI、候选选择、检查器开关作为 UI 状态，避免污染实验输入。(2026-10-20,上述各键均为 WorkbenchState 独立字段,reducer 各 case 只写自身字段;tests/workbench-store.test.mjs:14 个 UI 动作连发后实验输入三层(演示候选/项目对象草稿/实验设计)逐项不变,同时抽查 UI 字段落位证明测试不空转)
+- [x] WB-02.13：切换页面、标签、项目资源时保留相应草稿；关闭/切换有未保存内容的文档时可恢复。(2026-10-20,navigate 不动任何草稿字段;项目模式 objectDrafts 按归档路径隔离(WB-04.06);关项目只清内存,浏览器草稿记录保留,重开同 projectId 经 restoreObjectDrafts 恢复未保存内容;object/undo 撤销栈与重做栈保留;tests/workbench-store.test.mjs 三条恢复路径锁定)
 - [ ] WB-02.14：迁入命令搜索、Tab/方向键/Home/End、保存/撤销快捷键，输入框内不抢占原生编辑快捷键。
 - [ ] WB-02.15：为各状态接入加载、禁用、错误边界与重试；删除只有“已完成”提示却未执行动作的事件。
 - [ ] WB-02.16：迁入侧栏/检查器收起与窄屏局部滚动，保证桌面图表和候选表可同时操作。

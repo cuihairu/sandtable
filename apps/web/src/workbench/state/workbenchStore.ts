@@ -1,12 +1,12 @@
-// WB-02.03/02.11 前 · 工作台共享状态(单 reducer + 订阅)。
-// 职责范围(本批):
-// - 各页面当前位置(WB-02.04 深链恢复的来源);
-// - 候选参数草稿与撤销历史(WB-02.06 编辑安全:基线只读、可撤销、
-//   未保存状态可被文档标签显示);
-// - 文档标签的打开文档列表与未保存状态(WB-02.03);
-// - 运行管理器在 state/RunManager.ts(独立于本 store,切页不卸载)。
-// WB-02.11 将把这里明确细化为"输入草稿 / 运行快照 / 已完成结果 / 当前选择",
-// 本批先保证组件有单一可信来源可用。
+// WB-02.11 · 工作台共享状态(单 reducer + 订阅),按四类分区:
+// - 输入草稿:paramDraft(演示候选)/ objectDrafts(项目对象)/ design+designDirty;
+// - 运行快照:runs(提交时不可变输入快照,WB-04.09);
+// - 已完成结果:runArtifacts(键 = 归档内产物路径,WB-04.08);
+// - 当前选择与页内 UI 状态:page/selection/metric/filter/sort/inspector…
+//   (WB-02.12:筛选/排序/激活 KPI/候选选择/检查器开关不进实验输入)。
+// 全部变更走 WorkbenchAction 显式动作;分区不污染由
+// tests/workbench-store.test.mjs 锁定。运行管理器在 state/runManager.ts
+// (独立于本 store,切页不卸载)。
 import {
   DEMO_RESULT,
   DEMO_BASELINE_ID,
