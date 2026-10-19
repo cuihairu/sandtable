@@ -22,3 +22,7 @@
 .wb-app .lang-option{ display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 10px; border-radius: 6px; color: #dde7e9; text-align: left; white-space: nowrap; }
 .wb-app .lang-option:hover{ background: #35444a; }
 .wb-app .lang-option[aria-selected="true"]{ color: #65c5c5; font-weight: 600; }
+/* WB-02.17 · 嵌入的 SQL 查询面板:工作台按钮重置会把 legacy button.primary 拍平成透明底,这里恢复 */
+.wb-app .exchange-query{ border: 1px solid var(--wb-line); border-radius: 10px; padding: 14px; margin: 2px 0 20px; background: #fbfdfd; }
+.wb-app .exchange-query textarea{ width: 100%; border: 1px solid var(--wb-line); border-radius: 6px; padding: 8px; background: white; color: #203237; font-family: var(--wb-mono); font-size: 12px; }
+.wb-app .exchange-query button.primary{ background: var(--wb-teal); border: 1px solid var(--wb-teal); color: white; border-radius: 6px; padding: 6px 14px; }
