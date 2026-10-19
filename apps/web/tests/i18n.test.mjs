@@ -318,3 +318,29 @@ test('WB-11.10(部分):文档 lang 与标题跟随 locale,创建/切换即应用
     openLocaleSession({ storage: memStorage(null), languages: ['zh-CN'], doc: titleTarget }).set('en-US'),
   )
 })
+
+test('WB-11.11:壳组件词条齐全(应用栏/功能轨/浏览器/文档标签/状态栏)', () => {
+  // 与组件实际用 key 同步维护:漏一个,界面上就有一处中文漏翻成 key 或退兜底
+  const required = [
+    // 应用栏 AppBar
+    'common.appSubtitle', 'common.projectTitle', 'common.builtinSample', 'common.projectFile',
+    'common.openProject', 'common.openProjectHint', 'common.saveProject', 'common.saveProjectHint',
+    'common.commandSearchPlaceholder', 'common.demoBadge', 'common.wordmarkAria',
+    // 功能轨 ActivityRail
+    'nav.workspaces', 'nav.shortcuts',
+    'nav.short.analysis', 'nav.short.parameters', 'nav.short.designer', 'nav.short.runs', 'nav.short.exchange',
+    // 项目浏览器 ProjectExplorer
+    'common.explorer', 'common.collapseExplorer', 'common.demoData', 'common.unsavedChanges', 'common.baselineReadonly',
+    // 文档标签 DocumentTabs
+    'common.openDocuments', 'common.unsaved',
+    'nav.tab.analysis', 'nav.tab.parameters', 'nav.tab.designer', 'nav.tab.runs', 'nav.tab.exchange',
+    // 状态栏 StatusBar
+    'common.project', 'common.tasksRunning', 'common.taskQueue', 'common.activeTaskTitle',
+    'common.dataSourceDemo', 'common.dataSourceReal', 'common.viewShortcuts',
+  ]
+  for (const k of required) {
+    assert.ok(k in zh, `zh 缺词条 ${k}`)
+    assert.ok(k in en, `en 缺词条 ${k}`)
+    assert.ok(zh[k].trim() !== '' && en[k].trim() !== '', `词条 ${k} 不得为空`)
+  }
+})

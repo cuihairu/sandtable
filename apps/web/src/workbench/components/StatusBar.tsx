@@ -9,6 +9,8 @@ import * as runManager from '../state/runManager.ts'
 import * as jobLogic from '../state/jobLogic.ts'
 import { activeJob } from '../state/execFsm.ts'
 import { DATA_SOURCE } from '../demo/sampleProject.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type StatusBarProps = {
   onToggleExplorer: () => void
@@ -25,6 +27,7 @@ export function StatusBar({
   draftSavedLabel,
   draftSaved,
 }: StatusBarProps): JSX.Element {
+  const locale = useLocale()
   const jobs = useSyncExternalStore(runManager.subscribe, runManager.listJobs)
   const active = jobLogic.runningCount(jobs)
   const act = activeJob(jobs) // WB-07.13 · 与任务页/抽屉同一当前任务判定
@@ -32,7 +35,7 @@ export function StatusBar({
     <footer className="statusbar">
       <button onClick={onToggleExplorer}>
         <WbIcon name="panel-left" />
-        项目
+        {t(locale, 'common.project')}
       </button>
       <span className="status-separator" />
       <span>
@@ -41,18 +44,18 @@ export function StatusBar({
       </span>
       <span className="status-spacer" />
       {act !== null && (
-        <span className="mono" title="当前活动任务(与任务页/抽屉同源)">
+        <span className="mono" title={t(locale, 'common.activeTaskTitle')}>
           {act.name}: {act.done}/{act.total}
         </span>
       )}
       <button onClick={onToggleTasks} aria-expanded="false">
         <WbIcon name="terminal" />
-        {active > 0 ? '任务运行中' : '任务队列'}
+        {active > 0 ? t(locale, 'common.tasksRunning') : t(locale, 'common.taskQueue')}
         <span className="task-count">{active || jobs.length}</span>
       </button>
       <span className="status-separator" />
-      <span>数据:{DATA_SOURCE === 'synthetic_demo' ? '内置演示结果' : '真实运行'}</span>
-      <button onClick={onShortcuts} aria-label="查看键盘快捷键">
+      <span>{DATA_SOURCE === 'synthetic_demo' ? t(locale, 'common.dataSourceDemo') : t(locale, 'common.dataSourceReal')}</span>
+      <button onClick={onShortcuts} aria-label={t(locale, 'common.viewShortcuts')}>
         <kbd>?</kbd>
       </button>
     </footer>

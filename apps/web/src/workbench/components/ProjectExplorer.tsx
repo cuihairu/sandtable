@@ -1,9 +1,12 @@
 // WB-02.02 · 项目浏览器:项目根、资源树(模型与配置/实验/结果集/数据交换)、
 // 底部口径说明。资源项以稳定 ID 作为身份,当前项由 activeId 决定(非下标)。
+// WB-11.11 · 自身文案走词典;资源标题/分组名是数据侧文案,由调用方翻译。
 import type { JSX } from 'react'
 import type { ReactNode } from 'react'
 import { WbIcon } from './icons.tsx'
 import type { PageId } from '../routing.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type ExplorerResource = {
   id: string
@@ -43,12 +46,13 @@ export function ProjectExplorer({
   onOpen,
   footerNote,
 }: ProjectExplorerProps): JSX.Element | null {
+  const locale = useLocale()
   if (collapsed) return null
   return (
-    <aside className="explorer" aria-label="项目浏览器">
+    <aside className="explorer" aria-label={t(locale, 'common.explorer')}>
       <div className="explorer-header">
-        <strong>项目浏览器</strong>
-        <button className="icon-button" onClick={onToggle} title="收起项目浏览器" aria-label="收起项目浏览器">
+        <strong>{t(locale, 'common.explorer')}</strong>
+        <button className="icon-button" onClick={onToggle} title={t(locale, 'common.collapseExplorer')} aria-label={t(locale, 'common.collapseExplorer')}>
           <WbIcon name="panel-left" />
         </button>
       </div>
@@ -77,8 +81,8 @@ export function ProjectExplorer({
                   {r.title}
                   {r.meta !== undefined && <small>{r.meta}</small>}
                 </span>
-                {r.demoSource === true && <i className="resource-status" title="内置样例数据" />}
-                {r.dirty === true && <i className="resource-mark" title="有未保存修改" />}
+                {r.demoSource === true && <i className="resource-status" title={t(locale, 'common.demoData')} />}
+                {r.dirty === true && <i className="resource-mark" title={t(locale, 'common.unsavedChanges')} />}
               </button>
             ))}
           </details>
@@ -87,7 +91,7 @@ export function ProjectExplorer({
       <div className="explorer-bottom">
         <div>
           <span className="status-dot" />
-          基线只读
+          {t(locale, 'common.baselineReadonly')}
           <span className="mono">DEFAULT</span>
         </div>
         <p>{footerNote}</p>
