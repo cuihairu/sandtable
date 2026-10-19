@@ -114,10 +114,10 @@
 
 依赖：WB-02 的应用框架；与 WB-03 并行设计。范围是应用 UI，不仅是已存在的双语文档站。
 
-- [ ] WB-11.01：定义首版支持的 locale：`zh-CN`、`en-US`，显示名称固定为“简体中文”和“English”。
-- [ ] WB-11.02：建立统一翻译入口、语言状态与中文/英文词典目录；不在组件内散落语言判断。
-- [ ] WB-11.03：给翻译 key 建立类型/结构约束，中文与英文词典使用相同 key 集合。
-- [ ] WB-11.04：按公共控件、导航、参数、实验、分析、任务、数据/导出、错误信息组织词条。
+- [x] WB-11.01：定义首版支持的 locale：`zh-CN`、`en-US`，显示名称固定为“简体中文”和“English”。(2026-10-20,`src/lib/i18n/locales.ts`:LOCALES/Locale/DEFAULT_LOCALE=en-US/isLocale 守卫,守卫测试锁死显示名不漂移)
+- [x] WB-11.02：建立统一翻译入口、语言状态与中文/英文词典目录；不在组件内散落语言判断。(2026-10-20,`src/lib/i18n/index.ts`:纯函数 t() 命名参数插值、未知 locale 退 en-US、未知 key 原样返回;createLocaleStore 订阅式语言状态,待 WB-11.05/06/07 接线)
+- [x] WB-11.03：给翻译 key 建立类型/结构约束，中文与英文词典使用相同 key 集合。(2026-10-20,`dict/zh.ts` 真值源 as const + `dict/en.ts` satisfies Record<keyof typeof zh, string> 编译期锁同集合,tests/i18n.test.mjs 运行时再锁一遍)
+- [x] WB-11.04：按公共控件、导航、参数、实验、分析、任务、数据/导出、错误信息组织词条。(2026-10-20,首批 35 词条按八领域前缀组织,nav 侧与 routing.ts 五工作区 label 对齐;守卫锁死前缀集合与各领域非空)
 - [ ] WB-11.05：在应用栏或其设置菜单放置可见语言切换入口，支持键盘操作与当前语言标记。
 - [ ] WB-11.06：首次进入按浏览器/系统语言选择中文或英文；无匹配时使用 `en-US`，界面仍可手动切换。
 - [ ] WB-11.07：将用户主动选择持久化到应用设置/浏览器本地存储，优先于之后的系统语言变化。
@@ -149,7 +149,7 @@
 
 依赖：WB-01；与 WB-02/WB-11 并行。入口：`src/lib/{types,wasm}.ts`、`crates/sandtable-wasm`、`apps/desktop/src-tauri`、core `registry/experiment`。
 
-- [ ] WB-03.01：对照 Rust 实际序列化补全 TS 的参数定义、配置、KPI、候选、比较结果及错误类型。
+- [x] WB-03.01：对照 Rust 实际序列化补全 TS 的参数定义、配置、KPI、候选、比较结果及错误类型。(2026-10-20,commit 见 git log「feat(web): align TS types with kernel serde contracts」:types.ts 六族补全——RunMetrics 6/25→27 键(retention 系可空、gacha/loot 键省略型)、DayStat+upgrades、PowerSnapshot、METRIC_KEYS=8、SimConfig 全嵌套族、ParamDefinition、Comparison、SensNote;errors.ts 绑定层前缀分类;tests/contracts.test.mjs 真跑 pkg-node 内核逐键锁漂移 9/9 绿,web 全套 26/26、tsc 0 错、build 绿;无桥接出口的族由存在性断言兜底,WB-03.04/10/11 落地后升级运行时锁)
 - [ ] WB-03.02：定义字段可空、指标 unavailable、候选 `config_error` 和缺失产物的表达，禁止用 0 填空。
 - [ ] WB-03.03：明确内核比例值与 UI 百分比、绝对差与百分点的转换规则；存储和传输保持原始口径。
 - [ ] WB-03.04：补参数定义读取桥接，返回 path/kind/default/desc；可选元信息缺失保持空值。
@@ -381,6 +381,7 @@
 - [ ] **BLOCKED** 桌面端投入。缺:用户本机 GUI 环境完成并记录 native 文件对话框及 Windows / macOS 完整交互走查;自动化断言已尽。自动化链已覆盖:构建(run 38420221169 三腿绿)、启动(run 38436094647 20s 存活)、安装包安装+运行(run 38457041427,Windows 含 msi 腿 38488806732);证据 docs 18 Phase 7
   - 2026-10-19 Windows 侧核查（Windows 主机到位，HEAD=127ed5b）：**GUI 环境本身在**——真 Windows 11、WebView2 运行时 155.0.4283.62 在位、本会话有截图能力。**但仍拿不到可运行的桌面二进制**：①本机无 cargo/rustc/rustup，也无 MSVC cl.exe/link.exe 与 Windows SDK（Tauri 2 在 Windows 需 MSVC ABI，GNU 目标不支持 WebView2 COM 绑定），无法本机构建 apps/desktop/src-tauri；②远端无 release/tag 可下载预构建产物（GitHub API `/releases`、`/tags` 均空数组）；③GitHub Actions 的 msi 产物（run 38488806732）需 PAT 才能下载，无凭据不编造。native 文件对话框确认为 `tauri-plugin-dialog`（apps/desktop/src-tauri/src/lib.rs:64 `.plugin(tauri_plugin_dialog::init())`），只在桌面壳工作——浏览器跑 apps/web 无法走查该对话框，替代验证=假验证，不做。故 Windows 走查**仍未完成**，缺=MSVC+Windows SDK 构建工具链（或提供可下载的预构建 Windows 二进制/PAT）。macOS 那一半仍缺。
   - 2026-10-20:上面 ② 的解锁路径落地——desktop-package.yml 加每日 schedule + `nightly` 手动入参,三腿构建+安装冒烟全绿后重建单一滚动 nightly 预发布 Release(公开下载 Windows msi+nsis / macOS dmg / Linux deb,无需 PAT;无更新自动跳过,`--latest=false` 永不占正式版位)。Windows 真机走查可直接用 nightly 安装器开窗;macOS 主机仍缺,该条整体仍 BLOCKED。实证 run 39216865044(三腿全绿,nightly 预发布 4 资产 msi/nsis/dmg/deb;`releases/latest` 端点 404 证正式位空置;无凭据 curl nsis 安装器 302→200 公开可下载)。
+  - 2026-10-20 peer 真机走查(hermes run `c4f3bbcfd9`):Step 0 全 PASS——nightly nsis 在真 Windows 11 下载(该机 `github.com:443` 超时,经 api.github.com 资产解析绕过)且 SHA-256 `e7dc5f8f…241f0` 与 GitHub digest 逐位一致,静默安装 exit 0 落 `C:\st-install`,启动渲染真窗口 1280×870、25 个可交互元素(标题/预设/replicates/运行仿真/打包/参数扫描/桌面本地查询含「选择结果文件」/footer),截图在案;Step 1-4(simulate→sweep→recommend→query+native 对话框)未执行——该主机 GUI 输入工具逐动作需人工批准,批准超时按「沉默非同意」止步未绕过。缺=用户在该主机批准 GUI 输入(或用户本机自行走查);macOS 半边仍缺。
 - [ ] **BLOCKED** 随机函数扩展后续。缺:真实品类需求及顾客 System 立项输入;24 章 7 项能力已全落地,唯一候选 Poisson 到达过程尚未触发真实需求(2026-10-19 核查:open PR/issue=0);候选见 docs 24 分期计划引言末段
 
 ## 方向性(无期限,出现真实需求再启;全量见 docs 02 后续方向)
