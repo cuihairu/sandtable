@@ -780,6 +780,7 @@ export const zh = {
   'data.project.colConditions': '实验条件',
   'data.project.colArtifacts': '产物路径',
   'data.project.noFiles': '—(执行接入后补充)',
+  'data.project.missingArtifact': '缺失',
   'data.project.registryNote': '快照在提交时冻结(同输入恒得同 run ID);内核执行接入前如实标注 model/schema = unknown,不冒充已知版本。保存项目时登记与产物按 results/<run_id>.<产物> 平铺写入,并附 results/runs.json 索引。',
 
   // 错误信息(前缀与绑定层错误串对齐,见 lib/errors.ts;{detail}=原始内核消息)

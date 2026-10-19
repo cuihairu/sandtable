@@ -152,7 +152,9 @@
 依赖：WB-01；与 WB-02/WB-11 并行。入口：`src/lib/{types,wasm}.ts`、`crates/sandtable-wasm`、`apps/desktop/src-tauri`、core `registry/experiment`。
 
 - [x] WB-03.01：对照 Rust 实际序列化补全 TS 的参数定义、配置、KPI、候选、比较结果及错误类型。(2026-10-20,commit 见 git log「feat(web): align TS types with kernel serde contracts」:types.ts 六族补全——RunMetrics 6/25→27 键(retention 系可空、gacha/loot 键省略型)、DayStat+upgrades、PowerSnapshot、METRIC_KEYS=8、SimConfig 全嵌套族、ParamDefinition、Comparison、SensNote;errors.ts 绑定层前缀分类;tests/contracts.test.mjs 真跑 pkg-node 内核逐键锁漂移 9/9 绿,web 全套 26/26、tsc 0 错、build 绿;无桥接出口的族由存在性断言兜底,WB-03.04/10/11 落地后升级运行时锁)
-- [ ] WB-03.02：定义字段可空、指标 unavailable、候选 `config_error` 和缺失产物的表达，禁止用 0 填空。
+- [x] WB-03.02：定义字段可空、指标 unavailable、候选 `config_error` 和缺失产物的表达，禁止用 0 填空。
+  - 落点:可空字段按内核 `CandidateStatus` 原样透传(lib/types.ts 可空字段,零值≠缺值);指标 null → `formatMetric` 返回「不可用」不用 0 填空(analysis-results.test.mjs);候选 `config_error` 状态原样上报并在结果面板红字标注(ProjectPanels ProjectResultsPanel);缺失产物新增 `auditRunArtifacts`(state/projectDoc.ts):索引声称的 files 与在场文件(项目 files ∪ runArtifacts)逐条对照,缺失逐条点名返回 `{runId, file}`,UI 侧 RunRegistry 对缺失路径红字 + 警示图标标「缺失」,不静默跳过。
+  - 测试:workbench-logic.test.mjs 18/18(新增 WB-03.02 审计 4 断言组:缺失点名/全在场为空/数组入参等价/空索引为空);i18n 30/30(新键 data.project.missingArtifact zh/en 对齐);tsc -b 0 错;oxlint 0 警;vite build ✓。
 - [ ] WB-03.03：明确内核比例值与 UI 百分比、绝对差与百分点的转换规则；存储和传输保持原始口径。
 - [ ] WB-03.04：补参数定义读取桥接，返回 path/kind/default/desc；可选元信息缺失保持空值。
 - [ ] WB-03.05：补当前配置参数读取桥接，通过 core 读取真实有效值，不把 default 当当前值。

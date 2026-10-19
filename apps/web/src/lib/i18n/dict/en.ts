@@ -778,6 +778,7 @@ export const en = {
   'data.project.colConditions': 'Experiment conditions',
   'data.project.colArtifacts': 'Artifact paths',
   'data.project.noFiles': '— (added once execution lands)',
+  'data.project.missingArtifact': 'missing',
   'data.project.registryNote': 'Snapshots freeze at submit time (same input → same run ID); until kernel execution lands, model/schema is honestly shown as unknown. On save, registrations and artifacts are written flat as results/<run_id>.<artifact> plus a results/runs.json index.',
 
   // 错误信息({detail} = raw kernel message)

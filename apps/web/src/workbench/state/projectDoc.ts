@@ -384,6 +384,26 @@ export type RunsIndexRead =
   | { ok: true; runs: RunIndexEntry[] }
   | { ok: false; error: string }
 
+/** WB-03.02 · 缺失产物审计单位:哪个 run 的哪个文件不在场。 */
+export type MissingArtifact = { runId: string; file: string }
+
+/** 索引声称的产物逐条对照实际在场文件,缺失即显式点名(run_id + 文件)。
+ * 不静默跳过、不用 0/空串填空——调用方(UI/保存)按缺失如实标注。
+ * presentPaths 接受 Set 或数组(数组即 Object.keys() 的产物路径清单)。 */
+export function auditRunArtifacts(
+  runs: readonly RunIndexEntry[],
+  presentPaths: ReadonlySet<string> | readonly string[],
+): readonly MissingArtifact[] {
+  const present = presentPaths instanceof Set ? presentPaths : new Set(presentPaths)
+  const missing: MissingArtifact[] = []
+  for (const r of runs) {
+    for (const file of r.files) {
+      if (!present.has(file)) missing.push({ runId: r.run_id, file })
+    }
+  }
+  return missing
+}
+
 /** 读取运行索引:未知 schema_version 给可读错误(不做静默猜测)。 */
 export function readRunsIndex(text: string): RunsIndexRead {
   let parsed: { schema_version?: unknown; runs?: unknown }

@@ -354,6 +354,31 @@ test('WB-04.08 运行索引与产物路径:平铺两段、索引 roundtrip、未
   assert.equal(RUNS_INDEX_PATH, 'results/runs.json')
 })
 
+test('WB-03.02 缺失产物审计:索引声称的 files 逐条点名,不静默跳过不用 0 填空', async () => {
+  const { auditRunArtifacts } = await import('../src/workbench/state/projectDoc.ts')
+  const entry = (run, files) => ({
+    run_id: run, experiment_id: 'exp_x', scenario_path: null, experiment_path: null,
+    config_hash: 'a'.repeat(64), model_version: 'unknown', schema_version: 'unknown',
+    seed: 1, conditions: { method: 'grid' }, created_at_unix: 0, files,
+  })
+  const runs = [
+    entry('run_a0000001', ['results/run_a0000001.analysis.json']),
+    entry('run_b0000002', ['results/run_b0000002.analysis.json', 'results/run_b0000002.days.csv']),
+  ]
+  // 只有 run_a 的产物在场:run_b 两条逐条点名(run_id + 文件),不静默略过
+  const missing = auditRunArtifacts(runs, new Set(['results/run_a0000001.analysis.json']))
+  assert.deepEqual(missing, [
+    { runId: 'run_b0000002', file: 'results/run_b0000002.analysis.json' },
+    { runId: 'run_b0000002', file: 'results/run_b0000002.days.csv' },
+  ])
+  // 全在场 → 空数组(显式空,不是 undefined/null)
+  assert.deepEqual(auditRunArtifacts([runs[0]], new Set(['results/run_a0000001.analysis.json'])), [])
+  // 数组入参同口径(调用方给 Object.keys() 也行)
+  assert.equal(auditRunArtifacts([runs[1]], ['results/run_b0000002.analysis.json']).length, 1)
+  // 空索引零产物:无缺失可报,不给任何虚构条目
+  assert.deepEqual(auditRunArtifacts([], new Set()), [])
+})
+
 test('WB-04.07/08 保存多配置:未选中条目与既有结果不丢,运行索引入归档', async () => {
   const outcome = await openProject(await multiArchive(), 'multi.sandtable')
   if (!outcome.ok) return assert.fail('archive should open')

@@ -12,7 +12,7 @@ import type { JSX } from 'react'
 import { WbIcon } from '../components/icons.tsx'
 import { dispatch } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
-import { baseContentOf, draftOf } from '../state/projectDoc.ts'
+import { auditRunArtifacts, baseContentOf, draftOf } from '../state/projectDoc.ts'
 import type { ResultFileStatus } from '../state/projectDoc.ts'
 import { t } from '../../lib/i18n/index.ts'
 import type { Locale } from '../../lib/i18n/index.ts'
@@ -127,6 +127,12 @@ export function RunRegistry({ state }: { state: WorkbenchState }): JSX.Element |
   const locale = useLocale()
   if (!state.project) return null
   const runs = state.runs
+  // WB-03.02 · 索引声称的产物逐条与在场文件对照:缺失的点名标出,不静默跳过
+  const present = new Set<string>([
+    ...(state.project.files.keys()),
+    ...Object.keys(state.runArtifacts),
+  ])
+  const missing = new Set(auditRunArtifacts(runs, present).map((m) => m.file))
   return (
     <section className="form-section" aria-label={t(locale, 'data.project.registryAria')}>
       <div className="form-section-heading">
@@ -156,7 +162,20 @@ export function RunRegistry({ state }: { state: WorkbenchState }): JSX.Element |
                 <td className="mono">
                   {Object.entries(r.conditions).map(([k, v]) => `${k}=${String(v)}`).join(', ')}
                 </td>
-                <td className="mono">{r.files.join(' ') || t(locale, 'data.project.noFiles')}</td>
+                <td className="mono">
+                  {r.files.length === 0
+                    ? t(locale, 'data.project.noFiles')
+                    : r.files.flatMap((f, i) => {
+                        const node = missing.has(f)
+                          ? (
+                            <span key={f} role="alert" style={{ color: 'var(--wb-red)' }}>
+                              <WbIcon name="warning" /> {f} · {t(locale, 'data.project.missingArtifact')}
+                            </span>
+                          )
+                          : <span key={f}>{f}</span>
+                        return i === 0 ? [node] : [' ', node]
+                      })}
+                </td>
               </tr>
             ))}
           </tbody>
