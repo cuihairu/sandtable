@@ -1,0 +1,64 @@
+/* V2 工作台设计 token(WB-02.01):原型 workbench.css :root 与设计系统
+ * design-system/sandtable/MASTER.md「视觉 token」节的正式化层。
+ * 纪律:
+ * - 只声明 :root custom property,零元素规则——对现役 Phase 6 界面零视觉
+ *   影响,壳与组件改版(WB-02.02 起)才消费;
+ * - 一律 --wb- 前缀:与现役 index.css 的 :root 变量(--muted 等)隔离;
+ *   迁移原型规则时 var(--ink) → var(--wb-ink) 机械映射;
+ * - 取值源 = 原型 / MASTER,tests/tokens.test.mjs 锁漂移。
+ */
+:root {
+  /* 文字 */
+  --wb-ink: #293539;
+  --wb-muted: #66777e;
+
+  /* 面:应用栏 / 功能轨 / 项目浏览器 / 数据画布(MASTER 视觉 token 表) */
+  --wb-app-bar: #222c30;
+  --wb-rail: #29353b;
+  --wb-explorer: #f2f5f6;
+  --wb-canvas: #fff;
+  --wb-surface: #f4f6f7;
+  --wb-app-bg: #e9edef; /* 壳层页底(原型 :root background) */
+
+  /* 线与边框 */
+  --wb-line: #d8e0e3;
+  --wb-soft-line: #eaf0f1;
+
+  /* 主操作 / 数据点 + 选中系(选中候选 / 选中表格行 = MASTER) */
+  --wb-teal: #087f86;
+  --wb-teal-dark: #09666d;
+  --wb-teal-pale: #e8f4f4;
+  --wb-selected: #eff7f7;
+  --wb-selected-candidate: #ba7e20;
+  --wb-selected-row: #eaf5f5;
+
+  /* 状态色:通过 / 临界 / 未通过(MASTER)+ 警示 / 错误(原型) */
+  --wb-green: #28724e;
+  --wb-verdict-pass: #28724e;
+  --wb-verdict-border: #95610e;
+  --wb-verdict-fail: #9c4c46;
+  --wb-amber: #a96a08;
+  --wb-amber-pale: #fff5df;
+  --wb-red: #af4c47;
+  --wb-red-pale: #fcf0ee;
+
+  /* 字体(系统栈,无外部字体请求——MASTER;栈序与引号同原型逐字一致) */
+  --wb-font-ui: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --wb-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  /* 字阶(正文 13 / 表格 12 / 辅助 10-11 / 标题 19——MASTER) */
+  --wb-fs-body: 13px;
+  --wb-fs-table: 12px;
+  --wb-fs-caption: 10px;
+  --wb-fs-caption-lg: 11px;
+  --wb-fs-title: 19px;
+  --wb-lh: 1.5;
+
+  /* 间距与控件(4px 基础间距,面板内边距 12-21,按钮最小高 32,圆角 3-4) */
+  --wb-space-1: 4px;
+  --wb-pad-panel: 12px;
+  --wb-pad-panel-lg: 21px;
+  --wb-radius-sm: 3px;
+  --wb-radius-md: 4px;
+  --wb-control-h: 32px;
+}

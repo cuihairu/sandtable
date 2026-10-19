@@ -144,7 +144,7 @@ jobs:
       # 项目打包/解包闭环 + 路径纪律(打包产物过真实内核 validate)
       - name: 前端守卫(node --test)
         run: |
-          node --test apps/web/tests/columns.test.mjs
+          node --test apps/web/tests/columns.test.mjs apps/web/tests/tokens.test.mjs
           wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
           node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs
 
