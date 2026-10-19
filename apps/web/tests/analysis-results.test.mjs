@@ -4,7 +4,7 @@ import * as wasm from '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js
 import { candidateViews } from '../src/lib/sweepView.ts'
 import { METRIC_META } from '../src/lib/metricMeta.ts'
 import { METRIC_KEYS } from '../src/lib/types.ts'
-import { abView, availableMetrics, dailyRows, findCandidate, inspectorSources, interpolationText, orderViews, overallOutcome, recommendationView, responsePoints, stepSelection, targetSpan, xAxisDomain, yAutoDomain } from '../src/lib/analysisView.ts'
+import { abView, availableMetrics, dailyRows, findCandidate, inspectorSources, interpolationText, orderViews, overallOutcome, recommendationView, responsePoints, sensitivityNoteLabel, stepSelection, targetSpan, xAxisDomain, yAutoDomain } from '../src/lib/analysisView.ts'
 import { candidateIdFor } from '../src/workbench/ids.ts'
 import { copyCandidate, feasibility, formatMetric, fullValues, orderedRows, ranBaseline, resultRows, rowState, statText } from '../src/workbench/analysis/resultModel.ts'
 import { addCandidateDraft, analysisSnapshot, editCandidateDraft, patchResultUI, setAnalysisJob } from '../src/workbench/analysis/analysisStore.ts'
@@ -214,4 +214,33 @@ test('08.15: draft persistence keeps source metadata and quota failure keeps edi
     assert.equal(analysisSnapshot().drafts.find((d) => d.id === draft.id).yaml, '# current buffer\n')
     assert.match(analysisSnapshot().draftPersistenceError, /暂存失败/)
   } finally { if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow }
+})
+
+/* —— WB-11.14:统计文案 locale 线程(缺省 zh-CN 真值源,en-US 走英文词条) —— */
+test('WB-11.14:statText/formatMetric/rowState/feasibility/插值文案随 locale 走词典', () => {
+  // 缺省 zh-CN:上一批断言(中文子串/单位「金币/玩家」)即由缺省语义背书
+  assert.equal(formatMetric(0.0034, 'win_rate'), '0.3%')
+  assert.match(formatMetric(120, 'gold_per_player'), /金币\/玩家/)
+  // en-US:数值不变,单位与状态走英文词条(不翻译契约名 pass/fail/config_error)
+  assert.equal(formatMetric(0.0034, 'win_rate', false, 'en-US'), '0.3%')
+  assert.match(formatMetric(120, 'gold_per_player', false, 'en-US'), /Gold\/player/)
+  assert.match(statText(undefined, 'retention_d7', 'en-US'), /Unavailable/)
+  const partial = resultRows(cloneJob({ status: 'running', exec: { results: [results[0]] } }))
+  assert.equal(partial[1].result, null)
+  assert.match(rowState(partial[1], cloneJob({ status: 'running', exec: { results: [results[0]] } }), 'en-US'), /Pending/)
+  const cancelled = resultRows(cloneJob({ status: 'cancelled', exec: { results: [results[0]] } }))
+  assert.match(rowState(cancelled[1], cloneJob({ status: 'cancelled', exec: { results: [results[0]] } }), 'en-US'), /Not run/)
+  // 插值/观测表述:en 双端同词,无中文
+  const recView = { param: 'model.warrior.attack', baseline: 100, interval: [90, 110], interpolated: [true, true], confidence: 'high', reasons: [], elasticities: [] }
+  const en = interpolationText(recView, 'en-US')
+  assert.ok(!/[一-鿿]/.test(en), `en 插值文案无中文:${en}`)
+  assert.match(en, /interpolated/)
+  assert.match(interpolationText(recView), /插值/)
+  // 敏感性 note 标签 en(5 个 note 全覆盖无中文)
+  for (const n of ['ok', 'no_bracket', 'not_isolated', 'missing_metric', 'zero_baseline']) {
+    assert.ok(!/[一-鿿]/.test(sensitivityNoteLabel(n, 'en-US')), `sens note ${n} 无中文`)
+  }
+  // feasibility en
+  const fe = feasibility(all[1], 'en-US')
+  assert.ok(!/[一-鿿]/.test(fe), `feasibility en 无中文:${fe}`)
 })

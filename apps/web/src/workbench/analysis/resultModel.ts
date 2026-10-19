@@ -5,6 +5,17 @@ import type { CandidateView } from '../../lib/sweepView.ts'
 import { overallOutcome, orderViews } from '../../lib/analysisView.ts'
 import type { ResultOrder } from '../../lib/analysisView.ts'
 import { METRIC_META } from '../../lib/metricMeta.ts'
+import { metricUnit } from '../../lib/metricMeta.ts'
+import { t } from '../../lib/i18n/index.ts'
+import type { Locale, TranslationKey, InterpolationParams } from '../../lib/i18n/index.ts'
+
+// WB-11.14:统计/状态文案可选带 locale;缺省 zh-CN(analysis-results
+// 测试锁中文子串,与 WB-11.13 designerLogic 同一纪律)。
+const LOGIC_FALLBACK: Locale = 'zh-CN'
+
+function msg(locale: Locale | undefined, key: TranslationKey, params?: InterpolationParams): string {
+  return t(locale ?? LOGIC_FALLBACK, key, params)
+}
 import { candidateIdFor, hashId, ID_PREFIXES } from '../ids.ts'
 import type { BaselineId } from '../ids.ts'
 import type { Job } from '../state/jobLogic.ts'
@@ -65,28 +76,37 @@ export function orderedRows(rows: readonly ResultRow[], order: ResultOrder): Res
   return [...returned, ...pending]
 }
 
-export function rowState(row: ResultRow, job: Job): string {
-  if (!row.result) return job.status === 'failed' ? `未执行 · ${job.exec?.errorMessage ?? '运行失败'}`
-    : job.status === 'cancelled' ? '未执行 · 运行已取消' : '等待结果'
+export function rowState(row: ResultRow, job: Job, locale?: Locale): string {
+  if (!row.result) {
+    return job.status === 'failed'
+      ? msg(locale, 'analysis.rowFailed', { message: job.exec?.errorMessage ?? msg(locale, 'analysis.rowRunFailed') })
+      : job.status === 'cancelled' ? msg(locale, 'analysis.rowCancelled') : msg(locale, 'analysis.rowPending')
+  }
   return typeof row.result.status === 'object' ? `config_error · ${row.result.status.config_error}` : 'ok'
 }
 
-export function formatMetric(value: number | null | undefined, key: MetricKey, delta = false): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '不可用'
+export function formatMetric(value: number | null | undefined, key: MetricKey, delta = false, locale?: Locale): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return msg(locale, 'analysis.unavailable')
   const meta = METRIC_META[key]
   const percent = meta.dimension === 'percent'
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: meta.decimals + (delta ? 1 : 0) }).format(percent ? value * 100 : value)
-    + (percent ? delta ? ' pp' : '%' : ` ${meta.unit}`)
+    + (percent ? delta ? ' pp' : '%' : ` ${metricUnit(key, locale)}`)
 }
 
-export function statText(stat: SampleStats | null | undefined, key: MetricKey): string {
-  return stat ? `${formatMetric(stat.mean, key)} · 95% CI [${formatMetric(stat.ci95_lo, key)}, ${formatMetric(stat.ci95_hi, key)}] · n=${stat.n}` : '不可用 · 内核未产出该指标'
+export function statText(stat: SampleStats | null | undefined, key: MetricKey, locale?: Locale): string {
+  return stat
+    ? `${formatMetric(stat.mean, key, false, locale)} · 95% CI [${formatMetric(stat.ci95_lo, key, false, locale)}, ${formatMetric(stat.ci95_hi, key, false, locale)}] · n=${stat.n}`
+    : msg(locale, 'analysis.unavailableNoStat')
 }
 
-export function feasibility(row: ResultRow): string {
-  if (!row.result) return '未判定'
+export function feasibility(row: ResultRow, locale?: Locale): string {
+  if (!row.result) return msg(locale, 'analysis.notJudged')
   const o = overallOutcome(row.result)
-  return `hard: ${o.hard ?? '无硬约束'} · soft: ${o.soft ?? '无软约束'} · 整体硬约束: ${o.overall ?? '未判定'}`
+  return msg(locale, 'analysis.feasibilitySummary', {
+    hard: o.hard ?? msg(locale, 'analysis.noHardConstraint'),
+    soft: o.soft ?? msg(locale, 'analysis.noSoftConstraint'),
+    overall: o.overall ?? msg(locale, 'analysis.notJudged'),
+  })
 }
 
 export type CandidateDraft = {
@@ -100,9 +120,9 @@ export type CandidateDraft = {
 }
 
 /** Copy into a NEW draft. Existing scenario, input hash and result are untouched. */
-export function copyCandidate(job: Job, row: ResultRow, id: string): CandidateDraft {
+export function copyCandidate(job: Job, row: ResultRow, id: string, locale?: Locale): CandidateDraft {
   const context = job.exec?.spec.analysis
-  if (!context || !row.result || row.result.status !== 'ok') throw new Error('缺少候选快照或候选未成功，不能复制')
+  if (!context || !row.result || row.result.status !== 'ok') throw new Error(msg(locale, 'analysis.copyNeedsOkSnapshot'))
   const values = fullValues(job, row.values)
   const applied = applyParamEdits(context.scenarioYaml, Object.entries(row.values).map(([path, value]) => ({ path, text: String(value) })))
   if (!applied.ok) throw new Error(applied.error)

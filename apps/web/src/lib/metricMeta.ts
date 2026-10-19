@@ -34,7 +34,43 @@ export const METRIC_META: Readonly<Record<MetricKey, MetricMeta>> = {
   gacha_pulls_to_hit: { id: 'gacha_pulls_to_hit', label: '抽卡至命中次数', dimension: 'amount', decimals: 1, unit: '抽' },
 } as const
 
-/** 指标显示名(数据层兜底;显示层可传 localize 覆盖) */
-export function metricLabel(metric: MetricKey): string {
-  return METRIC_META[metric].label
+// WB-11.14:显示名与单位走词典(analysis.kpi.*/analysis.kpiUnit.*),
+// 上表 zh 值是同源回退(缺词时兜底;键集由 i18n 守卫测试锁死)。
+// locale 缺省 zh-CN:纯逻辑/节点测试的既有断言按中文锁,站点默认
+// locale 是 en-US,缺省不取它,防显示层契约漂移(WB-11.13 同一纪律)。
+import { t } from './i18n/index.ts'
+import type { Locale } from './i18n/index.ts'
+
+const LABEL_KEY: Record<MetricKey, 'analysis.kpi.win_rate' | 'analysis.kpi.retention_d7' | 'analysis.kpi.retention_d3' | 'analysis.kpi.churn_rate' | 'analysis.kpi.gold_per_player' | 'analysis.kpi.loot_gold_per_player' | 'analysis.kpi.power_p50' | 'analysis.kpi.gacha_pulls_to_hit'> = {
+  win_rate: 'analysis.kpi.win_rate',
+  retention_d7: 'analysis.kpi.retention_d7',
+  retention_d3: 'analysis.kpi.retention_d3',
+  churn_rate: 'analysis.kpi.churn_rate',
+  gold_per_player: 'analysis.kpi.gold_per_player',
+  loot_gold_per_player: 'analysis.kpi.loot_gold_per_player',
+  power_p50: 'analysis.kpi.power_p50',
+  gacha_pulls_to_hit: 'analysis.kpi.gacha_pulls_to_hit',
+}
+
+const UNIT_KEY: Record<MetricKey, 'analysis.kpiUnit.percent' | 'analysis.kpiUnit.gold' | 'analysis.kpiUnit.power' | 'analysis.kpiUnit.count'> = {
+  win_rate: 'analysis.kpiUnit.percent',
+  retention_d7: 'analysis.kpiUnit.percent',
+  retention_d3: 'analysis.kpiUnit.percent',
+  churn_rate: 'analysis.kpiUnit.percent',
+  gold_per_player: 'analysis.kpiUnit.gold',
+  loot_gold_per_player: 'analysis.kpiUnit.gold',
+  power_p50: 'analysis.kpiUnit.power',
+  gacha_pulls_to_hit: 'analysis.kpiUnit.count',
+}
+
+/** 指标显示名(locale 可选,缺省 zh-CN) */
+export function metricLabel(metric: MetricKey, locale?: Locale): string {
+  const value = t(locale ?? 'zh-CN', LABEL_KEY[metric])
+  return value !== '' ? value : METRIC_META[metric].label
+}
+
+/** 指标单位后缀(locale 可选,缺省 zh-CN) */
+export function metricUnit(metric: MetricKey, locale?: Locale): string {
+  const value = t(locale ?? 'zh-CN', UNIT_KEY[metric])
+  return value !== '' ? value : METRIC_META[metric].unit
 }

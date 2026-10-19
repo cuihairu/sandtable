@@ -418,8 +418,17 @@ test('WB-11.14:KPI 显示名与单位后缀双语齐全(指标 id 稳定,显示�
   for (const k of zhA) {
     assert.ok(zh[k].trim() !== '', `zh 词条 ${k} 不得为空`)
     assert.ok(en[k].trim() !== '', `en 词条 ${k} 不得为空`)
-    // 显示名/单位不参与插值,不得携带 {slot}(占位属于图表标题族,另有词条)
-    assert.ok(!/\{\w+\}/.test(zh[k]) && !/\{\w+\}/.test(en[k]), `${k} 不应有插值占位`)
+    // 显示名/单位不参与插值,不得携带 {slot};统计文案族的占位走双语对齐断言
+    if (k.startsWith('analysis.kpi')) {
+      assert.ok(!/\{\w+\}/.test(zh[k]) && !/\{\w+\}/.test(en[k]), `${k} 不应有插值占位`)
+    }
+  }
+  for (const k of ['analysis.feasibilitySummary', 'analysis.rowFailed', 'analysis.replicateMissingDetail',
+    'analysis.interpBoth', 'analysis.interpSplit']) {
+    assert.ok(zhA.includes(k), `缺词条 ${k}`)
+    const zhSlots = [...zh[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+    const enSlots = [...en[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+    assert.deepEqual(enSlots, zhSlots, `${k} 双语占位必须一致`)
   }
   // 八个内核指标逐一点名(designerLogic.KPI_POOL 同源集合)
   for (const m of ['retention_d7', 'retention_d3', 'win_rate', 'gold_per_player', 'power_p50',

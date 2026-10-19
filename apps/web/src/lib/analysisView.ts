@@ -25,6 +25,16 @@ import type {
 } from './types.ts'
 import type { CandidateView } from './sweepView.ts'
 import { METRIC_META, type MetricDimension } from './metricMeta.ts'
+import { t } from './i18n/index.ts'
+import type { Locale, TranslationKey, InterpolationParams } from './i18n/index.ts'
+
+// WB-11.14:统计解释类文案可选带 locale;缺省 zh-CN(节点测试锁中文子串,
+// 与 WB-11.13 designerLogic 同一纪律)。
+const LOGIC_FALLBACK: Locale = 'zh-CN'
+
+function msg(locale: Locale | undefined, key: TranslationKey, params?: InterpolationParams): string {
+  return t(locale ?? LOGIC_FALLBACK, key, params)
+}
 
 /* —— WB-08.02/08.07 · 稳定 ID 定位与选择 —— */
 
@@ -340,13 +350,14 @@ export type DailyRow = { day: number; win_rate: number | null; inflation: number
 export function dailyRows(
   sim: SimOutput | null,
   replicate: number,
+  locale?: Locale,
 ): { ok: true; rows: readonly DailyRow[] } | { ok: false; reason: string } {
-  if (sim === null) return { ok: false, reason: '该运行没有可用的仿真输出' }
-  if (!Number.isInteger(replicate) || replicate < 0) return { ok: false, reason: 'replicate 内核索引非法（从 0 开始）' }
+  if (sim === null) return { ok: false, reason: msg(locale, 'analysis.noSimulationOutput') }
+  if (!Number.isInteger(replicate) || replicate < 0) return { ok: false, reason: msg(locale, 'analysis.badReplicateIndex') }
   const run: RunMetrics | undefined = sim.results.find((r) => r.replicate === replicate)
   if (run === undefined) {
     const have = sim.results.map((r) => r.replicate)
-    return { ok: false, reason: `输出中没有 replicate index ${replicate} 的明细(有:${have.join(',')});days_csv 仅代表首个 replicate（UI 1 / kernel 0）` }
+    return { ok: false, reason: msg(locale, 'analysis.replicateMissingDetail', { replicate, have: have.join(',') }) }
   }
   return {
     ok: true,
@@ -356,16 +367,16 @@ export function dailyRows(
 
 /* —— WB-08.14 · 推荐:敏感性/单轴推荐 + 插值与观测区分 —— */
 
-const SENS_NOTE_LABEL: Record<SensNote, string> = {
-  ok: '有效中心差分（是否显著见 significant）',
-  no_bracket: '基线两侧无格点包夹，无法差分',
-  not_isolated: '缺少其他参数保持基线值的 OAT 切片',
-  missing_metric: '指标缺失（天数不足 / 配置错误 / 未启用）',
-  zero_baseline: '参数或指标基线为零，弹性无定义',
+const SENS_NOTE_KEY: Record<SensNote, 'analysis.sens.ok' | 'analysis.sens.no_bracket' | 'analysis.sens.not_isolated' | 'analysis.sens.missing_metric' | 'analysis.sens.zero_baseline'> = {
+  ok: 'analysis.sens.ok',
+  no_bracket: 'analysis.sens.no_bracket',
+  not_isolated: 'analysis.sens.not_isolated',
+  missing_metric: 'analysis.sens.missing_metric',
+  zero_baseline: 'analysis.sens.zero_baseline',
 }
 
-export function sensitivityNoteLabel(note: SensNote): string {
-  return SENS_NOTE_LABEL[note]
+export function sensitivityNoteLabel(note: SensNote, locale?: Locale): string {
+  return msg(locale, SENS_NOTE_KEY[note])
 }
 
 export type RecommendationView = {
@@ -395,12 +406,14 @@ export function recommendationView(rec: SweepRecOutput): RecommendationView {
 }
 
 /** 插值与观测的准确表述:区间两端哪个是插值(内核 interpolated 位)。 */
-export function interpolationText(rec: RecommendationView): string {
-  if (rec.interval === null) return '无可推荐区间（具体原因见内核理由）'
+export function interpolationText(rec: RecommendationView, locale?: Locale): string {
+  if (rec.interval === null) return msg(locale, 'analysis.interpNone')
   const [loInterp, hiInterp] = rec.interpolated
-  const lo = loInterp ? '插值' : '观测'
-  const hi = hiInterp ? '插值' : '观测'
-  return lo === hi ? `区间两端均为${lo}点` : `区间下端${lo} · 上端${hi}`
+  const lo = loInterp ? msg(locale, 'analysis.interpInterpolated') : msg(locale, 'analysis.interpObserved')
+  const hi = hiInterp ? msg(locale, 'analysis.interpInterpolated') : msg(locale, 'analysis.interpObserved')
+  return lo === hi
+    ? msg(locale, 'analysis.interpBoth', { kind: lo })
+    : msg(locale, 'analysis.interpSplit', { lo, hi })
 }
 
 /* —— WB-08.16 · 检查器来源元数据:缺失字段不编造 —— */
