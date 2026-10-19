@@ -216,22 +216,22 @@
 
 依赖：WB-03/WB-05。
 
-- [ ] WB-06.01：实验名、方法、场景、基线和候选引用接共享草稿，不继续使用固定样例对象。
-- [ ] WB-06.02：A/B 表单选择真实双方快照，并展示本次比较的参数 diff。
-- [ ] WB-06.03：Grid 因子表接注册参数、类型、min/max/step 或离散水平，非法范围就地提示。
-- [ ] WB-06.04：Random 表单接真实 mode、范围、samples；序列化名称与内核契约一致。
-- [ ] WB-06.05：LHS 表单接 `latin_hypercube`、范围与 samples；不把 LHS 当普通随机采样执行。
-- [ ] WB-06.06：场景表单接玩家数、天数、cohort 配比、replicates、seed/CRN，区分规模与统计样本量。
-- [ ] WB-06.07：KPI 选择只允许当前配置可用的指标；不足 7 天时说明 D7 不可用并阻止相关任务提交。
-- [ ] WB-06.08：约束表接 hard/soft、min/max、单位与阈值转换，避免把 UI 百分数直接当底层比例。
-- [ ] WB-06.09：把结构化表单生成/更新为有效实验配置，保留用户未编辑的模型内容。
-- [ ] WB-06.10：Grid/Random/LHS 通过 `planSweep` 取得候选列表、预算与实际运行数量；不靠前端猜测通过校验。
-- [ ] WB-06.11：预览请求加版本标识，快速改表单后晚返回的旧计划不能覆盖新输入。
-- [ ] WB-06.12：显示候选数、replicates、总运行数及 player-days；耗时无基准时显示未估算。
-- [ ] WB-06.13：将 Web/桌面执行预算与错误原因接按钮禁用状态，提供缩小规模/改执行端的可行操作。
-- [ ] WB-06.14：切换实验方法保存兼容输入，不适用字段明确隐藏；旧预览结果标为失效。
-- [ ] WB-06.15：提交时绑定校验通过的输入快照、计划与实验 ID；双击只创建一个任务。
-- [ ] WB-06.16：验证同配置同 seed 的 Grid/Random/LHS 计划可复现，改变 seed 只影响应变化的采样。
+- [x] WB-06.01：实验名、方法、场景、基线和候选引用接共享草稿，不继续使用固定样例对象。(2026-10-20,引用区 = paramYamlView 共享视图(项目=所选场景对象原文/编辑草稿,演示=参数草稿 YAML)+ 候选 ID 内容寻址 candidateIdFor;实验身份 experimentScopedId = hashId(exp,项目键,方法:名称) 内容派生(tests/experiment-form.test.mjs WB-06.01 断言同入参同 ID/异名异 ID/≠ DEMO_EXPERIMENT_ID),DesignerPage.tsx enqueues 与引用 note-block 均不再出现固定样例对象)
+- [x] WB-06.02：A/B 表单选择真实双方快照，并展示本次比较的参数 diff。(2026-10-20,基线臂快照 = 项目场景打开时原文/注册表默认 YAML,候选臂 = 当前参数草稿(内容寻址候选 ID 上墙);diff = buildRowModels(base,cand)+diffRows 参数级表(WB-05 数据源), DesignerPage.tsx A/B 节显示双侧快照标识/CRN(共 seed)与 changedDraft.length;统计判定不冒充——界面旁注明内核 Comparison 桥接在 WB-03.10/11+WB-07.03)
+- [x] WB-06.03：Grid 因子表接注册参数、类型、min/max/step 或离散水平，非法范围就地提示。(2026-10-20,因子行 = 参数注册表下拉(仅 u32/u64/i64/f64 数值通道)+ 类型/描述来自注册表;factorRowError(designerLogic.ts)按 kind 分档校验:非注册路径/不可扫类型/整数域含非整数/步长非正整数/max<min 逐行就地红字(FactorTable.tsx 行内 error span+aria-invalid);路径重复在 designErrors 捕获;断言 tests/experiment-form.test.mjs WB-06.03×8)
+- [x] WB-06.04：Random 表单接真实 mode、范围、samples；序列化名称与内核契约一致。(2026-10-20,uniform → 内核序列化名 `mode: random`(∈ lib/types SWEEP_MODES 测试锁);Random 序列化只写 min/max 不写 step(内核 Random 不用 step);samples 写 sweep.samples ≥ 1(>10000 拒);tests/experiment-form.test.mjs WB-06.04 真跑 pkg-node sweep_plan 断 mode:random)
+- [x] WB-06.05：LHS 表单接 `latin_hypercube`、范围与 samples；不把 LHS 当普通随机采样执行。(2026-10-20,lhc → `mode: latin_hypercube`;执行交给内核 planSweep,前端不自行采样;tests/experiment-form.test.mjs WB-06.05 内核真跑:单轴 0–100 n=8 各点落在独立层 [i·12.5,(i+1)·12.5)(分层的 LHS 证据),同 seed 同参 uniform 出现同层多点 = 非 LHS 对照)
+- [x] WB-06.06：场景表单接玩家数、天数、cohort 配比、replicates、seed/CRN，区分规模与统计样本量。(2026-10-20,ScenarioForm 直读写 scenario YAML:population/duration(Nd 文字,编辑写 14d)/seed(文本提交防 u64 精度丢失)/population_mix(UI 百分数 ⇄ ÷100 比例);replicates = sweep.replicates 标「统计样本量」,与玩家数/天数「规模」就地标注区分;scenarioStats 缺值如实 null 不回退;applyScenarioLeaf 外科手术写回断言 tests/experiment-form.test.mjs WB-06.06)
+- [x] WB-06.07：KPI 选择只允许当前配置可用的指标；不足 7 天时说明 D7 不可用并阻止相关任务提交。(2026-10-20,kpiAvailability(designerLogic.ts)镜内核 experiment.rs unavailable_reason:D7 days≥7/D3 days≥3/gacha 指标需 model.gacha/loot 指标需 model.loot;KpiConstraintTable.tsx 不可用行禁选并给内核同口径原因;选中后再改小 days → designErrors kpi 作用域报错 → 提交按钮禁用(RunPlanSidebar blockedReasons);断言 tests/experiment-form.test.mjs WB-06.07(6 天 D7 不可用、30 天通过))
+- [x] WB-06.08：约束表接 hard/soft、min/max、单位与阈值转换，避免把 UI 百分数直接当底层比例。(2026-10-20,targets = {metric,kind:hard/soft,min?,max?} 对齐内核 Option 口径;比例类(retention/win_rate/churn_rate)UI 百分数输入、YAML 写比例(thresholdFromUi ÷100,0–100 越界拒;kernelToUiPercent ×100 显示含防浮点尾),绝对值类不换算;序列化证词 max: 0.2 而非 20;断言 tests/experiment-form.test.mjs WB-06.08)
+- [x] WB-06.09：把结构化表单生成/更新为有效实验配置，保留用户未编辑的模型内容。(2026-10-20,experimentYaml.ts buildExperimentYaml:顶层 sweep 节整体替换/追加,其余行逐字节保留(含注释);更新路径(旧 sweep 节替换)与 readSweepDesign 读回(项目实验对象草稿进表单);生成 YAML 被 pkg-node sweep_plan 接受;tests/experiment-form.test.mjs WB-06.09 逐行保留断言 + round-trip)
+- [x] WB-06.10：Grid/Random/LHS 通过 `planSweep` 取得候选列表、预算与实际运行数量；不靠前端猜测通过校验。(2026-10-20,DesignerPage useEffect → lib/wasm planSweep(实验 YAML,0) 为唯一计划来源;多轴 3×3=9 候选、候选×replicates=sims 全部来自返回;Web 预算(>200 sims)与规模预算(>400k player-days)拒绝由内核抛错上墙;前端校验只做输入 UX,不算账不放行;tests/experiment-form.test.mjs WB-06.10 真跑断言)
+- [x] WB-06.11：预览请求加版本标识，快速改表单后晚返回的旧计划不能覆盖新输入。(2026-10-20,createPlanGate(designerLogic.ts):next() 发版/accept(seq) 只认最新;组件 effect 每次输入指纹变化发新请求,响应按 accept 校验,迟到请求整包丢弃;ok 结果以输入 YAML 指纹对齐;tests/experiment-form.test.mjs WB-06.11 交错断言)
+- [x] WB-06.12：显示候选数、replicates、总运行数及 player-days；耗时无基准时显示未估算。(2026-10-20,RunPlanSidebar:候选数/candidates、replicates、总运行数(sims)、player-days = sims×players×days 全取 planSummary(plan);耗时固定「尚无性能基准(不估算)」;A/B 显示 2×reps 且标注演示;断言 tests/experiment-form.test.mjs WB-06.12)
+- [x] WB-06.13：将 Web/桌面执行预算与错误原因接按钮禁用状态，提供缩小规模/改执行端的可行操作。(2026-10-20,plan error(status:'error')/pending/stale 全部进 RunPlanSidebar blockedReasons → 提交按钮禁用;planErrorLines 分行上墙(内核数字原文);budgetActions 对含「预算」的错误给可行操作:缩小因子范围/加大步长、减 replicates、改桌面端;非预算错误不误导;断言 tests/experiment-form.test.mjs WB-06.13)
+- [x] WB-06.14：切换实验方法保存兼容输入，不适用字段明确隐藏；旧预览结果标为失效。(2026-10-20,setMethod 仅改 method:因子 min/max、samples、reps、targets、sampling 值全保留(preserveOnMethodSwitch + 组件按方法渲染);Random 隐藏步长、Grid 隐藏 sampling 与 samples(FactorTable/ScenarioForm 条件渲染);输入修改瞬间旧 ok 计划降级 status:'stale' → 侧栏「计划已失效」红标且按钮禁用;断言 tests/experiment-form.test.mjs WB-06.14)
+- [x] WB-06.15：提交时绑定校验通过的输入快照、计划与实验 ID；双击只创建一个任务。(2026-10-20,提交重跑 planSweep(当时输入)为有效性凭据,kernelCheck 场景候选通过(WB-05.14 纪律)后 snapshotRun:configHash = 实验 YAML 字节 sha256,conditions 带 candidates/replicates/sims/plan_config_hash/base_seed;experimentId = experimentScopedId;createSubmitGuard 单飞 + 按钮提交中禁用:双击第二次返回 false 不建任务;断言 tests/experiment-form.test.mjs WB-06.11 guard + WB-06.15)
+- [x] WB-06.16：验证同配置同 seed 的 Grid/Random/LHS 计划可复现，改变 seed 只影响应变化的采样。(2026-10-20,内核真跑(pkg-node sweep_plan):同 YAML 两次 → grid/random/latin_hypercube 候选逐项 deepEqual;换 scenario.seed → Grid 候选不变(确定性枚举),random/LHS 候选变化;断言 tests/experiment-form.test.mjs WB-06.16)
 
 验收：表单生成的输入能被真实接口接受；运行计划、任务数与后续实际执行一致。
 

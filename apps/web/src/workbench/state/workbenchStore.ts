@@ -9,14 +9,15 @@
 // 本批先保证组件有单一可信来源可用。
 import {
   DEMO_RESULT,
-  DEMO_BASELINE_ID, DEMO_EXPERIMENT_ID,
+  DEMO_BASELINE_ID,
 } from '../demo/sampleProject.ts'
-import type { CandidateSortKey, MetricKey, MetricValues } from '../demo/sampleProject.ts'
+import type { CandidateSortKey, MetricKey } from '../demo/sampleProject.ts'
 import { candidateIdFor } from '../ids.ts'
 import type { CandidateId } from '../ids.ts'
 import { DEFAULT_PAGE, pageDef, formatHash, parseHash } from '../routing.ts'
 import type { PageId } from '../routing.ts'
 import type { DesignDraft } from '../designer/designerLogic.ts'
+import { defaultDesign } from '../designer/designerLogic.ts'
 // WB-05 · 参数表数据源:注册表 × 配置 YAML(纯逻辑,见 params/)
 import { applyParamEdit, applyParamEdits, buildDefaultYaml, numericValuesOf, parseConfig, readText, removeParam } from '../params/configYaml.ts'
 import { formatScalar, modifiedPaths } from '../params/paramsLogic.ts'
@@ -78,20 +79,8 @@ export type WorkbenchState = {
 }
 
 function initialDesign(): DesignDraft {
-  return {
-    name: '初始攻击力扫描',
-    method: 'grid',
-    min: 80,
-    max: 130,
-    step: 5,
-    samples: 24,
-    reps: 20,
-    players: 10000,
-    days: 30,
-    paired: true,
-    sampling: 'lhc',
-    thresholds: { win: 65, retention: 42, gold: 2400 } satisfies MetricValues,
-  }
+  // WB-06 · 默认草稿由 designerLogic 统一定义(注册表默认口径 + 内核模式名)
+  return defaultDesign()
 }
 
 function initialState(): WorkbenchState {
@@ -547,7 +536,7 @@ export function deriveDocuments(state: WorkbenchState): OpenDocument[] {
       meta: `${DEMO_RESULT.candidates.length} 候选 · 20 replicates`,
     },
     {
-      id: DEMO_EXPERIMENT_ID + ':design-draft',
+      id: 'designer:design-draft',
       page: 'designer',
       title: pageDef('designer').tab,
       icon: 'flask',

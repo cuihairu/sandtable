@@ -14,7 +14,7 @@ import { buildRowModels } from '../src/workbench/params/paramsLogic.ts'
 import { paramDelta } from '../src/workbench/params/configYaml.ts'
 import { registryParam } from '../src/workbench/params/paramRegistry.ts'
 import { buildDefaultYaml, parseConfig } from '../src/workbench/params/configYaml.ts'
-import { designCounts, designErrors, gridFactorValues } from '../src/workbench/designer/designerLogic.ts'
+import { designErrors, sweepModeOf, defaultDesign, kpiAvailability, abTaskCount } from '../src/workbench/designer/designerLogic.ts'
 import { matchCommands } from '../src/workbench/overlays/commands.ts'
 
 test('路由:hash 深链解析与序列化 roundtrip + 非法回退', () => {
@@ -112,26 +112,39 @@ test('参数校验与批量:整批校验失败不产生半批修改(WB-05.06/05.
   assert.equal(paramDelta(0, 5).text, '+5')
 })
 
-test('实验预算与校验:缺名/坏域/超预算给出可读错误', () => {
-  const base = {
-    name: '初始攻击力扫描',
-    method: 'grid',
-    min: 80, max: 130, step: 5, samples: 24,
-    reps: 20, players: 10000, days: 30, paired: true, sampling: 'lhc',
-    thresholds: { win: 65, retention: 42, gold: 2400 },
-  }
-  assert.deepEqual(designErrors(base), [])
-  const counts = designCounts(base)
-  assert.equal(counts.candidates, 11)
-  assert.equal(counts.tasks, 220)
-  assert.deepEqual(gridFactorValues(base), [80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130])
-  assert.ok(designErrors({ ...base, days: 6 }).some((e) => e.includes('至少 7 天')))
-  assert.ok(designErrors({ ...base, name: ' ' }).some((e) => e.includes('实验名称')))
-  assert.ok(designErrors({ ...base, step: 0.5 }).some((e) => e.includes('步长')))
-  // 超演示预算
-  const huge = designCounts({ ...base, max: 6000, step: 1 })
-  assert.ok(huge.tasks > 100000)
-  assert.ok(designErrors({ ...base, max: 6000, step: 1 }).some((e) => e.includes('演示预算上限')))
+test('实验表单校验(WB-06 口径):缺名/坏域/不可用 KPI 给出可读错误;A/B 数量 = 2×reps', () => {
+  // 场景 YAML(30 天,demo 口径):D7 可用;population_mix 齐全
+  const SCEN = [
+    "schema_version: '1'",
+    'scenario: {population: 10000, duration: 30d, seed: 12345, population_mix: {casual: 0.6, core: 0.3, whale: 0.1}}',
+  ].join('\n')
+  const availability = kpiAvailability(SCEN)
+  const base = defaultDesign()
+  assert.deepEqual(designErrors(base, { availability }), [])
+  // 表单字段随草稿:方法↔内核模式名映射(06.04/05)
+  assert.equal(sweepModeOf('grid', 'lhc'), 'grid')
+  assert.equal(sweepModeOf('random', 'lhc'), 'latin_hypercube')
+  assert.equal(sweepModeOf('random', 'uniform'), 'random')
+  assert.equal(sweepModeOf('ab', 'lhc'), null)
+  // A/B 演示队列数量 = 2 方案 × replicates
+  assert.equal(abTaskCount(8), 16)
+  // 缺名
+  assert.ok(designErrors({ ...base, name: ' ' }, { availability }).some((e) => e.message.includes('实验名称')))
+  // Grid 步长错(整数参数步长 0.5)
+  assert.ok(
+    designErrors({ ...base, factors: [{ path: 'model.warrior.attack', min: 20, max: 220, step: 0.5 }] }, { availability })
+      .some((e) => e.scope === 'factors' && e.message.includes('步长')),
+  )
+  // 采样数错(Random 模式 samples < 1)
+  assert.ok(
+    designErrors({ ...base, method: 'random', samples: 0 }, { availability }).some((e) => e.scope === 'sampling'),
+  )
+  // KPI 不可用(缺配比 → days 读到,retention_d7 可用;gacha 指标不可用)
+  const noMix = "schema_version: '1'\nscenario: {population: 10000, duration: 30d, seed: 1}\n"
+  const av2 = kpiAvailability(noMix)
+  assert.equal(av2.gacha_pulls_to_hit.ok, false)
+  const withD7 = { ...base, targets: [{ metric: 'gacha_pulls_to_hit', kind: 'hard', min: 0, max: 50 }] }
+  assert.ok(designErrors(withD7, { availability: av2 }).some((e) => e.scope === 'kpi'))
 })
 
 test('命令搜索匹配:空查询给导航面,查询按 label+hint 过滤', () => {

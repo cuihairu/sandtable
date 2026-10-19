@@ -44,7 +44,8 @@ export function demoSnapshot(
       notice: 'Synthetic demonstration results, not produced by the Sandtable core. Current draft is not the input of these results.',
       draft: {
         parameters: draft.values,
-        experiment: { ...draft.design, thresholds_ui_percent: draft.design.thresholds },
+        // WB-06 · targets 为内核比例口径(0–1);导出保持原口径并保留 units 标注
+        experiment: { ...draft.design },
       },
       sample_result_snapshot: {
         parameter: 'model.warrior.attack',

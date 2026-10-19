@@ -3,11 +3,11 @@
 import type { JSX } from 'react'
 import { WbIcon } from '../components/icons.tsx'
 import { METHOD_INFO } from './designerLogic.ts'
-import type { ExperimentMethod } from './designerLogic.ts'
+import type { DesignerMethod } from './designerLogic.ts'
 
 export type MethodSelectProps = {
-  value: ExperimentMethod
-  onChange: (method: ExperimentMethod) => void
+  value: DesignerMethod
+  onChange: (method: DesignerMethod) => void
 }
 
 export function MethodSelect({ value, onChange }: MethodSelectProps): JSX.Element {
