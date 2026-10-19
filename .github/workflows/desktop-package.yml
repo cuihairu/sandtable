@@ -382,6 +382,9 @@ jobs:
       - name: 发布滚动 nightly(预发布)
         env:
           GH_TOKEN: ${{ github.token }}
+          # 本 job 无 checkout(省一步下载源码),gh 需要 GH_REPO 指明目标仓库,
+          # 否则报 failed to run git: not a git repository
+          GH_REPO: ${{ github.repository }}
         run: |
           set -e
           # download-artifact 保留制品内部目录(bundle/msi、bundle/nsis 等),发布只取安装器、
