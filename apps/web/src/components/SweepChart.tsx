@@ -12,7 +12,8 @@ interface Props {
   his: number[]
   verdicts: ConstraintVerdict[]
   band: [number, number] | null
-  baseline: number
+  /** 基线读取失败时为 null:不画基线标记(禁止按 0 画) */
+  baseline: number | null
   fmt?: (v: number) => string
   scatter?: boolean
 }
@@ -53,8 +54,8 @@ export default function SweepChart({
   const span = hi - lo || Math.abs(hi) || 1
   const yLo = lo - span * 0.1
   const yHi = hi + span * 0.1
-  const xLo = Math.min(...xs, band ? band[0] : xs[0], baseline)
-  const xHi = Math.max(...xs, band ? band[1] : xs[n - 1], baseline)
+  const xLo = Math.min(...xs, band ? band[0] : xs[0], ...(baseline === null ? [] : [baseline]))
+  const xHi = Math.max(...xs, band ? band[1] : xs[n - 1], ...(baseline === null ? [] : [baseline]))
   const xSpan = xHi - xLo || 1
   const px = (v: number) => PL + ((v - xLo) / xSpan) * (W - PL - PR)
   const py = (v: number) => PT + (1 - (v - yLo) / (yHi - yLo)) * (H - PT - PB)
@@ -108,10 +109,14 @@ export default function SweepChart({
             />
           </g>
         ))}
-        <line x1={px(baseline)} x2={px(baseline)} y1={PT} y2={H - PB} className="baseline" />
-        <text x={px(baseline) + 4} y={PT + 10} className="tick">
-          基线
-        </text>
+        {baseline !== null && (
+          <g>
+            <line x1={px(baseline)} x2={px(baseline)} y1={PT} y2={H - PB} className="baseline" />
+            <text x={px(baseline) + 4} y={PT + 10} className="tick">
+              基线
+            </text>
+          </g>
+        )}
         {!scatter && <path d={path} className="line" />}
       </svg>
     </figure>

@@ -315,11 +315,14 @@ export default function SweepPanel({
                       <td>{e.metric}</td>
                       {e.note === 'ok' ? (
                         <>
-                          <td>{e.e >= 0 ? '+' : ''}{e.e.toFixed(3)}</td>
+                          {/* e 系列为 null 时按「—」表达未提供(禁止 0 填空) */}
+                          <td>{e.e === null ? '—' : `${e.e >= 0 ? '+' : ''}${e.e.toFixed(3)}`}</td>
                           <td>
-                            [{e.e_lo.toFixed(3)}, {e.e_hi.toFixed(3)}]
+                            {e.e_lo === null || e.e_hi === null
+                              ? '—'
+                              : `[${e.e_lo.toFixed(3)}, ${e.e_hi.toFixed(3)}]`}
                           </td>
-                          <td>{e.delta_eff.toFixed(3)}</td>
+                          <td>{e.delta_eff === null ? '—' : e.delta_eff.toFixed(3)}</td>
                           <td>{e.significant ? '显著' : '不显著(区间跨零)'}</td>
                         </>
                       ) : (
