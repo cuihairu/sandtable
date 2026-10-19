@@ -3717,6 +3717,7 @@ dependencies = [
  "duckdb",
  "sandtable-core",
  "sandtable-wasm",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",

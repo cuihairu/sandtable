@@ -9,6 +9,7 @@
 
 ## 待办(可自服务)
 
+- [x] 桌面长任务进度与取消(2026-10-20 落地;已代决(巡检代决,2026-10-20,推进单 sandtable;审核表三第三批原为「建议第三批,需拍板」,已给明确方案且改动面在 apps/desktop、与内核解耦,不涉发版 / License / 支付 / 资产授权,按推进单代决条款执行)):`run_simulation` 改**异步 command + `spawn_blocking`**(CPU 重活不占主线程 / 异步运行时),逐 replicate 经 `Channel<ProgressEvent>` 上报 `{done,total}`,新增 `cancel_run` 命令 + 活动任务令牌(登记 / 清理)——取消在 **replicate 边界**生效(内核无中途退出面,粒度刻意落在 replicate 之间,仿真语义零改动),取消返回 `Err(已取消: 完成 k/N replicate)` 而非半截结果(少 replicate 过不了 CI₉₅ 汇总口径);前端仿真面板出进度 + 取消按钮(取消文案走中性 note 而非红字错误),扫描面板在**候选循环边界**可中止(主线程候选间已让出,web 与桌面均可点;取消后已完成候选留表、不出推荐);`sweep_candidate` 仅异步化——候选内 replicate 循环在 core `run_candidate` 内,replicate 级进度 / 取消需内核暴露观测面,按「与内核解耦」刻意不做;`Channel` 非 Deserialize 不能套 `Option`(只能作裸命令参数),故 `onProgress` 为必传、唯一前端调用方同提交更新。测试:`cargo test -p sandtable-desktop` **12 passed**(原 7,新增 5:进度回调不改结果、replicate 边界取消含开跑前已取消、mock app + 真实 Channel 命令全链、取消令牌登记 / 清理 / 无操作语义);web `tsc -b && vite build` 过、`oxlint` 过、`node --test` 4 + 8 passed。表三批次结清:review 表三两行 ⏳→✅(第二批掉落结算 + 第三批桌面进度取消)+ 分批口径改写;18 章 Phase 7 补交付记录(en/zh,命令面 6→7 含 `cancel_run`)、17 章目录注释 6→7、22 章补扫描取消口径(en/zh)。**剩余**:桌面人工开窗验收仍归用户本机(推进单不代做)
 - [x] docs 13 章掉落 KPI 段落(2026-10-20,R2 推进单):对齐 gacha 先例(13:97/98 专属段落)补「掉落(人均掉落金币)」——切片口径(全额已入 `gold_earned_total`,切片 ≤ 总额;纯经验奖励无该指标)+ 结算机制指引(24 章 §3 + 设计文档)+ 约束写法示例 `loot_gold_per_player max 5000` + 未配置为 `None` 不进 JSON(en/zh 双份)。触发:新增指标 grep 探针(`grep -rn gacha_pulls_to_hit` 全仓)扫出 13 章是唯一漏掉的 KPI 参考面;代码面(CLI ×3 / experiment / sweep)与 web / python(无硬编码指标清单)均核过无漂移。docs-only:`docs:build` 绿
 - [x] 掉落结算案例补齐(2026-10-20,FIRE1019 推进单):对齐 gacha R2 交付先例(随附 `examples/gacha-pity.yaml` + 冒烟)补 `examples/loot-settlement.yaml`——数值与 24 章 §3 配置面示例**逐字一致**(公示 = 实现:三档 70/25/5,金币档 10/50,经验档 20,rate_mult 1.0,seed 42);`cases.rs` 新增 `loot_case_settlement_wired` 冒烟:validate 绿 + simulate 200×30×1 绿 + `loot_gold_per_player` 出现且 > 0 + 切片 ≤ 总产出(切片 ⊆ 全额口径);24 章交付记录(en/zh)加案例指引。`cargo test -p sandtable-cli --test cases` **3 passed**(原 2);`docs:build` 绿
 
@@ -58,6 +59,8 @@
          07 章脚本已落地、index 内存承诺 + 页脚 MIT→Apache-2.0；同步审计 B4 与 loot 数值通道关闭
       3) 表三「值得补的能力」只出评估与分期建议（不实现）：1–3 已随缺陷整改落地，
          4 掉落结算 / 5 桌面进度取消 / 6 真实数据校准待用户拍板
+         （2026-10-20 更新：4、5 已由巡检代决并落地——掉落结算 401b7c5 + e40b8c8、
+         桌面进度取消见上方 2026-10-20 条目，review 表三行 ⏳→✅；6 仍挂外部闸门）
       测试：cargo test --workspace 绿 / clippy --all-targets 零告警 / pnpm docs:build 过；不 bump 版本号。
 - [x] 文档时效性清理（2026-10-18 用户令：很多文档已过时，2026-10-19 完成）：
       1) 通读核对：README 快起 3 条命令逐条实跑 exit 0；10 章子命令表与 `--help` 全量比对一致；

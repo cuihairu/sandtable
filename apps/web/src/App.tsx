@@ -9,8 +9,8 @@ import { exportCsvAsParquet, loadDayStats, runQuery } from './lib/duck'
 import { PRESETS, SWEEP_PRESETS } from './lib/presets'
 import { packProject, unpackProject } from './lib/project'
 import type { UnpackedProject } from './lib/project'
-import type { RunMetrics, SimOutput } from './lib/types'
-import { isDesktop, runSimulation } from './lib/wasm'
+import type { RunMetrics, SimOutput, SimProgress } from './lib/types'
+import { cancelRun, isDesktop, runSimulation } from './lib/wasm'
 
 function pct(v: number): string {
   return `${(v * 100).toFixed(2)}%`
@@ -58,6 +58,9 @@ export default function App() {
   const [replicates, setReplicates] = useState(2)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 桌面长任务(浏览器 wasm 同步阻塞主线程,无进度可画,不进这两项状态)
+  const [prog, setProg] = useState<SimProgress | null>(null)
+  const [cancelling, setCancelling] = useState(false)
   const [out, setOut] = useState<SimOutput | null>(null)
   // 项目多配置选择器:.sandtable 里可有多个 scenario / experiment,
   // 列表与当前项目引用留在这里,toolbar 出下拉(单个时不占位置)
@@ -70,13 +73,31 @@ export default function App() {
   async function run() {
     setBusy(true)
     setError(null)
+    setProg(null)
+    setCancelling(false)
     try {
-      setOut(await runSimulation(yaml, replicates))
+      setOut(
+        await runSimulation(yaml, replicates, isDesktop ? (p) => setProg(p) : undefined),
+      )
     } catch (e) {
       setError(String(e))
       setOut(null)
     } finally {
       setBusy(false)
+      setProg(null)
+    }
+  }
+
+  // 取消活动长任务(仅桌面):命令在 replicate 边界生效,返回 false 表示
+  // 已无活动任务(点快了或任务刚结束),不当错误处理
+  async function cancel() {
+    setCancelling(true)
+    try {
+      await cancelRun()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -235,6 +256,18 @@ export default function App() {
           <button className="primary" disabled={busy} onClick={run}>
             {busy ? '运行中…' : '运行仿真'}
           </button>
+          {busy && isDesktop && (
+            <>
+              {prog && (
+                <span className="note" aria-live="polite">
+                  {prog.done}/{prog.total} replicate
+                </span>
+              )}
+              <button disabled={cancelling} onClick={cancel}>
+                {cancelling ? '取消中…' : '取消'}
+              </button>
+            </>
+          )}
           <button disabled={busy} onClick={pack}>
             打包项目(.sandtable)
           </button>
@@ -246,7 +279,9 @@ export default function App() {
           spellCheck={false}
           aria-label="仿真配置 YAML"
         />
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p className={error.startsWith('已取消') ? 'note' : 'error'}>{error}</p>
+        )}
       </section>
 
       {out && mean && (

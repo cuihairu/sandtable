@@ -31,7 +31,7 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - 只转发 core(load → validate → run),**不放仿真逻辑**;真实逻辑在 native 纯函数(`*_native`),cargo test 直接覆盖;
 - wasm 入口返回 **JSON 字符串**,前端 `JSON.parse`——不经过 serde-wasm-bindgen 的 JsValue 协议(实测与 wasm-bindgen 新版存在静默不兼容:to_value 产出空对象;字符串是 wasm ABI 最稳通道);
 - `run_simulation` 输出附 `days_csv`(replicate 1,`core::export::day_csv` 直出)——CSV 由 Rust 渲染,浏览器下载与 CLI 写盘**逐字节一致**(`web_parity` 锁死),不在 JS 侧重拼浮点;
-- 扫描三绑定(`sweep_plan / sweep_candidate / sweep_recommend`)同为纯转发;单线程下候选并行(rayon)不可用,由 **JS 逐候选驱动**、候选间让出主线程——`replicates` 由 plan 统一给出,candidate / recommend 不各自解释;推荐仅单参数轴(MVP 红线,[文档 15 章](./15-recommendation)同源拒绝);
+- 扫描三绑定(`sweep_plan / sweep_candidate / sweep_recommend`)同为纯转发;单线程下候选并行(rayon)不可用,由 **JS 逐候选驱动**、候选间让出主线程——`replicates` 由 plan 统一给出,candidate / recommend 不各自解释;推荐仅单参数轴(MVP 红线,[文档 15 章](./15-recommendation)同源拒绝);扫描取消在候选循环边界中止(主线程候选间已让出,web 与桌面均可点),取消后已完成的候选保留在表中但不出推荐;
 - `meta` 只带 `schema_version / model_version`;`generated_at_unix / git_sha` 属环境字段,由前端构建注入(`VITE_GIT_SHA`,CI 构建期注入;未注入回退 `unknown`,与 CLI 未设 `SANDTABLE_GIT_SHA` 时同),绑定层不伪造;
 - replicates 上限 64(Web 定位小中型,WASM 内存 4GB 上限、单线程,文档 [数据输出](./09-data-output)),更大的实验引导走 CLI / 桌面。
 

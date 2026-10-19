@@ -17,6 +17,7 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [dependencies]
 sandtable-core = { path = "../../../crates/sandtable-core" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
 # 前端「本地结果文件分析」面板经 dialog 插件选文件(官方一等插件,同 2.x 线)
@@ -28,6 +29,8 @@ duckdb = { version = "1", default-features = false, features = ["bundled", "parq
 [dev-dependencies]
 # 桌面等价验收:与 wasm 绑定同配置同 seed 逐值一致(web_parity 已锁 wasm↔CLI)
 sandtable-wasm = { path = "../../../crates/sandtable-wasm" }
+# 长任务命令层测试:mock_app 免窗口起 App,State/Channel 走真实命令路径
+tauri = { version = "2", features = ["test"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

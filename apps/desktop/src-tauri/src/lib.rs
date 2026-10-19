@@ -2,20 +2,71 @@
 // Tauri 2 壳 + sandtable-core path 依赖直连——native 仿真,不经 wasm 边界。
 // 命令面不含仿真语义:加载(错误透出)→ 逐 replicate 仿真 → 结果按
 // CLI report.json / wasm run_simulation_native 的 results 同构序列化。
-// 自动更新器、签名证书按拍板后置。native 无 WASM 的 64 replicates /
-// 200 预算门,更大实验本就是桌面定位(文档 09 章边界)。
+// 长任务(run_simulation)走异步命令 + spawn_blocking:逐 replicate 经
+// Channel 上报进度,replicate 边界响应取消令牌(内核无中途退出面,粒度
+// 刻意落在 replicate 之间,仿真语义零改动)。自动更新器、签名证书按拍板
+// 后置。native 无 WASM 的 64 replicates / 200 预算门,更大实验本就是
+// 桌面定位(文档 09 章边界)。
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use tauri::ipc::Channel;
 use tauri::path::BaseDirectory;
 use tauri::webview::DownloadEvent;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+
+/// 长任务进度事件:`done` / `total` 为 replicate 计数(与 CLI `--replicates`
+/// 同口径),前端据此画进度条。
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct ProgressEvent {
+    done: u32,
+    total: u32,
+}
+
+/// 取消令牌:活动任务在 replicate 边界轮询。
+type CancelFlag = Arc<AtomicBool>;
+
+/// 活动长任务登记:桌面同一时刻只认一个活动令牌(`run_simulation`),
+/// 取消无需任务 id,前端 `cancel_run` 即可命中。
+#[derive(Default)]
+struct TaskRegistry(Mutex<Option<CancelFlag>>);
+
+impl TaskRegistry {
+    /// 登记新令牌(顶替遗留令牌——上一任务若因 panic 未清理,不堵新任务)。
+    fn register(&self) -> CancelFlag {
+        let mut slot = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let flag = Arc::new(AtomicBool::new(false));
+        *slot = Some(flag.clone());
+        flag
+    }
+
+    /// 结束清理;返回被清走的令牌(测试据此断言登记生命周期)。
+    fn take(&self) -> Option<CancelFlag> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).take()
+    }
+
+    /// 置位活动令牌;无活动任务时为无操作。返回是否有任务被命中。
+    fn cancel_active(&self) -> bool {
+        let slot = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        match &*slot {
+            Some(flag) => {
+                flag.store(true, Ordering::Relaxed);
+                true
+            }
+            None => false,
+        }
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(TaskRegistry::default())
         .invoke_handler(tauri::generate_handler![
             validate_config,
             run_simulation,
+            cancel_run,
             sweep_plan,
             sweep_candidate,
             sweep_recommend,
@@ -114,17 +165,39 @@ fn validate_config(yaml: String) -> Result<serde_json::Value, String> {
     }))
 }
 
-/// 运行仿真:`{meta, config_hash, days_csv, results}`;与 wasm
+/// 逐 replicate 执行:每个 replicate 开跑前检查取消令牌,完成后上报一次进度。
+/// 取消返回 Err 且不产出半截结果——少 replicate 的 results 过不了实验层
+/// 汇总口径(CI₉₅ 按 replicate 数算),宁缺毋错。
+fn run_replicates(
+    cfg: &sandtable_core::config::SimConfig,
+    replicates: u32,
+    cancel: &CancelFlag,
+    progress: &mut dyn FnMut(u32),
+) -> Result<Vec<sandtable_core::metrics::RunMetrics>, String> {
+    let mut results = Vec::with_capacity(replicates as usize);
+    for r in 0..replicates {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(format!("已取消: 完成 {r}/{replicates} replicate"));
+        }
+        results.push(sandtable_core::sim::run(cfg, r));
+        progress(r + 1);
+    }
+    Ok(results)
+}
+
+/// 运行仿真命令体:`{meta, config_hash, days_csv, results}`;与 wasm
 /// run_simulation_native 逐字段同构,days_csv 与 CLI simulate --out 同字节。
-#[tauri::command]
-fn run_simulation(yaml: String, replicates: u32) -> Result<serde_json::Value, String> {
+fn run_simulation_impl(
+    yaml: &str,
+    replicates: u32,
+    cancel: &CancelFlag,
+    progress: &mut dyn FnMut(u32),
+) -> Result<serde_json::Value, String> {
     if replicates == 0 {
         return Err("参数错误: replicates 至少为 1".into());
     }
-    let cfg = load(&yaml)?;
-    let results: Vec<sandtable_core::metrics::RunMetrics> = (0..replicates)
-        .map(|r| sandtable_core::sim::run(&cfg, r))
-        .collect();
+    let cfg = load(yaml)?;
+    let results = run_replicates(&cfg, replicates, cancel, progress)?;
     Ok(serde_json::json!({
         "meta": {
             "schema_version": sandtable_core::SCHEMA_VERSION,
@@ -134,6 +207,38 @@ fn run_simulation(yaml: String, replicates: u32) -> Result<serde_json::Value, St
         "days_csv": sandtable_core::export::day_csv(&results[0]),
         "results": results,
     }))
+}
+
+/// 运行仿真(异步长任务):CPU 重活在 spawn_blocking 线程跑,不占主线程/
+/// 异步运行时;逐 replicate 进度经 `onProgress` Channel 推给前端,取消走
+/// `cancel_run`(replicate 边界生效)。Channel 不能套 Option(非 Deserialize,
+/// 只能作裸命令参数),故 onProgress 为必传——前端唯一调用方同步更新。
+#[tauri::command]
+async fn run_simulation(
+    yaml: String,
+    replicates: u32,
+    on_progress: Channel<ProgressEvent>,
+    state: State<'_, TaskRegistry>,
+) -> Result<serde_json::Value, String> {
+    let flag = state.register();
+    let total = replicates;
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut emit = Box::new(move |done| {
+            let _ = on_progress.send(ProgressEvent { done, total });
+        });
+        run_simulation_impl(&yaml, replicates, &flag, &mut emit)
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("仿真任务被中断: {e}")));
+    state.take();
+    out
+}
+
+/// 取消活动长任务(`run_simulation`);replicate 边界生效,已结束/无任务时
+/// 为无操作。返回是否命中活动任务(前端据此提示)。
+#[tauri::command]
+fn cancel_run(state: State<'_, TaskRegistry>) -> bool {
+    state.cancel_active()
 }
 
 /// 扫描计划:实验 YAML → `{config_hash, players, days, base_seed, replicates,
@@ -167,23 +272,39 @@ fn sweep_plan(yaml: String, replicates_override: u32) -> Result<serde_json::Valu
 
 /// 单候选运行:`run_candidate` 转发(应用参数 → validate → R replicate →
 /// 汇总 → 约束判定);与 wasm sweep_candidate 同构。
-#[tauri::command]
-fn sweep_candidate(
-    yaml: String,
+fn sweep_candidate_impl(
+    yaml: &str,
     replicates: u32,
-    values_json: String,
+    values_json: &str,
 ) -> Result<serde_json::Value, String> {
     if replicates == 0 {
         return Err("参数错误: replicates 至少为 1".into());
     }
-    let (cfg, mut spec) = sandtable_core::scenario::load_experiment_str(&yaml)
+    let (cfg, mut spec) = sandtable_core::scenario::load_experiment_str(yaml)
         .map_err(|e| format!("配置错误: {e}"))?;
     spec.replicates = replicates;
     spec.validate().map_err(|e| format!("配置错误: {e}"))?;
-    let values: std::collections::BTreeMap<String, f64> = serde_json::from_str(&values_json)
+    let values: std::collections::BTreeMap<String, f64> = serde_json::from_str(values_json)
         .map_err(|e| format!("参数错误: 候选参数解析失败: {e}"))?;
     serde_json::to_value(sandtable_core::sweep::run_candidate(&cfg, &spec, &values))
         .map_err(|e| format!("候选结果序列化失败: {e}"))
+}
+
+/// 单候选运行(异步):replicate 循环在 core `run_candidate` 内部,进度与
+/// 取消不在本命令粒度——扫描的候选级进度/中止由前端在候选循环边界处理,
+/// 候选内 replicate 级控制需内核暴露观测面,刻意不做(与内核解耦)。
+/// 异步化只为长候选不占主线程。
+#[tauri::command]
+async fn sweep_candidate(
+    yaml: String,
+    replicates: u32,
+    values_json: String,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        sweep_candidate_impl(&yaml, replicates, &values_json)
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("候选任务被中断: {e}")))
 }
 
 /// 推荐:敏感性矩阵(OAT)+ 单轴推荐区间,零额外仿真;MVP 红线:仅单参数轴
@@ -302,6 +423,11 @@ fn is_ident(s: &str) -> bool {
 mod tests {
     // 不用 use super::*:command 宏在同模块生成隐藏 item,重导入会 E0255
     use super::*;
+    use tauri::ipc::{Channel, InvokeResponseBody};
+
+    fn fresh_flag() -> CancelFlag {
+        Arc::new(AtomicBool::new(false))
+    }
 
     const YAML: &str = concat!(
         "schema_version: '1'\n",
@@ -333,13 +459,101 @@ mod tests {
 
     #[test]
     fn run_matches_wasm() {
-        let v = run_simulation(YAML.into(), 2).unwrap();
+        let v = run_simulation_impl(YAML, 2, &fresh_flag(), &mut |_| {}).unwrap();
         let results = v["results"].as_array().unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0]["config_hash"], results[1]["config_hash"]);
         assert!(v["days_csv"].as_str().unwrap().starts_with("day,active,"));
         assert_eq!(v["meta"]["schema_version"], sandtable_core::SCHEMA_VERSION);
-        assert!(run_simulation(YAML.into(), 0).is_err());
+        assert!(run_simulation_impl(YAML, 0, &fresh_flag(), &mut |_| {}).is_err());
+    }
+
+    /// 进度回调逐 replicate 上报且不打乱仿真:与无进度路径的结果逐值一致。
+    #[test]
+    fn run_replicates_reports_progress_per_replicate() {
+        let cfg = load(YAML).unwrap();
+        let mut seen = Vec::new();
+        let results = run_replicates(&cfg, 3, &fresh_flag(), &mut |done| seen.push(done)).unwrap();
+        assert_eq!(seen, vec![1, 2, 3]);
+        let plain: Vec<_> = (0..3u32)
+            .map(|r| sandtable_core::sim::run(&cfg, r))
+            .collect();
+        assert_eq!(
+            serde_json::to_value(&results).unwrap(),
+            serde_json::to_value(&plain).unwrap(),
+            "进度回调不得改变仿真结果"
+        );
+    }
+
+    /// 取消在 replicate 边界生效:第 2 个 replicate 完成后置位,第 3 个不再
+    /// 开跑;错误信息带已完成计数,且不产出半截结果。
+    #[test]
+    fn run_replicates_cancels_at_replicate_boundary() {
+        let cfg = load(YAML).unwrap();
+        let cancel = fresh_flag();
+        let mut last_done = 0;
+        let err = run_replicates(&cfg, 5, &cancel, &mut |done| {
+            last_done = done;
+            if done == 2 {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        })
+        .unwrap_err();
+        assert_eq!(last_done, 2);
+        assert!(err.contains("已取消"), "{err}");
+        assert!(err.contains("2/5"), "{err}");
+
+        // 开跑前已取消:0 个 replicate 完成,计数 0/5
+        let pre = fresh_flag();
+        pre.store(true, Ordering::Relaxed);
+        let err = run_replicates(&cfg, 5, &pre, &mut |_| {}).unwrap_err();
+        assert!(err.contains("0/5"), "{err}");
+    }
+
+    /// 命令层全链(mock app + 真实 Channel):进度事件逐条推达,任务结束
+    /// 令牌被清理,产物与 impl 路径逐值一致。
+    #[test]
+    fn run_command_streams_progress_and_cleans_registry() {
+        let app = tauri::test::mock_app();
+        app.manage(TaskRegistry::default());
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let channel = Channel::<ProgressEvent>::new(move |body| {
+            match body {
+                InvokeResponseBody::Json(s) => {
+                    let ev: ProgressEvent = serde_json::from_str(&s).unwrap();
+                    sink.lock().unwrap().push((ev.done, ev.total));
+                }
+                other => panic!("进度事件应为 JSON,得到 {other:?}"),
+            }
+            Ok(())
+        });
+        let out =
+            tauri::async_runtime::block_on(run_simulation(YAML.into(), 3, channel, app.state()))
+                .unwrap();
+        assert_eq!(out["results"].as_array().unwrap().len(), 3);
+        assert_eq!(*seen.lock().unwrap(), vec![(1, 3), (2, 3), (3, 3)]);
+        assert!(
+            app.state::<TaskRegistry>().take().is_none(),
+            "任务结束须清理令牌"
+        );
+        // 与 impl 路径逐值一致(同配置同 seed)
+        let plain = run_simulation_impl(YAML, 3, &fresh_flag(), &mut |_| {}).unwrap();
+        assert_eq!(out["results"], plain["results"]);
+        assert_eq!(out["days_csv"], plain["days_csv"]);
+    }
+
+    /// 取消命令语义:无活动任务为无操作(false);活动任务被置位(true)。
+    #[test]
+    fn cancel_run_hits_only_active_task() {
+        let app = tauri::test::mock_app();
+        app.manage(TaskRegistry::default());
+        assert!(!cancel_run(app.state()));
+        let flag = app.state::<TaskRegistry>().register();
+        assert!(cancel_run(app.state()));
+        assert!(flag.load(Ordering::Relaxed));
+        assert!(app.state::<TaskRegistry>().take().is_some());
+        assert!(!cancel_run(app.state()), "清理后再取消为无操作");
     }
 
     #[test]
@@ -349,7 +563,7 @@ mod tests {
         assert_eq!(plan["sims"], 6);
 
         let values = r#"{"model.warrior.attack": 100.0}"#;
-        let cand = sweep_candidate(EXP_YAML.into(), 2, values.into()).unwrap();
+        let cand = sweep_candidate_impl(EXP_YAML, 2, values).unwrap();
         let (cfg, spec) = sandtable_core::scenario::load_experiment_str(EXP_YAML).unwrap();
         let want = sandtable_core::sweep::run_candidate(
             &cfg,
@@ -369,7 +583,7 @@ mod tests {
             v["elasticities"].as_array().unwrap().len(),
             sandtable_core::experiment::MetricKey::ALL.len()
         );
-        assert!(sweep_candidate(EXP_YAML.into(), 0, values.into()).is_err());
+        assert!(sweep_candidate_impl(EXP_YAML, 0, values).is_err());
         assert!(sweep_recommend("no sweep".into(), "[]".into()).is_err());
     }
 
@@ -384,7 +598,7 @@ mod tests {
             "/../../../examples/pokemon.yaml"
         ))
         .unwrap();
-        let v = run_simulation(yaml.clone(), 2).unwrap();
+        let v = run_simulation_impl(&yaml, 2, &fresh_flag(), &mut |_| {}).unwrap();
         let w = sandtable_wasm::run_simulation_native(&yaml, 2).unwrap();
         assert_eq!(v["results"], w["results"], "results 逐值一致");
         assert_eq!(v["config_hash"], w["config_hash"], "config_hash 一致");

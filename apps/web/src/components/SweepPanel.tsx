@@ -5,7 +5,7 @@
 // + 两轴联合可行域矩阵(SweepMatrix,三色判定)+ 敏感性矩阵与推荐块。
 // 与 CLI sweep / recommend 同源(core 纯函数);预算门在 sandtable-wasm
 // (MAX_SWEEP_SIMS / MAX_SWEEP_SIM_SCALE)。
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import SweepChart from './SweepChart'
 import SweepMatrix from './SweepMatrix'
 import { SWEEP_PRESETS } from '../lib/presets'
@@ -41,10 +41,22 @@ export default function SweepPanel({
   const [results, setResults] = useState<CandidateResult[]>([])
   const [rec, setRec] = useState<SweepRecOutput | null>(null)
   const [busy, setBusy] = useState(false)
+  // 取消标记:在候选循环边界生效(web 与桌面均可点——候选之间已让出主线程)。
+  // ref 而非 state:循环体内判定,不参与渲染
+  const cancelRef = useRef(false)
   const [progress, setProgress] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  // 取消扫描:标记后在下一候选边界停止;主线程在候选之间让出,
+  // web 与桌面都可点。当前候选内的 replicate 循环在 core 里跑完
+  // (candidate 级控制需内核暴露观测面,桌面刻意不做)
+  function cancel() {
+    cancelRef.current = true
+    setProgress('正在取消…')
+  }
+
   async function run() {
+    cancelRef.current = false
     setBusy(true)
     setError(null)
     setPlan(null)
@@ -54,11 +66,21 @@ export default function SweepPanel({
       const p = await planSweep(yaml, override)
       setPlan(p)
       const rs: CandidateResult[] = []
+      let cancelled = false
       for (let i = 0; i < p.candidates.length; i++) {
+        if (cancelRef.current) {
+          cancelled = true
+          break
+        }
         setProgress(`候选 ${i + 1}/${p.candidates.length} · 共 ${p.sims} 次仿真`)
         await new Promise((r) => setTimeout(r, 0)) // 让出主线程,进度可渲染
         rs.push(await runSweepCandidate(yaml, p.replicates, p.candidates[i]))
         setResults([...rs])
+      }
+      if (cancelled) {
+        // 已完成的候选保留在表里;推荐需全候选,取消后不出
+        setProgress(`已取消: 完成 ${rs.length}/${p.candidates.length} 候选`)
+        return
       }
       setProgress('')
       // MVP 红线(文档 15 章):推荐仅单参数轴;多轴只出表不出带
@@ -108,6 +130,11 @@ export default function SweepPanel({
           <button className="primary" disabled={busy} onClick={run}>
             {busy ? '扫描中…' : '运行扫描'}
           </button>
+          {busy && (
+            <button onClick={cancel} title="下一候选边界停止">
+              取消
+            </button>
+          )}
           <label className="reps">
             replicates
             <select

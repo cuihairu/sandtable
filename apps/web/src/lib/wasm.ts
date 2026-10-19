@@ -9,11 +9,12 @@ import init, {
   sweep_candidate as sweepCandidateBinding,
   sweep_recommend as sweepRecommendBinding,
 } from 'sandtable-wasm'
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
 import type {
   CandidateResult,
   LocalQueryResult,
   SimOutput,
+  SimProgress,
   SweepPlan,
   SweepRecOutput,
   ValidateInfo,
@@ -37,13 +38,27 @@ export async function validateConfig(yaml: string): Promise<ValidateInfo> {
   return JSON.parse(validateCfg(yaml) as unknown as string) as ValidateInfo
 }
 
+// 长任务(桌面异步命令):onProgress 经 Channel 逐 replicate 收 {done,total};
+// 浏览器 wasm 是同步调用,主线程被占满,回调不会被触发,传了也忽略。
 export async function runSimulation(
   yaml: string,
   replicates: number,
+  onProgress?: (p: SimProgress) => void,
 ): Promise<SimOutput> {
-  if (isDesktop) return invoke('run_simulation', { yaml, replicates })
+  if (isDesktop) {
+    const channel = new Channel<SimProgress>()
+    if (onProgress) channel.onmessage = onProgress
+    return invoke('run_simulation', { yaml, replicates, onProgress: channel })
+  }
   await ensureInit()
   return JSON.parse(runSim(yaml, replicates) as unknown as string) as SimOutput
+}
+
+// 取消活动长任务(仅桌面,run_simulation 在 replicate 边界生效)。
+// 返回是否命中活动任务;无任务/已结束为 false,不报错。
+export async function cancelRun(): Promise<boolean> {
+  if (!isDesktop) throw new Error('取消仅桌面端可用')
+  return invoke('cancel_run')
 }
 
 // —— 参数扫描:JS 逐候选驱动,候选间让出主线程(绑定层单线程纯转发)——

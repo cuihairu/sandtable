@@ -138,3 +138,12 @@ export interface LocalQueryResult {
   columns: string[]
   rows: string[][]
 }
+
+// —— 桌面长任务进度(apps/desktop `run_simulation` 的 Channel 事件)——
+// done / total 为 replicate 计数;浏览器 wasm 路径同步阻塞主线程,无进度可用
+
+/** `run_simulation` 逐 replicate 进度事件 */
+export interface SimProgress {
+  done: number
+  total: number
+}
