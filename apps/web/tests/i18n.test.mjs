@@ -344,3 +344,32 @@ test('WB-11.11:壳组件词条齐全(应用栏/功能轨/浏览器/文档标签/
     assert.ok(zh[k].trim() !== '' && en[k].trim() !== '', `词条 ${k} 不得为空`)
   }
 })
+
+test('WB-11.12:参数页词条双语齐全(筛选/表头/检查器/批量/YAML 编辑)', () => {
+  // params.* 全集在两种语言里键集合一致且非空;ts 侧还有 en satisfies 锁,
+  // 这里点名的关键面是运行时兜底:漏一个,参数页就有一处中文漏翻退兜底
+  const zhParams = Object.keys(zh).filter((k) => k.startsWith('params.'))
+  const enParams = Object.keys(en).filter((k) => k.startsWith('params.'))
+  assert.deepEqual([...enParams].sort(), [...zhParams].sort(), 'params.* 键集合必须双语一致')
+  for (const k of zhParams) {
+    assert.ok(zh[k].trim() !== '', `zh 词条 ${k} 不得为空`)
+    assert.ok(en[k].trim() !== '', `en 词条 ${k} 不得为空`)
+  }
+  // 关键交互面点名:批量操作 / 内核校验 / 高级 YAML 编辑 / 表格计数
+  const required = [
+    'params.previewBulk', 'params.applyBulk', 'params.checking', 'params.roundHint',
+    'params.kernelFailed', 'params.bulkKernelError', 'params.bulkRowsFailed', 'params.bulkOk',
+    'params.yamlApply', 'params.yamlErrorLine', 'params.yamlNote',
+    'params.registryCount', 'params.colDelta', 'params.empty',
+    'params.kind.table', 'params.resetOne', 'params.savedLabelProject',
+  ]
+  for (const k of required) {
+    assert.ok(zhParams.includes(k), `缺词条 ${k}`)
+  }
+  // 插值占位双语对齐(漏占位会把 {n} 直接显示给用户)
+  for (const k of ['params.registryCount', 'params.selectRowAria', 'params.changeCount', 'params.bulkRowsFailed']) {
+    const zhSlots = [...zh[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+    const enSlots = [...en[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+    assert.deepEqual(enSlots, zhSlots, `${k} 双语占位必须一致`)
+  }
+})

@@ -1,8 +1,12 @@
 // WB-02.06 · 参数筛选栏:搜索 / 系统分组 / 只看变更 / 只看错误(WB-05.10)。
 // 受控组件,状态由页面容器(共享 store)持有;筛选是 UI 状态,不进实验输入。
 // 搜索占位与匹配口径:注册路径 + 原始描述 + 当前语言显示名(WB-05.09)。
+// WB-11.12 · 文案走词典。
 import type { JSX } from 'react'
 import { WbIcon } from '../components/icons.tsx'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
+import { paramGroupLabel } from './paramRegistry.ts'
 
 export type ParamFilterBarProps = {
   search: string
@@ -34,27 +38,28 @@ export function ParamFilterBar({
   onErrorsOnly,
   onResetAll,
 }: ParamFilterBarProps): JSX.Element {
+  const locale = useLocale()
   return (
     <div className="workspace-toolbar">
       <label className="search-field">
         <WbIcon name="search" />
         <input
           type="search"
-          placeholder="搜索路径 / 描述 / 显示名"
-          aria-label="搜索参数(匹配注册路径、原始描述与当前语言显示名)"
+          placeholder={t(locale, 'params.searchPlaceholder')}
+          aria-label={t(locale, 'params.searchAria')}
           value={search}
           onChange={(e) => onSearch(e.target.value)}
         />
       </label>
       <select
-        aria-label="按系统分组筛选"
+        aria-label={t(locale, 'params.groupAria')}
         value={group}
         onChange={(e) => onGroup(e.target.value)}
       >
-        <option value="all">全部系统</option>
+        <option value="all">{t(locale, 'params.allSystems')}</option>
         {groups.map((g) => (
           <option key={g} value={g}>
-            {g}
+            {paramGroupLabel(g, locale)}
           </option>
         ))}
       </select>
@@ -65,7 +70,7 @@ export function ParamFilterBar({
           checked={changedOnly}
           onChange={(e) => onChangedOnly(e.target.checked)}
         />
-        仅变更 <span className="mono">{changedCount}</span>
+        {t(locale, 'params.changedOnly')} <span className="mono">{changedCount}</span>
       </label>
       <label className="checkbox-line" style={{ margin: 0 }}>
         <input
@@ -74,13 +79,13 @@ export function ParamFilterBar({
           checked={errorsOnly}
           onChange={(e) => onErrorsOnly(e.target.checked)}
         />
-        仅错误 <span className="mono">{errorCount}</span>
+        {t(locale, 'params.errorsOnly')} <span className="mono">{errorCount}</span>
       </label>
       <div className="toolbar-end">
         {onResetAll && (
           <button className="btn subtle" onClick={onResetAll}>
             <WbIcon name="reset" />
-            恢复全部
+            {t(locale, 'params.resetAll')}
           </button>
         )}
       </div>

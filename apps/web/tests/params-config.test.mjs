@@ -236,7 +236,8 @@ test('WB-05.10 分组、只看变更、只看错误与可见项全选口径', ()
   const rows = buildRowModels(base, cand)
   const opts = { search: '', changedOnly: false, errorsOnly: false, invalidPaths: new Set(), locale: 'zh-CN' }
   assert.ok(visibilityFilter(rows, { ...opts, group: 'all' }).length === PARAM_REGISTRY.length)
-  assert.ok(visibilityFilter(rows, { ...opts, group: '战斗' }).every((r) => r.group === '战斗'))
+  // WB-11.12:分组键改稳定英文键,显示名走词典(paramGroupLabel)
+  assert.ok(visibilityFilter(rows, { ...opts, group: 'combat' }).every((r) => r.group === 'combat'))
   const changedOnly = visibilityFilter(rows, { ...opts, group: 'all', changedOnly: true })
   assert.deepEqual(changedOnly.map((r) => r.def.path), ['model.warrior.attack'])
   // 只看错误(内核失败定位路径集合)
@@ -244,10 +245,10 @@ test('WB-05.10 分组、只看变更、只看错误与可见项全选口径', ()
   const errorsOnly = visibilityFilter(rows, { ...opts, group: 'all', errorsOnly: true, invalidPaths: invalid })
   assert.deepEqual(errorsOnly.map((r) => r.def.path), ['model.warrior.attack'])
   // 全选只作用于可见项:可见 = 战斗分组(组件 onSelectAll 用 visible 集合)
-  const visibleCombat = visibilityFilter(rows, { ...opts, group: '战斗' })
+  const visibleCombat = visibilityFilter(rows, { ...opts, group: 'combat' })
   assert.ok(visibleCombat.length > 0 && visibleCombat.length < PARAM_REGISTRY.length)
-  // 分组来自注册表派生
-  assert.ok(paramGroups().includes('战斗') && paramGroups().includes('抽卡'))
+  // 分组来自注册表派生(稳定键)
+  assert.ok(paramGroups().includes('combat') && paramGroups().includes('gacha'))
 })
 
 /* ————— 05.11 批量倍率:先预览整批,再一次应用 ————— */

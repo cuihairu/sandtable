@@ -23,18 +23,9 @@ import {
   buildRowModels, bulkPreview, kernelCheck, parseCellInput, visibilityFilter,
 } from '../params/paramsLogic.ts'
 import { paramGroups } from '../params/paramRegistry.ts'
-import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, isLocale } from '../../lib/i18n/index.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 import { notify } from '../state/notifications.ts'
-
-/** 当前语言:WB-11 持久化就绪时读取其键,否则默认语言(本层不改 i18n 文件)。 */
-function pageLocale(): string {
-  try {
-    const raw = window.localStorage.getItem(LOCALE_STORAGE_KEY)
-    return raw !== null && isLocale(raw) ? raw : DEFAULT_LOCALE
-  } catch {
-    return DEFAULT_LOCALE
-  }
-}
 
 export type ParametersPageProps = {
   state: WorkbenchState
@@ -43,7 +34,8 @@ export type ParametersPageProps = {
 
 export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps): JSX.Element {
   const { paramSearch, paramGroup, changedOnly, errorsOnly, paramSelected, paramFocusId } = state
-  const locale = pageLocale()
+  // WB-11.12 · 页面文案走词典;locale 订阅会话(语言切换即时生效)
+  const locale = useLocale()
   const view = paramYamlView(state)
   const baseParsed = parseConfig(view.base)
   const candParsed = parseConfig(view.cand)
@@ -104,11 +96,16 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
     // 语法错误:保留原文(编辑框内容不动),给出定位;成功才更新参数表
     const parsed = parseConfig(yamlEdit.text)
     if (parsed.errors.length > 0) {
-      setYamlEdit((s) => ({ ...s, error: `第 ${parsed.errors[0].line} 行:${parsed.errors[0].message}` }))
+      setYamlEdit((s) => ({
+        ...s,
+        error: t(locale, 'params.yamlErrorLine', {
+          line: parsed.errors[0].line, message: parsed.errors[0].message,
+        }),
+      }))
       return
     }
     dispatch({ type: 'param/write', yaml: yamlEdit.text })
-    notify('success', 'YAML 已解析并更新参数表')
+    notify('success', t(locale, 'params.yamlApplied'))
     setYamlEdit({ open: false, text: '', error: null, focusPath: null })
   }
 
@@ -131,7 +128,11 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         return {
           ...s,
           checking: false,
-          preview: { ...s.preview, ok: false, error: `内核校验失败,未应用批量修改:${where}${result.message}` },
+          preview: {
+            ...s.preview,
+            ok: false,
+            error: t(locale, 'params.bulkKernelError', { detail: `${where}${result.message}` }),
+          },
         }
       })
     })
@@ -145,7 +146,7 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
       return
     }
     dispatch({ type: 'param/write', yaml: outcome.yaml })
-    notify('success', `已批量修改 ${bulk.preview.edits.length} 个参数,可撤销`)
+    notify('success', t(locale, 'params.bulkApplied', { n: bulk.preview.edits.length }))
     setBulk({ preview: null, checking: false })
     dispatch({ type: 'param/select', ids: [] })
   }
@@ -153,9 +154,9 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
   const save = (): void => {
     if (persistDraft(state)) {
       dispatch({ type: 'param/save' })
-      notify('success', '候选方案已保存到当前浏览器')
+      notify('success', t(locale, 'params.savedToBrowser'))
     } else {
-      notify('warning', '浏览器存储不可用,草稿仍保留在当前页面')
+      notify('warning', t(locale, 'params.storageUnavailable'))
     }
   }
 
@@ -173,28 +174,28 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
   return (
     <>
       <WorkspaceHeading
-        title={state.project ? '候选方案(项目场景)' : '候选方案 A'}
-        crumb="模型与配置 / 参数表"
-        badge={{ text: state.project ? '项目场景草稿' : '本地草稿', tone: 'amber' }}
+        title={state.project ? t(locale, 'params.titleProject') : t(locale, 'params.titleLocal')}
+        crumb={t(locale, 'params.crumb')}
+        badge={{ text: state.project ? t(locale, 'params.badgeProject') : t(locale, 'params.badgeLocal'), tone: 'amber' }}
         actions={
           <>
             <span className="muted" style={{ fontSize: 10 }}>
               {state.project
-                ? (view.scenarioPath ?? '未选择场景')
-                : state.paramDraft.saved ? '浏览器草稿已保存' : '存在未保存修改'}
+                ? (view.scenarioPath ?? t(locale, 'params.noScenario'))
+                : state.paramDraft.saved ? t(locale, 'params.draftSaved') : t(locale, 'params.draftUnsaved')}
             </span>
-            <button className="btn" disabled={!canUndo} onClick={() => dispatch({ type: 'param/undo' })} title="撤销(Ctrl+Z)">
+            <button className="btn" disabled={!canUndo} onClick={() => dispatch({ type: 'param/undo' })} title={t(locale, 'params.undoTitle')}>
               <WbIcon name="undo" />
-              撤销
+              {t(locale, 'params.undo')}
             </button>
-            <button className="btn" disabled={!canRedo} onClick={() => dispatch({ type: 'param/redo' })} title="重做">
+            <button className="btn" disabled={!canRedo} onClick={() => dispatch({ type: 'param/redo' })} title={t(locale, 'params.redoTitle')}>
               <WbIcon name="redo" />
-              重做
+              {t(locale, 'params.redo')}
             </button>
             {!state.project && (
               <button className="btn primary" onClick={save}>
                 <WbIcon name="save" />
-                保存草稿
+                {t(locale, 'params.saveDraft')}
               </button>
             )}
           </>
@@ -257,11 +258,9 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
             locale={locale}
           />
           <div className="table-foot">
-            <span>{`${visible.length} / ${rows.length} 个注册参数`}</span>
+            <span>{t(locale, 'params.registryCount', { visible: visible.length, total: rows.length })}</span>
             <span>
-              {state.project
-                ? '基线 = 项目场景文件 · 候选 = 场景草稿(YAML 同步)'
-                : '基线 = 注册表默认配置 · 完整校验在应用/保存/运行时由内核执行'}
+              {state.project ? t(locale, 'params.footProject') : t(locale, 'params.footLocal')}
             </span>
           </div>
         </div>
@@ -269,8 +268,8 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
           row={focusRow}
           changedCount={changedCount}
           savedLabel={state.project
-            ? '项目场景草稿(随项目保存)'
-            : state.paramDraft.saved ? '当前浏览器(已保存)' : '当前浏览器(未保存)'}
+            ? t(locale, 'params.savedLabelProject')
+            : state.paramDraft.saved ? t(locale, 'params.savedLabelBrowser') : t(locale, 'params.savedLabelBrowserUnsaved')}
           kernelError={state.paramKernelError}
           onResetOne={() => dispatch({ type: 'param/reset-one', path: focusRow.def.path })}
           onAdvancedEdit={() => openAdvancedEdit(focusRow)}
@@ -281,24 +280,25 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
       <OverlayDialog
         open={yamlEdit.open}
         onClose={() => setYamlEdit({ open: false, text: '', error: null, focusPath: null })}
-        title={yamlEdit.focusPath ? `高级 YAML 编辑:${yamlEdit.focusPath}` : '高级 YAML 编辑(候选配置)'}
+        title={yamlEdit.focusPath
+          ? t(locale, 'params.yamlTitlePath', { path: yamlEdit.focusPath })
+          : t(locale, 'params.yamlTitle')}
         footer={
           <>
             <button className="btn" onClick={() => setYamlEdit({ open: false, text: '', error: null, focusPath: null })}>
-              取消
+              {t(locale, 'common.cancel')}
             </button>
             <button className="btn primary" onClick={applyAdvancedEdit}>
-              解析并应用
+              {t(locale, 'params.yamlApply')}
             </button>
           </>
         }
       >
         <p className="note" style={{ marginBottom: 8 }}>
-          直接编辑候选配置 YAML;成功解析后参数表随之更新。语法错误时保留原文,不写入候选。
-          结构参数(loot 表 / 公式 / damage_model 等)在此修改,内核校验在应用后进行。
+          {t(locale, 'params.yamlNote')}
         </p>
         <textarea
-          aria-label="候选配置 YAML"
+          aria-label={t(locale, 'params.yamlAria')}
           value={yamlEdit.text}
           onChange={(e) => setYamlEdit((s) => ({ ...s, text: e.target.value }))}
           spellCheck={false}

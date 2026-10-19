@@ -2,9 +2,12 @@
 // WB-05.11 · 编辑安全:先预览/校验整批(逐项 from→to + 内核对整批草稿的
 // 完整校验),再一次性应用;任一项失败不产生半批修改。预览状态由页面容器
 // 持有,本组件只展示。
+// WB-11.12 · 文案走词典。
 import { useState } from 'react'
 import type { JSX } from 'react'
 import type { BulkPreview } from './paramsLogic.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type BulkActionBarProps = {
   count: number
@@ -18,17 +21,18 @@ export type BulkActionBarProps = {
 }
 
 export function BulkActionBar({ count, preview, checking, onPreview, onApply, onClear }: BulkActionBarProps): JSX.Element {
+  const locale = useLocale()
   const [factor, setFactor] = useState('1.1')
   const badRows = preview ? preview.rows.filter((r) => r.error !== '') : []
   return (
     <div className="bulk-bar">
-      <strong>已选 {count} 项</strong>
-      <span>候选值 ×</span>
+      <strong>{t(locale, 'params.selectedCount', { n: count })}</strong>
+      <span>{t(locale, 'params.multiplyHint')}</span>
       <input
         type="number"
         value={factor}
         step="0.1"
-        aria-label="批量修改倍率"
+        aria-label={t(locale, 'params.factorAria')}
         onChange={(e) => setFactor(e.target.value)}
       />
       <button
@@ -39,31 +43,33 @@ export function BulkActionBar({ count, preview, checking, onPreview, onApply, on
           onPreview(Number.isNaN(parsed) ? Number.NaN : parsed)
         }}
       >
-        {checking ? '校验中…' : '预览整批'}
+        {checking ? t(locale, 'params.checking') : t(locale, 'params.previewBulk')}
       </button>
       <button
         className="btn primary"
         disabled={!preview?.ok || checking}
-        title={preview?.ok ? '整批一次性应用,可撤销' : '先预览并通过整批校验'}
+        title={preview?.ok ? t(locale, 'params.applyTitleOk') : t(locale, 'params.applyTitleLocked')}
         onClick={onApply}
       >
-        应用整批
+        {t(locale, 'params.applyBulk')}
       </button>
       <button className="btn subtle" onClick={onClear}>
-        取消选择
+        {t(locale, 'params.clearSelection')}
       </button>
-      <span className="muted">整数参数自动四舍五入</span>
+      <span className="muted">{t(locale, 'params.roundHint')}</span>
       {preview && !preview.ok && preview.error && (
         <span className="parameter-error" role="alert">{preview.error}</span>
       )}
       {preview && badRows.length > 0 && (
         <span className="parameter-error" role="alert">
-          {badRows.length} 项校验失败,未应用批量修改(如 {badRows[0].path}: {badRows[0].error})
+          {t(locale, 'params.bulkRowsFailed', {
+            n: badRows.length, path: badRows[0].path, error: badRows[0].error,
+          })}
         </span>
       )}
       {preview?.ok && (
         <span className="muted" aria-live="polite">
-          整批校验通过:{preview.rows.length} 项将一次写入
+          {t(locale, 'params.bulkOk', { n: preview.rows.length })}
         </span>
       )}
     </div>

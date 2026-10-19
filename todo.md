@@ -126,7 +126,7 @@
 - [x] WB-11.09：验证切换语言保留未保存输入、候选选择、筛选排序、打开的标签和后台任务。(2026-10-20,tests/workbench-locale.test.mjs 跨模块锁:先写候选草稿、选候选、设筛选/排序、跳页、改实验设计并入队演示任务,切 zh-CN 再切回 en-US,逐项断言草稿与保存态、候选选择、筛选、排序、当前页、实验设计原样,deriveDocuments 标签 ID 列表不变,任务仍在 runManager 队列;语言状态只在 localeSession 内变化,不刷新不重开项目)
 - [ ] WB-11.10：同步更新页面 `lang`、窗口/文档标题、ARIA 标签、图表替代说明和空状态。(2026-10-20 部分推进:文档标题随 locale 创建/切换即应用,词条 `common.appTitle`;`html lang` 刻意缓接——正文翻译(WB-11.11~16)未完成前同步会让读屏器按英文发音念中文正文,`LocaleDocument.setLang` 做成可选项,正文翻译落地后一行接上;ARIA/图表替代/空状态随各界面翻译推进)
 - [ ] WB-11.11：翻译应用栏、资源树、功能轨、文档标签、状态栏、菜单、按钮及快捷键说明。(2026-10-20 部分推进:五壳组件已接词典——AppBar 全部文案、ActivityRail nav.*+nav.short.*、ProjectExplorer 自身文案(资源标题留数据侧)、DocumentTabs nav.tab.*+common.unsaved(选择器解耦为 data-doc-tabs)、StatusBar 状态文案;新增 37 词条 common.*/nav.*,i18n 测试 +1 锁五组件 34 键双语齐全;WorkbenchApp 对话框/菜单/命令面板与 draftSavedLabel 等调用方文案待下一批,条目保持未勾)
-- [ ] WB-11.12：翻译参数分组、表头、字段标签、单位说明、修改状态、校验提示与批量操作文案。
+- [x] WB-11.12：翻译参数分组、表头、字段标签、单位说明、修改状态、校验提示与批量操作文案。(2026-10-20,ParametersPage/ParamFilterBar/ParamTable/ParamDetail/BulkActionBar 五文件全接词典,新增 params.* 约 90 词条(含 8 个 kind. 类型名、11 个 group. 分组名、复数占位计数对);分组名从中文硬编码改为稳定英文键(`paramRegistry.GROUP_BY_PREFIX`)+ `paramGroupLabel(group, locale)` 显示,筛选值与 state 存的仍是键、不随语言漂移,eyebrow 与筛选下拉走显示名;locale 订阅从页面本地 localStorage 快照换成 useLocale(),与 LanguageSwitcher 同源即时生效;params-config 测试同步改用 combat/gacha 键;i18n 测试 +1 锁 params.* 键集合双语一致、关键面点名与占位双语对齐)
 - [ ] WB-11.13：翻译实验方法说明、因子表、场景字段、随机策略、预算、运行前检查与禁用原因。
 - [ ] WB-11.14：翻译 KPI 显示名、图标题、坐标轴/图例/tooltip、约束判定和统计解释。
 - [ ] WB-11.15：翻译队列状态、进度、取消中/取消完成、失败、重试及部分结果提示。

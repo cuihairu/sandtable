@@ -5,12 +5,15 @@
 // - 行 key = 注册路径(稳定 ID),提交后的重渲染不重建输入框,焦点保留,
 //   不会把失焦提交变成点击丢失;
 // - dur/expr/table 类型不进数值通道:只读显示 + 高级编辑入口(WB-05.02)。
+// WB-11.12 · 表头/状态/aria 走词典(locale 由页面容器传入,与显示名同源)。
 import { useState } from 'react'
 import type { JSX } from 'react'
 import type { ParamRowModel } from './paramsLogic.ts'
 import { parseCellInput } from './paramsLogic.ts'
 import { paramDelta } from './configYaml.ts'
 import { displayParamName } from './paramRegistry.ts'
+import { t } from '../../lib/i18n/index.ts'
+import type { Locale } from '../../lib/i18n/index.ts'
 
 export type ParamTableProps = {
   id: string
@@ -26,7 +29,7 @@ export type ParamTableProps = {
   onSelectAll: (checked: boolean) => void
   onFocusRow: (path: string) => void
   onAdvancedEdit: (row: ParamRowModel) => void
-  locale: string
+  locale: Locale
 }
 
 export function ParamTable({
@@ -43,7 +46,7 @@ export function ParamTable({
   locale,
 }: ParamTableProps): JSX.Element {
   return (
-    <table className="parameter-table" aria-label="候选方案参数编辑表" id={id}>
+    <table className="parameter-table" aria-label={t(locale, 'params.tableAria')} id={id}>
       <thead>
         <tr>
           <th>
@@ -51,24 +54,24 @@ export function ParamTable({
               id="all-params"
               className="checkbox"
               type="checkbox"
-              aria-label="选择当前可见参数"
+              aria-label={t(locale, 'params.selectAllAria')}
               checked={rows.length > 0 && rows.every((p) => selected.has(p.def.path))}
               onChange={(e) => onSelectAll(e.target.checked)}
             />
           </th>
-          <th>参数名称 / 注册路径</th>
-          <th>类型</th>
-          <th className="numeric">基线</th>
-          <th className="numeric">候选值</th>
-          <th className="numeric">变化(绝对/相对)</th>
-          <th>状态</th>
+          <th>{t(locale, 'params.colName')}</th>
+          <th>{t(locale, 'params.colType')}</th>
+          <th className="numeric">{t(locale, 'params.colBaseline')}</th>
+          <th className="numeric">{t(locale, 'params.colCandidate')}</th>
+          <th className="numeric">{t(locale, 'params.colDelta')}</th>
+          <th>{t(locale, 'params.colStatus')}</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 && (
           <tr>
             <td colSpan={7}>
-              <div className="empty-state">没有匹配的参数。尝试清空搜索或切换系统分组。</div>
+              <div className="empty-state">{t(locale, 'params.empty')}</div>
             </td>
           </tr>
         )}
@@ -110,7 +113,7 @@ function ParamRow({
   onSelect: (path: string, checked: boolean) => void
   onFocusRow: (path: string) => void
   onAdvancedEdit: (row: ParamRowModel) => void
-  locale: string
+  locale: Locale
 }): JSX.Element {
   // 编辑缓冲(WB-05.04):null = 无未提交输入;error = 非法值详情
   const [buffer, setBuffer] = useState<string | null>(null)
@@ -144,7 +147,7 @@ function ParamRow({
           className="checkbox"
           type="checkbox"
           checked={selected}
-          aria-label={`选择${name}`}
+          aria-label={t(locale, 'params.selectRowAria', { name })}
           onChange={(e) => onSelect(row.def.path, e.target.checked)}
         />
       </td>
@@ -160,8 +163,11 @@ function ParamRow({
       <td className="mono muted" style={{ fontSize: 10 }}>
         {row.def.kind}
       </td>
-      <td className="numeric muted" title={row.baseline.present ? row.def.desc : `缺值:未写入基线配置(注册表默认 ${row.def.default})`}>
-        {row.baseline.present ? row.baseline.text : <span className="muted">缺值</span>}
+      <td className="numeric muted" title={row.baseline.present
+        ? row.def.desc
+        : t(locale, 'params.baselineMissingTitle', { default: row.def.default })}
+      >
+        {row.baseline.present ? row.baseline.text : <span className="muted">{t(locale, 'params.missing')}</span>}
       </td>
       <td className="numeric">
         {row.editable ? (
@@ -171,7 +177,7 @@ function ParamRow({
               type="number"
               step={row.def.kind === 'f64' || row.def.kind === 'mix' ? 'any' : '1'}
               value={buffer ?? (committed.present ? committed.text : '')}
-              aria-label={`${name}候选值`}
+              aria-label={t(locale, 'params.cellCandidateAria', { name })}
               onChange={(e) => setBuffer(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -191,15 +197,15 @@ function ParamRow({
         ) : (
           <>
             <span className="mono muted" style={{ fontSize: 10 }}>
-              {committed.present ? committed.text : '未配置'}
+              {committed.present ? committed.text : t(locale, 'params.unset')}
             </span>
             <button
               className="btn subtle"
               style={{ fontSize: 10, padding: '1px 6px', marginLeft: 4 }}
               onClick={() => onAdvancedEdit(row)}
-              aria-label={`${name}高级编辑`}
+              aria-label={t(locale, 'params.advancedAria', { name })}
             >
-              高级编辑
+              {t(locale, 'params.advancedEdit')}
             </button>
           </>
         )}
@@ -207,13 +213,13 @@ function ParamRow({
       <td className={`numeric ${changed ? 'positive' : 'muted'}`}>{delta.text}</td>
       <td>
         {error !== '' ? (
-          <span className="badge red" title={error}>非法值</span>
+          <span className="badge red" title={error}>{t(locale, 'params.invalid')}</span>
         ) : buffer !== null ? (
-          <span className="badge amber">编辑中</span>
+          <span className="badge amber">{t(locale, 'params.editing')}</span>
         ) : kernelError ? (
-          <span className="badge red">内核校验失败</span>
+          <span className="badge red">{t(locale, 'params.kernelFailed')}</span>
         ) : changed ? (
-          <span className="badge amber">已修改</span>
+          <span className="badge amber">{t(locale, 'params.modifiedBadge')}</span>
         ) : (
           <span className="muted">—</span>
         )}

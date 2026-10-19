@@ -2,10 +2,13 @@
 // WB-05 · 数据源 = 注册表定义 × 基线/候选 YAML;缺值如实显示(不回退默认);
 // 注册表默认值只作参考标注,不冒充配置值。dur/expr/table 显示只读口径并给
 // 高级编辑入口(WB-05.02);内核校验失败时展示原始错误详情(WB-05.07)。
+// WB-11.12 · 检查器文案走词典;注册表原始 desc 按原文回显(WB-11.19/.20 口径)。
 import type { JSX } from 'react'
 import { WbIcon } from '../components/icons.tsx'
 import type { ParamRowModel } from './paramsLogic.ts'
-import { displayParamName } from './paramRegistry.ts'
+import { displayParamName, paramGroupLabel } from './paramRegistry.ts'
+import { t } from '../../lib/i18n/index.ts'
+import type { Locale } from '../../lib/i18n/index.ts'
 
 export type ParamDetailProps = {
   row: ParamRowModel
@@ -16,18 +19,19 @@ export type ParamDetailProps = {
   onResetOne: () => void
   onAdvancedEdit: () => void
   onNewExperiment?: () => void
-  locale: string
+  locale: Locale
 }
 
-const KIND_LABEL: Record<string, string> = {
-  u32: '无符号 32 位整数',
-  u64: '无符号 64 位整数',
-  i64: '有符号 64 位整数',
-  f64: '浮点数',
-  mix: '分群权重(比例)',
-  dur: '天数时长(如 30d)',
-  expr: '公式表达式',
-  table: '结构参数',
+/** 参数类型 → 词典 key(字面量键面,保住 t() 的 key 类型检查)。 */
+const KIND_LABEL: Record<string, 'params.kind.u32' | 'params.kind.u64' | 'params.kind.i64' | 'params.kind.f64' | 'params.kind.mix' | 'params.kind.dur' | 'params.kind.expr' | 'params.kind.table'> = {
+  u32: 'params.kind.u32',
+  u64: 'params.kind.u64',
+  i64: 'params.kind.i64',
+  f64: 'params.kind.f64',
+  mix: 'params.kind.mix',
+  dur: 'params.kind.dur',
+  expr: 'params.kind.expr',
+  table: 'params.kind.table',
 }
 
 export function ParamDetail({
@@ -41,94 +45,93 @@ export function ParamDetail({
   locale,
 }: ParamDetailProps): JSX.Element {
   const name = displayParamName(row.def.path, locale)
-  const editableLabel = row.editable ? '数值编辑' : '只读 · 高级编辑'
+  const kindKey = KIND_LABEL[row.def.kind]
   return (
-    <aside className="selection-inspector" aria-label="参数详情">
+    <aside className="selection-inspector" aria-label={t(locale, 'params.inspectorAria')}>
       <div className="inspector-header">
         <WbIcon name="sliders" />
-        参数检查器
+        {t(locale, 'params.inspector')}
       </div>
       <section className="inspector-section">
-        <div className="inspector-eyebrow">{`${row.group.toUpperCase()} / PARAMETER`}</div>
+        <div className="inspector-eyebrow">{`${paramGroupLabel(row.group, locale).toUpperCase()} / ${t(locale, 'params.eyebrowParam')}`}</div>
         <div className="inspector-title">{name}</div>
         <code className="inspector-code">{row.def.path}</code>
         <div className="parameter-value">
-          {row.candidate.present ? row.candidate.text : '缺值'}
-          <small>候选值</small>
+          {row.candidate.present ? row.candidate.text : t(locale, 'params.missing')}
+          <small>{t(locale, 'params.colCandidate')}</small>
         </div>
         <div className="inspector-kv">
-          <span>基线值(基线配置实际写入)</span>
-          <span className="mono">{row.baseline.present ? row.baseline.text : '缺值'}</span>
+          <span>{t(locale, 'params.baselineValue')}</span>
+          <span className="mono">{row.baseline.present ? row.baseline.text : t(locale, 'params.missing')}</span>
         </div>
         <div className="inspector-kv">
-          <span>注册表默认值(参考)</span>
+          <span>{t(locale, 'params.registryDefault')}</span>
           <span className="mono">{row.def.default}</span>
         </div>
         <div className="inspector-kv">
-          <span>数据类型</span>
-          <span className="mono">{KIND_LABEL[row.def.kind] ?? row.def.kind}</span>
+          <span>{t(locale, 'params.dataType')}</span>
+          <span className="mono">{kindKey !== undefined ? t(locale, kindKey) : row.def.kind}</span>
         </div>
         <div className="inspector-kv">
-          <span>编辑方式</span>
-          <span>{editableLabel}</span>
+          <span>{t(locale, 'params.editMode')}</span>
+          <span>{row.editable ? t(locale, 'params.editNumeric') : t(locale, 'params.editAdvanced')}</span>
         </div>
         {!row.editable && (
           <button className="btn inspector-action" onClick={onAdvancedEdit}>
             <WbIcon name="file-code" />
-            高级 YAML 编辑
+            {t(locale, 'params.yamlEditButton')}
           </button>
         )}
         <button className="btn inspector-action" onClick={onResetOne}>
           <WbIcon name="reset" />
-          恢复此项基线值
+          {t(locale, 'params.resetOne')}
         </button>
       </section>
       <section className="inspector-section">
-        <h3>定义与校验</h3>
-        <p className="note">{`${row.def.desc}。路径、类型与默认值取自 Sandtable 参数注册表(registry.rs)。`}</p>
+        <h3>{t(locale, 'params.sectionDefinition')}</h3>
+        <p className="note">{row.def.desc}。{t(locale, 'params.registryNote')}</p>
         <div className="inspector-kv">
-          <span>单位元数据</span>
-          <span className="muted">未定义</span>
+          <span>{t(locale, 'params.unitMeta')}</span>
+          <span className="muted">{t(locale, 'params.metaUndefined')}</span>
         </div>
         <div className="inspector-kv">
-          <span>建议区间元数据</span>
-          <span className="muted">未定义</span>
+          <span>{t(locale, 'params.rangeMeta')}</span>
+          <span className="muted">{t(locale, 'params.metaUndefined')}</span>
         </div>
         <div className="inspector-kv">
-          <span>注册表来源</span>
+          <span>{t(locale, 'params.registrySource')}</span>
           <span className="mono">registry.rs</span>
         </div>
         <div className="note-block" style={{ marginTop: 12 }}>
-          表格侧只做基础检查(有限数/整数域/概率与权重范围)。
-          最终配置有效性由内核在应用/保存/运行时完整校验,失败会定位到参数并保留待修复输入。
+          {t(locale, 'params.basicCheckNote')}
         </div>
       </section>
       {kernelError && (
         <section className="inspector-section">
-          <h3>内核校验失败</h3>
+          <h3>{t(locale, 'params.kernelSection')}</h3>
           <div className="inspector-kv">
-            <span>定位参数</span>
-            <span className="mono">{kernelError.path ?? '(未定位到具体参数)'}</span>
+            <span>{t(locale, 'params.errorPath')}</span>
+            <span className="mono">{kernelError.path ?? t(locale, 'params.errorNoPath')}</span>
           </div>
           <p className="note">{kernelError.message}</p>
-          <p className="note">待修复输入已保留在单元格中,修正后重新提交;或撤销该次修改。</p>
+          <p className="note">{t(locale, 'params.fixHint')}</p>
         </section>
       )}
       <section className="inspector-section">
-        <h3>方案修改摘要</h3>
+        <h3>{t(locale, 'params.sectionSummary')}</h3>
         <div className="inspector-kv">
-          <span>相对基线</span>
-          <span>{changedCount} 项变更</span>
+          <span>{t(locale, 'params.vsBaseline')}</span>
+          <span>{t(locale, 'params.changeCount', { n: changedCount })}</span>
         </div>
         <div className="inspector-kv">
-          <span>保存状态</span>
+          <span>{t(locale, 'params.saveState')}</span>
           <span>{savedLabel}</span>
         </div>
-        <p className="note">修改参数会改变下一次运行的项目配置输入(以保存/运行时冻结的版本为准)。</p>
+        <p className="note">{t(locale, 'params.freezeNote')}</p>
         {onNewExperiment && (
           <button className="btn inspector-action primary" onClick={onNewExperiment}>
             <WbIcon name="flask" />
-            配置新实验
+            {t(locale, 'params.newExperiment')}
           </button>
         )}
       </section>

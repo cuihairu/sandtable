@@ -5,6 +5,7 @@
 // registry.rs 原文逐条锁漂移(路径数、逐字段一致),两侧不同步即测试红。
 // 红线:参数表的定义/默认值只能来自这张表或内核桥接,不允许组件自带硬编码。
 import type { ParamKind } from '../../lib/types.ts'
+import { t } from '../../lib/i18n/index.ts'
 
 /** 注册项(与 core::registry::ParamSpec 同构;kind 为小写变体名)。 */
 export interface RegistryParam {
@@ -110,19 +111,41 @@ export function registryParam(path: string): RegistryParam | undefined {
 /* —— UI 分组:只做界面组织,不是注册表语义(同原型口径) —— */
 
 const GROUP_BY_PREFIX: ReadonlyArray<readonly [string, string]> = [
-  ['scenario.', '场景'],
-  ['model.warrior.', '角色'],
-  ['model.whale_gain_mult', '角色'],
-  ['model.combat.', '战斗'],
-  ['model.training.', '训练'],
-  ['model.dungeon.', '副本'],
-  ['model.behavior.', '行为'],
-  ['model.progression.', '成长'],
-  ['model.formulas.', '公式'],
-  ['model.churn.', '流失'],
-  ['model.loot.', '掉落'],
-  ['model.gacha.', '抽卡'],
+  ['scenario.', 'scenario'],
+  ['model.warrior.', 'character'],
+  ['model.whale_gain_mult', 'character'],
+  ['model.combat.', 'combat'],
+  ['model.training.', 'training'],
+  ['model.dungeon.', 'dungeon'],
+  ['model.behavior.', 'behavior'],
+  ['model.progression.', 'progression'],
+  ['model.formulas.', 'formulas'],
+  ['model.churn.', 'churn'],
+  ['model.loot.', 'loot'],
+  ['model.gacha.', 'gacha'],
 ]
+
+/** UI 分组键 → 词典 key(WB-11.12:分组名是显示文案,走词典;键面本身不动,
+ *  筛选值/状态里存的仍是这个键,不随语言漂移)。 */
+const GROUP_LABEL: Record<string, 'params.group.scenario' | 'params.group.character' | 'params.group.combat' | 'params.group.training' | 'params.group.dungeon' | 'params.group.behavior' | 'params.group.progression' | 'params.group.formulas' | 'params.group.churn' | 'params.group.loot' | 'params.group.gacha'> = {
+  scenario: 'params.group.scenario',
+  character: 'params.group.character',
+  combat: 'params.group.combat',
+  training: 'params.group.training',
+  dungeon: 'params.group.dungeon',
+  behavior: 'params.group.behavior',
+  progression: 'params.group.progression',
+  formulas: 'params.group.formulas',
+  churn: 'params.group.churn',
+  loot: 'params.group.loot',
+  gacha: 'params.group.gacha',
+}
+
+/** UI 分组键 → 当前语言显示名(未登记的键——如路径首段兜底——原样返回,不丢项)。 */
+export function paramGroupLabel(group: string, locale: string): string {
+  const key = GROUP_LABEL[group]
+  return key !== undefined ? t(locale, key) : group
+}
 
 /** 注册路径 → UI 分组名(前缀表未命中时回退首段,不丢项)。 */
 export function paramGroup(path: string): string {
