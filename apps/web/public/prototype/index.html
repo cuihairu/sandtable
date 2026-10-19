@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#222a2e">
+  <meta name="description" content="Sandtable 数值实验工作台 · 第二版交互原型">
+  <title>Sandtable — 数值实验工作台 V2</title>
+  <link rel="stylesheet" href="./workbench.css">
+  <script type="module" src="./workbench.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">跳到工作区</a>
+  <div class="desktop" id="desktop">
+    <header class="application-bar">
+      <a class="wordmark" href="#analysis" aria-label="Sandtable 结果分析"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3 7 9-5 9 5-9 5-9-5Zm0 5 9 5 9-5M3 17l9 5 9-5" stroke="currentColor" stroke-width="1.6"/></svg><strong>SANDTABLE</strong><span>数值实验工作台</span></a>
+      <button class="project-switch" data-action="project-info"><span class="project-dot"></span>RPG 平衡实验室<span class="key-label">本地样例</span></button>
+      <button class="command-trigger" data-action="commands" aria-keyshortcuts="Control+k"><span data-icon="search"></span><span>查找参数、命令…</span><kbd>Ctrl K</kbd></button>
+      <button class="prototype-label" data-action="about"><span class="status-dot amber"></span>交互原型 V2 · 样例数据<span data-icon="info"></span></button>
+    </header>
+
+    <nav class="activity-rail" aria-label="功能工作区" id="activity-rail"></nav>
+    <aside class="explorer" aria-label="项目浏览器">
+      <div class="explorer-header"><strong>项目浏览器</strong><button class="icon-button" data-action="toggle-explorer" title="收起项目浏览器" aria-label="收起项目浏览器"><span data-icon="panel-left"></span></button></div>
+      <div class="project-root"><span data-icon="folder-open"></span><div><strong>RPG 平衡实验室</strong><small>DEFAULT SCENARIO</small></div></div>
+      <div class="explorer-scroll">
+        <details open><summary>模型与配置<span class="count">3</span></summary><button class="resource" data-page="parameters"><span data-icon="file-code"></span><span>基础参数表<small>registry / defaults</small></span></button><button class="resource" data-page="parameters"><span data-icon="git-branch"></span><span>候选方案 A<small id="explorer-changes">2 项参数变更</small></span><i class="resource-mark"></i></button><button class="resource" data-page="designer"><span data-icon="sliders"></span><span>实验配置<small>30 天 · 10,000 玩家</small></span></button></details>
+        <details open><summary>实验<span class="count">1</span></summary><button class="resource" data-page="designer"><span data-icon="flask"></span><span>初始攻击力扫描<small>Grid · 单参数</small></span></button></details>
+        <details open><summary>结果集<span class="count">1</span></summary><button class="resource selected" data-page="analysis"><span data-icon="chart"></span><span>攻击力扫描结果<small>11 候选 · 20 replicates</small></span><span class="resource-status" title="内置样例数据"></span></button></details>
+        <details><summary>数据交换<span class="count">2</span></summary><button class="resource" data-page="exchange"><span data-icon="table"></span><span>候选汇总.csv</span></button><button class="resource" data-page="exchange"><span data-icon="file-code"></span><span>实验快照.json</span></button></details>
+      </div>
+      <div class="explorer-bottom"><div><span class="status-dot"></span>基线只读<span class="mono">DEFAULT</span></div><p>候选编辑保存在当前浏览器。<br>样例结果与编辑草稿独立。</p></div>
+    </aside>
+
+    <main class="main-area">
+      <div class="document-tabs" role="tablist" aria-label="打开的文档" id="document-tabs"></div>
+      <section class="workspace" id="workspace" tabindex="-1" aria-label="当前工作区"></section>
+      <section class="task-drawer" id="task-drawer" hidden aria-label="后台演示任务"></section>
+    </main>
+    <footer class="statusbar"><button data-action="toggle-explorer"><span data-icon="panel-left"></span>项目</button><span class="status-separator"></span><span><span class="status-dot"></span>浏览器本地草稿</span><span class="status-spacer"></span><button id="task-status" data-action="toggle-tasks"><span data-icon="terminal"></span>任务队列<span class="task-count">0</span></button><span class="status-separator"></span><span>数据：内置演示结果</span><button data-action="shortcuts" aria-label="查看键盘快捷键"><kbd>?</kbd></button></footer>
+  </div>
+  <dialog class="modal" id="dialog" aria-labelledby="dialog-title"></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
