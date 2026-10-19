@@ -3,11 +3,14 @@
 import { useSyncExternalStore } from 'react'
 import type { JSX } from 'react'
 import * as notifications from '../state/notifications.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export function ToastStack(): JSX.Element {
   const notices = useSyncExternalStore(notifications.subscribe, notifications.listNotices)
+  const locale = useLocale()
   return (
-    <div className="toast-region" role="region" aria-label="通知">
+    <div className="toast-region" role="region" aria-label={t(locale, 'common.notifications')}>
       {notices.map((n) => (
         <div key={n.id} role="status" aria-live="polite" className="toast show">
           <span>{n.message}</span>
@@ -25,7 +28,7 @@ export function ToastStack(): JSX.Element {
           <button
             className="icon-button"
             style={{ color: '#cfe7ea' }}
-            aria-label="关闭通知"
+            aria-label={t(locale, 'common.closeNotification')}
             onClick={() => notifications.dismiss(n.id)}
           >
             ×

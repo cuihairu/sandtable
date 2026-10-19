@@ -8,6 +8,8 @@ import { WbIcon } from '../components/icons.tsx'
 import type { IconName } from '../components/icons.tsx'
 import { matchCommands } from './commands.ts'
 import type { CommandEntry } from './commands.ts'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type { CommandEntry }
 
@@ -18,6 +20,7 @@ export type CommandSearchProps = {
 }
 
 export function CommandSearch({ open, onClose, commands }: CommandSearchProps): JSX.Element {
+  const locale = useLocale()
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const [wasOpen, setWasOpen] = useState(false)
@@ -53,15 +56,15 @@ export function CommandSearch({ open, onClose, commands }: CommandSearchProps): 
   }
 
   return (
-    <OverlayDialog open={open} onClose={onClose} title="查找参数与命令" dismissable={false}>
+    <OverlayDialog open={open} onClose={onClose} title={t(locale, 'common.commandSearchTitle')} dismissable={false}>
       <div onKeyDown={onKeyDown}>
         <label htmlFor="command-input" className="muted" style={{ fontSize: 11 }}>
-          输入工作区名称、参数名或参数路径
+          {t(locale, 'common.commandSearchHint')}
         </label>
         <input
           id="command-input"
           className="command-input"
-          placeholder="例如:攻击力、参数、导出…"
+          placeholder={t(locale, 'common.commandSearchPlaceholder')}
           autoComplete="off"
           autoFocus={open}
           value={query}
@@ -70,7 +73,7 @@ export function CommandSearch({ open, onClose, commands }: CommandSearchProps): 
             setCursor(0)
           }}
         />
-        <div className="command-list" role="listbox" aria-label="命令结果">
+        <div className="command-list" role="listbox" aria-label={t(locale, 'common.commandListAria')}>
           {results.map((entry, i) => (
             <button
               key={entry.id}
@@ -87,7 +90,7 @@ export function CommandSearch({ open, onClose, commands }: CommandSearchProps): 
               </span>
             </button>
           ))}
-          {results.length === 0 && <div className="empty-state">没有匹配的命令或参数。</div>}
+          {results.length === 0 && <div className="empty-state">{t(locale, 'common.commandNoMatch')}</div>}
         </div>
       </div>
     </OverlayDialog>

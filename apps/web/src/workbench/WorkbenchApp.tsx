@@ -55,6 +55,8 @@ import * as runManager from './state/runManager.ts'
 import type { Job } from './state/jobLogic.ts'
 import { notify } from './state/notifications.ts'
 import { candidateIdFor } from './ids.ts'
+import { t } from '../lib/i18n/index.ts'
+import { localeSession, useLocale } from './state/localeStore.ts'
 import { DEMO_BASELINE_ID, DEMO_EXPERIMENT_ID } from './demo/sampleProject.ts'
 
 type OverlayState = {
@@ -89,6 +91,7 @@ const INITIAL_OVERLAYS: OverlayState = {
 
 export default function WorkbenchApp(): JSX.Element {
   const state: WorkbenchState = useSyncExternalStore(subscribe, getState)
+  const locale = useLocale()
   const [overlays, setOverlays] = useState(INITIAL_OVERLAYS)
   const patchOverlays = (patch: Partial<OverlayState>): void =>
     setOverlays((prev) => ({ ...prev, ...patch }))
@@ -133,7 +136,7 @@ export default function WorkbenchApp(): JSX.Element {
     const ne = doc.objects.filter((o) => o.kind === 'experiment').length
     const nr = doc.objects.filter((o) => o.kind === 'result').length
     dispatch({ type: 'project/open', doc })
-    notify('success', `已打开项目「${doc.name}」:场景 ${ns} / 实验 ${ne} / 已保存结果 ${nr}(结果一并载入)`)
+    notify('success', t(locale, 'common.notifyProjectOpened', { name: doc.name, scenarios: ns, experiments: ne, results: nr }))
     dispatch({ type: 'navigate', page: 'designer' })
   }
 
@@ -147,7 +150,7 @@ export default function WorkbenchApp(): JSX.Element {
         [doc.objects[0].path]: { content: yaml, saved: false, history: [], future: [] },
       },
     })
-    notify('info', `YAML 已迁入工作台:「${doc.name}」(单场景草稿,实验页可编辑)`)
+    notify('info', t(locale, 'common.notifyYamlImported', { name: doc.name }))
     dispatch({ type: 'navigate', page: 'designer' })
   }
 
@@ -185,7 +188,7 @@ export default function WorkbenchApp(): JSX.Element {
     const s = getState()
     const doc = s.project
     if (!doc) {
-      notify('warning', '当前为内置演示项目,没有可保存的项目文件')
+      notify('warning', t(localeSession.get(), 'common.notifyNoProjectFile'))
       return
     }
     const failures: string[] = []
@@ -208,7 +211,7 @@ export default function WorkbenchApp(): JSX.Element {
       }
     }
     if (failures.length > 0) {
-      notify('error', `保存被内核校验阻止(配置非法,草稿保留):\n${failures.join('\n')}`)
+      notify('error', t(localeSession.get(), 'common.notifySaveBlocked', { detail: failures.join('\n') }))
       return
     }
     try {
@@ -221,10 +224,10 @@ export default function WorkbenchApp(): JSX.Element {
       const fileName = `${(doc.sourceName || doc.name).replace(/\.(sandtable|yaml|yml|txt)$/i, '')}.sandtable`
       download(fileName, bytes, 'application/zip')
       dispatch({ type: 'project/mark-saved' })
-      notify('success', `已保存「${doc.name}」→ ${fileName}(含全部配置与产物;桌面端落 ~/Downloads)`)
+      notify('success', t(localeSession.get(), 'common.notifySaved', { name: doc.name, file: fileName }))
     } catch (e) {
       // 失败保留草稿:保存状态不更新(WB-04.10)
-      notify('error', `保存失败,草稿保留:${String(e)}`)
+      notify('error', t(localeSession.get(), 'common.notifySaveFailed', { detail: String(e) }))
     }
   }
 
@@ -237,7 +240,9 @@ export default function WorkbenchApp(): JSX.Element {
 
   /* 全局快捷键(WB-02.14):Ctrl/Cmd+K 命令搜索、Ctrl/Cmd+S 保存、
    * Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z / Ctrl/Cmd+Y 重做。
-   * 输入框/文本区内撤销与重做交还浏览器原生行为(裁决见 keyboard.ts)。 */
+   * 输入框/文本区内撤销与重做交还浏览器原生行为(裁决见 keyboard.ts)。
+   * effect 保持 [] 依赖不重挂监听:提示文案的 locale 经 localeSession.get()
+   * 即时读取(WB-11.08),不引入组件级依赖。 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const shortcut = globalShortcutFor(e)
@@ -254,9 +259,9 @@ export default function WorkbenchApp(): JSX.Element {
           void saveProject()
         } else if (persistDraft(s)) {
           dispatch({ type: 'param/save' })
-          notify('success', '候选方案已保存到当前浏览器')
+          notify('success', t(localeSession.get(), 'common.notifyDraftSaved'))
         } else {
-          notify('warning', '浏览器存储不可用,草稿仍保留在当前页面')
+          notify('warning', t(localeSession.get(), 'common.notifyStorageUnavailable'))
         }
         return
       }
@@ -265,7 +270,7 @@ export default function WorkbenchApp(): JSX.Element {
       dispatch({ type: shortcut === 'undo' ? 'param/undo' : 'param/redo' })
       // 历史为空时是空操作,不报「已撤销/已重做」(无动作不给提示)
       if (getState() !== before) {
-        notify('info', shortcut === 'undo' ? '已撤销上一次参数修改' : '已重做上一次参数修改')
+        notify('info', shortcut === 'undo' ? t(localeSession.get(), 'common.notifyUndone') : t(localeSession.get(), 'common.notifyRedone'))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -275,7 +280,7 @@ export default function WorkbenchApp(): JSX.Element {
   /* 恢复全部默认值(确认后)——WB-05.12:恢复也走同一条撤销/重做历史 */
   const confirmResetAll = (): void => {
     dispatch({ type: 'param/reset-all' })
-    notify('info', '候选已恢复为基线配置,可撤销')
+    notify('info', t(locale, 'common.notifyRestored'))
   }
 
   const documents = deriveDocuments(state)
@@ -328,20 +333,20 @@ export default function WorkbenchApp(): JSX.Element {
     const mainChart = document.querySelector<SVGSVGElement>('#workspace svg.main-chart')
     if (format === 'csv') {
       download('sandtable-demo-candidates.csv', demoCsv(rows), 'text/csv;charset=utf-8')
-      notify('success', `已下载 sandtable-demo-candidates.csv(${rows.length} 候选,来源 ${'synthetic_demo'})`)
+      notify('success', t(locale, 'common.notifyCsvDownloaded', { count: rows.length, source: 'synthetic_demo' }))
     } else if (format === 'json') {
       download(
         'sandtable-demo-snapshot.json',
         demoSnapshot(rows, { values: candValues, design: state.design }),
         'application/json',
       )
-      notify('success', '已下载 sandtable-demo-snapshot.json(草稿与样例快照分开标注)')
+      notify('success', t(locale, 'common.notifyJsonDownloaded'))
     } else if (mainChart !== null) {
       const metric = METRICS[state.metric]
       download(`sandtable-demo-${metric.id}.svg`, svgFromElement(mainChart, metric.label, metric.id), 'image/svg+xml')
-      notify('success', `已下载 sandtable-demo-${metric.id}.svg(合成演示数据)`)
+      notify('success', t(locale, 'common.notifySvgDownloaded', { id: metric.id }))
     } else {
-      notify('warning', '当前没有可导出的主图;先在结果分析页打开响应图')
+      notify('warning', t(locale, 'common.notifyNoMainChart'))
     }
     patchOverlays({ exportDialog: { open: false, scope: 'all' } })
   }
@@ -357,8 +362,8 @@ export default function WorkbenchApp(): JSX.Element {
   const projectId = state.project?.projectId ?? DEMO_PROJECT_ID
   const unsavedCount = unsavedKeys(state.objectDrafts).length + (state.paramDraft.saved ? 0 : 1) + (state.designDirty ? 1 : 0)
   const saveLabel = state.project
-    ? unsavedCount > 0 ? `${unsavedCount} 项未保存修改` : '与项目文件一致'
-    : '演示项目无可保存文件'
+    ? unsavedCount > 0 ? t(locale, 'common.saveChangesCount', { count: unsavedCount }) : t(locale, 'common.savedWithFile')
+    : t(locale, 'common.demoNoSaveFile')
   const demoGroups: ExplorerGroup[] = [
     {
       id: 'config',
@@ -454,7 +459,7 @@ export default function WorkbenchApp(): JSX.Element {
 
   return (
     <div className="wb-app" data-wb-root>
-      <a className="skip-link" href="#workspace">跳到工作区</a>
+      <a className="skip-link" href="#workspace">{t(locale, 'common.skipToWorkspace')}</a>
       {/* WB-04.01 · YAML 与 .sandtable 文件选择入口(取消不触发 onChange) */}
       <input
         ref={fileInputRef}
@@ -475,7 +480,7 @@ export default function WorkbenchApp(): JSX.Element {
         onOpenProject={openProjectEntry}
         onSaveProject={state.project ? saveProject : null}
         saveLabel={saveLabel}
-        sourceLabel={state.project ? '项目文件' : undefined}
+        sourceLabel={state.project ? t(locale, 'common.projectFile') : undefined}
       />
       <ActivityRail
         page={state.page}
@@ -490,8 +495,8 @@ export default function WorkbenchApp(): JSX.Element {
         onOpen={openResource}
         footerNote={
           state.project
-            ? <>项目文件已打开:配置草稿按对象隔离,保存时全部条目与产物一次写入归档。</>
-            : <>候选编辑保存在当前浏览器。<br />样例结果与编辑草稿独立。</>
+            ? <>{t(locale, 'common.explorerFooterProject')}</>
+            : <>{t(locale, 'common.explorerFooterDemoSaved')}<br />{t(locale, 'common.explorerFooterDemoDraft')}</>
         }
         groups={projectGroups ?? demoGroups}
       />
@@ -533,9 +538,9 @@ export default function WorkbenchApp(): JSX.Element {
         draftSavedLabel={
           state.project
             ? unsavedKeys(state.objectDrafts).length === 0
-              ? '项目配置与项目文件一致'
-              : `项目配置有 ${unsavedKeys(state.objectDrafts).length} 个对象未保存`
-            : state.paramDraft.saved ? '浏览器本地草稿已保存' : '存在未保存修改'
+              ? t(locale, 'common.draftSyncProject')
+              : t(locale, 'common.draftUnsavedObjects', { count: unsavedKeys(state.objectDrafts).length })
+            : state.paramDraft.saved ? t(locale, 'common.draftSavedLocal') : t(locale, 'common.draftUnsaved')
         }
       />
 
@@ -554,52 +559,43 @@ export default function WorkbenchApp(): JSX.Element {
           }).length,
           selected: 1,
         }}
-        selectedLabel={state.selectedCandidateId?.slice(0, 11) ?? '未选择'}
+        selectedLabel={state.selectedCandidateId?.slice(0, 11) ?? t(locale, 'common.notSelected')}
       />
       <ConfirmDialog
         open={overlays.confirmResetAll}
-        title="恢复所有参数的默认基线值"
-        confirmLabel="恢复默认值"
+        title={t(locale, 'common.confirmResetTitle')}
+        confirmLabel={t(locale, 'common.confirmResetConfirm')}
         onConfirm={confirmResetAll}
         onClose={() => patchOverlays({ confirmResetAll: false })}
         body={
-          <p>
-            将把候选方案 A 中 {draftChanges} 项变更恢复为注册表默认值。可以通过"撤销"恢复本次修改。
-            已保存的浏览器草稿在再次保存前保持原值。
-          </p>
+          <p>{t(locale, 'common.confirmResetBody', { count: draftChanges })}</p>
         }
       />
       {/* WB-04.12 · 打开其他项目前:未保存修改守卫(取消 = 保留当前项目) */}
       <ConfirmDialog
         open={overlays.confirmOpen.open}
-        title={`打开 ${overlays.confirmOpen.pending?.name ?? ''}`}
-        confirmLabel="放弃修改并打开"
+        title={t(locale, 'common.confirmOpenTitle', { name: overlays.confirmOpen.pending?.name ?? '' })}
+        confirmLabel={t(locale, 'common.confirmOpenConfirm')}
         tone="danger"
         onConfirm={confirmOpenPending}
         onClose={() => patchOverlays({ confirmOpen: { open: false, pending: null } })}
         body={
-          <p>
-            当前有未保存的修改(参数草稿 / 项目配置 / 实验草稿)。打开其他项目会放弃这些修改;
-            本项目与对象的浏览器草稿记录保留,重新打开同一项目时仍可恢复。
-          </p>
+          <p>{t(locale, 'common.confirmOpenBody')}</p>
         }
       />
       {/* WB-04.12 · 关闭项目(回到演示项目)前:未保存修改守卫 */}
       <ConfirmDialog
         open={overlays.confirmClose}
-        title={`关闭项目「${state.project?.name ?? ''}」`}
-        confirmLabel="放弃修改并关闭"
+        title={t(locale, 'common.confirmCloseTitle', { name: state.project?.name ?? '' })}
+        confirmLabel={t(locale, 'common.confirmCloseConfirm')}
         tone="danger"
         onConfirm={() => {
           dispatch({ type: 'project/close' })
-          notify('info', '已关闭项目,回到内置演示项目')
+          notify('info', t(locale, 'common.notifyProjectClosed'))
         }}
         onClose={() => patchOverlays({ confirmClose: false })}
         body={
-          <p>
-            项目「{state.project?.name ?? ''}」有未保存的修改。关闭后将回到演示项目;
-            浏览器草稿记录保留,重新打开同一项目文件时仍可恢复。
-          </p>
+          <p>{t(locale, 'common.confirmCloseBody', { name: state.project?.name ?? '' })}</p>
         }
       />
       <AboutDialog
@@ -624,21 +620,19 @@ function currentSelected(state: WorkbenchState) {
 
 /* —— 次级弹层(关于 / 项目信息 / 快捷键):内容与原型口径一致 —— */
 function AboutDialog({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element {
+  const locale = useLocale()
   return (
     <ConfirmDialog
       open={open}
-      title="Sandtable · 第二版工作台(React 版)"
-      confirmLabel="开始使用"
+      title={t(locale, 'common.aboutTitle')}
+      confirmLabel={t(locale, 'common.aboutGetStarted')}
       onConfirm={() => {}}
       onClose={onClose}
       body={
         <>
-          <p>这个工作台用于评审数值策划的工作流:参数编辑 → 实验设计 → 任务队列 → 候选结果分析。</p>
-          <p>
-            参数路径、类型与基线值参考当前仓库注册表。图表和候选结果是内置合成数据,
-            尚未接入 Rust / WASM 内核(WB-03 起);编辑草稿保存在当前浏览器。
-          </p>
-          <p>可实际体验:选择图中候选、表格排序和筛选、指标切换、批量编辑与撤销、本地保存、演示任务取消、CSV / JSON / SVG 下载。</p>
+          <p>{t(locale, 'common.aboutBody1')}</p>
+          <p>{t(locale, 'common.aboutBody2')}</p>
+          <p>{t(locale, 'common.aboutBody3')}</p>
         </>
       }
     />
@@ -652,24 +646,19 @@ function ProjectInfoDialog({ open, onClose, onRequestConfirmClose }: {
 }): JSX.Element {
   const s = getState()
   const doc = s.project
+  const locale = useLocale()
   return (
     <ConfirmDialog
       open={open}
       title={doc ? doc.name : 'RPG 平衡实验室'}
-      confirmLabel={doc ? '打开配置编辑' : '打开参数表'}
+      confirmLabel={doc ? t(locale, 'common.openConfigEditor') : t(locale, 'common.openParamTable')}
       onConfirm={() => dispatch({ type: 'navigate', page: doc ? 'designer' : 'parameters' })}
       onClose={onClose}
       body={
         doc ? (
           <>
-            <p>
-              当前项目来自文件 {doc.sourceName}(项目 ID {String(doc.projectId)})。
-              场景 / 实验 / 结果条目已映射到项目浏览器;配置草稿按对象隔离,未保存状态在标签与状态栏可见。
-            </p>
-            <p>
-              保存项目会把全部配置(含未选中条目)与完整产物一次写入归档;运行提交时的输入快照与运行索引
-              results/runs.json 一并保存。内核执行接入前(WB-07)快照如实标注 model/schema = unknown。
-            </p>
+            <p>{t(locale, 'common.projectInfoFromFile', { name: doc.sourceName ?? '', id: String(doc.projectId) })}</p>
+            <p>{t(locale, 'common.projectInfoSaveAll')}</p>
             <p>
               <button
                 className="btn"
@@ -680,20 +669,17 @@ function ProjectInfoDialog({ open, onClose, onRequestConfirmClose }: {
                     onRequestConfirmClose()
                   } else {
                     dispatch({ type: 'project/close' })
-                    notify('info', '已关闭项目,回到内置演示项目')
+                    notify('info', t(locale, 'common.notifyProjectClosed'))
                   }
                 }}
               >
-                关闭项目(回到演示项目)
+{t(locale, 'common.projectInfoCloseButton')}
               </button>
             </p>
           </>
         ) : (
           <>
-            <p>
-              这是内置样例项目(项目 ID {String(DEMO_PROJECT_ID)}),参数/基线来自注册表,图表为合成演示数据。
-              用应用栏「打开项目…」可载入 .sandtable 项目文件或 YAML 配置(取消选择不报错)。
-            </p>
+            <p>{t(locale, 'common.projectInfoDemoBody', { id: String(DEMO_PROJECT_ID) })}</p>
           </>
         )
       }
@@ -702,22 +688,23 @@ function ProjectInfoDialog({ open, onClose, onRequestConfirmClose }: {
 }
 
 function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element {
+  const locale = useLocale()
   const rows: Array<[string, string]> = [
-    ['查找参数与命令', 'Ctrl / ⌘ + K'],
-    ['保存参数草稿', 'Ctrl / ⌘ + S'],
-    ['撤销参数修改', 'Ctrl / ⌘ + Z'],
-    ['重做参数修改', 'Ctrl / ⌘ + Shift + Z · Ctrl / ⌘ + Y'],
-    ['输入框内的撤销 / 重做', '浏览器原生行为,工作台不接管'],
-    ['候选表选择上一项 / 下一项', '↑ / ↓'],
-    ['文档标签切换', '← / → · Home / End'],
-    ['图中观测点选择', 'Tab → Enter'],
-    ['关闭对话框', 'Esc'],
+    [t(locale, 'common.commandSearchTitle'), 'Ctrl / ⌘ + K'],
+    [t(locale, 'common.shortcutSaveDraft'), 'Ctrl / ⌘ + S'],
+    [t(locale, 'common.shortcutUndo'), 'Ctrl / ⌘ + Z'],
+    [t(locale, 'common.shortcutRedo'), 'Ctrl / ⌘ + Shift + Z · Ctrl / ⌘ + Y'],
+    [t(locale, 'common.shortcutNativeUndo'), t(locale, 'common.shortcutNativeUndoHint')],
+    [t(locale, 'common.shortcutSelectNext'), '↑ / ↓'],
+    [t(locale, 'common.shortcutTabSwitch'), '← / → · Home / End'],
+    [t(locale, 'common.shortcutChartPoint'), 'Tab → Enter'],
+    [t(locale, 'common.closeDialog'), 'Esc'],
   ]
   return (
     <ConfirmDialog
       open={open}
-      title="键盘操作"
-      confirmLabel="关闭"
+      title={t(locale, 'common.shortcutsTitle')}
+      confirmLabel={t(locale, 'common.close')}
       onConfirm={() => {}}
       onClose={onClose}
       body={

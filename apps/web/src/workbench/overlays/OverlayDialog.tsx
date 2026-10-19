@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { WbIcon } from '../components/icons.tsx'
+import { t } from '../../lib/i18n/index.ts'
+import { useLocale } from '../state/localeStore.ts'
 
 export type OverlayDialogProps = {
   open: boolean
@@ -25,6 +27,7 @@ export function OverlayDialog({
   footer,
   dismissable = true,
 }: OverlayDialogProps): JSX.Element {
+  const locale = useLocale()
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const dialog = ref.current
@@ -48,7 +51,7 @@ export function OverlayDialog({
       <header className="modal-header">
         <h2 id={titleId}>{title}</h2>
         {dismissable && (
-          <button className="icon-button" onClick={onClose} aria-label="关闭对话框">
+          <button className="icon-button" onClick={onClose} aria-label={t(locale, 'common.closeDialog')}>
             <WbIcon name="cross" />
           </button>
         )}
