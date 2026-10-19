@@ -19,6 +19,8 @@ import {
   LOCALE_STORAGE_KEY,
 } from '../src/lib/i18n/detect.ts'
 import { fmtNumber, fmtPercent, fmtDate } from '../src/lib/i18n/format.ts'
+import { pluralCategory } from '../src/lib/i18n/plural.ts'
+import { tPlural } from '../src/lib/i18n/index.ts'
 
 test('WB-11.01:locale 定义——zh-CN/en-US、固定显示名、en-US 兜底', () => {
   assert.deepEqual(
@@ -130,4 +132,35 @@ test('WB-11.18:百分比是唯一的比例→百分数转换点,百分点不标�
 test('WB-11.18:日期用 UTC 显式格式化,不随本机时区漂移', () => {
   assert.equal(fmtDate('en-US', '2026-10-20'), '10/20/2026')
   assert.equal(fmtDate('zh-CN', '2026-10-20'), '2026/10/20')
+})
+
+test('WB-11.17:复数规则按 locale 选形,不拼语言碎片', () => {
+  // 规则引擎 = Intl.PluralRules:en-US 1→one、其余→other
+  assert.equal(pluralCategory('en-US', 1), 'one')
+  assert.equal(pluralCategory('en-US', 3), 'other')
+  // zh-CN 无复数变化,恒 other(PO 类作形容词也不变形)
+  assert.equal(pluralCategory('zh-CN', 1), 'other')
+  assert.equal(pluralCategory('zh-CN', 3), 'other')
+  assert.equal(pluralCategory('xx-XX', 3), 'other', '非法 locale 由 Intl 回退到默认规则')
+})
+
+test('WB-11.17:tPlural 按词典 .one/.other 选形,{n} 自动注入', () => {
+  assert.equal(
+    tPlural('en-US', 'tasks.remaining', 1),
+    en['tasks.remaining.one'].replace('{n}', '1'),
+  )
+  assert.equal(
+    tPlural('en-US', 'tasks.remaining', 3),
+    en['tasks.remaining.other'].replace('{n}', '3'),
+  )
+  // zh 恒 other(词典里 .one 仅为与 en 键集对齐,运行时不命中)
+  assert.equal(
+    tPlural('zh-CN', 'tasks.remaining', 1),
+    zh['tasks.remaining.other'].replace('{n}', '1'),
+  )
+  // 复数形照常吃命名参数
+  assert.equal(
+    tPlural('en-US', 'data.rowsExported', 2, { where: 'CSV' }),
+    en['data.rowsExported.other'].replace('{n}', '2').replace('{where}', 'CSV'),
+  )
 })

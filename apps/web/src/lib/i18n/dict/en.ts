@@ -43,12 +43,17 @@ export const en = {
   'tasks.succeeded': 'Succeeded',
   'tasks.failed': 'Failed',
   'tasks.cancelled': 'Cancelled',
+  // 计数复数形:en 有 one/other 之分,形句整体重写而非在句子里拼词
+  'tasks.remaining.one': '{n} task remaining',
+  'tasks.remaining.other': '{n} tasks remaining',
 
   // 数据与导出
   'data.export': 'Export',
   'data.export.csv': 'Export CSV',
   'data.export.json': 'Export JSON',
   'data.export.svg': 'Export SVG',
+  'data.rowsExported.one': '{n} row exported as {where}',
+  'data.rowsExported.other': '{n} rows exported as {where}',
 
   // 错误信息
   'errors.config': 'Configuration error',

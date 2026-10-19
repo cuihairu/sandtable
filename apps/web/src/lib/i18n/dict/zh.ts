@@ -42,12 +42,17 @@ export const zh = {
   'tasks.succeeded': '已完成',
   'tasks.failed': '失败',
   'tasks.cancelled': '已取消',
+  // 计数复数形:zh 无单复变化,.one 仅为与 en 键集对齐,运行时恒走 .other
+  'tasks.remaining.one': '剩余 {n} 个任务',
+  'tasks.remaining.other': '剩余 {n} 个任务',
 
   // 数据与导出
   'data.export': '导出',
   'data.export.csv': '导出 CSV',
   'data.export.json': '导出 JSON',
   'data.export.svg': '导出 SVG',
+  'data.rowsExported.one': '已按 {where} 导出 {n} 行',
+  'data.rowsExported.other': '已按 {where} 导出 {n} 行',
 
   // 错误信息(前缀与绑定层错误串对齐,见 lib/errors.ts)
   'errors.config': '配置错误',
