@@ -153,10 +153,10 @@ export function RunPlanSidebar({
             </div>
           </>
         )}
-        {planError && budgetActions(planError) !== null && (
+        {planError && budgetActions(planError, locale) !== null && (
           <div className="check-row info">
             <WbIcon name="info" />
-            <span>{budgetActions(planError)}</span>
+            <span>{budgetActions(planError, locale)}</span>
           </div>
         )}
       </div>

@@ -14,6 +14,18 @@ import { formatScalar } from '../params/paramsLogic.ts'
 import { hashId, ID_PREFIXES } from '../ids.ts'
 import { PARAM_REGISTRY, registryParam } from '../params/paramRegistry.ts'
 import type { ParamKind } from '../../lib/types.ts'
+import { t } from '../../lib/i18n/index.ts'
+import type { Locale, TranslationKey, InterpolationParams } from '../../lib/i18n/index.ts'
+
+/** WB-11.13:逻辑层错误串的回退语言 = 中文真值源(不取站点默认 en-US)。
+ *  校验串语义由节点侧测试锁中文子串(experiment-form/workbench-logic),
+ *  且中文词典是真值源;界面调用一律显式传 locale,缺省只影响纯逻辑消费方。 */
+const LOGIC_FALLBACK: Locale = 'zh-CN'
+
+/** WB-11.13:逻辑层错误串可选带 locale;缺省按 LOGIC_FALLBACK(zh-CN)出。 */
+function msg(locale: Locale | undefined, key: TranslationKey, params?: InterpolationParams): string {
+  return t(locale ?? LOGIC_FALLBACK, key, params)
+}
 
 /** 设计表单方法:ab = A/B 配对比较;sweep = 内核参数扫描。 */
 export type DesignerMethod = 'ab' | 'grid' | 'random'
@@ -75,6 +87,44 @@ const KPI_TABLE: Record<string, KpiInfo> = {
   loot_gold_per_player: { label: 'Loot 人均金币', unit: 'value', unitText: '金币' },
 }
 
+/** 指标 id → 词典键(显示名走词典;id 本身稳定,参与内核契约与序列化) */
+const KPI_LABEL_KEY: Record<string, 'analysis.kpi.retention_d7' | 'analysis.kpi.retention_d3' | 'analysis.kpi.win_rate' | 'analysis.kpi.gold_per_player' | 'analysis.kpi.power_p50' | 'analysis.kpi.churn_rate' | 'analysis.kpi.gacha_pulls_to_hit' | 'analysis.kpi.loot_gold_per_player'> = {
+  retention_d7: 'analysis.kpi.retention_d7',
+  retention_d3: 'analysis.kpi.retention_d3',
+  win_rate: 'analysis.kpi.win_rate',
+  gold_per_player: 'analysis.kpi.gold_per_player',
+  power_p50: 'analysis.kpi.power_p50',
+  churn_rate: 'analysis.kpi.churn_rate',
+  gacha_pulls_to_hit: 'analysis.kpi.gacha_pulls_to_hit',
+  loot_gold_per_player: 'analysis.kpi.loot_gold_per_player',
+}
+
+/** WB-11.14:指标显示名(KPI_TABLE.label 是 zh 回退源;未登记指标原样返回 id) */
+export function kpiDisplayName(metric: string, locale?: Locale): string {
+  const key = KPI_LABEL_KEY[metric]
+  if (key !== undefined) return msg(locale, key)
+  return KPI_TABLE[metric]?.label ?? metric
+}
+
+/** 单位后缀词典键(约束表/坐标轴共用;percent 两种语言同为 %) */
+const KPI_UNIT_KEY: Record<string, 'analysis.kpiUnit.percent' | 'analysis.kpiUnit.gold' | 'analysis.kpiUnit.power' | 'analysis.kpiUnit.count'> = {
+  retention_d7: 'analysis.kpiUnit.percent',
+  retention_d3: 'analysis.kpiUnit.percent',
+  win_rate: 'analysis.kpiUnit.percent',
+  gold_per_player: 'analysis.kpiUnit.gold',
+  power_p50: 'analysis.kpiUnit.power',
+  churn_rate: 'analysis.kpiUnit.percent',
+  gacha_pulls_to_hit: 'analysis.kpiUnit.count',
+  loot_gold_per_player: 'analysis.kpiUnit.gold',
+}
+
+/** WB-11.14:单位后缀(KPI_TABLE.unitText 是 zh 回退源) */
+export function kpiUnitText(metric: string, locale?: Locale): string {
+  const key = KPI_UNIT_KEY[metric]
+  if (key !== undefined) return msg(locale, key)
+  return KPI_TABLE[metric]?.unitText ?? ''
+}
+
 export function kpiInfo(metric: string): KpiInfo | undefined {
   return KPI_TABLE[metric]
 }
@@ -127,25 +177,27 @@ const INTEGER_KINDS: readonly string[] = ['u32', 'u64', 'i64']
 
 export type FactorCheckContext = {
   method: DesignerMethod
+  /** 错误文案语言(WB-11.13;缺省 zh-CN) */
+  locale?: Locale
 }
 
 export function factorRowError(f: FactorDraft, ctx: FactorCheckContext): string | null {
   const def = registryParam(f.path)
-  if (!def) return '路径不在参数注册表'
+  if (!def) return msg(ctx.locale, 'experiment.errFactorNotRegistered')
   if (!SWEEPABLE_KINDS.includes(def.kind)) {
-    return `参数类型 ${def.kind} 不支持扫描数值域(可选 u32/u64/i64/f64)`
+    return msg(ctx.locale, 'experiment.errKindNotSweepable', { kind: def.kind })
   }
-  if (!Number.isFinite(f.min) || !Number.isFinite(f.max)) return '范围需要有限数'
-  if (f.max < f.min) return '最大值不小于最小值'
+  if (!Number.isFinite(f.min) || !Number.isFinite(f.max)) return msg(ctx.locale, 'experiment.errRangeFinite')
+  if (f.max < f.min) return msg(ctx.locale, 'experiment.errMaxLtMin')
   if (INTEGER_KINDS.includes(def.kind)) {
     if (!Number.isSafeInteger(f.min) || !Number.isSafeInteger(f.max) || f.min < 0) {
-      return `${def.kind} 参数范围需要非负整数`
+      return msg(ctx.locale, 'experiment.errIntegerRange', { kind: def.kind })
     }
     if (ctx.method === 'grid' && (!Number.isSafeInteger(f.step) || f.step <= 0)) {
-      return `${def.kind} 参数的 Grid 步长需要正整数`
+      return msg(ctx.locale, 'experiment.errGridStepInt', { kind: def.kind })
     }
   } else if (ctx.method === 'grid' && (!Number.isFinite(f.step) || f.step <= 0)) {
-    return 'Grid 步长需要正数'
+    return msg(ctx.locale, 'experiment.errGridStepPositive')
   }
   return null
 }
@@ -163,10 +215,15 @@ export type ScenarioStats = {
 }
 
 /** 从候选(或实验)YAML 读场景面:population/duration/seed/population_mix。
- *  缺值如实 null(不回退注册默认,WB-05.03 纪律)。 */
-export function scenarioStats(yaml: string): ScenarioStats {
+ *  缺值如实 null(不回退注册默认,WB-05.03 纪律)。
+ *  错误串语言可选(WB-11.13),缺省 zh-CN。 */
+export function scenarioStats(yaml: string, locale?: Locale): ScenarioStats {
   const parsed = parseConfig(yaml)
-  const errors: string[] = [...(parsed.errors.length > 0 ? parsed.errors.map((e) => `第 ${e.line} 行:${e.message}`) : [])]
+  const errors: string[] = [
+    ...(parsed.errors.length > 0
+      ? parsed.errors.map((e) => msg(locale, 'params.yamlErrorLine', { line: e.line, message: e.message }))
+      : []),
+  ]
   const num = (path: string): number | null => {
     const v = readNumeric(parsed, path)
     if (v === undefined) return null
@@ -175,22 +232,22 @@ export function scenarioStats(yaml: string): ScenarioStats {
   const players = num('scenario.population')
   const durationText = readText(parsed, 'scenario.duration')
   let days: number | null = null
-  if (durationText === null) errors.push('缺少 scenario.duration;KPI 可用性与规模指标未定')
+  if (durationText === null) errors.push(msg(locale, 'experiment.errScenarioNoDuration'))
   else {
     const m = /^(\d+)\s*d$/i.exec(durationText.trim())
     if (m) days = Number(m[1])
-    else errors.push(`scenario.duration「${durationText}」不是 Nd 形式`)
+    else errors.push(msg(locale, 'experiment.errScenarioDurationBad', { text: durationText }))
   }
   const seed = readNumeric(parsed, 'scenario.seed') ?? null
-  if (seed === null) errors.push('缺少 scenario.seed(CRN 配对依赖两侧共用该种子)')
-  if (players === null) errors.push('缺少 scenario.population')
+  if (seed === null) errors.push(msg(locale, 'experiment.errScenarioNoSeed'))
+  if (players === null) errors.push(msg(locale, 'experiment.errScenarioNoPopulation'))
   const mix = {
     casual: num('scenario.population_mix.casual'),
     core: num('scenario.population_mix.core'),
     whale: num('scenario.population_mix.whale'),
   }
   if (mix.casual === null && mix.core === null && mix.whale === null) {
-    errors.push('缺少 scenario.population_mix 配比')
+    errors.push(msg(locale, 'experiment.errScenarioNoMix'))
   }
   return { players, days, durationText, seed, mix, errors }
 }
@@ -203,9 +260,9 @@ export type KpiAvailability = {
   reason: string | null
 }
 
-export function kpiAvailability(yaml: string): Record<string, KpiAvailability> {
+export function kpiAvailability(yaml: string, locale?: Locale): Record<string, KpiAvailability> {
   const parsed = parseConfig(yaml)
-  const stats = scenarioStats(yaml)
+  const stats = scenarioStats(yaml, locale)
   const days = stats.days
   const hasGacha = parsed.leaves.some((l) => l.path.startsWith('model.gacha.'))
   const hasLoot = parsed.leaves.some((l) => l.path.startsWith('model.loot.'))
@@ -213,13 +270,13 @@ export function kpiAvailability(yaml: string): Record<string, KpiAvailability> {
   for (const metric of KPI_POOL) {
     let reason: string | null = null
     if (metric === 'retention_d7' && (days === null || days < 7)) {
-      reason = days === null ? 'retention_d7 需要 scenario.duration ≥ 7d,当前未读到天数' : 'retention_d7 需要 days ≥ 7,当前配置不足'
+      reason = days === null ? msg(locale, 'experiment.errD7NoDays') : msg(locale, 'experiment.errD7Short')
     } else if (metric === 'retention_d3' && (days === null || days < 3)) {
-      reason = days === null ? 'retention_d3 需要 scenario.duration ≥ 3d,当前未读到天数' : 'retention_d3 需要 days ≥ 3,当前配置不足'
+      reason = days === null ? msg(locale, 'experiment.errD3NoDays') : msg(locale, 'experiment.errD3Short')
     } else if (metric === 'gacha_pulls_to_hit' && !hasGacha) {
-      reason = 'gacha_pulls_to_hit 需要 model.gacha 配置,当前未配置'
+      reason = msg(locale, 'experiment.errKpiNeedGacha')
     } else if (metric === 'loot_gold_per_player' && !hasLoot) {
-      reason = 'loot_gold_per_player 需要 model.loot 配置,当前未配置'
+      reason = msg(locale, 'experiment.errKpiNeedLoot')
     }
     out[metric] = { ok: reason === null, reason }
   }
@@ -238,49 +295,53 @@ export type DesignError = {
 export type DesignContext = {
   /** 每个 KPI 的可用性(来自 kpiAvailability(WB-06.07)) */
   availability: Record<string, KpiAvailability>
+  /** 错误文案语言(WB-11.13;缺省 zh-CN) */
+  locale?: Locale
 }
 
 export function designErrors(design: DesignDraft, ctx: DesignContext): DesignError[] {
+  const locale = ctx.locale
   const errors: DesignError[] = []
-  if (!design.name.trim()) errors.push({ scope: 'name', locator: null, message: '请填写实验名称' })
+  if (!design.name.trim()) errors.push({ scope: 'name', locator: null, message: msg(locale, 'experiment.errNameRequired') })
   if (!Number.isSafeInteger(design.reps) || design.reps < 1) {
-    errors.push({ scope: 'reps', locator: null, message: 'replicates 需要正整数' })
+    errors.push({ scope: 'reps', locator: null, message: msg(locale, 'experiment.errRepsPositive') })
   }
   if (design.method === 'ab') {
     // A/B:约束目标不参与内核 sweep;结果显示另有 WB-03.10 桥接。
     return errors
   }
   if (design.factors.length === 0) {
-    errors.push({ scope: 'factors', locator: null, message: '至少需要一个扫描因子' })
+    errors.push({ scope: 'factors', locator: null, message: msg(locale, 'experiment.errFactorMin') })
   }
   const seen = new Set<string>()
   for (const f of design.factors) {
-    const message = factorRowError(f, { method: design.method })
+    const message = factorRowError(f, { method: design.method, locale })
     if (message) errors.push({ scope: 'factors', locator: f.path, message })
     if (seen.has(f.path)) {
-      errors.push({ scope: 'factors', locator: f.path, message: '因子路径重复' })
+      errors.push({ scope: 'factors', locator: f.path, message: msg(locale, 'experiment.errFactorDup') })
     }
     seen.add(f.path)
   }
   if (design.method === 'random') {
     if (!Number.isSafeInteger(design.samples) || design.samples < 1) {
-      errors.push({ scope: 'sampling', locator: null, message: '采样数需要正整数' })
+      errors.push({ scope: 'sampling', locator: null, message: msg(locale, 'experiment.errSamplesPositive') })
     } else if (design.samples > 10000) {
-      errors.push({ scope: 'sampling', locator: null, message: '采样数超过内核上限 10000' })
+      errors.push({ scope: 'sampling', locator: null, message: msg(locale, 'experiment.errSamplesCap') })
     }
   }
-  for (const t of design.targets) {
-    const av = ctx.availability[t.metric]
+  for (const target of design.targets) {
+    const av = ctx.availability[target.metric]
     if (!av || !av.ok) {
-      errors.push({ scope: 'kpi', locator: t.metric, message: av?.reason ?? '指标不在内核可选清单' })
+      errors.push({ scope: 'kpi', locator: target.metric, message: av?.reason ?? msg(locale, 'experiment.errKpiUnknown') })
       continue
     }
-    if (t.min === null && t.max === null) {
-      errors.push({ scope: 'kpi', locator: t.metric, message: `${KPI_TABLE[t.metric]?.label ?? t.metric} 的约束需要至少给出 min 或 max` })
-    } else if (t.min !== null && t.max !== null && t.min > t.max) {
-      errors.push({ scope: 'kpi', locator: t.metric, message: `${KPI_TABLE[t.metric]?.label ?? t.metric} 的 min 大于 max` })
-    } else if (isRatioMetric(t.metric) && [t.min, t.max].some((v) => v !== null && (v < 0 || v > 1))) {
-      errors.push({ scope: 'kpi', locator: t.metric, message: `${KPI_TABLE[t.metric]?.label ?? t.metric} 是比例口径(0–1),越界即 UI 百分数口径未换算` })
+    const label = kpiDisplayName(target.metric, locale)
+    if (target.min === null && target.max === null) {
+      errors.push({ scope: 'kpi', locator: target.metric, message: msg(locale, 'experiment.errKpiNeedBound', { label }) })
+    } else if (target.min !== null && target.max !== null && target.min > target.max) {
+      errors.push({ scope: 'kpi', locator: target.metric, message: msg(locale, 'experiment.errKpiMinGtMax', { label }) })
+    } else if (isRatioMetric(target.metric) && [target.min, target.max].some((v) => v !== null && (v < 0 || v > 1))) {
+      errors.push({ scope: 'kpi', locator: target.metric, message: msg(locale, 'experiment.errKpiRatioRange', { label }) })
     }
   }
   return errors
@@ -385,35 +446,38 @@ export type ScenarioEditOutcome =
   | { ok: false; why: string }
 
 /** 场景(YAML)叶值编辑:行级外科手术写回;失败返回原 YAML + 原因。
- *  配比是 UI 百分数入参 → 自动 ÷100 写比例(WB-06.08 同一转换纪律)。 */
-export function applyScenarioLeaf(yaml: string, leaf: ScenarioLeaf, text: string): ScenarioEditOutcome {
-  const t = text.trim()
-  if (t === '') return { ok: false, why: '内容为空,未写入' }
+ *  配比是 UI 百分数入参 → 自动 ÷100 写比例(WB-06.08 同一转换纪律)。
+ *  失败原因语言可选(WB-11.13),缺省 zh-CN。 */
+export function applyScenarioLeaf(yaml: string, leaf: ScenarioLeaf, text: string, locale?: Locale): ScenarioEditOutcome {
+  const value = text.trim()
+  if (value === '') return { ok: false, why: msg(locale, 'experiment.errLeafEmpty') }
   const parsed = parseConfig(yaml)
   const edit = (path: string, newText: string): ScenarioEditOutcome => {
     const outcome = applyParamEdit(yaml, parsed, path, newText)
-    return outcome.ok ? { ok: true, yaml: outcome.yaml, path } : { ok: false, why: `${path} 写入失败:${outcome.error}` }
+    return outcome.ok
+      ? { ok: true, yaml: outcome.yaml, path }
+      : { ok: false, why: msg(locale, 'experiment.errLeafWrite', { path, error: outcome.error }) }
   }
   switch (leaf) {
     case 'population': {
-      const n = Number(t)
-      if (!Number.isSafeInteger(n) || n < 1) return { ok: false, why: '玩家数需为正整数(scenario.population)' }
+      const n = Number(value)
+      if (!Number.isSafeInteger(n) || n < 1) return { ok: false, why: msg(locale, 'experiment.errPopulationInt') }
       return edit('scenario.population', String(n))
     }
     case 'duration_days': {
-      if (!/^\d+$/.test(t)) return { ok: false, why: '仿真天数需为非负整数,写入 Nd 形式' }
-      return edit('scenario.duration', `${Number(t)}d`)
+      if (!/^\d+$/.test(value)) return { ok: false, why: msg(locale, 'experiment.errDaysInt') }
+      return edit('scenario.duration', `${Number(value)}d`)
     }
     case 'seed': {
-      if (!/^\d+$/.test(t)) return { ok: false, why: 'seed 为 u64 非负整数(文本提交防大整数精度丢失)' }
-      return edit('scenario.seed', t)
+      if (!/^\d+$/.test(value)) return { ok: false, why: msg(locale, 'experiment.errSeedInt') }
+      return edit('scenario.seed', value)
     }
     case 'mix_casual':
     case 'mix_core':
     case 'mix_whale': {
-      const n = Number(t)
+      const n = Number(value)
       if (!Number.isFinite(n) || n < 0 || n > 100) {
-        return { ok: false, why: '配比为 UI 百分数(0–100);YAML 自动 ÷100 写比例' }
+        return { ok: false, why: msg(locale, 'experiment.errMixPercent') }
       }
       const path = `scenario.population_mix.${leaf.slice(4)}`
       return edit(path, formatScalar(n / 100))
@@ -427,16 +491,17 @@ export type ThresholdOutcome =
   | { ok: true; value: number | null; kernelText: string | null }
   | { ok: false; why: string }
 
-/** UI 文本 → 内核口径:比例类指标 ÷100;绝对值类原样;空串 = 清除(null)。 */
-export function thresholdFromUi(metric: string, field: 'min' | 'max', text: string): ThresholdOutcome {
-  const t = text.trim()
+/** UI 文本 → 内核口径:比例类指标 ÷100;绝对值类原样;空串 = 清除(null)。
+ *  失败原因语言可选(WB-11.13),缺省 zh-CN。 */
+export function thresholdFromUi(metric: string, field: 'min' | 'max', text: string, locale?: Locale): ThresholdOutcome {
+  const trimmed = text.trim()
   void field
-  if (t === '') return { ok: true, value: null, kernelText: null }
-  const n = Number(t)
-  if (!Number.isFinite(n)) return { ok: false, why: `${metric} ${field} 需为数值` }
+  if (trimmed === '') return { ok: true, value: null, kernelText: null }
+  const n = Number(trimmed)
+  if (!Number.isFinite(n)) return { ok: false, why: msg(locale, 'experiment.errThresholdNumber', { metric, field }) }
   const value = uiPercentToKernel(metric, n)
   if (isRatioMetric(metric) && value !== null && (value < 0 || value > 1)) {
-    return { ok: false, why: `${metric} 是比例口径:UI 百分数应为 0–100` }
+    return { ok: false, why: msg(locale, 'experiment.errThresholdRatio', { metric }) }
   }
   return { ok: true, value, kernelText: value === null ? null : formatScalar(value) }
 }
@@ -458,10 +523,10 @@ export function planErrorLines(message: string): string[] {
 
 /* ————— WB-06.13 · 预算类内核错误的可行操作提示(不编造数字) ————— */
 
-export function budgetActions(message: string): string | null {
-  return /预算/.test(message)
-    ? '可行操作:缩小因子范围或加大步长(降低候选数)、减少 replicates,或改用桌面端(更大预算)再提交'
-    : null
+/** 提示文案语言可选(WB-11.13),缺省 zh-CN;触发词匹配保持中文「预算」
+ *  (内核错误消息当前为中文原文,匹配不随 UI 语言漂移)。 */
+export function budgetActions(message: string, locale?: Locale): string | null {
+  return /预算/.test(message) ? msg(locale, 'experiment.budgetHint') : null
 }
 
 export const METHOD_INFO: ReadonlyArray<{ id: DesignerMethod; label: string; desc: string }> = [

@@ -7,7 +7,7 @@
 //   成比例口径(就地标注,不静默混算);绝对值类指标不换算(WB-06.08)。
 import type { JSX } from 'react'
 import { METRIC_KEYS } from '../../lib/types.ts'
-import { kpiInfo, isRatioMetric, kernelToUiPercent } from './designerLogic.ts'
+import { kpiInfo, kpiDisplayName, kpiUnitText, isRatioMetric, kernelToUiPercent } from './designerLogic.ts'
 import type { ConstraintDraft } from './designerLogic.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
@@ -102,6 +102,9 @@ export function KpiConstraintTable({
           {METRIC_KEYS.map((key) => {
             const info = kpiInfo(key)
             if (!info) return null
+            // WB-11.14:指标 id 稳定,显示名与单位后缀走词典
+            const label = kpiDisplayName(key, locale)
+            const unit = kpiUnitText(key, locale)
             const av = availability[key] ?? { ok: false, reason: '' }
             const draft = draftOf(targets, key)
             const disabled = !av.ok
@@ -112,7 +115,7 @@ export function KpiConstraintTable({
                   <input
                     type="checkbox"
                     className="checkbox"
-                    aria-label={t(locale, 'experiment.kpiSelectAria', { label: info.label })}
+                    aria-label={t(locale, 'experiment.kpiSelectAria', { label })}
                     checked={active}
                     disabled={disabled}
                     onChange={!disabled
@@ -121,9 +124,9 @@ export function KpiConstraintTable({
                   />
                 </td>
                 <td>
-                  {info.label}
+                  {label}
                   <span className="mono muted" style={{ display: 'block', fontSize: 10 }}>
-                    {key} / {info.unitText}
+                    {key} / {unit}
                   </span>
                   {disabled && (
                     <span role="alert" style={{ color: 'var(--wb-red)', fontSize: 10, display: 'block' }}>
@@ -134,7 +137,7 @@ export function KpiConstraintTable({
                 <td>
                   {active && draft ? (
                     <select
-                      aria-label={t(locale, 'experiment.kpiKindAria', { label: info.label })}
+                      aria-label={t(locale, 'experiment.kpiKindAria', { label })}
                       value={draft.kind}
                       onChange={(e) => onKindChange(key, e.currentTarget.value as 'hard' | 'soft')}
                     >
@@ -149,7 +152,7 @@ export function KpiConstraintTable({
                   {active && draft ? (
                     <ThresholdField
                       metric={key}
-                      label={info.label}
+                      label={label}
                       field="min"
                       draft={draft}
                       onThresholdChange={onThresholdChange}
@@ -162,7 +165,7 @@ export function KpiConstraintTable({
                   {active && draft ? (
                     <ThresholdField
                       metric={key}
-                      label={info.label}
+                      label={label}
                       field="max"
                       draft={draft}
                       onThresholdChange={onThresholdChange}

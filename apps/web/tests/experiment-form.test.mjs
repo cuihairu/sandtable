@@ -102,6 +102,36 @@ test('WB-06.03:因子表校验——注册表路径/类型/整数域/步长,非�
   assert.deepEqual(designErrors(defaultDesign(), { availability: AVAIL }), [])
 })
 
+/* ======================= WB-11.13:逻辑层错误串 locale 线程 ======================= */
+test('WB-11.13:校验/场景/阈值/预算错误串随 locale 走词典,缺省 zh-CN', () => {
+  // 缺省(不传 locale)= zh-CN:上一测块的中文子串断言即由该缺省语义背书
+  assert.equal(factorRowError({ path: 'model.fake.attack', min: 10, max: 20, step: 1 }, { method: 'grid' }), '路径不在参数注册表')
+  // 传 locale = en-US → 英文词条(id/字段名保持原样,不翻译契约名)
+  assert.equal(
+    factorRowError({ path: 'model.fake.attack', min: 10, max: 20, step: 1 }, { method: 'grid', locale: 'en-US' }),
+    'Path is not in the parameter registry',
+  )
+  const named = design({ name: 'en check', factors: [{ path: 'model.warrior.attack', min: 200, max: 100, step: 1 }] })
+  assert.ok(designErrors(named, { availability: AVAIL, locale: 'en-US' }).some((e) => e.message === 'Max must not be below min'))
+  assert.ok(designErrors(named, { availability: AVAIL }).some((e) => e.message === '最大值不小于最小值'))
+  const dup = design({ factors: [
+    { path: 'model.warrior.attack', min: 20, max: 220, step: 40 },
+    { path: 'model.warrior.attack', min: 20, max: 40, step: 5 },
+  ] })
+  assert.ok(designErrors(dup, { availability: AVAIL, locale: 'en-US' }).some((e) => e.message === 'Duplicate factor path'))
+  // 场景统计缺值错误 en(解析行前缀复用 params.yamlErrorLine 模板)
+  const noMix = "schema_version: '1'\nscenario: {population: 40, duration: 30d, seed: 1}\n"
+  assert.ok(scenarioStats(noMix, 'en-US').errors.includes('scenario.population_mix cohort shares missing'))
+  assert.equal(scenarioStats(noMix).errors[0], '缺少 scenario.population_mix 配比')
+  // 阈值口径错误 en
+  assert.equal(thresholdFromUi('win_rate', 'min', 'abc', 'en-US').why, 'win_rate min must be a number')
+  assert.ok(thresholdFromUi('win_rate', 'min', '120', 'en-US').why.includes('0–100'))
+  // 预算提示 en(触发词仍是内核中文「预算」,匹配不随 UI 语言漂移)
+  const advice = budgetActions('预算超限', 'en-US')
+  assert.ok(advice !== null && advice.startsWith('Options:'))
+  assert.equal(budgetActions('预算超限')?.startsWith('可行操作'), true)
+})
+
 /* ================================ WB-06.04 ================================ */
 test('WB-06.04:Random 模式名 = 内核 random;序列化(不含 step)与内核契约一致', () => {
   assert.equal(sweepModeOf('random', 'uniform'), 'random')

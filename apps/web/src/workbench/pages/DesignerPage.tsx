@@ -172,9 +172,9 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
   }, [experimentPath, design.method, doc, state.objectDrafts, locale])
 
   /* —— 校验与派生 —— */
-  const stats = scenarioStats(view.cand)
-  const availability = kpiAvailability(view.cand)
-  const errors = designErrors(design, { availability })
+  const stats = scenarioStats(view.cand, locale)
+  const availability = kpiAvailability(view.cand, locale)
+  const errors = designErrors(design, { availability, locale })
 
   const setMethod = (method: DesignerMethod): void => {
     // WB-06.14 · 兼容输入由本函数保留:仅改 method,其余字段原样保留
@@ -186,7 +186,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
     ? []
     : design.factors.map((f) => ({
         draft: f,
-        error: factorRowError(f, { method: design.method }) ?? undefined,
+        error: factorRowError(f, { method: design.method, locale }) ?? undefined,
       }))
 
   const onFactorChange = (index: number, next: DesignDraft['factors'][number]): void => {
@@ -389,7 +389,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
 
   /* —— 场景表单(WB-06.06) —— */
   const onScenarioEdit = (leaf: ScenarioLeaf, text: string): void => {
-    const outcome = applyScenarioLeaf(view.cand, leaf, text)
+    const outcome = applyScenarioLeaf(view.cand, leaf, text, locale)
     if (!outcome.ok) {
       notify('warning', outcome.why)
       return
@@ -413,7 +413,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
     dispatch({ type: 'design/set', patch: { targets: design.targets.map((t) => (t.metric === metric ? { ...t, kind } : t)) } })
   }
   const onThreshold = (metric: string, field: 'min' | 'max', text: string): void => {
-    const outcome = thresholdFromUi(metric, field, text)
+    const outcome = thresholdFromUi(metric, field, text, locale)
     if (!outcome.ok) {
       notify('warning', outcome.why)
       return

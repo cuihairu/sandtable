@@ -390,17 +390,46 @@ test('WB-11.13:实验设计页词条双语齐全(方法/因子/场景/采样/预
     'experiment.samplingLabel', 'experiment.sampling.lhc', 'experiment.samplingNote',
     'experiment.planTitle', 'experiment.planSims', 'experiment.planStale', 'experiment.noPlan',
     'experiment.preflightTitle', 'experiment.checkPlan', 'experiment.submitLabel', 'experiment.submitNote',
+    // 逻辑层错误串(designerLogic 纯函数输出,缺省 zh-CN)
+    'experiment.errNameRequired', 'experiment.errFactorDup', 'experiment.errKpiNeedBound',
+    'experiment.errScenarioNoSeed', 'experiment.errMixPercent', 'experiment.errThresholdRatio',
+    'experiment.errLeafWrite', 'experiment.errKpiUnknown', 'experiment.budgetHint',
   ]
   for (const k of required) {
     assert.ok(zhExp.includes(k), `缺词条 ${k}`)
   }
   // 通知类(提交路径)与插值占位对齐
   const slots = ['experiment.planBound', 'experiment.abCrn', 'experiment.refExperiment',
-    'experiment.submitNote', 'experiment.abBaselineArm', 'experiment.factorExists']
+    'experiment.submitNote', 'experiment.abBaselineArm', 'experiment.factorExists',
+    'experiment.errKindNotSweepable', 'experiment.errKpiNeedBound', 'experiment.errLeafWrite',
+    'experiment.errThresholdNumber', 'experiment.errScenarioDurationBad']
   for (const k of slots) {
     assert.ok(zhExp.includes(k), `缺词条 ${k}`)
     const zhSlots = [...zh[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
     const enSlots = [...en[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
     assert.deepEqual(enSlots, zhSlots, `${k} 双语占位必须一致`)
   }
+})
+
+test('WB-11.14:KPI 显示名与单位后缀双语齐全(指标 id 稳定,显示名走词典)', () => {
+  const zhA = Object.keys(zh).filter((k) => k.startsWith('analysis.'))
+  const enA = Object.keys(en).filter((k) => k.startsWith('analysis.'))
+  assert.deepEqual([...enA].sort(), [...zhA].sort(), 'analysis.* 键集合必须双语一致')
+  for (const k of zhA) {
+    assert.ok(zh[k].trim() !== '', `zh 词条 ${k} 不得为空`)
+    assert.ok(en[k].trim() !== '', `en 词条 ${k} 不得为空`)
+    // 显示名/单位不参与插值,不得携带 {slot}(占位属于图表标题族,另有词条)
+    assert.ok(!/\{\w+\}/.test(zh[k]) && !/\{\w+\}/.test(en[k]), `${k} 不应有插值占位`)
+  }
+  // 八个内核指标逐一点名(designerLogic.KPI_POOL 同源集合)
+  for (const m of ['retention_d7', 'retention_d3', 'win_rate', 'gold_per_player', 'power_p50',
+    'churn_rate', 'gacha_pulls_to_hit', 'loot_gold_per_player']) {
+    assert.ok(zhA.includes(`analysis.kpi.${m}`), `缺指标显示名 analysis.kpi.${m}`)
+  }
+  for (const u of ['percent', 'gold', 'power', 'count']) {
+    assert.ok(zhA.includes(`analysis.kpiUnit.${u}`), `缺单位词条 analysis.kpiUnit.${u}`)
+  }
+  // 点值锁定:zh 真值源 + en 自然语
+  assert.equal(zh['analysis.kpi.retention_d7'], 'D7 留存率')
+  assert.equal(en['analysis.kpi.retention_d7'], 'D7 retention')
 })
