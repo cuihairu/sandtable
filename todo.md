@@ -264,7 +264,7 @@
 
 依赖：WB-03/WB-07。
 
-- [ ] WB-08.01：建立扫描结果适配器，读取 values/status/metric_stats/target_outcomes，不使用合成样例结构。
+- [x] WB-08.01：建立扫描结果适配器，读取 values/status/metric_stats/target_outcomes，不使用合成样例结构。(2026-10-20,`lib/sweepView.ts`:candidateViews(plan, results, deriveId) 按位对齐计划候选,results 位可 null 表达部分返回;values/status/metric_stats/target_outcomes 忠实透传,config_error 候选保留不丢弃;metricStat 缺失指标 → null 非 0;口径原样不乘 100 不舍入(×100 唯一在 fmtPercent);候选 ID 注入 workbench/ids.candidateIdFor 同规则(WB-08.02 的稳定 ID 即此);结果数超计划数明确报错;守卫测试 6 条,与真 wasm 锁形的 types.ts 对齐)
 - [ ] WB-08.02：为计划内每个候选建立稳定结果 ID，排序/筛选/部分返回后选择仍对应同一候选。
 - [ ] WB-08.03：候选表动态生成指标列，分别展示均值、CI、约束判定及不可用/失败原因。
 - [ ] WB-08.04：主图读取真实参数坐标、指标均值与 CI，支持仅一个点、相同值和无结果的范围设置。
