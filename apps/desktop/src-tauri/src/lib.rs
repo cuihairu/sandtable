@@ -260,12 +260,10 @@ fn ab_compare(
     })?;
     let cfg_a = load(&base_yaml)?;
     let cfg_b = load(&cand_yaml)?;
-    let arm_a: Vec<sandtable_core::metrics::RunMetrics> =
-        serde_json::from_str(&results_a_json)
-            .map_err(|e| format!("参数错误: base 臂结果解析失败: {e}"))?;
-    let arm_b: Vec<sandtable_core::metrics::RunMetrics> =
-        serde_json::from_str(&results_b_json)
-            .map_err(|e| format!("参数错误: cand 臂结果解析失败: {e}"))?;
+    let arm_a: Vec<sandtable_core::metrics::RunMetrics> = serde_json::from_str(&results_a_json)
+        .map_err(|e| format!("参数错误: base 臂结果解析失败: {e}"))?;
+    let arm_b: Vec<sandtable_core::metrics::RunMetrics> = serde_json::from_str(&results_b_json)
+        .map_err(|e| format!("参数错误: cand 臂结果解析失败: {e}"))?;
     let comparison = sandtable_core::experiment::compare_arms(&cfg_a, &cfg_b, key, &arm_a, &arm_b)
         .map_err(|e| format!("配置错误: {e}"))?;
     serde_json::to_value(&comparison).map_err(|e| format!("配置错误: {e}"))
@@ -606,7 +604,10 @@ mod tests {
             c["results"].to_string(),
         )
         .unwrap_err();
-        assert!(err.starts_with("配置错误") && err.contains("base_seed 不一致"), "{err}");
+        assert!(
+            err.starts_with("配置错误") && err.contains("base_seed 不一致"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -801,13 +802,29 @@ mod tests {
         let b = run_simulation_impl(cand, 4, &fresh_flag(), &mut |_| {}).unwrap();
         let results_a = a["results"].to_string();
         let results_b = b["results"].to_string();
-        let d = ab_compare(base.clone(), cand.into(), "win_rate".into(), results_a.clone(), results_b.clone()).unwrap();
-        let w = sandtable_wasm::ab_compare_native(&base, cand, "win_rate", &results_a, &results_b).unwrap();
+        let d = ab_compare(
+            base.clone(),
+            cand.into(),
+            "win_rate".into(),
+            results_a.clone(),
+            results_b.clone(),
+        )
+        .unwrap();
+        let w = sandtable_wasm::ab_compare_native(&base, cand, "win_rate", &results_a, &results_b)
+            .unwrap();
         assert_eq!(d, w, "A/B 统计 Comparison 逐字段一致");
         assert!(["BHigher", "AHigher", "NoDifference"].contains(&d["verdict"].as_str().unwrap()));
         assert_eq!(
-            ab_compare(base.clone(), base.clone(), "winrate".into(), results_a.clone(), results_a.clone()).unwrap_err(),
-            sandtable_wasm::ab_compare_native(&base, &base, "winrate", &results_a, &results_a).unwrap_err(),
+            ab_compare(
+                base.clone(),
+                base.clone(),
+                "winrate".into(),
+                results_a.clone(),
+                results_a.clone()
+            )
+            .unwrap_err(),
+            sandtable_wasm::ab_compare_native(&base, &base, "winrate", &results_a, &results_a)
+                .unwrap_err(),
             "未知指标错误文案逐字一致",
         );
         let other_seed = concat!(
@@ -815,8 +832,22 @@ mod tests {
             "scenario: {population: 40, duration: '3d', seed: 9}\n",
         );
         let c = run_simulation_impl(other_seed, 4, &fresh_flag(), &mut |_| {}).unwrap();
-        let err_d = ab_compare(base.clone(), other_seed.into(), "win_rate".into(), results_a.clone(), c["results"].to_string()).unwrap_err();
-        let err_w = sandtable_wasm::ab_compare_native(&base, other_seed, "win_rate", &results_a, &c["results"].to_string()).unwrap_err();
+        let err_d = ab_compare(
+            base.clone(),
+            other_seed.into(),
+            "win_rate".into(),
+            results_a.clone(),
+            c["results"].to_string(),
+        )
+        .unwrap_err();
+        let err_w = sandtable_wasm::ab_compare_native(
+            &base,
+            other_seed,
+            "win_rate",
+            &results_a,
+            &c["results"].to_string(),
+        )
+        .unwrap_err();
         assert!(err_d.contains("base_seed 不一致"), "{err_d}");
         assert_eq!(err_d, err_w, "种子错位错误文案逐字一致");
     }

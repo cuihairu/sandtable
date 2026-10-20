@@ -642,12 +642,9 @@ pub fn read_u64_raw(cfg: &SimConfig, path: &str) -> Option<u64> {
     match path {
         "scenario.seed" => Some(cfg.base_seed),
         "model.gacha.pity_hard" => Some(cfg.gacha.as_ref().map(|g| g.pity_hard).unwrap_or(0)),
-        "model.gacha.pity_soft_start" => Some(
-            cfg.gacha
-                .as_ref()
-                .map(|g| g.pity_soft_start)
-                .unwrap_or(0),
-        ),
+        "model.gacha.pity_soft_start" => {
+            Some(cfg.gacha.as_ref().map(|g| g.pity_soft_start).unwrap_or(0))
+        }
         _ => None,
     }
 }

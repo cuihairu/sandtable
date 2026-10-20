@@ -279,15 +279,13 @@ pub fn param_apply(yaml: &str, path: &str, value: f64) -> Result<JsValue, JsValu
 /// 原样透传,不前端改写)。名称/显示名/格式在 TS metricMeta 面(显示层)。
 pub fn kpi_availability_native(yaml: &str) -> Result<serde_json::Value, String> {
     let cfg = load(yaml)?;
-    Ok(json!(
-        core::experiment::MetricKey::ALL
-            .iter()
-            .filter_map(|k| {
-                core::experiment::MetricKey::unavailable_reason(*k, &cfg)
-                    .map(|reason| json!({ "metric": k.name(), "reason": reason }))
-            })
-            .collect::<Vec<_>>()
-    ))
+    Ok(json!(core::experiment::MetricKey::ALL
+        .iter()
+        .filter_map(|k| {
+            core::experiment::MetricKey::unavailable_reason(*k, &cfg)
+                .map(|reason| json!({ "metric": k.name(), "reason": reason }))
+        })
+        .collect::<Vec<_>>()))
 }
 
 /// KPI 可用性(wasm 入口):JSON 字符串,形状同 [`kpi_availability_native`]。
@@ -380,9 +378,8 @@ pub fn ab_compare(
     results_a_json: &str,
     results_b_json: &str,
 ) -> Result<JsValue, JsValue> {
-    let v =
-        ab_compare_native(base_yaml, cand_yaml, metric, results_a_json, results_b_json)
-            .map_err(|e| JsValue::from_str(&e))?;
+    let v = ab_compare_native(base_yaml, cand_yaml, metric, results_a_json, results_b_json)
+        .map_err(|e| JsValue::from_str(&e))?;
     serde_json::to_string(&v)
         .map(|s| JsValue::from_str(&s))
         .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -438,7 +435,10 @@ mod tests {
         assert_eq!(ok["config_hash"].as_str().unwrap().len(), 64, "SHA-256 hex");
         // 同值重放不改 hash(应用是幂等写)
         let replay = param_apply_native(YAML, "model.warrior.attack", 100.0).unwrap();
-        assert_ne!(replay["config_hash"], ok["config_hash"], "不同值必不同 hash");
+        assert_ne!(
+            replay["config_hash"], ok["config_hash"],
+            "不同值必不同 hash"
+        );
         // 未知路径:带相近路径建议,配置错误前缀
         let e = param_apply_native(YAML, "model.warrior.atk", 1.0).unwrap_err();
         assert!(e.starts_with("配置错误") && e.contains("未知参数"), "{e}");
@@ -507,18 +507,23 @@ mod tests {
         assert!(e.starts_with("参数错误") && e.contains("win_rate"), "{e}");
         // 种子错位 → CRN 成对前提破坏,配置错误
         let e = ab_compare_native(YAML, cand_yaml, "win_rate", a_json, b_json).unwrap_err();
-        assert!(e.starts_with("配置错误") && e.contains("base_seed 不一致"), "{e}");
+        assert!(
+            e.starts_with("配置错误") && e.contains("base_seed 不一致"),
+            "{e}"
+        );
         // results JSON 解析失败 → 参数错误
         let e = ab_compare_native(YAML, YAML, "win_rate", "[{\"win_rate\":", a_json).unwrap_err();
-        assert!(e.starts_with("参数错误") && e.contains("base 臂结果解析失败"), "{e}");
+        assert!(
+            e.starts_with("参数错误") && e.contains("base 臂结果解析失败"),
+            "{e}"
+        );
         // 指标在某臂不可用(3d 配置没有 retention_d7)→ 配置错误,不静默跳过
         let e = ab_compare_native(YAML, YAML, "retention_d7", a_json, a_json).unwrap_err();
         assert!(e.starts_with("配置错误") && e.contains("不可用"), "{e}");
         // replicate 不等长 → 配置错误
         let two = run_simulation_native(YAML, 2).unwrap();
-        let e =
-            ab_compare_native(YAML, YAML, "win_rate", a_json, &two["results"].to_string())
-                .unwrap_err();
+        let e = ab_compare_native(YAML, YAML, "win_rate", a_json, &two["results"].to_string())
+            .unwrap_err();
         assert!(e.contains("replicate 数不一致或为 0"), "{e}");
     }
 
@@ -530,7 +535,11 @@ mod tests {
             "model:\n  warrior: {attack: 250}\n",
         );
         let vals = param_values_native(yaml).unwrap();
-        assert_eq!(vals["scenario.seed"].as_f64(), Some(99.0), "当前生效值,不是注册表 default");
+        assert_eq!(
+            vals["scenario.seed"].as_f64(),
+            Some(99.0),
+            "当前生效值,不是注册表 default"
+        );
         assert_eq!(vals["model.warrior.attack"].as_f64(), Some(250.0));
         // 未配置 loot → 内核真实生效缺省 1.0(read_numeric unwrap_or)
         assert_eq!(vals["model.loot.rate_mult"].as_f64(), Some(1.0));
@@ -541,7 +550,8 @@ mod tests {
         // 数值注册路径全覆盖:64 − 7 非数值 = 57
         assert_eq!(vals.as_object().unwrap().len(), 57);
         // 非法配置报配置错误(与 validate_config 同前缀)
-        let err = param_values_native("schema_version: '1'\nscenario: {population: -5}\n").unwrap_err();
+        let err =
+            param_values_native("schema_version: '1'\nscenario: {population: -5}\n").unwrap_err();
         assert!(err.starts_with("配置错误"), "{err}");
     }
 
@@ -549,9 +559,15 @@ mod tests {
     fn u64_beyond_safe_integer_is_lossless_or_rejected() {
         // 读:超出 2^53−1 的 seed 以十进制字符串无损表达,不经 f64 舍入
         let big = 9_007_199_254_740_993u64; // 2^53 + 1
-        let yaml = format!("schema_version: '1'\nscenario: {{population: 40, duration: '3d', seed: {big}}}\n");
+        let yaml = format!(
+            "schema_version: '1'\nscenario: {{population: 40, duration: '3d', seed: {big}}}\n"
+        );
         let vals = param_values_native(&yaml).unwrap();
-        assert_eq!(vals["scenario.seed"], json!(big.to_string()), "越界 u64 读 = 字符串无损表达");
+        assert_eq!(
+            vals["scenario.seed"],
+            json!(big.to_string()),
+            "越界 u64 读 = 字符串无损表达"
+        );
         // 读:安全范围内的 seed 仍是数字
         let small = param_values_native(YAML).unwrap();
         assert_eq!(small["scenario.seed"], json!(7), "范围内 u64 读 = 数字");
@@ -559,7 +575,8 @@ mod tests {
         let e = param_apply_native(YAML, "scenario.seed", big as f64).unwrap_err();
         assert!(e.contains("2^53−1") && e.contains("不静默舍入"), "{e}");
         // 写:pity_hard 同门(未配置 gacha 时 get_or_insert 后仍要先过安全整数门)
-        let e2 = param_apply_native(YAML, "model.gacha.pity_hard", 9_100_000_000_000_000.0).unwrap_err();
+        let e2 =
+            param_apply_native(YAML, "model.gacha.pity_hard", 9_100_000_000_000_000.0).unwrap_err();
         assert!(e2.contains("2^53−1"), "{e2}");
     }
 
@@ -572,10 +589,19 @@ mod tests {
         let items = out.as_array().unwrap();
         assert_eq!(items.len(), 3, "d7/gacha/loot 三项不可用");
         for it in items {
-            assert!(it["reason"].as_str().unwrap().starts_with("retention_d7")
-                || it["reason"].as_str().unwrap().starts_with("gacha_pulls_to_hit")
-                || it["reason"].as_str().unwrap().starts_with("loot_gold_per_player"),
-                "reason 带内核 ID 前缀: {}", it["reason"]);
+            assert!(
+                it["reason"].as_str().unwrap().starts_with("retention_d7")
+                    || it["reason"]
+                        .as_str()
+                        .unwrap()
+                        .starts_with("gacha_pulls_to_hit")
+                    || it["reason"]
+                        .as_str()
+                        .unwrap()
+                        .starts_with("loot_gold_per_player"),
+                "reason 带内核 ID 前缀: {}",
+                it["reason"]
+            );
         }
         // 7 天 + gacha + loot 齐备 → 空数组 = 全部可用
         let full = concat!(
@@ -591,7 +617,11 @@ mod tests {
             "    rewards:\n",
             "      gold_small: { gold: 5, xp: 0 }\n",
         );
-        assert!(kpi_availability_native(full).unwrap().as_array().unwrap().is_empty());
+        assert!(kpi_availability_native(full)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

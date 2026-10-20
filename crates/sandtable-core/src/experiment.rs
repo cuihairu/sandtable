@@ -315,20 +315,19 @@ pub fn compare_arms(
             arm_b.len()
         )));
     }
-    let extract_all =
-        |arm: &[crate::metrics::RunMetrics]| -> crate::Result<Vec<f64>> {
-            arm.iter()
-                .enumerate()
-                .map(|(i, m)| {
-                    key.extract(m).ok_or_else(|| {
-                        crate::Error::Config(format!(
-                            "指标 {name} 在 replicate {i} 不可用(extract None),\
+    let extract_all = |arm: &[crate::metrics::RunMetrics]| -> crate::Result<Vec<f64>> {
+        arm.iter()
+            .enumerate()
+            .map(|(i, m)| {
+                key.extract(m).ok_or_else(|| {
+                    crate::Error::Config(format!(
+                        "指标 {name} 在 replicate {i} 不可用(extract None),\
                              不用 0 填充;检查该臂的快照日/系统配置"
-                        ))
-                    })
+                    ))
                 })
-                .collect()
-        };
+            })
+            .collect()
+    };
     let vals_a = extract_all(arm_a)?;
     let vals_b = extract_all(arm_b)?;
     Ok(compare(name, &vals_a, &vals_b))
@@ -500,7 +499,10 @@ mod tests {
         let err = compare_arms(&cfg_a, &cfg_b, MetricKey::RetentionD7, &arm_a, &arm_b)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("retention_d7") && err.contains("不可用"), "{err}");
+        assert!(
+            err.contains("retention_d7") && err.contains("不可用"),
+            "{err}"
+        );
     }
 
     /// 长度为 0 / 不等长:等长非零前提,显式拒绝。
@@ -532,7 +534,10 @@ mod tests {
         let err = compare_arms(&cfg_a, &cfg_b, MetricKey::PowerP50Final, &arm_a, &arm_b)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("replicate 1") && err.contains("不用 0 填充"), "{err}");
+        assert!(
+            err.contains("replicate 1") && err.contains("不用 0 填充"),
+            "{err}"
+        );
     }
 
     /// results JSON 回读契约(A/B 桥通道):kernel 序列化的结果数组原样
