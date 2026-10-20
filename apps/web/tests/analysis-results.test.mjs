@@ -9,7 +9,7 @@ import { abView, availableMetrics, dailyRows, findCandidate, inspectorSources, i
 import { candidateIdFor } from '../src/workbench/ids.ts'
 import { copyCandidate, feasibility, formatMetric, fullValues, orderedRows, ranBaseline, resultRows, rowState, statText } from '../src/workbench/analysis/resultModel.ts'
 import { currentRealJob, draftJson, draftsJson, runEnvelope, scopeCounts, scopeRows, scopedRunCsv, scopedRunJson } from '../src/workbench/analysis/exportScope.ts'
-import { addCandidateDraft, analysisSnapshot, editCandidateDraft, patchResultUI, setAnalysisJob } from '../src/workbench/analysis/analysisStore.ts'
+import { addCandidateDraft, analysisSnapshot, defaultResultUI, editCandidateDraft, patchResultUI, setAnalysisJob } from '../src/workbench/analysis/analysisStore.ts'
 
 let assertions = 0
 const assert = new Proxy(strictAssert, { get(target, key) { const value = target[key]; return typeof value === 'function' ? (...args) => { assertions++; return value(...args) } : value } })
@@ -314,8 +314,10 @@ test('WB-09.01:当前 run 解析口径(会话 job 优先 → 选择器 run → �
 
 /* —— WB-09.02:真实 run 候选表 CSV(稳定列名/量纲标注/统计量/空值与失败原因) —— */
 const CSV_UI = { selectedId: null, order: { filter: 'all', by: 'index', dir: 1 } }
+const INDEX = { experiment_id: 'exp_analysis0001', config_hash: 'hash_input_0001', seed: 7, created_at_unix: 1780000000 }
 const CSV_HEADER = [
-  'data_source', 'run_id', 'experiment_id', 'candidate_id', 'candidate_index', 'replicates',
+  'data_source', 'run_id', 'experiment_id', 'input_config_hash', 'plan_config_hash', 'model_version', 'schema_version',
+  'candidate_id', 'candidate_index', 'replicates',
   'model.warrior.attack', 'status', 'fail_reason', 'verdict',
   'retention_d3.mean[ratio_0_1]', 'retention_d3.ci95_lo[ratio_0_1]', 'retention_d3.ci95_hi[ratio_0_1]', 'retention_d3.sd[ratio_0_1]', 'retention_d3.n[count]',
   'win_rate.mean[ratio_0_1]', 'win_rate.ci95_lo[ratio_0_1]', 'win_rate.ci95_hi[ratio_0_1]', 'win_rate.sd[ratio_0_1]', 'win_rate.n[count]',
@@ -325,13 +327,13 @@ const CSV_HEADER = [
 ]
 
 test('WB-09.02:CSV 列名稳定且带量纲标注,范围不改变列集', () => {
-  const csv = scopedRunCsv(job, CSV_UI, 'all', 'exp_analysis0001')
+  const csv = scopedRunCsv(job, CSV_UI, 'all', INDEX)
   assert.ok(csv.startsWith('﻿'), 'BOM 与演示 CSV 同一封装')
   const lines = csv.split('\r\n')
   assert.deepEqual(lines[0].slice(1).split(','), CSV_HEADER)
   // 同一 run 的任意范围:表头逐字一致(稳定列名)
   assert.equal(
-    scopedRunCsv(job, { selectedId: all[0].id, order: CSV_UI.order }, 'selected', 'exp_analysis0001').split('\r\n')[0],
+    scopedRunCsv(job, { selectedId: all[0].id, order: CSV_UI.order }, 'selected', INDEX).split('\r\n')[0],
     lines[0],
   )
   assert.equal(
@@ -344,26 +346,31 @@ test('WB-09.02:CSV 列名稳定且带量纲标注,范围不改变列集', () => 
 })
 
 test('WB-09.02:统计量与内核逐字对齐(规范十进制,0–1 比例不乘 100)', () => {
-  const lines = scopedRunCsv(job, CSV_UI, 'all', 'exp_analysis0001').split('\r\n')
+  const lines = scopedRunCsv(job, CSV_UI, 'all', INDEX).split('\r\n')
   assert.equal(lines.length, 1 + plan.candidates.length)
   const row0 = lines[1].split(',')
   assert.equal(row0[0], 'kernel')
   assert.equal(row0[1], 'run_analysis0001')
   assert.equal(row0[2], 'exp_analysis0001')
-  assert.equal(row0[4], '0')
-  assert.equal(row0[5], String(plan.replicates))
-  assert.equal(row0[6], '90')
-  assert.equal(row0[7], 'ok')
-  assert.equal(row0[8], '')
-  assert.equal(row0[9], 'pass')
+  assert.equal(row0[8], '0')
+  assert.equal(row0[9], String(plan.replicates))
+  assert.equal(row0[10], '90')
+  assert.equal(row0[11], 'ok')
+  assert.equal(row0[12], '')
+  assert.equal(row0[13], 'pass')
   const ret = results[0].metric_stats.find(([k]) => k === 'retention_d3')[1]
-  assert.equal(row0[10], String(ret.mean))
-  assert.equal(row0[11], String(ret.ci95_lo))
-  assert.equal(row0[12], String(ret.ci95_hi))
-  assert.equal(row0[13], String(ret.sd))
-  assert.equal(row0[14], String(ret.n))
+  assert.equal(row0[14], String(ret.mean))
+  assert.equal(row0[15], String(ret.ci95_lo))
+  assert.equal(row0[16], String(ret.ci95_hi))
+  assert.equal(row0[17], String(ret.sd))
+  assert.equal(row0[18], String(ret.n))
+  // WB-09.10 · 配置版本列与检查器/归档信封同一来源(逐面对照见 WB-09.10 测试)
+  assert.equal(row0[3], INDEX.config_hash)
+  assert.equal(row0[4], plan.config_hash)
+  assert.equal(row0[5], context.modelVersion)
+  assert.equal(row0[6], context.schemaVersion)
   // 候选 ID 内容寻址,与视图行同源
-  assert.equal(row0[3], all[0].id)
+  assert.equal(row0[7], all[0].id)
 })
 
 test('WB-09.02:失败原因明确——候选级 config_error 原文带引号,运行级失败落到未运行行', () => {
@@ -371,25 +378,25 @@ test('WB-09.02:失败原因明确——候选级 config_error 原文带引号,�
   const errResults = [...results]
   errResults[1] = { values: plan.candidates[1], status: { config_error: message }, metric_stats: [], target_outcomes: [] }
   const errJob = cloneJob({ exec: { results: errResults } })
-  const lines = scopedRunCsv(errJob, CSV_UI, 'all', 'exp_analysis0001').split('\r\n')
+  const lines = scopedRunCsv(errJob, CSV_UI, 'all', INDEX).split('\r\n')
   const errLine = lines[2]
   assert.match(errLine, /,config_error,"配置错误: bad value, really",,/, 'RFC4180 引号由 toCsv 收口;引号后紧跟空 verdict 单元格')
   assert.ok(errLine.endsWith(','.repeat(25)), 'config_error 行统计列全空,空单元格不写 0')
   // 运行级失败:pending 行带上运行失败原文,不静默留空
   const failed = scopedRunCsv(
     cloneJob({ status: 'failed', exec: { results: [results[0]], errorMessage: '预算超限: 太多' } }),
-    CSV_UI, 'all', 'exp_analysis0001',
+    CSV_UI, 'all', INDEX,
   ).split('\r\n')
-  assert.equal(failed[1].split(',')[7], 'ok')
-  assert.equal(failed[2].split(',')[7], 'failed')
-  assert.equal(failed[2].split(',')[8], '预算超限: 太多')
+  assert.equal(failed[1].split(',')[11], 'ok')
+  assert.equal(failed[2].split(',')[11], 'failed')
+  assert.equal(failed[2].split(',')[12], '预算超限: 太多')
 })
 
 test('WB-09.03:量纲标注与指标维度一致(percent 恒 0–1 原口径,导出不乘 100)', () => {
   // 从真实 CSV 表头反解 `<metric>.<stat>[<token>]`,标注必须与 METRIC_META
   // 维度闭合:percent → ratio_0_1、amount → amount、n → count;任何新指标
   // 进表或改口径(比如悄悄改成 0–100)都会在这里红。
-  const header = scopedRunCsv(job, CSV_UI, 'all', 'exp_analysis0001').split('\r\n')[0].slice(1)
+  const header = scopedRunCsv(job, CSV_UI, 'all', INDEX).split('\r\n')[0].slice(1)
   const groups = new Map()
   for (const col of header.split(',')) {
     const m = col.match(/^(.+)\.(mean|ci95_lo|ci95_hi|sd|n)\[([a-z0-9_]+)\]$/)
@@ -417,7 +424,6 @@ test('WB-09.03:量纲标注与指标维度一致(percent 恒 0–1 原口径,导
 })
 
 /* —— WB-09.04:run 快照 JSON 的来源与版本;未运行草稿另存,不冒充该 run 输入 —— */
-const INDEX = { experiment_id: 'exp_analysis0001', config_hash: 'hash_input_0001', seed: 7, created_at_unix: 1780000000 }
 
 test('WB-09.04:run 快照信封带来源与版本,未登记或上下文缺失写 null 不虚构', () => {
   const env = runEnvelope(job, INDEX)
@@ -474,7 +480,7 @@ test('WB-09.04:未运行草稿另存为独立产物,与 run 结果和 run 输入
   // 隔离:草稿的内容与存在都不进入该 run 的任何导出
   assert.ok(!scopedRunJson(job, CSV_UI, 'all', INDEX).includes(marker))
   assert.ok(!scopedRunJson(job, CSV_UI, 'selected', INDEX).includes(marker))
-  assert.ok(!scopedRunCsv(job, CSV_UI, 'all', 'exp_analysis0001').includes(marker))
+  assert.ok(!scopedRunCsv(job, CSV_UI, 'all', INDEX).includes(marker))
   // 单草稿产物同一声明,单份下载也不会被误当 run 输入
   const single = JSON.parse(draftJson(edited))
   assert.deepEqual(single, { data_source: 'candidate_draft', run_status: 'unrun', included_in_run_inputs: false, draft: {
@@ -486,11 +492,11 @@ test('WB-09.04:未运行草稿另存为独立产物,与 run 结果和 run 输入
 test('WB-09.09:机器列名、枚举、小数点与 JSON schema 中英一致;本地化标题只进可读层', () => {
   // 机器面函数无 locale 入口:锁内容形状证明中英文产物逐字节同一
   const ui = { selectedId: null, order: { filter: 'all', by: 'index', dir: 1 } }
-  const csv = scopedRunCsv(job, ui, 'all', 'exp_analysis0001')
+  const csv = scopedRunCsv(job, ui, 'all', INDEX)
   const lines = csv.replace(/^\uFEFF/, '').split('\r\n')
   const header = lines[0].split(',')
   assert.ok(header.every((h) => /^[\x20-\x7F]+$/.test(h)), '列名全 ASCII,无 CJK 进机器列名')
-  for (const base of ['data_source', 'run_id', 'experiment_id', 'candidate_id', 'candidate_index', 'replicates', 'status', 'fail_reason', 'verdict']) {
+  for (const base of ['data_source', 'run_id', 'experiment_id', 'input_config_hash', 'plan_config_hash', 'model_version', 'schema_version', 'candidate_id', 'candidate_index', 'replicates', 'status', 'fail_reason', 'verdict']) {
     assert.ok(header.includes(base), `稳定机器列 ${base} 在位`)
   }
   assert.ok(header.includes('win_rate.mean[ratio_0_1]') && header.includes('win_rate.n[count]'),
@@ -510,8 +516,7 @@ test('WB-09.09:机器列名、枚举、小数点与 JSON schema 中英一致;本
     assert.ok(['pass', 'borderline', 'fail', ''].includes(v), `verdict 落枚举集(${v})`)
   }
   // JSON schema 键序与枚举固定(键全 ASCII;results 为内核原文)
-  const snap = JSON.parse(scopedRunJson(job, ui, 'all',
-    { experiment_id: 'exp_analysis0001', config_hash: 'hash_input_0001', seed: 7, created_at_unix: 1780000000 }))
+  const snap = JSON.parse(scopedRunJson(job, ui, 'all', INDEX))
   // 固件 exec 无 recommendation 键(undefined 不入 JSON;真完成路径为 null/对象,键在位)
   assert.deepEqual(Object.keys(snap),
     ['data_source', 'run_id', 'status', 'version', 'source', 'spec', 'results', 'export_scope'])
@@ -520,4 +525,69 @@ test('WB-09.09:机器列名、枚举、小数点与 JSON schema 中英一致;本
   assert.ok(!/[一-龥]/.test(JSON.stringify({ ...snap, spec: '' })), '信封与结果无 CJK(本固件数据无 CJK)')
   // 对照:显示层标题才本地化(只进可读图表/报告),且两语言确实不同词
   assert.notEqual(metricLabel('win_rate', 'zh-CN'), metricLabel('win_rate', 'en-US'), '显示标题随 locale——证明上面列名没走标题')
+})
+/* —— WB-09.10:UI、导出表与归档结果三面对照(候选数 / 数值 / CI / 配置版本)——
+ * 三面同一数据源:界面行读 resultRows 的 stats Map,导出表写规范十进制,
+ * 归档结果带内核 metric_stats 原对象;列名/键名逐一对应便于对照核对。 */
+const ARCHIVE_UI = { selectedId: null, order: defaultResultUI.order }
+const ARCHIVE_METRICS = ['retention_d3', 'win_rate', 'gold_per_player', 'power_p50', 'churn_rate']
+
+test('WB-09.10:候选数、数值与 CI 三面对照——界面行、导出表、归档报告逐位一致', () => {
+  // 终局落档与「下载来源 JSON」是同一单点调用(scopedRunJson 'all' + 索引条目);
+  // 归档字节重读一遍再对照,锁「可重开核对」
+  const archiveText = scopedRunJson(job, ARCHIVE_UI, 'all', INDEX)
+  const archived = JSON.parse(archiveText)
+  assert.deepEqual(archived, JSON.parse(archiveText), '归档字节重读不漂移(可重开核对)')
+  const lines = scopedRunCsv(job, ARCHIVE_UI, 'all', INDEX).replace(/^\uFEFF/, '').split('\r\n')
+  const header = lines[0].split(',')
+  const statIdx = (metric, stat) => header.findIndex((name) => name.startsWith(`${metric}.${stat}[`))
+  const dataRows = lines.slice(1).filter((line) => line !== '').map((line) => line.split(','))
+  // 候选数:三方同一口径(计划全集),范围证据 total = 表行数 = 归档结果数
+  assert.deepEqual([archived.export_scope.total, dataRows.length, archived.results.length], [all.length, all.length, all.length])
+  assert.equal(archived.export_scope.candidates, all.length)
+  assert.deepEqual(dataRows.map((row) => row[header.indexOf('candidate_id')]), all.map((r) => r.id), '候选 ID 三方同源(内容寻址,计划序)')
+  // 逐候选、逐统计量:界面值 = 导出值 = 归档值(含 CI 上下端点)
+  for (const [i, row] of dataRows.entries()) {
+    const uiRow = all[i]
+    const kernel = archived.results[i]
+    for (const metric of ARCHIVE_METRICS) {
+      const uiStats = uiRow.result.stats.get(metric)
+      const rawStats = kernel.metric_stats.find(([key]) => key === metric)[1]
+      for (const stat of ['mean', 'ci95_lo', 'ci95_hi', 'sd', 'n']) {
+        assert.equal(Number(row[statIdx(metric, stat)]), uiStats[stat], `${metric}.${stat}:导出表 = 界面值`)
+        assert.equal(uiStats[stat], rawStats[stat], `${metric}.${stat}:界面值 = 归档值`)
+      }
+    }
+  }
+})
+
+test('WB-09.10:配置版本三面对照——检查器来源、导出表列、归档信封同值,未登记不虚构', () => {
+  // 界面检查器口径 = 组件内联读取的四个来源:分析上下文版本 + 分析计划哈希 + 索引输入哈希
+  const context = job.exec.spec.analysis
+  const archived = JSON.parse(scopedRunJson(job, ARCHIVE_UI, 'all', INDEX))
+  const lines = scopedRunCsv(job, ARCHIVE_UI, 'all', INDEX).replace(/^\uFEFF/, '').split('\r\n')
+  const header = lines[0].split(',')
+  const row = lines[1].split(',')
+  for (const [name, value] of [
+    ['input_config_hash', INDEX.config_hash],
+    ['plan_config_hash', context.plan.config_hash],
+    ['model_version', context.modelVersion],
+    ['schema_version', context.schemaVersion],
+  ]) {
+    assert.equal(row[header.indexOf(name)], String(value), `${name}:导出表列 = 界面检查器来源`)
+    assert.equal(archived.version[name], value, `${name}:归档信封 = 界面检查器来源`)
+  }
+  assert.equal(row[header.indexOf('experiment_id')], INDEX.experiment_id, '实验 ID 三方同源')
+  assert.equal(archived.source.experiment_id, INDEX.experiment_id)
+  assert.equal(archived.run_id, job.exec.runId)
+  // 未登记:归档信封 null、导出表空单元格(两闸同口径),上下文版本列不受影响
+  const anon = JSON.parse(scopedRunJson(job, ARCHIVE_UI, 'all', null))
+  const anonLines = scopedRunCsv(job, ARCHIVE_UI, 'all', null).replace(/^\uFEFF/, '').split('\r\n')
+  const anonRow = anonLines[1].split(',')
+  assert.equal(anon.version.input_config_hash, null)
+  assert.equal(anon.source.experiment_id, null)
+  assert.equal(anonRow[header.indexOf('experiment_id')], '', '未登记实验 ID = 空单元格')
+  assert.equal(anonRow[header.indexOf('input_config_hash')], '', '未登记输入哈希 = 空单元格')
+  assert.equal(anonRow[header.indexOf('plan_config_hash')], String(context.plan.config_hash), '计划哈希来自运行自带规格,与登记无关')
+  assert.equal(anonRow[header.indexOf('model_version')], String(context.modelVersion), '上下文版本列与登记无关')
 })

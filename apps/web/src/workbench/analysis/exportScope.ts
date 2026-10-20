@@ -171,19 +171,36 @@ function runMetrics(job: Job): MetricKey[] {
 
 /**
  * 绑定当前 run 的候选表 CSV(WB-09.02):稳定机器列名(data_source /
- * run_id / experiment_id / candidate_id / candidate_index / replicates /
- * 参数 ID 列 / status / fail_reason / verdict / 指标统计列),统计列名
+ * run_id / experiment_id / input_config_hash / plan_config_hash / model_version /
+ * schema_version / candidate_id / candidate_index / replicates / 参数 ID 列 /
+ * status / fail_reason / verdict / 指标统计列),统计列名
  * `<metric>.<stat>[量纲]`(mean / ci95_lo / ci95_hi / sd / n);不可用统计
  * = 空单元格(csvCell,null 绝不写 0),失败原因 = 内核原文(RFC4180 引号
  * 由 toCsv 收口),BOM + CRLF 与演示 CSV 同一封装。
+ * WB-09.10 · 配置版本四列与归档信封 version.* 同名单源,未登记或分析上下文
+ * 缺失 = 空单元格不虚构,单份导出表即可对照界面与归档核对配置版本。
  */
-export function scopedRunCsv(job: Job, ui: ScopeUI, scope: ExportScope, experimentId: string | null): string {
+export function scopedRunCsv(
+  job: Job,
+  ui: ScopeUI,
+  scope: ExportScope,
+  index: RunIndexLookup | null = null,
+): string {
   const exec = job.exec!
   // 扫描轴取计划内首个候选的取值键(非扫描规格无扫描轴,故无参数列)
   const axes = Object.keys(resultRows(job)[0]?.values ?? {})
   const metrics = runMetrics(job)
+  // 配置版本列:与信封 version.* 一一对应(index 缺失 = 未登记 → 空单元格)
+  const context = exec.spec.analysis
+  const versionCells = [
+    index?.config_hash ?? null,
+    context?.plan?.config_hash ?? null,
+    context?.modelVersion ?? null,
+    context?.schemaVersion ?? null,
+  ]
   const header = [
-    'data_source', 'run_id', 'experiment_id', 'candidate_id', 'candidate_index', 'replicates',
+    'data_source', 'run_id', 'experiment_id', 'input_config_hash', 'plan_config_hash', 'model_version', 'schema_version',
+    'candidate_id', 'candidate_index', 'replicates',
     ...axes, 'status', 'fail_reason', 'verdict',
     ...metrics.flatMap((m) => {
       const s = scaleToken(m)
@@ -191,7 +208,7 @@ export function scopedRunCsv(job: Job, ui: ScopeUI, scope: ExportScope, experime
     }),
   ]
   const rows = scopeRows(job, ui, scope).map((row) => [
-    'kernel', exec.runId, experimentId ?? '', row.id, row.index, exec.replicates,
+    'kernel', exec.runId, index?.experiment_id ?? '', ...versionCells, row.id, row.index, exec.replicates,
     ...axes.map((a) => row.values[a] ?? null),
     rowStatus(job, row), rowFailReason(job, row),
     row.result ? overallOutcome(row.result).overall ?? '' : '',
