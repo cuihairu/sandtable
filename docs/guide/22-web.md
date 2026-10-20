@@ -43,6 +43,19 @@ Configuration has two channels on the frontend with non-overlapping duties:
 - Numeric bridges reject structural parameters (duration / formula / structural tables / enum switches) with "该参数不是数值" (not a numeric slot) — structural config can only change through text editing or dedicated structural editors.
 - **u64 safe-integer boundary (WB-03.08)**: u64 slots (seed, pity counters) read as JSON numbers while ≤ 2^53−1; values beyond the JS safe-integer range come back as **lossless decimal strings**. Writing an out-of-range value is explicitly rejected by the kernel ("exceeds the safe-integer cap 2^53−1") — neither direction ever rounds silently.
 
+### A/B statistical comparison bridge (WB-03.10/.11/.12)
+
+The A/B comparison input contract and the statistics both live in the kernel; the frontend never recomputes a rival version:
+
+- **Entry** `ab_compare(base_yaml, cand_yaml, metric, results_a_json, results_b_json)`: both arms' YAML plus both arms' **already-run** results arrays (same shape as the `results` field of `run_simulation` — fed back into the kernel, never re-run); the kernel entry point is `core::experiment::compare_arms`.
+- **Paired preconditions fail explicitly** (never a silent downgrade): arms with different `base_seed` (CRN pairs by replicate index, so a seed mismatch makes paired diffs meaningless), replicate counts unequal or zero, a metric unavailable in either arm (`unavailable_reason`, no single-arm skipping), or a replicate whose `extract` returns None (never zero-filled). Error channels: unknown metric / results parse failure = `参数错误: `, everything else = `配置错误: `.
+- **Statistics come straight out of the kernel's `experiment::compare`**: paired diffs (B_r − A_r), CI95, pooled sd, effect size d, and the verdict (three values decided by the CI sign); the frontend `Comparison` type is isomorphic to the serialization (runtime-locked by contracts).
+- **The compared metric** is the first KPI of the design targets (falling back to `win_rate` with none selected); its validity is decided by the kernel's `MetricKey::parse`.
+
+### Binding generation guard (WB-03.13)
+
+After any change to the wasm export surface you must **rebuild both pkgs** before type-checking or running tests: `wasm-pack build crates/sandtable-wasm --target web --release` (browser + tsc) and `--target nodejs --out-dir pkg-node --dev` (node tests). The symptom of a missed rebuild is a runtime `does not provide an export named …`. The **binding generation guard** in contracts automates this discipline: it collects every named import from `sandtable-wasm` across the TS wrappers (the wasm.ts service layer and the worker entry) and checks each name against three faces — the pkg-node runtime exports, the web pkg's JS exports, and its `.d.ts` declarations. A wrapper calling an ungenerated export turns the suite red. pkg / pkg-node are build artifacts and stay out of git.
+
 ## Equivalence acceptance
 
 The roadmap's Phase 6 acceptance criterion: **the browser and the CLI, with the same configuration and the same seed, produce statistically equivalent results**. It is locked down by `crates/sandtable-cli/tests/web_parity.rs` — with the same configuration and the same seed, the report.json from the CLI's `simulate` and the results from the binding's `run_simulation_native` are **identical value by value** (not merely close in statistics; `serde_json` has `float_roundtrip` enabled, so an f64 written to disk and read back is bit-identical).

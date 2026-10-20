@@ -44,6 +44,19 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - 数值桥接对结构性参数(时长 / 公式 / 结构表 / 枚举开关)一律「该参数不是数值」拒绝——结构配置只能经文本编辑或专用结构编辑器修改。
 - **u64 安全整数边界(WB-03.08)**:seed / 保底抽数等 u64 槽位读取时,≤ 2^53−1 返回 JSON 数字,超出 JS 安全整数以**十进制字符串**无损表达;写入越界值内核明确拒绝(「超出安全整数上限 2^53−1」)——两侧都不静默舍入。
 
+### A/B 统计比较桥(WB-03.10/.11/.12)
+
+A/B 双臂比较的输入契约与统计判定全部在内核,前端不另算一套:
+
+- **入口** `ab_compare(base_yaml, cand_yaml, metric, results_a_json, results_b_json)`:双臂 YAML + 双臂**已跑** results 数组(与 `run_simulation` 输出的 `results` 同构,回读内核,不重跑);内核入口 `core::experiment::compare_arms`。
+- **成对前提显式拒绝**(不静默降级):双臂 `base_seed` 不一致(CRN 按 replicate 序号配对,种子错位则成对差值无意义)、replicate 数不等长或为 0、指标在任一臂不可用(`unavailable_reason`,不做单臂跳过)、某 replicate `extract` 为 None(不 0 填充)。错误通道:未知指标 / results 解析失败 = `参数错误: `,其余 = `配置错误: `。
+- **统计口径 = 内核 `experiment::compare` 直出**:配对差(B_r − A_r)、CI95、合并 sd、效应量 d、verdict(CI 符号判定三值),前端 `Comparison` 类型与序列化同构(contracts 运行时锁)。
+- **比较指标** = 设计目标的首个 KPI(未勾选回退 `win_rate`),合法性由内核 `MetricKey::parse` 判定。
+
+### 绑定生成守卫(WB-03.13)
+
+wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试:`wasm-pack build crates/sandtable-wasm --target web --release`(浏览器 + tsc)与 `--target nodejs --out-dir pkg-node --dev`(节点测试)。漏建的症状是运行时 `does not provide an export named …`。contracts 里的**绑定生成守卫**把这条纪律自动化:收集 TS 包装(wasm.ts 服务层 + Worker 入口)从 `sandtable-wasm` 的全部命名导入,逐名校验 pkg-node 运行时导出、web pkg 的 JS 导出与 `.d.ts` 声明三面齐备——包装调用未生成导出即红。pkg / pkg-node 是构建产物,不进 git。
+
 ## 等价验收
 
 路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。

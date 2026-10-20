@@ -10,7 +10,7 @@
 //   node --test apps/web/tests/contracts.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -462,4 +462,39 @@ test('WB-03.10/11 A/B 桥:compare_arms 内核直出 Comparison,成对前提/可�
   // 设计页入队:比较指标 = 首个设计目标(缺省 win_rate,内核判定合法性)
   const page = read('src/workbench/pages/DesignerPage.tsx')
   assert.match(page, /metric: design\.targets\[0\]\?\.metric \?\? 'win_rate'/)
+})
+
+test('WB-03.13 绑定生成守卫:TS 包装的命名导入必在 pkg 双面生成(node 运行时 + web pkg JS + .d.ts)', () => {
+  // 收集 src 里全部 from 'sandtable-wasm' 的命名导入(服务层 + Worker 入口;
+  // `import init` 默认导出由初始化路径覆盖,不在本守卫)
+  const files = ['src/lib/wasm.ts', 'src/workbench/state/sweepWorker.entry.ts']
+  const exports = new Map() // 内核导出名 → 使用处别名
+  for (const f of files) {
+    const src = read(f)
+    const m = src.match(/import\s+(?:init\s*,\s*)?\{([\s\S]*?)\}\s*from\s*['"]sandtable-wasm['"]/)
+    assert.ok(m, `${f} 应从 'sandtable-wasm' 命名导入绑定`)
+    for (const raw of m[1].split(',')) {
+      const entry = raw.trim()
+      if (!entry) continue
+      const [orig, alias] = entry.split(/\s+as\s+/).map((s) => s.trim())
+      exports.set(orig, alias ?? orig)
+    }
+  }
+  assert.ok(exports.size >= 10, `应覆盖全部桥接导出(得到 ${exports.size})`)
+  // 面 1:pkg-node 运行时真值(本文件已 import * as wasm 真加载)
+  for (const [orig] of exports) {
+    assert.equal(typeof wasm[orig], 'function', `pkg-node 未生成导出 ${orig}:wasm 导出变更后须重建 pkg-node(--target nodejs --out-dir pkg-node --dev)`)
+  }
+  // 面 2/3:web pkg(浏览器面 + 类型声明)——存在即校验,不存在如实跳过
+  // (CI 先建 pkg 再跑测试;本地未建不红,但建了就必须双面齐)
+  const pkgJs = join(here, '../../../crates/sandtable-wasm/pkg/sandtable_wasm.js')
+  const pkgDts = join(here, '../../../crates/sandtable-wasm/pkg/sandtable_wasm.d.ts')
+  if (existsSync(pkgJs) && existsSync(pkgDts)) {
+    const js = readFileSync(pkgJs, 'utf8')
+    const dts = readFileSync(pkgDts, 'utf8')
+    for (const [orig] of exports) {
+      assert.match(js, new RegExp(`export function ${orig}\\b`), `pkg(web)JS 未生成 ${orig}:须重建 pkg(--target web --release)`)
+      assert.match(dts, new RegExp(`export function ${orig}\\b`), `pkg(web).d.ts 未声明 ${orig}:须重建 pkg(--target web --release)`)
+    }
+  }
 })
