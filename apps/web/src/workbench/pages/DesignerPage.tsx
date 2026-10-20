@@ -72,6 +72,7 @@ function runIndexEntryOf(snap: RunSnapshot, baseConfigHash: string | undefined):
     schema_version: snap.schemaVersion,
     seed: snap.seed,
     conditions: { ...snap.conditions, base_config_hash: baseConfigHash ?? '' },
+    data_source: snap.dataSource,
     created_at_unix: snap.createdAtUnix,
     // 产物路径按运行索引纪律预留(平铺两段);WB-07 真实执行接入后填实际产物
     files: runArtifactPaths(snap.runId, []),

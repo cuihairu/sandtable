@@ -17,6 +17,8 @@ import { packProject, unpackProject, sha256Hex } from '../../lib/project.ts'
 import type { EntryKind, PackInput } from '../../lib/project.ts'
 import { candidateIdFor, hashId, ID_PREFIXES, runIdFor } from '../ids.ts'
 import type { BaselineId, CandidateId, ProjectId, RunId } from '../ids.ts'
+import { DEMO_SOURCE, KERNEL_SOURCE, isDataSource } from '../../lib/dataSource.ts'
+import type { DataSource } from '../../lib/dataSource.ts'
 
 /* —— 打开项目(WB-04.02/03/04) —— */
 
@@ -300,6 +302,8 @@ export type RunSnapshot = {
   readonly schemaVersion: string
   readonly seed: number | string
   readonly conditions: Readonly<RunConditions>
+  /** WB-03.16 · 数据来源标记;快照只可能是 kernel(demo 在入口即拒) */
+  readonly dataSource: DataSource
   readonly createdAtUnix: number
 }
 
@@ -323,7 +327,14 @@ export async function snapshotRun(input: {
   schemaVersion?: string
   seed?: number | string
   conditions?: RunConditions
+  /** WB-03.16 · 缺省 kernel;显式传 synthetic_demo 即拒(写闸) */
+  dataSource?: DataSource
 }): Promise<RunSnapshot> {
+  // WB-03.16 · 写闸:演示数据不得登记为运行快照(运行集合只收 kernel)
+  if (input.dataSource === DEMO_SOURCE) {
+    throw new Error('演示数据(synthetic_demo)不得登记为运行快照:真实运行集合只收 kernel 来源(WB-03.16)')
+  }
+  const dataSource = isDataSource(input.dataSource) ? input.dataSource : KERNEL_SOURCE
   const configHash = await sha256Hex(new TextEncoder().encode(input.yaml))
   const modelVersion = input.modelVersion ?? 'unknown'
   const schemaVersion = input.schemaVersion ?? 'unknown'
@@ -344,6 +355,7 @@ export async function snapshotRun(input: {
     schemaVersion,
     seed,
     conditions: Object.freeze({ ...input.conditions }),
+    dataSource,
     createdAtUnix: Math.floor(Date.now() / 1000),
   })
 }
@@ -364,6 +376,8 @@ export type RunIndexEntry = {
   schema_version: string
   seed: number | string
   conditions: RunConditions
+  /** WB-03.16 · 数据来源标记;索引只收 kernel(demo 在写/读两闸显式拒绝) */
+  data_source: DataSource
   created_at_unix: number
   /** 归档内产物路径(平铺两段 results/<run_id>.<名>,过路径纪律) */
   files: readonly string[]
@@ -374,8 +388,21 @@ export function runArtifactPaths(runId: string, artifactNames: readonly string[]
   return artifactNames.map((n) => `results/${runId}.${n}`)
 }
 
-/** 序列化运行索引(条目按 run_id 排序,确定性,与打包纪律同源)。 */
+/** 序列化运行索引(条目按 run_id 排序,确定性,与打包纪律同源)。
+ *  WB-03.16 · 写闸:demo 来源或来源字段缺失/非法的条目显式拒绝——
+ *  演示数据不进真实运行集合,不静默修正。 */
 export function runsIndexFile(runs: readonly RunIndexEntry[]): string {
+  for (const r of runs) {
+    if (!isDataSource(r.data_source)) {
+      throw new Error(
+        `运行索引条目 ${r.run_id} 的 data_source 为 ${JSON.stringify(String(r.data_source))},` +
+        '真实运行集合只收 kernel(WB-03.16);来源缺失或非法都显式拒绝',
+      )
+    }
+    if (r.data_source === DEMO_SOURCE) {
+      throw new Error(`运行索引条目 ${r.run_id} 是演示数据(synthetic_demo):演示数据不得进入真实运行集合(WB-03.16)`)
+    }
+  }
   const sorted = [...runs].sort((a, b) => (a.run_id > b.run_id ? 1 : a.run_id < b.run_id ? -1 : 0))
   return JSON.stringify({ schema_version: RUNS_INDEX_SCHEMA, runs: sorted }, null, 2)
 }
@@ -404,7 +431,10 @@ export function auditRunArtifacts(
   return missing
 }
 
-/** 读取运行索引:未知 schema_version 给可读错误(不做静默猜测)。 */
+/** 读取运行索引:未知 schema_version 给可读错误(不做静默猜测)。
+ *  WB-03.16 · 读闸:data_source 缺席 = v1 时代条目,按 kernel 推断(演示数据
+ *  自始就没有进入索引的通道,缺席即 kernel 是事实推断);demo 来源显式拒绝;
+ *  其他非法值可读报错,不静默降级。 */
 export function readRunsIndex(text: string): RunsIndexRead {
   let parsed: { schema_version?: unknown; runs?: unknown }
   try {
@@ -421,7 +451,24 @@ export function readRunsIndex(text: string): RunsIndexRead {
     }
   }
   if (!Array.isArray(parsed.runs)) return { ok: false, error: 'runs.json 缺少 runs 数组' }
-  return { ok: true, runs: parsed.runs as RunIndexEntry[] }
+  const runs: RunIndexEntry[] = []
+  for (const raw of parsed.runs) {
+    const r = raw as RunIndexEntry
+    if (r.data_source === DEMO_SOURCE) {
+      return {
+        ok: false,
+        error: `运行索引条目 ${r.run_id} 是演示数据(synthetic_demo):演示数据不得混入真实运行集合(WB-03.16),归档内结果文件仍按字节保留`,
+      }
+    }
+    if (r.data_source !== undefined && !isDataSource(r.data_source)) {
+      return {
+        ok: false,
+        error: `运行索引条目 ${r.run_id} 的 data_source 为 ${JSON.stringify(String(r.data_source))},不是合法来源(kernel / synthetic_demo)`,
+      }
+    }
+    runs.push(r.data_source === undefined ? { ...r, data_source: KERNEL_SOURCE } : r)
+  }
+  return { ok: true, runs }
 }
 
 /* —— 保存编排(WB-04.07/04.10) —— */
@@ -495,6 +542,7 @@ function runsIndexFromArtifacts(results: Record<string, string | Uint8Array>): s
       schema_version: '',
       seed: 'unspecified',
       conditions: {},
+      data_source: KERNEL_SOURCE,
       created_at_unix: 0,
       files,
     })),

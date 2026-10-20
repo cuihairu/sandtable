@@ -124,7 +124,7 @@ function RealResult({ job, state }: { job: Job; state: WorkbenchState }): JSX.El
         <label htmlFor="real-filter">{t(locale, 'analysis.filter')}</label><select id="real-filter" value={ui.order.filter} onChange={(e) => patch({ order: { ...ui.order, filter: e.target.value as ResultFilter } })}>
           <option value="all">{t(locale, 'analysis.filterAll')}</option><option value="pass">hard pass</option><option value="borderline">hard borderline</option><option value="fail">hard fail</option>
         </select>
-        <button className="btn" onClick={() => download(`${exec.runId}.json`, machineJson({ source: 'kernel', run_id: exec.runId, spec: exec.spec, status: job.status, results: exec.results, recommendation: exec.recommendation }), 'application/json')}>{t(locale, 'analysis.downloadJson')}</button>
+        <button className="btn" onClick={() => download(`${exec.runId}.json`, machineJson({ data_source: 'kernel', run_id: exec.runId, spec: exec.spec, status: job.status, results: exec.results, recommendation: exec.recommendation }), 'application/json')}>{t(locale, 'analysis.downloadJson')}</button>
       </div>
       {selected && !rows.some((r) => r.id === selected.id) && <p className="note-block" role="status">{t(locale, 'analysis.selectionFiltered')}<button className="btn" onClick={() => patch({ order: { ...ui.order, filter: 'all' } })}>{t(locale, 'analysis.showAllRestore')}</button></p>}
       <div className="real-result-grid">

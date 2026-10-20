@@ -341,7 +341,7 @@ test('WB-04.08 运行索引与产物路径:平铺两段、索引 roundtrip、未
     run_id: 'run_abc12345', experiment_id: 'exp_x', scenario_path: 'scenarios/base.yaml',
     experiment_path: null, config_hash: 'a'.repeat(64), model_version: 'unknown',
     schema_version: 'unknown', seed: 42, conditions: { method: 'grid' },
-    created_at_unix: 0, files: paths,
+    data_source: 'kernel', created_at_unix: 0, files: paths,
   }
   const text = runsIndexFile([entry])
   const parsed = readRunsIndex(text)
@@ -352,6 +352,41 @@ test('WB-04.08 运行索引与产物路径:平铺两段、索引 roundtrip、未
   if (!unknown.ok) assert.match(unknown.error, /schema_version 为 "2".*支持 1/)
   assert.equal(RUNS_INDEX_SCHEMA, '1')
   assert.equal(RUNS_INDEX_PATH, 'results/runs.json')
+})
+
+test('WB-03.16 数据来源与版本标记:演示数据不进真实运行集合(快照入口 + 索引写闸 + 读闸),v1 条目按 kernel 推断', async () => {
+  const base = {
+    run_id: 'run_abc12345', experiment_id: 'exp_x', scenario_path: 'scenarios/base.yaml',
+    experiment_path: null, config_hash: 'a'.repeat(64), model_version: 'unknown',
+    schema_version: 'unknown', seed: 42, conditions: { method: 'grid' },
+    data_source: 'kernel', created_at_unix: 0, files: [],
+  }
+  // 快照入口闸:演示数据不得登记为运行快照;缺省 kernel
+  await assert.rejects(
+    () => snapshotRun({ experimentId: 'exp_x', yaml: S1, dataSource: 'synthetic_demo' }),
+    /不得登记为运行快照/,
+  )
+  const snap = await snapshotRun({ experimentId: 'exp_x', yaml: S1 })
+  assert.equal(snap.dataSource, 'kernel', '快照来源标记缺省 kernel')
+  // 索引写闸:demo 来源 / 来源缺失 / 非法来源 都显式拒绝,不静默修正
+  await assert.rejects(async () => runsIndexFile([{ ...base, data_source: 'synthetic_demo' }]), /不得进入真实运行集合/)
+  await assert.rejects(async () => runsIndexFile([{ ...base, data_source: undefined }]), /只收 kernel/)
+  await assert.rejects(async () => runsIndexFile([{ ...base, data_source: 'cli' }]), /只收 kernel/)
+  const back = readRunsIndex(runsIndexFile([base]))
+  assert.equal(back.ok, true)
+  if (back.ok) assert.deepEqual(back.runs, [base])
+  // 读闸:demo 条目可读错误(归档内结果文件仍按字节保留)
+  const refused = readRunsIndex(JSON.stringify({ schema_version: '1', runs: [{ ...base, data_source: 'synthetic_demo' }] }))
+  assert.equal(refused.ok, false)
+  if (!refused.ok) assert.match(refused.error, /synthetic_demo.*不得混入真实运行集合/)
+  // v1 时代条目缺席 data_source:按 kernel 推断(演示数据自始没有进入索引的通道)
+  const legacy = readRunsIndex(JSON.stringify({ schema_version: '1', runs: [{ ...base, data_source: undefined }] }))
+  assert.equal(legacy.ok, true)
+  if (legacy.ok) assert.equal(legacy.runs[0].data_source, 'kernel')
+  // 其他非法来源值:可读错误,不静默降级
+  const bad = readRunsIndex(JSON.stringify({ schema_version: '1', runs: [{ ...base, data_source: 'cli' }] }))
+  assert.equal(bad.ok, false)
+  if (!bad.ok) assert.match(bad.error, /不是合法来源/)
 })
 
 test('WB-03.02 缺失产物审计:索引声称的 files 逐条点名,不静默跳过不用 0 填空', async () => {
@@ -389,7 +424,7 @@ test('WB-04.07/08 保存多配置:未选中条目与既有结果不丢,运行索
     run_id: 'run_abc12345', experiment_id: 'exp_x', scenario_path: 'scenarios/base.yaml',
     experiment_path: 'experiments/sweep.yaml', config_hash: 'a'.repeat(64),
     model_version: 'unknown', schema_version: 'unknown', seed: 12345,
-    conditions: { method: 'grid' }, created_at_unix: 0,
+    conditions: { method: 'grid' }, data_source: 'kernel', created_at_unix: 0,
     files: ['results/run_abc12345.report.json'],
   }])
   const build = await buildProjectSave(doc, drafts, {

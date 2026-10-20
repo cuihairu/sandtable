@@ -61,6 +61,10 @@ wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试
 
 绑定层错误以**稳定通道前缀**为契约(`配置错误: ` / `参数错误: ` / `候选结果序列化失败: `,与 CLI stderr 同源),展示层在其上统一为六类:**解析失败**是独立类——内核把 YAML 解析并进 `配置错误` 通道、双臂 results 解析失败带 `参数错误` 前缀(通道前缀契约不动),展示层按「解析失败」事实升级为 `parse` 码(改配置与没解析过是两件事);**配置 / 参数 / 序列化**照前缀归类;**初始化中 / 初始化失败 / 运行错误 / 超出内存预算 / 内核桥接未接入**走执行侧 `ExecErrorClass`(init/run/budget/bridge,初始化中以 running 展示、不伪造进度);**取消**不是错误,走状态机 `cancelled/cancelling`。locale 展示:`localizeWasmError` 把可识别消息换成稳定错误码 + 词典模板(`errors.*`,中英模板不同、错误码相同),内核原文逐字保留在 `detail` 供定位;任务列表正文走 `execErrorText`——剥通道前缀再套模板,避免「配置错误：配置错误: …」重复。`state/` 执行域不 import i18n(WB-07.17 守卫),词典文案集中在纯显示层 `taskText.ts`,contracts 用六行分类表 + 双语模板断言锁死。
 
+### 数据来源与版本标记(WB-03.16)
+
+`lib/dataSource.ts` 是来源标记的**单一出处**:`kernel` 与 `synthetic_demo`。真实运行集合只收 `kernel`,三道闸都在索引代码面——**快照入口**(`snapshotRun` 显式传 `synthetic_demo` 即拒,缺省 `kernel`)、**索引写闸**(`runsIndexFile` 对 demo / 来源缺失 / 非法来源显式拒绝,不静默修正)、**读闸**(`readRunsIndex` 对 demo 条目与非法来源给可读错误;v1 时代条目缺席 `data_source` 按 `kernel` 推断——演示数据自始就没有进入索引的通道,缺席即 kernel 是事实推断而非猜测)。标记落位:`RunSnapshot.dataSource`、`RunIndexEntry.data_source`(提交登记时透传)、报告导出 `machineJson({ data_source: 'kernel', … })`;演示侧导出(候选 CSV 列 / 演示快照 `data-source` 属性)自带 `synthetic_demo`。版本标记沿用既有口径:运行条目 `model_version` / `schema_version` / `seed` + 索引自身 `RUNS_INDEX_SCHEMA`(`'1'`,新增字段是加法变更,旧索引仍可读)、报告 `meta.schema_version`(文档 09 章)。分析页真实/演示两条通道互斥:真实运行列表过滤掉 `demo` 任务,演示视图需显式选择来源(`selection.source === 'synthetic_demo'`)并挂来源横幅。contracts 的 WB-03.16 结构守卫锁:来源两值 + `isDataSource` 非法值 + 演示项目标记取自单一出处 + 运行集合与执行引擎代码面不 import 演示模块 + 登记链/报告/三道闸接线。
+
 ## 等价验收
 
 路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。

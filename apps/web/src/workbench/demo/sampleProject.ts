@@ -6,8 +6,9 @@
 // (registry.rs),分组只做 UI 组织。IDs 全部走 WB-02.10 标识体系。
 import { candidateIdFor, hashId, ID_PREFIXES, runIdFor } from '../ids.ts'
 import type { Baseline, BaselineId, CandidateId, ExperimentId, ProjectId, RunId } from '../ids.ts'
+import { DEMO_SOURCE } from '../../lib/dataSource.ts'
 
-export const DATA_SOURCE = 'synthetic_demo'
+export const DATA_SOURCE = DEMO_SOURCE
 
 /* —— 演示候选参数域(WB-05.01 起仅供演示结果 ID 复现,非参数表数据源) ——
  * WB-05 起参数表的数据源 = params/paramRegistry.ts 注册表全量项 × 配置

@@ -22,6 +22,8 @@ import { applyParamEdits } from '../src/workbench/params/configYaml.ts'
 import { classifyWasmError } from '../src/lib/errors.ts'
 import { localizeWasmError } from '../src/lib/i18n/index.ts'
 import { statusLabel, errorClassLabel, recoveryText, execErrorText } from '../src/workbench/tasks/taskText.ts'
+import { KERNEL_SOURCE, DEMO_SOURCE, isDataSource } from '../src/lib/dataSource.ts'
+import { DATA_SOURCE } from '../src/workbench/demo/sampleProject.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const read = (p) => readFileSync(join(here, '..', p), 'utf8')
@@ -563,4 +565,27 @@ test('WB-03.15 统一错误分类:解析/配置/参数/序列化四码 + locale 
   assert.match(statusLabel('running', 'zh-CN'), /运行中/)
   assert.match(statusLabel('cancelled', 'zh-CN'), /已取消/)
   assert.equal(statusLabel('cancelled', 'en-US'), 'Cancelled')
+})
+
+test('WB-03.16 数据来源标记:kernel/synthetic_demo 单一出处,运行集合代码面不依赖演示模块', () => {
+  // 标记定义:两个值,别处不另立来源口径
+  assert.equal(KERNEL_SOURCE, 'kernel')
+  assert.equal(DEMO_SOURCE, 'synthetic_demo')
+  assert.ok(isDataSource('kernel') && isDataSource('synthetic_demo'))
+  for (const bad of [undefined, null, '', 'Kernel', 'cli', 'demo', 7]) {
+    assert.ok(!isDataSource(bad), `非法来源值: ${JSON.stringify(bad)}`)
+  }
+  // 演示项目的来源标记从单一出处取,不写死字符串
+  assert.equal(DATA_SOURCE, DEMO_SOURCE)
+  // 代码面边界:运行集合/执行引擎/文档层不 import 演示数据模块
+  for (const face of ['src/workbench/state/projectDoc.ts', 'src/workbench/state/runManager.ts']) {
+    assert.ok(!/from\s+['"][^'"]*demo\//.test(read(face)), `${face} 不得 import 演示模块`)
+  }
+  // 登记链:快照来源字段落到运行索引条目,报告导出带 data_source 标记
+  assert.match(read('src/workbench/pages/DesignerPage.tsx'), /data_source: snap\.dataSource/)
+  assert.match(read('src/workbench/pages/AnalysisPage.tsx'), /data_source: 'kernel'/)
+  // 真实运行集合的三道闸都在索引代码面(写闸/入口闸/读闸)
+  assert.match(read('src/workbench/state/projectDoc.ts'), /真实运行集合只收 kernel/)
+  assert.match(read('src/workbench/state/projectDoc.ts'), /不得登记为运行快照/)
+  assert.match(read('src/workbench/state/projectDoc.ts'), /不得混入真实运行集合/)
 })
