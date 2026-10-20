@@ -397,6 +397,9 @@
 
 ## 待办(挂闸:需用户拍板 / 等外部输入 / 人工验收才开工)
 
+- [ ] MCP server：把内核能力（validate_config / planSweep / runSimulation / 分析读数）以 MCP stdio server 暴露给 AI 客户端〔2026-10-20 用户问起，现状=无；**推荐方案**：Node 侧 @modelcontextprotocol/sdk 薄壳调用既有 wasm 桥（lib/wasm.ts 同一实现，零重复逻辑），工具面四枚：sandtable.validate / sandtable.plan_sweep / sandtable.run / sandtable.analyze；桌面与 CLI 都可挂｜解锁=拍板即开工〕
+- [ ] 脚手架：新建场景/实验的骨架生成〔2026-10-20 用户问起，现状=无；**推荐方案**：CLI 子命令 `sandtable scaffold <name>` 生成 场景 yaml+基线+实验草稿+README 四件套（模板集中在一处），web「新建场景」向导复用同一模板，不写两套｜解锁=拍板即开工〕
+
 - [ ] Windows 打包嵌入应用图标：desktop-package.yml 产出的 .exe 当前无 Icon 资源；需用户定 logo（提供源图 ≥256px 的 png/svg，按设计资产铁律不自造代餐）→ 打包链生成 .ico 并嵌入（rcedit/resource_hack 或 cargo/tauri 侧 winres 配置）〔阻塞=等用户 logo 资产｜解锁=资产到位即做〕
 
 
