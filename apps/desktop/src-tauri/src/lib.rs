@@ -66,6 +66,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             validate_config,
             param_registry,
+            param_values,
             run_simulation,
             cancel_run,
             sweep_plan,
@@ -171,6 +172,21 @@ fn validate_config(yaml: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 fn param_registry() -> serde_json::Value {
     serde_json::json!(sandtable_core::registry::all().cloned().collect::<Vec<_>>())
+}
+
+/// 当前配置数值读取:{path: 当前生效值}(WB-03.05),与 wasm param_values
+/// 同构——数值槽逐路径 read_numeric;非数值槽缺键 ≠ 0;loot/gacha 未配置
+/// 返回内核真实生效缺省,不拿注册表 default 补值。
+#[tauri::command]
+fn param_values(yaml: String) -> Result<serde_json::Value, String> {
+    let cfg = load(&yaml)?;
+    let mut out = serde_json::Map::new();
+    for spec in sandtable_core::registry::all() {
+        if let Ok(v) = sandtable_core::registry::read_numeric(&cfg, spec.path) {
+            out.insert(spec.path.to_string(), serde_json::json!(v));
+        }
+    }
+    Ok(serde_json::Value::Object(out))
 }
 
 /// 逐 replicate 执行:每个 replicate 开跑前检查取消令牌,完成后上报一次进度。

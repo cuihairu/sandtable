@@ -6,6 +6,7 @@ import init, {
   run_simulation as runSim,
   validate_config as validateCfg,
   param_registry as paramRegistryBinding,
+  param_values as paramValuesBinding,
   sweep_plan as sweepPlanBinding,
   sweep_candidate as sweepCandidateBinding,
   sweep_recommend as sweepRecommendBinding,
@@ -48,6 +49,15 @@ export async function paramDefinitions(): Promise<ParamDefinition[]> {
   if (isDesktop) return invoke('param_registry')
   await ensureInit()
   return JSON.parse(paramRegistryBinding() as unknown as string) as ParamDefinition[]
+}
+
+// 当前配置数值读取(WB-03.05):core read_numeric 的真实生效值,
+// 不把注册表 default 当当前值;非数值槽(时长/公式/结构表)缺键 ≠ 0;
+// loot/gacha 未配置时返回内核真实生效缺省。
+export async function paramValues(yaml: string): Promise<Record<string, number>> {
+  if (isDesktop) return invoke('param_values', { yaml })
+  await ensureInit()
+  return JSON.parse(paramValuesBinding(yaml) as unknown as string) as Record<string, number>
 }
 
 // 长任务(桌面异步命令):onProgress 经 Channel 逐 replicate 收 {done,total};

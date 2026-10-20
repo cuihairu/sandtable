@@ -201,6 +201,35 @@ pub fn param_registry() -> JsValue {
     JsValue::from_str(&param_registry_native().to_string())
 }
 
+/// 当前配置数值读取(native 纯函数):load+validate 后逐数值注册路径
+/// `registry::read_numeric`,返回 `{path: 当前生效值}`(WB-03.05)。
+///
+/// - 数值槽 = u32/u64/i64/f64/mix;非数值槽(dur/expr/table)**缺键 ≠ 0**,
+///   其有效形态就是配置文本本身(WB-03.07 回写契约);
+/// - loot/gacha 未配置时返回的是内核真实生效缺省(read_numeric 的
+///   unwrap_or),不是前端拿注册表 default 补值;
+/// - u64/seed 走 f64 通道与 read_numeric 同精度边界(JS 安全整数面
+///   归 WB-03.08)。
+pub fn param_values_native(yaml: &str) -> Result<serde_json::Value, String> {
+    let cfg = load(yaml)?;
+    let mut out = serde_json::Map::new();
+    for spec in core::registry::all() {
+        if let Ok(v) = core::registry::read_numeric(&cfg, spec.path) {
+            out.insert(spec.path.to_string(), json!(v));
+        }
+    }
+    Ok(serde_json::Value::Object(out))
+}
+
+/// 当前配置数值读取(wasm 入口):JSON 字符串,形状同 [`param_values_native`]。
+#[wasm_bindgen]
+pub fn param_values(yaml: &str) -> Result<JsValue, JsValue> {
+    let v = param_values_native(yaml).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 /// 运行仿真(wasm 入口):返回 JSON 字符串(形状同 [`run_simulation_native`])。
 #[wasm_bindgen]
 pub fn run_simulation(yaml: &str, replicates: u32) -> Result<JsValue, JsValue> {
@@ -261,6 +290,44 @@ mod tests {
             "schema_version: '1'\nscenario: {population: 40, duration: '3d'}\nmodel:\n  dungeon:\n    tiers: 0\n",
         )
         .unwrap_err();
+        assert!(err.starts_with("配置错误"), "{err}");
+    }
+
+    #[test]
+    fn param_registry_is_full_static_table() {
+        let defs = param_registry_native();
+        let n = defs.as_array().unwrap().len();
+        assert_eq!(n, 64, "注册表全量 64 项");
+        let first = &defs[0];
+        assert_eq!(first["path"], "scenario.population");
+        assert_eq!(first["kind"], "u32", "kind serde 小写串");
+        assert_eq!(
+            first.as_object().unwrap().len(),
+            4,
+            "恰四字段,可选元信息不出场"
+        );
+    }
+
+    #[test]
+    fn param_values_reads_effective_not_registry_default() {
+        let yaml = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 99}\n",
+            "model:\n  warrior: {attack: 250}\n",
+        );
+        let vals = param_values_native(yaml).unwrap();
+        assert_eq!(vals["scenario.seed"].as_f64(), Some(99.0), "当前生效值,不是注册表 default");
+        assert_eq!(vals["model.warrior.attack"].as_f64(), Some(250.0));
+        // 未配置 loot → 内核真实生效缺省 1.0(read_numeric unwrap_or)
+        assert_eq!(vals["model.loot.rate_mult"].as_f64(), Some(1.0));
+        // 非数值槽缺键 ≠ 0
+        assert!(vals.get("scenario.duration").is_none());
+        assert!(vals.get("model.loot.tables").is_none());
+        assert!(vals.get("model.formulas.xp_needed").is_none());
+        // 数值注册路径全覆盖:64 − 7 非数值 = 57
+        assert_eq!(vals.as_object().unwrap().len(), 57);
+        // 非法配置报配置错误(与 validate_config 同前缀)
+        let err = param_values_native("schema_version: '1'\nscenario: {population: -5}\n").unwrap_err();
         assert!(err.starts_with("配置错误"), "{err}");
     }
 

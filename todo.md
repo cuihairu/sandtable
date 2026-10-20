@@ -162,7 +162,9 @@
 - [x] WB-03.04：补参数定义读取桥接，返回 path/kind/default/desc；可选元信息缺失保持空值。
   - 落点:core ParamSpec/ParamKind 派生 Serialize(kind serde 小写串=TS ParamKind 字面量);wasm 新导出 `param_registry()`(静态全量 `registry::all()`,JSON 字符串通道,无入参不会失败);Tauri 新命令 `param_registry`(core 直连,与 wasm 逐字段同构,已注册 invoke_handler);TS 服务层 `paramDefinitions()`(lib/wasm.ts,桌面 invoke / 浏览器 wasm 双路径同形状,返回 ParamDefinition[])。可选元信息:内核未提供的字段一概不出场(缺席保持缺席,消费方按空值处理),不造默认元信息。
   - 测试:contracts.test.mjs 10/10——参数定义族从 WB-03.01 存在性断言升级为真跑内核运行时锁:条数=注册表全量 64、恰四字段(path/kind/default/desc 全 string)、逐字段逐序与 TS 镜像(PARAM_REGISTRY,registry.rs 原文)一致、kind 不越界 ParamKind、wasm.ts 双路径接线源级守卫;全套 node 197/197;Rust core+wasm 179 过;desktop cargo check ✓;tsc -b 0 错;oxlint 0 警;vite build ✓(pkg/pkg-node 已重建含新导出)。
-- [ ] WB-03.05：补当前配置参数读取桥接，通过 core 读取真实有效值，不把 default 当当前值。
+- [x] WB-03.05：补当前配置参数读取桥接，通过 core 读取真实有效值，不把 default 当当前值。
+  - 落点:wasm 新导出 `param_values(yaml)`(load+validate 后逐数值注册路径 `registry::read_numeric`,返回 `{path: 当前生效值}`);Tauri 同构命令 `param_values`(已注册);TS 服务层 `paramValues(yaml)`(lib/wasm.ts 双路径)。已代决:只回数值槽(u32/u64/i64/f64/mix,58 项中的 57 数值路径),非数值槽(时长/公式/结构表)缺键 ≠ 0、有效形态即配置文本(归 WB-03.07);loot/gacha 未配置时返回内核真实生效缺省(read_numeric 的 unwrap_or),不是前端拿注册表 default 补值;u64 走 read_numeric 同精度边界(JS 安全整数面归 WB-03.08)。参数页基线列本就从打开 YAML 读真实值(cellOf),不经过注册表 default。
+  - 测试:wasm Rust 13/13(新增 param_values_reads_effective_not_registry_default:改动值按当前值读出、loot 缺省=内核口径、非数值槽缺键、57 全覆盖、非法 YAML 配置错误前缀);contracts.test.mjs 11/11(新增 WB-03.05 运行时锁:seed/attack 生效值、loot 1.0、缺键断言、数量=数值路径数、错误分类 config、wasm.ts 双路径接线守卫);全套 node 198/198;desktop cargo check ✓;tsc -b 0 错;oxlint 0 警;vite build ✓。
 - [ ] WB-03.06：补数值参数应用桥接，复用 core 类型与参数寻址；未知路径、非数值结构和非法类型返回明确错误。
 - [ ] WB-03.07：设计配置回写/序列化契约，保留枚举、公式、逐层表、loot 等未编辑的结构配置。
 - [ ] WB-03.08：明确 u64/seed 等值的 JS 安全整数边界；不安全值采用无损表达或明确拒绝，不静默舍入。

@@ -237,3 +237,30 @@ test('WB-03.04 参数定义桥接:内核注册表原样入界,恰四字段,无�
   assert.match(svc, /paramRegistryBinding\(\)/, '浏览器路径走 wasm 绑定')
   assert.match(svc, /as ParamDefinition\[\]/, '返回形状声明为 ParamDefinition[]')
 })
+
+test('WB-03.05 当前配置读取:生效值来自配置,不拿注册表 default 冒充', () => {
+  const yaml = `${YAML.replace('seed: 7', 'seed: 99')}model:\n  warrior: {attack: 250}\n`
+  const vals = JSON.parse(wasm.param_values(yaml))
+  assert.equal(vals['scenario.seed'], 99, '改过的值按当前值读出')
+  assert.equal(vals['model.warrior.attack'], 250)
+  // 未配置 loot → 内核真实生效缺省 1.0(read_numeric),不是前端补值
+  assert.equal(vals['model.loot.rate_mult'], 1.0)
+  // 非数值槽缺键 ≠ 0:时长/公式/结构表不进数值通道
+  assert.ok(!('scenario.duration' in vals))
+  assert.ok(!('model.loot.tables' in vals))
+  assert.ok(!('model.formulas.xp_needed' in vals))
+  // 数值注册路径全覆盖:64 − 7 非数值 = 57
+  const nonNumeric = new Set(['dur', 'expr', 'table'])
+  const numericCount = PARAM_REGISTRY.filter((p) => !nonNumeric.has(p.kind)).length
+  assert.equal(Object.keys(vals).length, numericCount, '全部数值注册路径在返回里')
+  // 非法配置报配置错误(与 validate_config 同前缀契约)
+  assert.throws(() => wasm.param_values('schema_version: "1"\nscenario: {population: -5}\n'), (e) => {
+    assert.match(String(e), /^配置错误:/)
+    assert.equal(classifyWasmError(String(e)).kind, 'config')
+    return true
+  })
+  // TS 服务层双路径接线
+  const svc = read('src/lib/wasm.ts')
+  assert.match(svc, /invoke\('param_values', \{ yaml \}\)/, '桌面路径走 param_values 命令')
+  assert.match(svc, /paramValuesBinding\(yaml\)/, '浏览器路径走 wasm 绑定')
+})
