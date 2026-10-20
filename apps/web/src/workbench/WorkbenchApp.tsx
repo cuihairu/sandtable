@@ -58,7 +58,7 @@ import type { Job } from './state/jobLogic.ts'
 import { notify } from './state/notifications.ts'
 import { candidateIdFor } from './ids.ts'
 import { t, tPlural } from '../lib/i18n/index.ts'
-import { currentRealJob, scopeCounts, scopeRows, scopedRunJson } from './analysis/exportScope.ts'
+import { currentRealJob, scopeCounts, scopeRows, scopedRunCsv, scopedRunJson } from './analysis/exportScope.ts'
 import { analysisSnapshot, defaultResultUI, subscribeAnalysis } from './analysis/analysisStore.ts'
 import { fmtNumber } from '../lib/i18n/format.ts'
 import { localeSession, useLocale } from './state/localeStore.ts'
@@ -360,6 +360,13 @@ export default function WorkbenchApp(): JSX.Element {
       const exec = exportCtx.job.exec!
       const kept = scopeRows(exportCtx.job, exportCtx.ui, scope).length
       const total = exec.spec.plan.candidates.length
+      const experimentId = state.runs.find((r) => r.run_id === exec.runId)?.experiment_id ?? null
+      if (format === 'csv') {
+        download(`${exec.runId}-candidates.csv`, scopedRunCsv(exportCtx.job, exportCtx.ui, scope, experimentId), 'text/csv;charset=utf-8')
+        notify('success', t(locale, 'common.notifyCsvDownloaded', { count: kept, source: 'kernel' }))
+        patchOverlays({ exportDialog: { open: false, scope: 'all' } })
+        return
+      }
       download(`${exec.runId}.json`, scopedRunJson(exportCtx.job, exportCtx.ui, scope), 'application/json')
       notify('success', t(locale, 'analysis.exportRunJsonDone', { run: exec.runId, kept, total }))
       patchOverlays({ exportDialog: { open: false, scope: 'all' } })
@@ -622,7 +629,7 @@ export default function WorkbenchApp(): JSX.Element {
             }).length,
             selected: 1,
           }}
-        formats={exportCtx ? ['json'] : undefined}
+        formats={exportCtx ? ['json', 'csv'] : undefined}
         sourceNote={exportCtx
           ? t(locale, 'data.exportDialog.runLine', { run: exportCtx.job.exec!.runId, status: exportCtx.job.status })
           : undefined}
