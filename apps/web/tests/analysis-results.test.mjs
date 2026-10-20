@@ -384,3 +384,34 @@ test('WB-09.02:失败原因明确——候选级 config_error 原文带引号,�
   assert.equal(failed[2].split(',')[7], 'failed')
   assert.equal(failed[2].split(',')[8], '预算超限: 太多')
 })
+
+test('WB-09.03:量纲标注与指标维度一致(percent 恒 0–1 原口径,导出不乘 100)', () => {
+  // 从真实 CSV 表头反解 `<metric>.<stat>[<token>]`,标注必须与 METRIC_META
+  // 维度闭合:percent → ratio_0_1、amount → amount、n → count;任何新指标
+  // 进表或改口径(比如悄悄改成 0–100)都会在这里红。
+  const header = scopedRunCsv(job, CSV_UI, 'all', 'exp_analysis0001').split('\r\n')[0].slice(1)
+  const groups = new Map()
+  for (const col of header.split(',')) {
+    const m = col.match(/^(.+)\.(mean|ci95_lo|ci95_hi|sd|n)\[([a-z0-9_]+)\]$/)
+    if (!m) continue
+    if (!groups.has(m[1])) groups.set(m[1], {})
+    groups.get(m[1])[m[2]] = m[3]
+  }
+  assert.deepEqual(
+    [...groups.keys()],
+    ['retention_d3', 'win_rate', 'gold_per_player', 'power_p50', 'churn_rate'],
+    '进表指标与 METRIC_KEYS 产出序一致;参数列(model.warrior.attack)不误入统计组',
+  )
+  for (const [metric, stats] of groups) {
+    assert.deepEqual(
+      Object.keys(stats),
+      ['mean', 'ci95_lo', 'ci95_hi', 'sd', 'n'],
+      `${metric}:5 个统计列齐备且量纲标注不缺漏`,
+    )
+    for (const [name, token] of Object.entries(stats)) {
+      if (name === 'n') assert.equal(token, 'count', `${metric}.n 恒标 [count]`)
+      else if (METRIC_META[metric].dimension === 'percent') assert.equal(token, 'ratio_0_1', `${metric}:percent 维度恒 [ratio_0_1],内核 0–1 原口径`)
+      else assert.equal(token, 'amount', `${metric}:amount 维度恒 [amount],不缩放`)
+    }
+  }
+})

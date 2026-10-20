@@ -48,6 +48,51 @@ test('WB-11.22:csvCell——数字走规范十进制,null 是空单元格(不是
   assert.equal(csvCell('a,b'), '"a,b"', '含逗号加引号')
   assert.equal(csvCell('say "hi"'), '"say ""hi"""', '引号翻倍')
   assert.equal(csvCell('line1\nline2'), '"line1\nline2"', '含换行加引号')
+  assert.equal(csvCell('cr\r only'), '"cr\r only"', 'WB-09.03:单独 CR 也是结构字符,同样加引号')
+  assert.equal(csvCell('配置错误: 预算超限'), '配置错误: 预算超限', 'WB-09.03:UTF-8 中文原样,不改写不转义')
+  assert.equal(csvCell('配置错误: 预算超限, 第二项'), '"配置错误: 预算超限, 第二项"', 'UTF-8 与引号规则叠加:逗号照常触发引号,内容逐字保留')
+})
+
+// WB-09.03:引号感知的往返解析——引号体里吃 CR/LF/逗号/翻倍引号,
+// 证明 toCsv 的转义足够让标准解析器逐字段还原原始内容。
+function parseRfc4180(text) {
+  const rows = []
+  let row = []
+  let field = ''
+  let quoted = false
+  let i = 0
+  while (i < text.length) {
+    const ch = text[i]
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue }
+        quoted = false; i += 1; continue
+      }
+      field += ch; i += 1; continue
+    }
+    if (ch === '"' && field === '') { quoted = true; i += 1; continue }
+    if (ch === ',') { row.push(field); field = ''; i += 1; continue }
+    if (ch === '\r' && text[i + 1] === '\n') { row.push(field); rows.push(row); row = []; field = ''; i += 2; continue }
+    field += ch; i += 1
+  }
+  row.push(field)
+  rows.push(row)
+  return rows
+}
+
+test('WB-09.03:toCsv 往返保真——引号/逗号/CR/LF/UTF-8/空单元格逐字段还原', () => {
+  const cells = ['cnd_中文', 'a,b', 'say "hi"', 'line1\nline2', 'cr\r only', '配置错误: 预算超限', 0.534, null]
+  const out = toCsv(
+    ['id', ...cells.map((_c, i) => `col_${i}`)],
+    [['r1', ...cells]],
+  )
+  const parsed = parseRfc4180(out)
+  assert.equal(parsed.length, 2, '字段内换行不拆出假行(CRLF 行界与字段内 LF/CR 可区分)')
+  assert.deepEqual(
+    parsed[1],
+    ['r1', 'cnd_中文', 'a,b', 'say "hi"', 'line1\nline2', 'cr\r only', '配置错误: 预算超限', '0.534', ''],
+    '引号/逗号/CR/LF/UTF-8/null 逐字段还原;数字走规范十进制,null = 空单元格',
+  )
 })
 
 test('WB-11.22:toCsv 行列结构稳定——表头原样,行宽不齐明确报错,CRLF 换行', () => {
