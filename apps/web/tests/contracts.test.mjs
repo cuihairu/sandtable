@@ -589,3 +589,16 @@ test('WB-03.16 数据来源标记:kernel/synthetic_demo 单一出处,运行集�
   assert.match(read('src/workbench/state/projectDoc.ts'), /不得登记为运行快照/)
   assert.match(read('src/workbench/state/projectDoc.ts'), /不得混入真实运行集合/)
 })
+
+test('WB-02.18 桌面本地查询迁入交换页:纯逻辑出壳,服务层唯一面与插件动态导入守卫', () => {
+  // 纯逻辑面节点可测且不依赖绑定/native(import 仅类型)
+  const logic = read('src/lib/localQuery.ts')
+  assert.ok(!/sandtable-wasm|@tauri-apps/.test(logic), 'localQuery.ts 保持纯逻辑,不得依赖绑定/native')
+  // 交换页:本地查询走服务层 queryLocal + isDesktop 门;插件对话框动态导入
+  const page = read('src/workbench/pages/ExchangePage.tsx')
+  assert.match(page, /import \{ isDesktop, queryLocal \} from '\.\.\/\.\.\/lib\/wasm\.ts'/)
+  assert.match(page, /await import\('@tauri-apps\/plugin-dialog'\)/)
+  assert.ok(!/from '@tauri-apps\/plugin-dialog'/.test(page), 'plugin-dialog 只能动态导入(不进浏览器包)')
+  assert.match(page, /columnsFromLocal\(await queryLocal\(/, '面板 run 必须经纯逻辑整形再渲染')
+  assert.match(page, /\{isDesktop && \(/, '本地查询段仅桌面渲染')
+})

@@ -3,6 +3,9 @@
 // WB-02.17 · 已有能力入位不丢:SQL 查询面板与 Parquet 导出从现役单页应用
 // 迁入本页(duckdb-wasm 按需加载,首次打开才进包;演示候选注册为内存表,
 // 也可载入 .sandtable 项目 / CSV 产物查自己的数据)。
+// WB-02.18 · 桌面原生本地查询迁入本页:选本机磁盘产物(CSV / Parquet,
+// 原生对话框多选或手输路径)由桌面壳 query 命令(duckdb-rs,与 CLI query
+// 同源)只读注册视图跑 SQL——万级行不经前端内存,浏览器端不渲染此段。
 // WB-11.16 · 导出入口/格式说明/互通边界走词典(data.exchange.*;提示走
 // 结构化词条,与 runManager 同口径)。表名与 CLI 命令保持原文。
 import { useState } from 'react'
@@ -13,6 +16,8 @@ import { DEMO_RESULT } from '../demo/sampleProject.ts'
 import { demoCsv, download } from '../demo/export.ts'
 import { notify } from '../state/notifications.ts'
 import type { QueryColumn } from '../../lib/duck.ts'
+import { isDesktop, queryLocal } from '../../lib/wasm.ts'
+import { viewNameOf, mergePath, columnsFromLocal } from '../../lib/localQuery.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 
@@ -30,6 +35,49 @@ export function ExchangePage({ onExport }: ExchangePageProps): JSX.Element {
   const [queryOpen, setQueryOpen] = useState(false)
   const [queryBusy, setQueryBusy] = useState(false)
   const [parquetBusy, setParquetBusy] = useState(false)
+  // WB-02.18 · 本地文件查询(仅桌面):磁盘路径清单 + 面板按需挂载
+  const [localPaths, setLocalPaths] = useState<readonly string[]>([])
+  const [localManual, setLocalManual] = useState('')
+  const [localOpen, setLocalOpen] = useState(false)
+  const [localBusy, setLocalBusy] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [localQuery, setLocalQuery] = useState<{ Panel: QueryPanelComponent; run: (sql: string) => Promise<QueryColumn[]> } | null>(null)
+
+  const addLocalPaths = async (): Promise<void> => {
+    setLocalError(null)
+    try {
+      // 动态导入:plugin-dialog 不进浏览器包(本段仅桌面渲染)
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const files = await open({ multiple: true, filters: [{ name: t(locale, 'data.exchange.localFilter'), extensions: ['csv', 'parquet'] }] })
+      if (!files) return
+      const picked = Array.isArray(files) ? files : [files]
+      setLocalPaths((prev) => picked.reduce((acc, p) => mergePath(acc, p), prev))
+    } catch (e) {
+      setLocalError(String(e))
+    }
+  }
+
+  const openLocalPanel = async (): Promise<void> => {
+    if (localBusy) return
+    if (localPaths.length === 0) {
+      setLocalError(t(locale, 'data.exchange.localNoFile'))
+      return
+    }
+    setLocalError(null)
+    setLocalBusy(true)
+    try {
+      const [{ default: Panel }] = await Promise.all([import('../../components/QueryPanel.tsx')])
+      setLocalQuery({
+        Panel,
+        run: async (sql) => columnsFromLocal(await queryLocal([...localPaths], sql)),
+      })
+      setLocalOpen(true)
+    } catch (e) {
+      notify('error', { key: 'data.exchange.toastLocalInit', params: { detail: String(e) } })
+    } finally {
+      setLocalBusy(false)
+    }
+  }
 
   const openQueryPanel = async (): Promise<void> => {
     if (queryBusy) return
@@ -190,6 +238,70 @@ export function ExchangePage({ onExport }: ExchangePageProps): JSX.Element {
                 hint={t(locale, 'data.exchange.queryHint')}
               />
             </div>
+          )}
+          {isDesktop && (
+            <>
+              <div className="exchange-row">
+                <div className="exchange-icon">FILE</div>
+                <div>
+                  <h2>{t(locale, 'data.exchange.localTitle')}</h2>
+                  <p>
+                    {t(locale, 'data.exchange.localBody1')}
+                    <br />
+                    <span className="mono">{t(locale, 'data.exchange.localMeta')}</span>
+                  </p>
+                  <div style={{ display: 'flex', gap: '6px', margin: '8px 0' }}>
+                    <button className="btn" onClick={() => void addLocalPaths()}>
+                      <WbIcon name="file-code" />
+                      {t(locale, 'data.exchange.localPick')}
+                    </button>
+                    <input
+                      value={localManual}
+                      onChange={(e) => setLocalManual(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return
+                        setLocalPaths((prev) => mergePath(prev, localManual))
+                        setLocalManual('')
+                      }}
+                      placeholder={t(locale, 'data.exchange.localPathPlaceholder')}
+                      aria-label={t(locale, 'data.exchange.localPathAria')}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                  {localPaths.length > 0 && (
+                    <p className="note">
+                      {t(locale, 'data.exchange.localSelected', { count: localPaths.length, views: localPaths.map((p) => viewNameOf(p)).join(', ') })}
+                    </p>
+                  )}
+                  {localError && <p className="note-block" role="alert">{localError}</p>}
+                </div>
+                <div className="actions">
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      if (localQuery !== null) {
+                        setLocalOpen((v) => !v)
+                        return
+                      }
+                      void openLocalPanel()
+                    }}
+                    disabled={localBusy}
+                  >
+                    <WbIcon name="terminal" />
+                    {localBusy ? t(locale, 'data.exchange.initializing') : localOpen ? t(locale, 'data.exchange.collapseQuery') : t(locale, 'data.exchange.localOpen')}
+                  </button>
+                </div>
+              </div>
+              {localQuery !== null && localOpen && (
+                <div className="exchange-query">
+                  <localQuery.Panel
+                    run={localQuery.run}
+                    initialSql="SELECT * FROM summary LIMIT 50"
+                    hint={t(locale, 'data.exchange.localHint')}
+                  />
+                </div>
+              )}
+            </>
           )}
           <div className="integration-note">
             <strong>{t(locale, 'data.exchange.integrationTitle')}</strong>

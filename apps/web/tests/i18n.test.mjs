@@ -522,3 +522,22 @@ test('WB-11.18:展示层不直接构造 Intl 数字/日期格式化器(统一走
   walk(root)
   assert.deepEqual(bad, [], `绕过 format 层的文件: ${bad.join(', ')}`)
 })
+
+test('WB-02.18:数据交换页本地查询段词条双语齐全(仅桌面渲染,文案仍两语可解)', () => {
+  const required = [
+    'data.exchange.localFilter', 'data.exchange.localTitle', 'data.exchange.localBody1',
+    'data.exchange.localMeta', 'data.exchange.localPick', 'data.exchange.localPathPlaceholder',
+    'data.exchange.localPathAria', 'data.exchange.localSelected', 'data.exchange.localNoFile',
+    'data.exchange.localOpen', 'data.exchange.localHint', 'data.exchange.toastLocalInit',
+  ]
+  for (const k of required) {
+    assert.ok(k in zh, `zh 缺词条 ${k}`)
+    assert.ok(k in en, `en 缺词条 ${k}`)
+    assert.ok(zh[k].trim() !== '' && en[k].trim() !== '', `词条 ${k} 不得为空`)
+  }
+  // 插值占位符双语一致:数量/视图清单与错误详情不丢
+  assert.match(zh['data.exchange.localSelected'], /\{count\}.*\{views\}/s)
+  assert.match(en['data.exchange.localSelected'], /\{count\}.*\{views\}/s)
+  assert.match(zh['data.exchange.toastLocalInit'], /\{detail\}/)
+  assert.match(en['data.exchange.toastLocalInit'], /\{detail\}/)
+})

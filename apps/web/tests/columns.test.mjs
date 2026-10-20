@@ -8,6 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { tableName, toColumns } from '../src/lib/columns.ts'
+import { viewNameOf, mergePath, columnsFromLocal } from '../src/lib/localQuery.ts'
 
 /** 造一个最小 Arrow 结果表替身:getChild().toArray() 的返回即列值。 */
 function fakeTable(columns) {
@@ -56,4 +57,25 @@ test('视图名:词根提取 / 非法字符 / 冲突加序号 / 非字母开头�
   assert.equal(tableName('2026days.csv', new Set()), 't_2026days')
   assert.equal(tableName('days.csv', new Set(['days'])), 'days_2')
   assert.equal(tableName('days.csv', new Set(['days', 'days_2'])), 'days_3')
+})
+
+test('WB-02.18 本地文件查询纯逻辑:视图名=文件名词根、路径清单合并去重、native 结果列整形', () => {
+  // 与桌面 query 命令注册规则同口径:词根(接受 / 与 \ 分隔;去扩展名)
+  assert.equal(viewNameOf('/home/u/runs/days.csv'), 'days')
+  assert.equal(viewNameOf('C:\\runs\\days.parquet'), 'days')
+  assert.equal(viewNameOf('summary'), 'summary')
+  // 路径清单:trim、去空、去重、顺序稳定(手输与对话框可混用)
+  assert.deepEqual(mergePath([], ' /a/b.csv '), ['/a/b.csv'])
+  assert.deepEqual(mergePath(['/a.csv'], ''), ['/a.csv'])
+  assert.deepEqual(mergePath(['/a.csv'], '/a.csv'), ['/a.csv'])
+  assert.deepEqual(mergePath(['/a.csv'], '/b.parquet'), ['/a.csv', '/b.parquet'])
+  // native 查询结果整形:数字可转则转(折线/千分位),空串保持空,
+  // 非数值(NaN 之外)保持文本
+  const cols = columnsFromLocal({
+    columns: ['day', 'label', 'metric'],
+    rows: [['3', '', '0.75'], ['x', '', 'oops']],
+  })
+  assert.deepEqual(cols[0].values, [3, 'x'])
+  assert.deepEqual(cols[1].values, ['', ''])
+  assert.deepEqual(cols[2].values, [0.75, 'oops'])
 })
