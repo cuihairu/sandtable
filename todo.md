@@ -397,8 +397,8 @@
 
 ## 待办(挂闸:需用户拍板 / 等外部输入 / 人工验收才开工)
 
-- [ ] DuckDB 真实数据校准：快速导入线上真实数据（csv/parquet）与仿真输出对账〔2026-10-20 用户令「集成 duckDB 用来数据分析，快速导入线上真实数据跑验证」；**推荐方案**：MCP server 增 duckdb 依赖，新增工具 sandtable.calibrate（真实数据路径 + 场景 yaml + 字段映射 → DuckDB 聚合 → 与 run_simulation 指标对比 → 校准差异报告）；CLI 侧后续片再评估 Rust duckdb crate；数据只读本地路径，不外发〕
-- [ ] MCP server：把内核能力（validate_config / planSweep / runSimulation / 分析读数）以 MCP stdio server 暴露给 AI 客户端〔2026-10-20 用户问起，现状=无；**推荐方案**：Node 侧 @modelcontextprotocol/sdk 薄壳调用既有 wasm 桥（lib/wasm.ts 同一实现，零重复逻辑），工具面四枚：sandtable.validate / sandtable.plan_sweep / sandtable.run / sandtable.analyze；桌面与 CLI 都可挂｜解锁=拍板即开工〕
+- [ ] **目标（计划级）：数据分析面** —— DuckDB 导入线上真实数据跑验证，**且支持 Python 脚本**〔2026-10-20 用户令「作为一个目标写入 todo 计划，需要支持 python 脚本」；分三步：① MCP 增 sandtable_calibrate 工具（真实数据路径+场景 yaml+字段映射 → 聚合 → 与仿真对账出差异报告，数据只读本地不外发）② Python 脚本执行面：复用既有 sandtable-python（pyo3 绑定已在）+ duckdb/pandas，CLI 提供 `sandtable analyze <script.py>`（超时+只读数据路径沙箱口径）③ 校准模板脚本入库（win rate/经济曲线两类起步）〕
+- [ ] MCP server（**Rust 实现**，用户 2026-10-20 拍板）：新 crate `sandtable-mcp`（workspace 成员），官方 rmcp SDK + stdio；**原生直调 sandtable-core（不经 wasm 边界，性能最优、单二进制零 Node 依赖）**；工具面四枚 sandtable_validate / sandtable_plan_sweep / sandtable_run / sandtable_analyze；先前 Node 草稿废弃不留两套〔2026-10-20 用户问「可以使用rust实现吗？性能更好些」→ 可以且更优：内核本来就是 Rust〕
 - [ ] 脚手架：新建场景/实验的骨架生成〔2026-10-20 用户问起，现状=无；**推荐方案**：CLI 子命令 `sandtable scaffold <name>` 生成 场景 yaml+基线+实验草稿+README 四件套（模板集中在一处），web「新建场景」向导复用同一模板，不写两套｜解锁=拍板即开工〕
 
 - [ ] Windows 打包嵌入应用图标：desktop-package.yml 产出的 .exe 当前无 Icon 资源；需用户定 logo（提供源图 ≥256px 的 png/svg，按设计资产铁律不自造代餐）→ 打包链生成 .ico 并嵌入（rcedit/resource_hack 或 cargo/tauri 侧 winres 配置）〔阻塞=等用户 logo 资产｜解锁=资产到位即做〕
