@@ -396,6 +396,9 @@
 
 ## 待办(挂闸:需用户拍板 / 等外部输入 / 人工验收才开工)
 
+- [ ] Windows 打包嵌入应用图标：desktop-package.yml 产出的 .exe 当前无 Icon 资源；需用户定 logo（提供源图 ≥256px 的 png/svg，按设计资产铁律不自造代餐）→ 打包链生成 .ico 并嵌入（rcedit/resource_hack 或 cargo/tauri 侧 winres 配置）〔阻塞=等用户 logo 资产｜解锁=资产到位即做〕
+
+
 - [ ] **BLOCKED** 真实案例二期 + 模型校准。缺:用户提供的真实运营数据与外部对标基准;公开数值案例不能替代二期输入(2026-10-19 核查:仓内无该数据,open PR/issue=0)。已代决(2026-10-19 巡检授权):校准路径设计落 `docs/calibration-design.md`(数值通道自由变量 + 既有 sweep/optimize/RF 链 + ±10% 带与 retention 0.9 底线 + 尾段 hold-out 防过拟合;缺件即锚点 unmapped 不代数据)——设计解锁方法不解锁数据,仍 BLOCKED 于 §2 三个必需交付件
 - [ ] **BLOCKED** 桌面端投入。缺:用户本机 GUI 环境完成并记录 native 文件对话框及 Windows / macOS 完整交互走查;自动化断言已尽。自动化链已覆盖:构建(run 38420221169 三腿绿)、启动(run 38436094647 20s 存活)、安装包安装+运行(run 38457041427,Windows 含 msi 腿 38488806732);证据 docs 18 Phase 7
   - 2026-10-19 Windows 侧核查（Windows 主机到位，HEAD=127ed5b）：**GUI 环境本身在**——真 Windows 11、WebView2 运行时 155.0.4283.62 在位、本会话有截图能力。**但仍拿不到可运行的桌面二进制**：①本机无 cargo/rustc/rustup，也无 MSVC cl.exe/link.exe 与 Windows SDK（Tauri 2 在 Windows 需 MSVC ABI，GNU 目标不支持 WebView2 COM 绑定），无法本机构建 apps/desktop/src-tauri；②远端无 release/tag 可下载预构建产物（GitHub API `/releases`、`/tags` 均空数组）；③GitHub Actions 的 msi 产物（run 38488806732）需 PAT 才能下载，无凭据不编造。native 文件对话框确认为 `tauri-plugin-dialog`（apps/desktop/src-tauri/src/lib.rs:64 `.plugin(tauri_plugin_dialog::init())`），只在桌面壳工作——浏览器跑 apps/web 无法走查该对话框，替代验证=假验证，不做。故 Windows 走查**仍未完成**，缺=MSVC+Windows SDK 构建工具链（或提供可下载的预构建 Windows 二进制/PAT）。macOS 那一半仍缺。
