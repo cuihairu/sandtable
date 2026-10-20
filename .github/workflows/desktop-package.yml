@@ -13,7 +13,9 @@ name: 桌面安装包
 # gate 比对 HEAD 与上次 nightly release 的 target 提交,没有新提交整链跳过(每日一查,
 # 交付滞后上界 48 小时);三腿全绿才进 nightly-release job,删旧建新保持单一滚动
 # nightly 预发布(--prerelease + --latest=false,不带版本号,永不占正式版本位)。
-# 只挂安装器(msi / nsis exe / dmg / deb),公开可下载、无需 PAT——Actions 制品下载
+# 每日产物三件套(2026-10-21 用户令):桌面安装包(msi / nsis exe / dmg / deb / rpm)+
+# 无界面 headless CLI(sandtable-linux-x64.tar.gz,同 workflow 另一 job),公开可下载、无需 PAT——
+# Actions 制品下载
 # 仍需凭据,拿不到本机二进制的真机走查只能走这条。默认手动触发(nightly 入参缺省)
 # 行为不变:只出制品,不建 Release。
 on:
@@ -88,7 +90,7 @@ jobs:
           # xvfb / openbox:安装包冒烟要起 X 服务(desktop-smoke job 同配方,见
           # ci.yml 该 job 的 apt 行;本 workflow 无其它步骤装这两个)
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
-            xvfb openbox
+            xvfb openbox rpm
 
       # shell: bash 让 Windows / macOS 也走同一安装脚本(init.sh 自动挑平台二进制);
       # 首跑 macOS 腿曾因 runner 到 github.com 瞬时网络错(curl 28)失败,故带重试
@@ -139,6 +141,7 @@ jobs:
             target/release/bundle/app/*.app
             target/release/bundle/macos/*.app
             target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
           if-no-files-found: error
 
       # 冒烟一 · 裸产物(Windows / macOS 腿):直接拉起 target/release 里的二进制判
@@ -363,10 +366,55 @@ jobs:
           kill "$pid"
           kill "$xvfb_pid" 2>/dev/null || true
 
+  # 无界面 headless CLI(2026-10-21 用户令:每日构建不只要桌面,还要不带界面的版本)。
+  # 不依赖 web/wasm/桌面栈,纯 cargo 构建 sandtable 二进制;Linux x64 先行(舰队 runner 同构),
+  # 冒烟 --version/--help 出门;打包 tar.gz+sha256 上传,并进 nightly 滚动 Release。
+  cli-headless:
+    needs: gate
+    if: always() && (needs.gate.result == 'skipped' || needs.gate.outputs.updated == 'true')
+    name: headless CLI (linux-x64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 构建 release CLI
+        run: cargo build --release -p sandtable-cli
+
+      - name: 冒烟(--version / --help)
+        run: |
+          set -e
+          ./target/release/sandtable --version
+          ./target/release/sandtable --help | head -5
+          # 无界面保证:裸二进制不拉起任何窗口(纯 CLI,超时 15s 内退出即算过)
+          timeout 15 ./target/release/sandtable --help >/dev/null
+
+      - name: 打包 tar.gz + sha256
+        run: |
+          set -e
+          stage=$(mktemp -d)
+          cp target/release/sandtable "$stage/"
+          cp README.md "$stage/" 2>/dev/null || true
+          tar -czf "sandtable-cli-linux-x64-${GITHUB_SHA::8}.tar.gz" -C "$stage" .
+          sha256sum "sandtable-cli-linux-x64-${GITHUB_SHA::8}.tar.gz" > "sandtable-cli-linux-x64-${GITHUB_SHA::8}.tar.gz.sha256"
+          ls -la sandtable-cli-*
+
+      - name: 上传 headless CLI 制品
+        uses: actions/upload-artifact@v7
+        with:
+          name: sandtable-cli-linux-x64-${{ github.run_number }}
+          path: |
+            sandtable-cli-linux-x64-*.tar.gz
+            sandtable-cli-linux-x64-*.tar.gz.sha256
+          if-no-files-found: error
+
   # nightly 滚动发布:三腿构建+安装冒烟全绿才走到这里。删旧建新保持单一滚动 Release;
   # --prerelease + --latest=false 永不占正式版本位,正式版本仍只能由用户手动给出并触发
   nightly-release:
-    needs: package
+    needs: [package, cli-headless]
     if: >-
       always() && needs.package.result == 'success' &&
       (github.event_name == 'schedule' || inputs.nightly == true)
@@ -393,7 +441,8 @@ jobs:
           while IFS= read -r -d '' f; do
             files+=("$f")
           done < <(find dist -type f \
-            \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o -name '*.deb' \) -print0)
+            \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o -name '*.deb' \
+               -o -name '*.rpm' -o -name 'sandtable-cli-*.tar.gz' \) -print0)
           [ "${#files[@]}" -gt 0 ] || { echo "no installer found"; exit 1; }
           printf '%s\n' "${files[@]}"
           sha8="${GITHUB_SHA::8}"
