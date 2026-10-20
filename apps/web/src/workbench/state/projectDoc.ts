@@ -388,6 +388,26 @@ export function runArtifactPaths(runId: string, artifactNames: readonly string[]
   return artifactNames.map((n) => `results/${runId}.${n}`)
 }
 
+/** 提交登记的运行索引条目(口径同 WB-04.08):快照字段逐字映射,
+ *  设计侧的基线配置哈希记进 conditions 供审计;产物路径按索引纪律预留,
+ *  真实执行终局由 run/artifacts 动作补齐实际产物。 */
+export function runIndexEntryOf(snap: RunSnapshot, baseConfigHash: string | undefined): RunIndexEntry {
+  return {
+    run_id: snap.runId,
+    experiment_id: snap.experimentId,
+    scenario_path: snap.scenarioPath,
+    experiment_path: snap.experimentPath,
+    config_hash: snap.configHash,
+    model_version: snap.modelVersion,
+    schema_version: snap.schemaVersion,
+    seed: snap.seed,
+    conditions: { ...snap.conditions, base_config_hash: baseConfigHash ?? '' },
+    data_source: snap.dataSource,
+    created_at_unix: snap.createdAtUnix,
+    files: runArtifactPaths(snap.runId, []),
+  }
+}
+
 /** 序列化运行索引(条目按 run_id 排序,确定性,与打包纪律同源)。
  *  WB-03.16 · 写闸:demo 来源或来源字段缺失/非法的条目显式拒绝——
  *  演示数据不进真实运行集合,不静默修正。 */

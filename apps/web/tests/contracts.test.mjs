@@ -587,7 +587,11 @@ test('WB-03.16 数据来源标记:kernel/synthetic_demo 单一出处,运行集�
   // 登记链:快照来源字段落到运行索引条目,报告导出带 data_source 标记。
   // WB-09.04 起真实 run 的 JSON 信封从 exportScope 单点取(kernel 声明在那里),
   // 页面不再内联拼信封——页面改挂 scopedRunJson,字面量守卫移到 exportScope。
-  assert.match(read('src/workbench/pages/DesignerPage.tsx'), /data_source: snap\.dataSource/)
+  // WB-10.01 起登记条目映射提到 projectDoc 单点(闭环测试复用同一映射),
+  // 页面只挂 runIndexEntryOf,不再内联拼条目、不写死来源标记。
+  assert.match(read('src/workbench/state/projectDoc.ts'), /data_source: snap\.dataSource/)
+  assert.match(read('src/workbench/pages/DesignerPage.tsx'), /runIndexEntryOf\(snap/)
+  assert.ok(!/data_source:\s*['"]/.test(read('src/workbench/pages/DesignerPage.tsx')), '页面不写死来源标记')
   assert.match(read('src/workbench/analysis/exportScope.ts'), /data_source: 'kernel'/)
   assert.match(read('src/workbench/pages/AnalysisPage.tsx'), /scopedRunJson\(job, ui, 'all', runEntry\)/)
   // 真实运行集合的三道闸都在索引代码面(写闸/入口闸/读闸)

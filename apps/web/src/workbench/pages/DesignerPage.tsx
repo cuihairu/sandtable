@@ -53,31 +53,10 @@ import type { BaselineId } from '../ids.ts'
 import { DEMO_BASELINE_ID } from '../demo/sampleProject.ts'
 // WB-04 · 项目模式:配置草稿编辑器(按对象隔离)+ 提交时登记不可变输入快照
 import { ProjectConfigEditors } from '../project/ProjectPanels.tsx'
-import { runArtifactPaths, snapshotRun, baseContentOf, draftOf } from '../state/projectDoc.ts'
-import type { RunIndexEntry, RunSnapshot } from '../state/projectDoc.ts'
+import { baseContentOf, draftOf, runIndexEntryOf, snapshotRun } from '../state/projectDoc.ts'
 import * as runManager from '../state/runManager.ts'
 import type { SweepPlan } from '../../lib/types.ts'
 import { baselineOfProject } from '../state/projectDoc.ts'
-
-/* —— 提交登记的运行索引条目(口径同 WB-04.08) —— */
-
-function runIndexEntryOf(snap: RunSnapshot, baseConfigHash: string | undefined): RunIndexEntry {
-  return {
-    run_id: snap.runId,
-    experiment_id: snap.experimentId,
-    scenario_path: snap.scenarioPath,
-    experiment_path: snap.experimentPath,
-    config_hash: snap.configHash,
-    model_version: snap.modelVersion,
-    schema_version: snap.schemaVersion,
-    seed: snap.seed,
-    conditions: { ...snap.conditions, base_config_hash: baseConfigHash ?? '' },
-    data_source: snap.dataSource,
-    created_at_unix: snap.createdAtUnix,
-    // 产物路径按运行索引纪律预留(平铺两段);WB-07 真实执行接入后填实际产物
-    files: runArtifactPaths(snap.runId, []),
-  }
-}
 
 /** Cache for sweepableParams()—imports/exports map */
 const SWEEPABLE = sweepableParams()
