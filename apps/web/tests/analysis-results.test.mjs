@@ -3,7 +3,7 @@ import strictAssert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import * as wasm from '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js'
 import { candidateViews } from '../src/lib/sweepView.ts'
-import { METRIC_META } from '../src/lib/metricMeta.ts'
+import { METRIC_META, metricLabel } from '../src/lib/metricMeta.ts'
 import { METRIC_KEYS } from '../src/lib/types.ts'
 import { abView, availableMetrics, dailyRows, findCandidate, inspectorSources, interpolationText, orderViews, overallOutcome, recommendationView, responsePoints, sensitivityNoteLabel, stepSelection, targetSpan, xAxisDomain, yAutoDomain } from '../src/lib/analysisView.ts'
 import { candidateIdFor } from '../src/workbench/ids.ts'
@@ -481,4 +481,43 @@ test('WB-09.04:未运行草稿另存为独立产物,与 run 结果和 run 输入
     id: 'cnd_draft0002', source_run_id: 'run_analysis0001', source_candidate_id: all[0].id,
     baseline_id: draft.baselineId, values: edited.values, plan_yaml: yaml, yaml: edited.yaml,
   } })
+})
+
+test('WB-09.09:机器列名、枚举、小数点与 JSON schema 中英一致;本地化标题只进可读层', () => {
+  // 机器面函数无 locale 入口:锁内容形状证明中英文产物逐字节同一
+  const ui = { selectedId: null, order: { filter: 'all', by: 'index', dir: 1 } }
+  const csv = scopedRunCsv(job, ui, 'all', 'exp_analysis0001')
+  const lines = csv.replace(/^\uFEFF/, '').split('\r\n')
+  const header = lines[0].split(',')
+  assert.ok(header.every((h) => /^[\x20-\x7F]+$/.test(h)), '列名全 ASCII,无 CJK 进机器列名')
+  for (const base of ['data_source', 'run_id', 'experiment_id', 'candidate_id', 'candidate_index', 'replicates', 'status', 'fail_reason', 'verdict']) {
+    assert.ok(header.includes(base), `稳定机器列 ${base} 在位`)
+  }
+  assert.ok(header.includes('win_rate.mean[ratio_0_1]') && header.includes('win_rate.n[count]'),
+    '指标统计列 = id.stat[量纲],不用本地化标题当列名')
+  // 小数点规范:指标数值恒为点十进制(不做 zh 逗号化)
+  const rowCells = lines[1].split(',')
+  const meanCell = rowCells[header.indexOf('win_rate.mean[ratio_0_1]')]
+  // 规范十进制允许整数值省小数部分(machineNumber 同 JSON 数字口径);锁的是
+  // 恒点号、无千分位、无 locale 逗号化
+  assert.match(meanCell, /^-?\d+(\.\d+)?$/, `win_rate mean 规范十进制(${meanCell})`)
+  // 枚举集合固定:data_source/status/verdict 全部落在声明枚举内,与 locale 无关
+  assert.equal(rowCells[header.indexOf('data_source')], 'kernel')
+  assert.equal(rowCells[header.indexOf('status')], 'ok')
+  const verdictIdx = header.indexOf('verdict')
+  for (const l of lines.slice(1)) {
+    const v = l.split(',')[verdictIdx]
+    assert.ok(['pass', 'borderline', 'fail', ''].includes(v), `verdict 落枚举集(${v})`)
+  }
+  // JSON schema 键序与枚举固定(键全 ASCII;results 为内核原文)
+  const snap = JSON.parse(scopedRunJson(job, ui, 'all',
+    { experiment_id: 'exp_analysis0001', config_hash: 'hash_input_0001', seed: 7, created_at_unix: 1780000000 }))
+  // 固件 exec 无 recommendation 键(undefined 不入 JSON;真完成路径为 null/对象,键在位)
+  assert.deepEqual(Object.keys(snap),
+    ['data_source', 'run_id', 'status', 'version', 'source', 'spec', 'results', 'export_scope'])
+  assert.equal(snap.data_source, 'kernel')
+  assert.equal(snap.status, 'succeeded')
+  assert.ok(!/[一-龥]/.test(JSON.stringify({ ...snap, spec: '' })), '信封与结果无 CJK(本固件数据无 CJK)')
+  // 对照:显示层标题才本地化(只进可读图表/报告),且两语言确实不同词
+  assert.notEqual(metricLabel('win_rate', 'zh-CN'), metricLabel('win_rate', 'en-US'), '显示标题随 locale——证明上面列名没走标题')
 })
