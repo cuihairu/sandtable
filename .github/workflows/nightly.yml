@@ -11,8 +11,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  freshness:
+    name: 活跃门(48h)
+    runs-on: ubuntu-latest
+    outputs:
+      active: ${{ steps.check.outputs.active }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        name: 48 小时内有提交才继续（舰队每日构建统一规则）
+        run: |
+          LAST=$(git log -1 --format=%ct)
+          NOW=$(date -u +%s)
+          if [ $((NOW - LAST)) -lt 172800 ]; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::48 小时内无提交，跳过每日构建编译"
+          fi
+
   nightly-web:
     name: Web 产物(nightly)
+    needs: freshness
+    if: needs.freshness.outputs.active == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
