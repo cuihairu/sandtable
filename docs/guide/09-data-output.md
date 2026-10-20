@@ -22,7 +22,7 @@ Output directory convention for every run (written directly by `simulate --out`,
 
 ```text
 out/
-├── report.json          # meta + config_hash + results (replicate metrics, constraint verdicts)
+├── report.json          # meta + results (per-replicate metrics and constraint verdicts; config_hash rides each result entry, not the top level)
 ├── days.csv             # per-day metric series
 ├── comparison.json      # compare subcommand: A/B means / paired-difference CI / effect size
 ├── day_stats.parquet    # ┐ added by the parquet feature

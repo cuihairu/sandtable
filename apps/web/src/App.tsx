@@ -6,6 +6,7 @@ import LocalQuery from './components/LocalQuery'
 import QueryPanel from './components/QueryPanel'
 import SweepPanel from './components/SweepPanel'
 import { exportCsvAsParquet, loadDayStats, runQuery } from './lib/duck'
+import { reportJson } from './lib/reportArtifact'
 import { PRESETS, SWEEP_PRESETS } from './lib/presets'
 import { packProject, unpackProject } from './lib/project'
 import type { UnpackedProject } from './lib/project'
@@ -30,25 +31,6 @@ function download(data: string | Uint8Array, filename: string, mime: string) {
 
 function dayMetric(m: RunMetrics, key: 'active' | 'win_rate' | 'gold_supply' | 'levelups' | 'churn_rate'): number[] {
   return m.day_stats.map((d) => d[key])
-}
-
-// report.json 内容(文档 09 章契约):环境字段 + 结果,与 CLI report 产物同构
-function reportJson(out: SimOutput): string {
-  return JSON.stringify(
-    {
-      meta: {
-        // 环境字段(文档 22 绑定纪律):时间戳取导出时刻,
-        // git_sha 由构建注入(VITE_GIT_SHA),未注入回退 unknown(与 CLI 同)
-        generated_at_unix: Math.floor(Date.now() / 1000),
-        git_sha: import.meta.env.VITE_GIT_SHA ?? 'unknown',
-        schema_version: out.meta.schema_version,
-        model_version: out.meta.model_version,
-      },
-      results: out.results,
-    },
-    null,
-    2,
-  )
 }
 
 export default function App() {

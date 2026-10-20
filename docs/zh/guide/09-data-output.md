@@ -23,7 +23,7 @@ title: 09 · 数据输出
 
 ```text
 out/
-├── report.json          # meta + config_hash + results(replicate 指标、约束判定)
+├── report.json          # meta + results(逐 replicate 指标与约束判定;config_hash 随每条结果携带,不在顶层)
 ├── days.csv             # 按天指标序列
 ├── comparison.json      # compare 子命令:A/B 均值 / 配对差 CI / 效应量
 ├── day_stats.parquet    # ┐ parquet feature 追加
