@@ -149,7 +149,7 @@ jobs:
           node --test apps/web/tests/columns.test.mjs apps/web/tests/tokens.test.mjs apps/web/tests/workbench-ids.test.mjs apps/web/tests/workbench-logic.test.mjs apps/web/tests/i18n.test.mjs apps/web/tests/params-config.test.mjs apps/web/tests/sweep-view.test.mjs apps/web/tests/machine-export.test.mjs apps/web/tests/execution.test.mjs apps/web/tests/workbench-store.test.mjs apps/web/tests/workbench-shortcuts.test.mjs apps/web/tests/workbench-locale.test.mjs apps/web/tests/data-workspace.test.mjs apps/web/tests/flow-multi-config.test.mjs
           wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
           # 依赖 pkg-node 的套件(sandtable_wasm.js 由上一步构建)
-          node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs apps/web/tests/contracts.test.mjs apps/web/tests/execution-kernel.test.mjs apps/web/tests/ab-parity.test.mjs apps/web/tests/experiment-form.test.mjs apps/web/tests/flow-loop.test.mjs
+          node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs apps/web/tests/contracts.test.mjs apps/web/tests/execution-kernel.test.mjs apps/web/tests/ab-parity.test.mjs apps/web/tests/experiment-form.test.mjs apps/web/tests/flow-loop.test.mjs apps/web/tests/flow-run-interrupt.test.mjs
           node --test apps/web/tests/analysis-results.test.mjs
 
   # 桌面启动链守卫(2026-10-13 接入):无 custom-protocol 的构建是开发形态——窗口
