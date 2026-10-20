@@ -68,13 +68,13 @@ jobs:
           - windows-2025
           - macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -122,14 +122,14 @@ jobs:
       # 未签名构建(拍板 2026-10-10:签名证书留到发布时再定)——Windows 不签名只影响
       # SmartScreen 首次打开体验,macOS 未签名需右键打开,均为首次安装提示非崩溃
       - name: 构建安装包
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1.0.0
         with:
           args: --features custom-protocol
 
       # 制品而非 Release:未验收的二进制不进 Releases 页面。先于冒烟上传,
       # 冒烟失败也要能取到安装包排障
       - name: 上传安装包制品
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sandtable-${{ runner.os }}-${{ github.run_number }}
           path: |
@@ -374,7 +374,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: sandtable-*
           merge-multiple: true

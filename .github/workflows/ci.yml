@@ -26,7 +26,7 @@ jobs:
   test:
     runs-on: ubuntu-24.04  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -106,7 +106,7 @@ jobs:
     name: Web 构建(wasm + 前端)
     runs-on: ubuntu-24.04  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -114,7 +114,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -161,13 +161,13 @@ jobs:
     name: 桌面无头冒烟(启动链)
     runs-on: ubuntu-24.04  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -202,7 +202,7 @@ jobs:
       # 冒烟翻红时把现场(截图/启动日志)带走,色数与白屏问题没图没法诊断
       - name: 上传冒烟现场(仅失败时)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-smoke-evidence
           path: |
