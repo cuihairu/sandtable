@@ -15,6 +15,7 @@ import { DemoAnalysisPage } from '../analysis/DemoAnalysisPage.tsx'
 import { addCandidateDraft, analysisSnapshot, defaultResultUI, editCandidateDraft, patchResultUI, setAnalysisJob, subscribeAnalysis } from '../analysis/analysisStore.ts'
 import { copyCandidate, feasibility, formatMetric, fullValues, orderedRows, ranBaseline, resultRows, rowState, statText } from '../analysis/resultModel.ts'
 import type { ResultRow } from '../analysis/resultModel.ts'
+import { currentRealJob } from '../analysis/exportScope.ts'
 import { dispatch } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
 import * as runManager from '../state/runManager.ts'
@@ -35,7 +36,8 @@ export function AnalysisPage({ state, onExport }: AnalysisPageProps): JSX.Elemen
   const jobs = useSyncExternalStore(runManager.subscribe, runManager.listJobs)
   const a = useSyncExternalStore(subscribeAnalysis, analysisSnapshot)
   const realJobs = jobs.filter((j) => !j.demo && j.exec)
-  const job = realJobs.find((j) => j.id === a.jobId) ?? realJobs.find((j) => j.exec?.runId === state.selection.run) ?? realJobs.at(-1)
+  // 当前 run 解析口径与导出对话框共用(WB-09.01:同一口径,不各算一遍)
+  const job = currentRealJob(jobs, a.jobId, state.selection.run)
   if (state.selection.source === 'synthetic_demo') return <>
     <div className="workspace-toolbar" role="status"><strong>{t(locale, 'analysis.demoSourceBanner')}</strong><button className="btn" onClick={() => dispatch({ type: 'selection', patch: { source: 'kernel' } })}>{t(locale, 'analysis.backToReal')}</button></div>
     <DemoAnalysisPage state={state} onExport={onExport} />
@@ -49,11 +51,11 @@ export function AnalysisPage({ state, onExport }: AnalysisPageProps): JSX.Elemen
       </select>
       <button className="btn" onClick={() => dispatch({ type: 'selection', patch: { source: 'synthetic_demo' } })}>{t(locale, 'analysis.openDemo')}</button>
     </div>
-    {job ? <RealResult key={job.id} job={job} state={state} /> : <div className="empty-state">{t(locale, 'analysis.emptyState')}</div>}
+    {job ? <RealResult key={job.id} job={job} state={state} onExport={onExport} /> : <div className="empty-state">{t(locale, 'analysis.emptyState')}</div>}
   </>
 }
 
-function RealResult({ job, state }: { job: Job; state: WorkbenchState }): JSX.Element {
+function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState; onExport: () => void }): JSX.Element {
   const locale = useLocale()
   const a = useSyncExternalStore(subscribeAnalysis, analysisSnapshot)
   const ui = a.byJob[job.id] ?? defaultResultUI
@@ -125,6 +127,8 @@ function RealResult({ job, state }: { job: Job; state: WorkbenchState }): JSX.El
           <option value="all">{t(locale, 'analysis.filterAll')}</option><option value="pass">hard pass</option><option value="borderline">hard borderline</option><option value="fail">hard fail</option>
         </select>
         <button className="btn" onClick={() => download(`${exec.runId}.json`, machineJson({ data_source: 'kernel', run_id: exec.runId, spec: exec.spec, status: job.status, results: exec.results, recommendation: exec.recommendation }), 'application/json')}>{t(locale, 'analysis.downloadJson')}</button>
+        {/* WB-09.01 · 导出对话框绑定当前 run:范围计数由这份 job 派生 */}
+        <button className="btn" onClick={onExport}>{t(locale, 'analysis.exportRun')}</button>
       </div>
       {selected && !rows.some((r) => r.id === selected.id) && <p className="note-block" role="status">{t(locale, 'analysis.selectionFiltered')}<button className="btn" onClick={() => patch({ order: { ...ui.order, filter: 'all' } })}>{t(locale, 'analysis.showAllRestore')}</button></p>}
       <div className="real-result-grid">

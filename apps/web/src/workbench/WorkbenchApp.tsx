@@ -58,6 +58,8 @@ import type { Job } from './state/jobLogic.ts'
 import { notify } from './state/notifications.ts'
 import { candidateIdFor } from './ids.ts'
 import { t, tPlural } from '../lib/i18n/index.ts'
+import { currentRealJob, scopeCounts, scopeRows, scopedRunJson } from './analysis/exportScope.ts'
+import { analysisSnapshot, defaultResultUI, subscribeAnalysis } from './analysis/analysisStore.ts'
 import { fmtNumber } from '../lib/i18n/format.ts'
 import { localeSession, useLocale } from './state/localeStore.ts'
 import { DEMO_BASELINE_ID, DEMO_EXPERIMENT_ID } from './demo/sampleProject.ts'
@@ -111,6 +113,8 @@ const INITIAL_OVERLAYS: OverlayState = {
 export default function WorkbenchApp(): JSX.Element {
   const state: WorkbenchState = useSyncExternalStore(subscribe, getState)
   const locale = useLocale()
+  const jobs: readonly Job[] = useSyncExternalStore(runManager.subscribe, runManager.listJobs)
+  const analysis = useSyncExternalStore(subscribeAnalysis, analysisSnapshot)
   const [overlays, setOverlays] = useState(INITIAL_OVERLAYS)
   const patchOverlays = (patch: Partial<OverlayState>): void =>
     setOverlays((prev) => ({ ...prev, ...patch }))
@@ -338,8 +342,29 @@ export default function WorkbenchApp(): JSX.Element {
     return entries
   }, [locale])
 
-  /* 导出(演示数据,明确来源标注;WB-09 接真实 run) */
+  /* —— WB-09.01 · 导出绑定当前真实 run —— */
+  // 真实分析视图打开导出对话框时:范围计数与产物一律派生自当前 run
+  // (currentRealJob 与分析页同一口径);演示/数据交换页仍是演示导出。
+  // 真实上下文先只放 JSON(CSV/SVG 属 WB-09.02/.05,落地后放开)。
+  const exportCtx = state.page === 'analysis' && state.selection.source !== 'synthetic_demo'
+    ? (() => {
+        const job = currentRealJob(jobs, analysis.jobId, state.selection.run)
+        if (!job) return null
+        return { job, ui: analysis.byJob[job.id] ?? defaultResultUI }
+      })()
+    : null
+
+  /* 导出(演示数据,明确来源标注;真实 run 走 WB-09.01 绑定导出) */
   const doExport = (scope: ExportScope, format: ExportFormat): void => {
+    if (exportCtx) {
+      const exec = exportCtx.job.exec!
+      const kept = scopeRows(exportCtx.job, exportCtx.ui, scope).length
+      const total = exec.spec.plan.candidates.length
+      download(`${exec.runId}.json`, scopedRunJson(exportCtx.job, exportCtx.ui, scope), 'application/json')
+      notify('success', t(locale, 'analysis.exportRunJsonDone', { run: exec.runId, kept, total }))
+      patchOverlays({ exportDialog: { open: false, scope: 'all' } })
+      return
+    }
     const rows =
       scope === 'selected'
         ? [currentSelected(state)]
@@ -586,16 +611,24 @@ export default function WorkbenchApp(): JSX.Element {
         open={overlays.exportDialog.open}
         onClose={() => patchOverlays({ exportDialog: { open: false, scope: 'all' } })}
         onConfirm={doExport}
-        counts={{
-          all: DEMO_RESULT.candidates.length,
-          filtered: filterAndSort(DEMO_RESULT.candidates, {
-            filterVerdict: state.resultFilter,
-            sortKey: state.sortKey,
-            sortDir: state.sortDir,
-          }).length,
-          selected: 1,
-        }}
-        selectedLabel={state.selectedCandidateId?.slice(0, 11) ?? t(locale, 'common.notSelected')}
+        counts={exportCtx
+          ? scopeCounts(exportCtx.job, exportCtx.ui)
+          : {
+            all: DEMO_RESULT.candidates.length,
+            filtered: filterAndSort(DEMO_RESULT.candidates, {
+              filterVerdict: state.resultFilter,
+              sortKey: state.sortKey,
+              sortDir: state.sortDir,
+            }).length,
+            selected: 1,
+          }}
+        formats={exportCtx ? ['json'] : undefined}
+        sourceNote={exportCtx
+          ? t(locale, 'data.exportDialog.runLine', { run: exportCtx.job.exec!.runId, status: exportCtx.job.status })
+          : undefined}
+        selectedLabel={exportCtx
+          ? (exportCtx.ui.selectedId ?? t(locale, 'common.notSelected'))
+          : (state.selectedCandidateId?.slice(0, 11) ?? t(locale, 'common.notSelected'))}
       />
       <ConfirmDialog
         open={overlays.confirmResetAll}

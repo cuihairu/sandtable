@@ -8,6 +8,7 @@ import { METRIC_KEYS } from '../src/lib/types.ts'
 import { abView, availableMetrics, dailyRows, findCandidate, inspectorSources, interpolationText, orderViews, overallOutcome, recommendationView, responsePoints, sensitivityNoteLabel, stepSelection, targetSpan, xAxisDomain, yAutoDomain } from '../src/lib/analysisView.ts'
 import { candidateIdFor } from '../src/workbench/ids.ts'
 import { copyCandidate, feasibility, formatMetric, fullValues, orderedRows, ranBaseline, resultRows, rowState, statText } from '../src/workbench/analysis/resultModel.ts'
+import { currentRealJob, scopeCounts, scopeRows, scopedRunJson } from '../src/workbench/analysis/exportScope.ts'
 import { addCandidateDraft, analysisSnapshot, editCandidateDraft, patchResultUI, setAnalysisJob } from '../src/workbench/analysis/analysisStore.ts'
 
 let assertions = 0
@@ -255,4 +256,58 @@ test('WB-11.14:statText/formatMetric/rowState/feasibility/插值文案随 locale
   // feasibility en
   const fe = feasibility(all[1], 'en-US')
   assert.ok(!/[一-鿿]/.test(fe), `feasibility en 无中文:${fe}`)
+})
+
+/* —— WB-09.01:导出绑定当前真实 run——范围计数、行对位与产物信封 —— */
+test('WB-09.01:范围计数与行集合由当前 run 派生(全部/筛选/所选)', () => {
+  const ui = { selectedId: all[1].id, order: { filter: 'all', by: 'index', dir: 1 } }
+  const counts = scopeCounts(job, ui)
+  assert.equal(counts.all, plan.candidates.length)
+  assert.equal(counts.filtered, plan.candidates.length)
+  assert.equal(counts.selected, 1)
+  assert.deepEqual(scopeRows(job, ui, 'all').map((r) => r.index), all.map((r) => r.index))
+  assert.deepEqual(scopeRows(job, ui, 'selected').map((r) => r.index), [1])
+  // 筛选=分析页 orderViews 同一口径:overall 判定匹配的行才进入范围
+  const fails = all.filter((r) => overallOutcome(r.result).overall === 'fail')
+  const filteredUi = { selectedId: null, order: { filter: 'fail', by: 'index', dir: 1 } }
+  assert.deepEqual(scopeRows(job, filteredUi, 'filtered').map((r) => r.index), fails.map((r) => r.index))
+  assert.equal(scopeCounts(job, filteredUi).filtered, fails.length)
+  // 选中不存在的候选 = 空范围,不虚构行;无选中时计数为 0
+  assert.deepEqual(scopeRows(job, { selectedId: 'cnd_notthere0000', order: ui.order }, 'selected'), [])
+  assert.equal(scopeCounts(job, { selectedId: null, order: ui.order }).selected, 0)
+})
+
+test('WB-09.01:绑定导出的 JSON 信封(run 元数据 + 下标对位 + 范围证据)', () => {
+  const ui = { selectedId: all[2].id, order: { filter: 'all', by: 'index', dir: 1 } }
+  const kept = JSON.parse(scopedRunJson(job, ui, 'selected'))
+  assert.equal(kept.data_source, 'kernel')
+  assert.equal(kept.run_id, 'run_analysis0001')
+  assert.equal(kept.status, 'succeeded')
+  assert.equal(kept.results.length, 1)
+  assert.deepEqual(kept.results[0].values, results[2].values)
+  assert.deepEqual(kept.export_scope, { scope: 'selected', candidates: 1, total: plan.candidates.length })
+  const allJson = JSON.parse(scopedRunJson(job, ui, 'all'))
+  assert.equal(allJson.results.length, plan.candidates.length)
+  assert.deepEqual(allJson.export_scope, { scope: 'all', candidates: plan.candidates.length, total: plan.candidates.length })
+  // 部分返回的真实运行:只导出已返回的槽位,范围证据仍记全集计划数
+  const partial = JSON.parse(scopedRunJson(
+    cloneJob({ status: 'running', exec: { results: [results[0]] } }),
+    { selectedId: null, order: { filter: 'all', by: 'index', dir: 1 } },
+    'all',
+  ))
+  assert.equal(partial.results.length, 1)
+  assert.equal(partial.export_scope.candidates, plan.candidates.length)
+})
+
+test('WB-09.01:当前 run 解析口径(会话 job 优先 → 选择器 run → 最新;演示 job 永不取)', () => {
+  const pool = [
+    { ...job, id: 'job_demo', demo: true },
+    cloneJob({ id: 'job_second', status: 'running' }),
+    cloneJob({ id: 'job_third' }),
+  ]
+  assert.equal(currentRealJob(pool, 'job_second', null).id, 'job_second')
+  assert.equal(currentRealJob(pool, 'job_missing', 'run_analysis0001').id, 'job_second')
+  assert.equal(currentRealJob(pool, null, null).id, 'job_third')
+  assert.equal(currentRealJob([{ ...job, id: 'job_demo', demo: true }], 'job_demo', null), null)
+  assert.equal(currentRealJob([], null, null), null)
 })

@@ -8,9 +8,15 @@ import { OverlayDialog } from './OverlayDialog.tsx'
 import { WbIcon } from '../components/icons.tsx'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
+import type { ExportScope } from '../analysis/exportScope.ts'
 
-export type ExportScope = 'all' | 'filtered' | 'selected'
+export type { ExportScope }
 export type ExportFormat = 'csv' | 'json' | 'svg'
+const ALL_FORMATS: readonly ExportFormat[] = ['csv', 'json', 'svg']
+
+function formatKey(f: ExportFormat): 'data.exportDialog.formatCsv' | 'data.exportDialog.formatJson' | 'data.exportDialog.formatSvg' {
+  return f === 'csv' ? 'data.exportDialog.formatCsv' : f === 'json' ? 'data.exportDialog.formatJson' : 'data.exportDialog.formatSvg'
+}
 
 export type ExportDialogProps = {
   open: boolean
@@ -19,6 +25,10 @@ export type ExportDialogProps = {
   counts: { all: number; filtered: number; selected: number }
   selectedLabel: string
   initialScope?: ExportScope
+  /** 可用格式;真实 run 上下文按已落地格式收窄(WB-09.02/.05 再放开) */
+  formats?: readonly ExportFormat[]
+  /** 绑定的 run 来源行(真实 run 上下文显示,演示上下文留空) */
+  sourceNote?: string
 }
 
 export function ExportDialog({
@@ -28,10 +38,14 @@ export function ExportDialog({
   counts,
   selectedLabel,
   initialScope = 'all',
+  formats = ALL_FORMATS,
+  sourceNote,
 }: ExportDialogProps): JSX.Element {
   const locale = useLocale()
   const [scope, setScope] = useState<ExportScope>(initialScope)
   const [format, setFormat] = useState<ExportFormat>('csv')
+  // 收窄格式时已选格式可能已不可用:提交时回退到首个可用格式,不静默导出
+  const formatChoice = formats.includes(format) ? format : formats[0]!
   return (
     <OverlayDialog
       open={open}
@@ -40,28 +54,27 @@ export function ExportDialog({
       footer={
         <>
           <button className="btn" onClick={onClose}>{t(locale, 'common.cancel')}</button>
-          <button className="btn primary" onClick={() => onConfirm(scope, format)}>
+          <button className="btn primary" onClick={() => onConfirm(scope, formatChoice)} disabled={counts.all === 0}>
             <WbIcon name="download" />
             {t(locale, 'data.exportDialog.download')}
           </button>
         </>
       }
     >
+      {sourceNote !== undefined && <p role="status" className="note-block mono">{sourceNote}</p>}
       <div className="export-options">
         <label>
           {t(locale, 'data.exportDialog.scope')}
           <select value={scope} onChange={(e) => setScope(e.target.value as ExportScope)}>
             <option value="all">{t(locale, 'data.exportDialog.scopeAll', { n: counts.all })}</option>
             <option value="filtered">{t(locale, 'data.exportDialog.scopeFiltered', { n: counts.filtered })}</option>
-            <option value="selected">{t(locale, 'data.exportDialog.scopeSelected', { label: selectedLabel })}</option>
+            <option value="selected" disabled={counts.selected === 0}>{t(locale, 'data.exportDialog.scopeSelected', { label: selectedLabel })}</option>
           </select>
         </label>
         <label>
           {t(locale, 'data.exportDialog.format')}
-          <select value={format} onChange={(e) => setFormat(e.target.value as ExportFormat)}>
-            <option value="csv">{t(locale, 'data.exportDialog.formatCsv')}</option>
-            <option value="json">{t(locale, 'data.exportDialog.formatJson')}</option>
-            <option value="svg">{t(locale, 'data.exportDialog.formatSvg')}</option>
+          <select value={formatChoice} onChange={(e) => setFormat(e.target.value as ExportFormat)}>
+            {formats.map((f) => <option key={f} value={f}>{t(locale, formatKey(f))}</option>)}
           </select>
         </label>
         <div className="note-block">

@@ -516,6 +516,8 @@ export const en = {
   'analysis.noRealRuns': 'No real runs yet',
   'analysis.openDemo': 'Open synthetic demo (independent source)',
   'analysis.emptyState': 'No real execution results yet. Configure and submit an experiment; partial results from running and cancelled runs also appear here.',
+  'analysis.exportRunJsonDone': 'Exported {kept} of {total} candidates from real run {run}',
+  'analysis.exportRun': 'Export current run…',
   'analysis.primaryMetric': 'Primary metric',
   'analysis.sourceSweep': '{completed}/{total} candidates returned · {reps} replicates per candidate',
   'analysis.sourceArms': '{reps} replicates per arm',
@@ -743,6 +745,9 @@ export const en = {
   'data.exportDialog.formatJson': 'JSON · experiment and parameter draft snapshot',
   'data.exportDialog.formatSvg': 'SVG · parameter response chart',
   'data.exportDialog.note': 'Exported files are labeled with the synthetic_demo data source. JSON also includes the current draft and a separate sample experiment snapshot, so unrun edits are never attributed to old results.',
+  // WB-09.01 · real-run binding: dialog shows the bound run and real-export note (mutually exclusive with the demo note)
+  'data.exportDialog.runLine': 'Bound source: kernel · {run} · {status}',
+  'data.exportDialog.noteReal': 'The export is bound to the current real run: the file carries data_source=kernel plus the chosen scope, candidate counts and run status. Demo data and unrun drafts never enter it.',
   'data.exchange.wizard': 'Export wizard',
   'data.exchange.intro': 'Take the current analysis to familiar tools. Exports state the sample data source and keep parameter IDs, metric definitions and display ranges.',
   'data.exchange.csvTitle': 'Candidate results table',

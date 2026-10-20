@@ -517,6 +517,8 @@ export const zh = {
   'analysis.noRealRuns': '尚无真实运行',
   'analysis.openDemo': '打开合成演示（独立来源）',
   'analysis.emptyState': '尚无真实执行结果。请配置并提交实验;运行中和取消后的部分结果也可在此查看。',
+  'analysis.exportRunJsonDone': '已导出真实运行 {run} 的 {kept}/{total} 个候选结果',
+  'analysis.exportRun': '导出当前运行…',
   'analysis.primaryMetric': '主指标',
   'analysis.sourceSweep': '{completed}/{total} 候选已返回 · {reps} replicates/候选',
   'analysis.sourceArms': '{reps} replicates/臂',
@@ -745,6 +747,9 @@ export const zh = {
   'data.exportDialog.formatJson': 'JSON · 实验与参数草稿快照',
   'data.exportDialog.formatSvg': 'SVG · 参数响应图',
   'data.exportDialog.note': '导出文件会标注 synthetic_demo 数据来源。JSON 同时包含当前编辑草稿和独立的样例实验快照,避免把未运行的修改归到旧结果上。',
+  // WB-09.01 · 真实 run 绑定:对话框显示绑定来源与真实导出说明(与演示说明二选一)
+  'data.exportDialog.runLine': '绑定来源:kernel · {run} · {status}',
+  'data.exportDialog.noteReal': '导出绑定当前真实运行:产物标注 data_source=kernel,并记录导出范围、候选数量与运行状态;演示数据与未运行的草稿不会进入这份产物。',
   'data.exchange.wizard': '导出向导',
   'data.exchange.intro': '把当前分析带到熟悉的工具。导出内容标明样例数据来源,保留参数 ID、指标口径和展示区间。',
   'data.exchange.csvTitle': '候选结果表',

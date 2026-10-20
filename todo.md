@@ -307,7 +307,7 @@
 
 依赖：WB-04/WB-08。
 
-- [ ] WB-09.01：导出对话框绑定当前 run，提供全部/筛选/所选候选范围，并显示实际数量。
+- [x] WB-09.01：导出对话框绑定当前 run，提供全部/筛选/所选候选范围，并显示实际数量。(2026-10-20:新增纯逻辑 analysis/exportScope.ts——currentRealJob 当前 run 解析单点口径(会话选中 job → 选择器 runId → 最新真实 job,演示 job 永不取,分析页同口径共用去重)、scopeCounts/scopeRows(全部=计划内候选全集含未运行/失败/取消槽位、筛选=分析页 orderViews 同一 overall 判定口径、所选=当前选中单个,选中不存在=空范围不虚构)、scopedRunJson(信封 data_source=kernel/run_id/spec/status/recommendation + results 按计划下标对位保留范围行 + export_scope 证据 scope/candidates/total,部分返回只导已返回槽位、证据仍记全集计划数;machineJson 规范十进制 locale 无关);ExportDialog 加 formats(真实上下文先只放 JSON,CSV/SVG 随 .02/.05 放开,收窄时已选格式回退首个可用)与 sourceNote(绑定来源行 kernel·run·status)与 noteReal(真实导出说明,与演示说明二选一)+ 空范围/无候选禁用下载与所选禁用;WorkbenchApp exportCtx 派生(analysis 真实视图才绑真实 run,演示/交换页仍演示导出),doExport 真实分支按 runId 落盘;AnalysisPage 真实工具栏加「导出当前运行…」入口;新增词条 runLine/noteReal/exportRunJsonDone/exportRun;analysis-results 测试 +3(范围计数与行对位含 fail 筛选与不存在选中、信封元数据+下标对位+部分返回证据、当前 run 解析口径五断言);门禁 tsc/oxlint 0 警告/vite build ✓、i18n+contracts 54/54、全套 node 219/219;docs zh+en 22-web 成文「导出绑定真实 run(WB-09.01)」)
 - [ ] WB-09.02：CSV 生成稳定列名、单位、参数 ID、候选/实验 ID、统计量、CI 和判定；空值与失败原因明确。
 - [ ] WB-09.03：处理 CSV 引号、逗号、换行和 UTF-8；明确百分比列的比例或 0–100 口径。
 - [ ] WB-09.04：JSON 导出真实运行快照、版本、统计结果与来源；当前未运行草稿另存，不冒充该 run 输入。

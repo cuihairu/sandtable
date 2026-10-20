@@ -65,6 +65,10 @@ wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试
 
 `lib/dataSource.ts` 是来源标记的**单一出处**:`kernel` 与 `synthetic_demo`。真实运行集合只收 `kernel`,三道闸都在索引代码面——**快照入口**(`snapshotRun` 显式传 `synthetic_demo` 即拒,缺省 `kernel`)、**索引写闸**(`runsIndexFile` 对 demo / 来源缺失 / 非法来源显式拒绝,不静默修正)、**读闸**(`readRunsIndex` 对 demo 条目与非法来源给可读错误;v1 时代条目缺席 `data_source` 按 `kernel` 推断——演示数据自始就没有进入索引的通道,缺席即 kernel 是事实推断而非猜测)。标记落位:`RunSnapshot.dataSource`、`RunIndexEntry.data_source`(提交登记时透传)、报告导出 `machineJson({ data_source: 'kernel', … })`;演示侧导出(候选 CSV 列 / 演示快照 `data-source` 属性)自带 `synthetic_demo`。版本标记沿用既有口径:运行条目 `model_version` / `schema_version` / `seed` + 索引自身 `RUNS_INDEX_SCHEMA`(`'1'`,新增字段是加法变更,旧索引仍可读)、报告 `meta.schema_version`(文档 09 章)。分析页真实/演示两条通道互斥:真实运行列表过滤掉 `demo` 任务,演示视图需显式选择来源(`selection.source === 'synthetic_demo'`)并挂来源横幅。contracts 的 WB-03.16 结构守卫锁:来源两值 + `isDataSource` 非法值 + 演示项目标记取自单一出处 + 运行集合与执行引擎代码面不 import 演示模块 + 登记链/报告/三道闸接线。
 
+### 导出绑定真实 run（WB-09.01）
+
+导出对话框有两种互斥上下文：演示上下文（导出内置样例，产物标注 `synthetic_demo`）与真实 run 上下文（分析页真实视图打开）。真实上下文里，范围计数与产物一律派生自当前 run——解析口径（会话选中 job → 选择器 runId → 最新真实 job）由 `analysis/exportScope.ts` 的 `currentRealJob` 单点提供，分析页与对话框共用；范围 = 全部计划内候选 / 分析页当前筛选（overall 判定同一口径）/ 当前选中候选，选项显示实际数量，所选为空时该项禁用、无候选时下载禁用。产物 JSON 信封：`data_source=kernel`、`run_id`、`spec`、`status`、`results`（按计划下标对位保留范围行，未进入范围的候选不出现在产物里）、`recommendation` 与 `export_scope` 证据（scope/candidates/total；部分返回的运行只导出已返回槽位，证据仍记全集计划数）；未运行的草稿与演示数据绝不进入这份产物。机器输出口径（WB-11.19）：数字走 `machineJson` 规范十进制，locale 无关。真实上下文先只放 JSON 格式，CSV / SVG 随 WB-09.02/.05 落地后放开。
+
 ## 等价验收
 
 路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。
