@@ -70,8 +70,8 @@ export function recoveryFor(errorClass: ExecErrorClass | null, kind: ExecKind): 
       return '缩小实验规模(候选数在内存预算内)后重新提交'
     case 'bridge':
       return kind === 'ab'
-        ? '统计比较需内核 Comparison 桥接(WB-03.10/11);桥接发布前请改用扫描实验或双臂分别查看'
-        : '等待内核桥接接入后重试'
+        ? '统计比较桥接未接入(WB-03.10/11):前端构建缺少内核桥接导出,重建/更新前端产物后重新提交(双臂结果保留)'
+        : '内核桥接未接入(WB-03.10/11):重建/更新前端产物后重试'
     case null:
       return '调整后重新提交'
   }

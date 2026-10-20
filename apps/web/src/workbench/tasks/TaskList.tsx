@@ -10,7 +10,7 @@ import { WbIcon } from '../components/icons.tsx'
 import type { Job } from '../state/jobLogic.ts'
 import { isTerminal } from '../state/jobLogic.ts'
 import { terminalOutcome } from '../state/execFsm.ts'
-import { statusLabel, errorClassLabel, recoveryText } from './taskText.ts'
+import { statusLabel, errorClassLabel, recoveryText, execErrorText } from './taskText.ts'
 import { t } from '../../lib/i18n/index.ts'
 import type { Locale, TranslationKey } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
@@ -66,7 +66,7 @@ function execFooter(job: Job, locale: Locale): JSX.Element {
   const cls = ex.errorClass ?? 'run'
   return (
     <>
-      <span style={{ color: 'var(--danger, #b42318)' }}>{errorClassLabel(cls, locale)}</span>:{ex.errorMessage ?? t(locale, 'tasks.error.unknown')}
+      <span style={{ color: 'var(--danger, #b42318)' }}>{errorClassLabel(cls, locale)}</span>:{ex.errorMessage ? execErrorText(ex.errorMessage, locale) : t(locale, 'tasks.error.unknown')}
       <br />
       {t(locale, 'tasks.footer.recovery', { detail: recoveryText(ex.errorClass, ex.kind, locale) })}
     </>

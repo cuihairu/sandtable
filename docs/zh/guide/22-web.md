@@ -57,6 +57,10 @@ A/B 双臂比较的输入契约与统计判定全部在内核,前端不另算一
 
 wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试:`wasm-pack build crates/sandtable-wasm --target web --release`(浏览器 + tsc)与 `--target nodejs --out-dir pkg-node --dev`(节点测试)。漏建的症状是运行时 `does not provide an export named …`。contracts 里的**绑定生成守卫**把这条纪律自动化:收集 TS 包装(wasm.ts 服务层 + Worker 入口)从 `sandtable-wasm` 的全部命名导入,逐名校验 pkg-node 运行时导出、web pkg 的 JS 导出与 `.d.ts` 声明三面齐备——包装调用未生成导出即红。pkg / pkg-node 是构建产物,不进 git。
 
+### 统一错误分类与 locale 展示(WB-03.15)
+
+绑定层错误以**稳定通道前缀**为契约(`配置错误: ` / `参数错误: ` / `候选结果序列化失败: `,与 CLI stderr 同源),展示层在其上统一为六类:**解析失败**是独立类——内核把 YAML 解析并进 `配置错误` 通道、双臂 results 解析失败带 `参数错误` 前缀(通道前缀契约不动),展示层按「解析失败」事实升级为 `parse` 码(改配置与没解析过是两件事);**配置 / 参数 / 序列化**照前缀归类;**初始化中 / 初始化失败 / 运行错误 / 超出内存预算 / 内核桥接未接入**走执行侧 `ExecErrorClass`(init/run/budget/bridge,初始化中以 running 展示、不伪造进度);**取消**不是错误,走状态机 `cancelled/cancelling`。locale 展示:`localizeWasmError` 把可识别消息换成稳定错误码 + 词典模板(`errors.*`,中英模板不同、错误码相同),内核原文逐字保留在 `detail` 供定位;任务列表正文走 `execErrorText`——剥通道前缀再套模板,避免「配置错误：配置错误: …」重复。`state/` 执行域不 import i18n(WB-07.17 守卫),词典文案集中在纯显示层 `taskText.ts`,contracts 用六行分类表 + 双语模板断言锁死。
+
 ## 等价验收
 
 路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。

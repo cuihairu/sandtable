@@ -5,6 +5,8 @@
 // 可被 node --test 直测),组件与终态/错误展示从这里取词典文案。
 import { t } from '../../lib/i18n/index.ts'
 import type { Locale, TranslationKey, InterpolationParams } from '../../lib/i18n/index.ts'
+import { classifyWasmError } from '../../lib/errors.ts'
+import { localizeWasmErrorText } from '../../lib/i18n/errorText.ts'
 import type { ExecErrorClass, ExecKind, JobStatus } from '../state/jobLogic.ts'
 
 // 缺省 zh:与 resultModel/designerLogic 同一纪律(测试锁中文子串)
@@ -54,4 +56,12 @@ export function recoveryText(errorClass: ExecErrorClass | null, kind: ExecKind, 
     case null:
       return msg(locale, 'tasks.recovery.none')
   }
+}
+
+/** WB-03.15 · 执行错误正文的 locale 展示:内核通道类(解析失败/配置/参数/
+ *  序列化)套词典模板(剥通道前缀,避免重复前缀);不可识别消息(桥接/
+ *  预算等逻辑侧文案)原样返回。 */
+export function execErrorText(message: string, locale?: Locale): string {
+  if (classifyWasmError(message).kind === 'other') return message
+  return localizeWasmErrorText(locale ?? LOGIC_FALLBACK, message).text
 }

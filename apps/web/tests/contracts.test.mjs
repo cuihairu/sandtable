@@ -20,6 +20,8 @@ import { METRIC_META, metricLabel } from '../src/lib/metricMeta.ts'
 import { PARAM_REGISTRY } from '../src/workbench/params/paramRegistry.ts'
 import { applyParamEdits } from '../src/workbench/params/configYaml.ts'
 import { classifyWasmError } from '../src/lib/errors.ts'
+import { localizeWasmError } from '../src/lib/i18n/index.ts'
+import { statusLabel, errorClassLabel, recoveryText, execErrorText } from '../src/workbench/tasks/taskText.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const read = (p) => readFileSync(join(here, '..', p), 'utf8')
@@ -191,9 +193,11 @@ test('METRIC_KEYS = 内核 MetricKey::ALL(elasticities 全覆盖)', () => {
 
 test('错误类型:绑定层前缀可分类,候选 config_error 照常上报', () => {
   assert.throws(() => wasm.validate_config('garbage: ['), (e) => {
+    // 内核通道前缀仍是 配置错误(契约不变);解析失败在展示层是独立类
+    // parse(WB-03.15:通道语义与失败阶段分开)
     assert.match(String(e), /^配置错误:/)
     const err = classifyWasmError(String(e))
-    assert.equal(err.kind, 'config')
+    assert.equal(err.kind, 'parse')
     return true
   })
   assert.throws(() => wasm.run_simulation(YAML, 0), (e) => {
@@ -518,4 +522,45 @@ test('WB-03.14 服务层唯一面:内核数据通道只经 lib/wasm.ts(+ Worker 
     if (/'__TAURI_INTERNALS__'/.test(src)) offenders.push(`${rel}: 重复嗅探桌面环境(isDesktop 走服务层)`)
   }
   assert.deepEqual(offenders, [], '内核数据通道必须经 lib/wasm.ts 服务层双路径分流(桌面 invoke / 浏览器 wasm init),组件不得散落直连')
+})
+
+test('WB-03.15 统一错误分类:解析/配置/参数/序列化四码 + locale 展示;初始化与取消走任务状态面', () => {
+  // 分类表:解析失败是独立类——内核把 YAML 解析并进 配置错误 通道(前缀契约
+  // 不变),展示层按「解析失败」事实升级为 parse 码;候选结果解析失败带
+  // 参数错误 前缀,同为 parse
+  const table = [
+    ['配置错误: YAML 解析失败: while parsing a block', 'parse'],
+    ['参数错误: base 臂结果解析失败: expected value', 'parse'],
+    ['配置错误: 双臂 base_seed 不一致(base=7 cand=9)', 'config'],
+    ['参数错误: replicates 至少为 1', 'param'],
+    ['候选结果序列化失败: boom', 'serialize'],
+    ['totally unknown', 'other'],
+  ]
+  for (const [message, kind] of table) {
+    assert.equal(classifyWasmError(message).kind, kind, message)
+  }
+  // locale 展示:稳定错误码不随语言变,词典模板不同,内核原文逐字进 detail
+  for (const [message] of table) {
+    const zh = localizeWasmError('zh-CN', message)
+    const en = localizeWasmError('en-US', message)
+    assert.equal(zh.code, en.code, message)
+    assert.ok(zh.text.includes(message) && en.text.includes(message), `detail 逐字保留: ${message}`)
+    assert.notEqual(zh.text, en.text, `两语言模板不同: ${message}`)
+  }
+  // 界面正文(execErrorText):内核通道类套 locale 模板且剥通道前缀
+  // (不得出现「配置错误：配置错误: …」重复);不可识别消息原样返回
+  const cfgMsg = '配置错误: 双臂 base_seed 不一致(base=7 cand=9)'
+  assert.match(execErrorText(cfgMsg, 'en-US'), /^Configuration error: 双臂 base_seed 不一致/)
+  assert.match(execErrorText(cfgMsg, 'zh-CN'), /^配置错误：双臂 base_seed 不一致/)
+  assert.ok(!execErrorText(cfgMsg, 'zh-CN').includes('配置错误：配置错误'), '不得重复通道前缀')
+  assert.equal(execErrorText('内核桥接未接入(WB-03.10/11)', 'en-US'), '内核桥接未接入(WB-03.10/11)', '不可识别消息原样返回')
+  // 初始化失败/运行/预算/桥接 = ExecErrorClass 面,locale 显示与恢复动作;
+  // 取消不是错误(状态机 cancelled/cancelling,不是 errorClass)
+  assert.match(errorClassLabel('init', 'zh-CN'), /初始化失败/)
+  assert.equal(errorClassLabel('init', 'en-US'), 'Initialization failed')
+  assert.match(recoveryText('init', 'ab', 'zh-CN'), /重试初始化/)
+  // 初始化中:首个请求内完成 init,以 running 展示(不伪造进度,WB-07.05)
+  assert.match(statusLabel('running', 'zh-CN'), /运行中/)
+  assert.match(statusLabel('cancelled', 'zh-CN'), /已取消/)
+  assert.equal(statusLabel('cancelled', 'en-US'), 'Cancelled')
 })

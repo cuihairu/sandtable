@@ -651,8 +651,8 @@ export const zh = {
   'tasks.recovery.init': '重试初始化:重新提交任务即可重新初始化 Worker(WASM 初始化失败可重试)',
   'tasks.recovery.run': '查看错误详情,修正配置后重新提交(已完成候选保留在结果集)',
   'tasks.recovery.budget': '缩小实验规模(候选数在内存预算内)后重新提交',
-  'tasks.recovery.bridgeAb': '统计比较需内核 Comparison 桥接(WB-03.10/11);桥接发布前请改用扫描实验或双臂分别查看',
-  'tasks.recovery.bridge': '等待内核桥接接入后重试',
+  'tasks.recovery.bridgeAb': '统计比较桥接未接入(WB-03.10/11):前端构建缺少内核桥接导出,重建/更新前端产物后重新提交(双臂结果保留)',
+  'tasks.recovery.bridge': '内核桥接未接入(WB-03.10/11):重建/更新前端产物后重试',
   'tasks.recovery.none': '调整后重新提交',
   'tasks.footer.recovery': '恢复:{detail}',
   'tasks.cancel.titleCancelling': '取消请求已发出;再次点击将升级为终止执行端(浏览器 Worker;桌面 replicate 边界已生效)',
@@ -784,6 +784,7 @@ export const zh = {
   'data.project.registryNote': '快照在提交时冻结(同输入恒得同 run ID);内核执行接入前如实标注 model/schema = unknown,不冒充已知版本。保存项目时登记与产物按 results/<run_id>.<产物> 平铺写入,并附 results/runs.json 索引。',
 
   // 错误信息(前缀与绑定层错误串对齐,见 lib/errors.ts;{detail}=原始内核消息)
+  'errors.parse': '解析失败：{detail}',
   'errors.config': '配置错误：{detail}',
   'errors.param': '参数错误：{detail}',
   'errors.serialize': '候选结果序列化失败：{detail}',

@@ -649,8 +649,8 @@ export const en = {
   'tasks.recovery.init': 'Retry initialization: resubmit the task to re-initialize the Worker (a WASM init failure can be retried)',
   'tasks.recovery.run': 'Inspect the error details, fix the configuration and resubmit (completed candidates stay in the result set)',
   'tasks.recovery.budget': 'Shrink the experiment so the candidate count fits the memory budget, then resubmit',
-  'tasks.recovery.bridgeAb': 'Statistical comparison needs the kernel Comparison bridge (WB-03.10/11); until it ships use a sweep experiment or inspect the two arms separately',
-  'tasks.recovery.bridge': 'Retry once the kernel bridge is wired in',
+  'tasks.recovery.bridgeAb': 'Comparison bridge not wired (WB-03.10/11): the frontend build lacks the kernel bridge export; rebuild/update the frontend artifacts and resubmit (both arms are kept)',
+  'tasks.recovery.bridge': 'Kernel bridge not wired (WB-03.10/11): rebuild/update the frontend artifacts and retry',
   'tasks.recovery.none': 'Resubmit after adjusting',
   'tasks.footer.recovery': 'Recovery: {detail}',
   'tasks.cancel.titleCancelling': 'Cancel request sent; clicking again escalates to terminating the executor (browser Worker; desktop replicate boundary already in effect)',
@@ -782,6 +782,7 @@ export const en = {
   'data.project.registryNote': 'Snapshots freeze at submit time (same input → same run ID); until kernel execution lands, model/schema is honestly shown as unknown. On save, registrations and artifacts are written flat as results/<run_id>.<artifact> plus a results/runs.json index.',
 
   // 错误信息({detail} = raw kernel message)
+  'errors.parse': 'Parse failure: {detail}',
   'errors.config': 'Configuration error: {detail}',
   'errors.param': 'Parameter error: {detail}',
   'errors.serialize': 'Failed to serialize candidate results: {detail}',
