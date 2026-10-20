@@ -570,8 +570,8 @@ mod tests {
             "scenario: {population: 40, duration: '3d', seed: 7}\n",
             "model:\n  warrior: {attack: 250}\n",
         );
-        let a = run_simulation_impl(YAML.into(), 4, &fresh_flag(), &mut |_| {}).unwrap();
-        let b = run_simulation_impl(cand.into(), 4, &fresh_flag(), &mut |_| {}).unwrap();
+        let a = run_simulation_impl(YAML, 4, &fresh_flag(), &mut |_| {}).unwrap();
+        let b = run_simulation_impl(cand, 4, &fresh_flag(), &mut |_| {}).unwrap();
         let v = ab_compare(
             YAML.into(),
             cand.into(),
@@ -597,7 +597,7 @@ mod tests {
             "schema_version: '1'\n",
             "scenario: {population: 40, duration: '3d', seed: 9}\n",
         );
-        let c = run_simulation_impl(other_seed.into(), 4, &fresh_flag(), &mut |_| {}).unwrap();
+        let c = run_simulation_impl(other_seed, 4, &fresh_flag(), &mut |_| {}).unwrap();
         let err = ab_compare(
             YAML.into(),
             other_seed.into(),
@@ -755,6 +755,70 @@ mod tests {
         assert_eq!(v["results"], w["results"], "results 逐值一致");
         assert_eq!(v["config_hash"], w["config_hash"], "config_hash 一致");
         assert_eq!(v["days_csv"], w["days_csv"], "days_csv 逐字节一致");
+    }
+
+    #[test]
+    fn param_writeback_parity_wasm_native() {
+        // WB-03.17 · 同一配置对照参数回写:数值读取全表(含 u64 无损通道)、
+        // 应用回写(config_hash + 回读值)、KPI 可用性,桌面命令与 wasm
+        // native 逐值一致;非法路径同通道显式拒绝,错误文案逐字一致。
+        let yaml = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../examples/pokemon.yaml"
+        ))
+        .unwrap();
+        assert_eq!(
+            param_values(yaml.clone()).unwrap(),
+            sandtable_wasm::param_values_native(&yaml).unwrap(),
+            "数值读取全表逐键一致",
+        );
+        let v = param_apply(yaml.clone(), "model.warrior.attack".into(), 250.0).unwrap();
+        let w = sandtable_wasm::param_apply_native(&yaml, "model.warrior.attack", 250.0).unwrap();
+        assert_eq!(v, w, "应用回写 config_hash 与回读值一致");
+        let err_d = param_apply(yaml.clone(), "model.no_such".into(), 1.0).unwrap_err();
+        let err_w = sandtable_wasm::param_apply_native(&yaml, "model.no_such", 1.0).unwrap_err();
+        assert!(err_d.starts_with("配置错误"), "{err_d}");
+        assert_eq!(err_d, err_w, "非法路径错误文案逐字一致");
+        assert_eq!(
+            kpi_availability(yaml.clone()).unwrap(),
+            sandtable_wasm::kpi_availability_native(&yaml).unwrap(),
+            "KPI 可用性同表",
+        );
+    }
+
+    #[test]
+    fn ab_stats_parity_wasm_native() {
+        // WB-03.17 · 同一双臂对照 A/B 统计:同一内核 compare_arms,桌面命令
+        // 与 wasm native 的 Comparison 逐字段一致(含 verdict / CI / 效应量);
+        // 未知指标与种子错位的错误通道同构,文案逐字一致。
+        let base = YAML.to_string();
+        let cand = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 7}\n",
+            "model:\n  warrior: {attack: 250}\n",
+        );
+        let a = run_simulation_impl(base.as_str(), 4, &fresh_flag(), &mut |_| {}).unwrap();
+        let b = run_simulation_impl(cand, 4, &fresh_flag(), &mut |_| {}).unwrap();
+        let results_a = a["results"].to_string();
+        let results_b = b["results"].to_string();
+        let d = ab_compare(base.clone(), cand.into(), "win_rate".into(), results_a.clone(), results_b.clone()).unwrap();
+        let w = sandtable_wasm::ab_compare_native(&base, cand, "win_rate", &results_a, &results_b).unwrap();
+        assert_eq!(d, w, "A/B 统计 Comparison 逐字段一致");
+        assert!(["BHigher", "AHigher", "NoDifference"].contains(&d["verdict"].as_str().unwrap()));
+        assert_eq!(
+            ab_compare(base.clone(), base.clone(), "winrate".into(), results_a.clone(), results_a.clone()).unwrap_err(),
+            sandtable_wasm::ab_compare_native(&base, &base, "winrate", &results_a, &results_a).unwrap_err(),
+            "未知指标错误文案逐字一致",
+        );
+        let other_seed = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 9}\n",
+        );
+        let c = run_simulation_impl(other_seed, 4, &fresh_flag(), &mut |_| {}).unwrap();
+        let err_d = ab_compare(base.clone(), other_seed.into(), "win_rate".into(), results_a.clone(), c["results"].to_string()).unwrap_err();
+        let err_w = sandtable_wasm::ab_compare_native(&base, other_seed, "win_rate", &results_a, &c["results"].to_string()).unwrap_err();
+        assert!(err_d.contains("base_seed 不一致"), "{err_d}");
+        assert_eq!(err_d, err_w, "种子错位错误文案逐字一致");
     }
 
     #[test]

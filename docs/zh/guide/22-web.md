@@ -71,6 +71,8 @@ wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试
 
 脚本层阶段 1(2026-10-11)补齐第三条边:`crates/sandtable-python/tests/test_parity.py` 以同一范式锁 py↔CLI(simulate / sweep / recommend 逐值一致,`days_csv` 与 CLI `days.csv` 逐字节一致)——core 唯一真源、三份独立薄转发的 pairwise 等价闭环(web_parity + py_parity + 桌面等价测试)完成。
 
+桌面命令层与 wasm 绑定层的**参数回写与 A/B 统计**也锁在同一三角口径里(WB-03.17,2026-10-20,desktop 测试两枚):`param_writeback_parity_wasm_native`——同一配置(宝可梦案例)上数值读取全表逐键一致(含 u64 无损通道)、`param_apply` 回写 config_hash + 回读值逐值一致、`kpi_availability` 同表,非法路径错误文案逐字一致;`ab_stats_parity_wasm_native`——同一双臂 results 上,桌面 `ab_compare` 与 wasm `ab_compare_native` 的 Comparison 逐字段一致(verdict / CI / 效应量),未知指标与种子错位的错误通道同构、文案逐字一致。同配置同 seed 的运行输出另有 `run_wasm_parity_same_config_seed`(results / config_hash / days_csv)锁定。
+
 ## CI 门
 
 `.github/workflows/ci.yml` 三个 job 都盖到 wasm 面:

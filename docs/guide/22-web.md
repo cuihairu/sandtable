@@ -70,6 +70,8 @@ The roadmap's Phase 6 acceptance criterion: **the browser and the CLI, with the 
 
 Scripting-layer Phase 1 (2026-10-11) closed the third edge: `crates/sandtable-python/tests/test_parity.py` locks py↔CLI with the same paradigm (simulate / sweep / recommend identical value by value, `days_csv` byte-for-byte identical to the CLI's `days.csv`) — the core is the single source of truth, and the pairwise equivalence loop over three independent thin forwardings (web_parity + py_parity + the desktop equivalence test) is complete.
 
+The desktop command face and the wasm binding face also lock **parameter write-back and A/B statistics** into the same triangle (WB-03.17, 2026-10-20, two desktop tests): `param_writeback_parity_wasm_native` — over the same config (the Pokémon case), the full numeric read table is key-identical (including the lossless u64 channel), `param_apply` write-back (config_hash + read-back value) is value-identical, `kpi_availability` returns the same table, and the unknown-path rejection copy is verbatim-identical; `ab_stats_parity_wasm_native` — over the same pair of arm results, the desktop `ab_compare` and the wasm `ab_compare_native` Comparison is field-identical (verdict / CI / effect size), with the unknown-metric and seed-mismatch channels structurally identical and verbatim-identical copy. Same-config same-seed run output is separately locked by `run_wasm_parity_same_config_seed` (results / config_hash / days_csv).
+
 ## CI gates
 
 All three jobs in `.github/workflows/ci.yml` cover the wasm surface:
