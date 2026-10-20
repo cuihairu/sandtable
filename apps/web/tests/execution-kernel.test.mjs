@@ -120,6 +120,77 @@ if (!existsSync(pkgNode)) {
     assert.ok(Math.abs(out.comparison.diff_mean - expected) < 1e-9)
   })
 
+  test('WB-10.04:Grid/Random/LHS 三模式走同一执行器——计划、组合、实际任务数与复现', async () => {
+    // 两维参数:sweep.parameters 是按路径字母序寻址的 map(Grid 3×3=9 候选,
+    // Random/LHS 按 samples 采样);40 玩家 × 3 天,34 个仿真内跑完
+    const expYaml = (mode, samples) =>
+      [
+        'schema_version: "1"',
+        'scenario: {population: 40, duration: "3d", seed: 7}',
+        'sweep:',
+        `  mode: ${mode}`,
+        ...(samples ? [`  samples: ${samples}`] : []),
+        '  replicates: 2',
+        '  parameters:',
+        '    model.warrior.attack: {min: 90, max: 110, step: 10}',
+        '    model.dungeon.m_attack: {min: 10, max: 30, step: 10}',
+        '',
+      ].join('\n')
+
+    for (const [mode, samples, expected] of [['grid', 0, 9], ['random', 4, 4], ['latin_hypercube', 4, 4]]) {
+      const yaml = expYaml(mode, samples)
+      // 计划:模式回显;实际任务数在计划期就锁定(sims = 候选数 × replicates)
+      const plan = JSON.parse(wasm.sweep_plan(yaml, 0))
+      assert.equal(plan.mode, mode, `${mode}: 模式回显`)
+      assert.equal(plan.candidates.length, expected, `${mode}: 候选数`)
+      assert.equal(plan.sims, expected * plan.replicates, `${mode}: sims = 候选数 × replicates`)
+
+      // 复现:同 YAML 再计划一次,候选逐值一致(Random/LHS 采样流绑定 base_seed)
+      assert.deepEqual(JSON.parse(wasm.sweep_plan(yaml, 0)).candidates, plan.candidates, `${mode}: 计划可复现`)
+
+      // 参数组合形态
+      if (mode === 'grid') {
+        // 组合全集 = 两维等步长点的笛卡尔积,无重复(候选键是点号路径,平铺 map)
+        const key = (c) => `${c['model.warrior.attack']},${c['model.dungeon.m_attack']}`
+        const got = plan.candidates.map(key).sort()
+        const want = []
+        for (const a of [90, 100, 110]) for (const m of [10, 20, 30]) want.push(`${a},${m}`)
+        assert.deepEqual(got, want.sort(), 'Grid 组合全集 = 笛卡尔积')
+        // 展开序跟随 parameters 的 BTreeMap 序(路径字母序):m_attack 为外层
+        const wantOrder = []
+        for (const m of [10, 20, 30]) for (const a of [90, 100, 110]) wantOrder.push(`${a},${m}`)
+        assert.deepEqual(plan.candidates.map(key), wantOrder, 'Grid 候选展开序')
+      } else {
+        for (const c of plan.candidates) {
+          for (const [path, lo, hi] of [['model.warrior.attack', 90, 110], ['model.dungeon.m_attack', 10, 30]]) {
+            assert.ok(c[path] >= lo && c[path] < hi, `${mode}: ${path}=${c[path]} 落在 [${lo},${hi})`)
+          }
+        }
+      }
+      if (mode === 'latin_hypercube') {
+        // 每维排序后第 i 个值落在第 i 层 [min+i·w, min+(i+1)·w)
+        for (const [path, lo, hi] of [['model.warrior.attack', 90, 110], ['model.dungeon.m_attack', 10, 30]]) {
+          const col = plan.candidates.map((c) => c[path]).sort((x, y) => x - y)
+          const w = (hi - lo) / samples
+          col.forEach((v, i) => {
+            assert.ok(v >= lo + i * w && v < lo + (i + 1) * w, `LHS ${path} 第 ${i} 层应落在 [${lo + i * w},${lo + (i + 1) * w}),实际 ${v}`)
+          })
+        }
+      }
+
+      // 执行:逐候选真跑,实际任务数与计划一致,实际参数组合与计划逐值一致
+      const { hooks } = sink()
+      const ctl = startExec({ kind: 'sweep', yaml, plan }, kernelBackends, hooks, `job_wb1004_${mode}`)
+      const out = await ctl.promise
+      assert.equal(out.status, 'succeeded', `${mode}: 执行成功`)
+      assert.equal(out.results.length, expected, `${mode}: 每个候选都有结果`)
+      assert.ok(out.results.every((r) => r.status === 'ok'), `${mode}: 全部候选真跑成功`)
+      assert.deepEqual(out.results.map((r) => r.values), plan.candidates, `${mode}: 实际参数组合与计划逐值一致`)
+      const tasks = out.results.reduce((s, r) => s + r.metric_stats[0][1].n, 0)
+      assert.equal(tasks, plan.sims, `${mode}: 实际任务数 = 计划 sims`)
+    }
+  })
+
   test('WB-03.10:内核显式拒绝经执行器如实报 run(种子错位),双臂输出保留', async () => {
     const baseYaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\n'
     const candYaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 9}\n'
