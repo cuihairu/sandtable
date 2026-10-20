@@ -345,6 +345,33 @@ test('WB-11.11:壳组件词条齐全(应用栏/功能轨/浏览器/文档标签/
   }
 })
 
+test('WB-11.11:资源树演示数据侧与命令面板词条(分组/文档名/描述行/页面行)', () => {
+  // 资源树 demoGroups 分组名、演示文档名与描述行 + 命令面板页面行复用的功能轨名
+  const required = [
+    'nav.explorer.config', 'nav.explorer.experiments', 'nav.explorer.results', 'nav.explorer.exchange',
+    'nav.explorer.baseline', 'nav.explorer.scenario',
+    'nav.explorer.metaChanges.one', 'nav.explorer.metaChanges.other',
+    'nav.explorer.metaSameAsBaseline', 'nav.explorer.metaScenario',
+    'nav.explorer.metaSweepMode', 'nav.explorer.metaResults',
+    'nav.analysis', 'nav.parameters', 'nav.designer', 'nav.runs', 'nav.exchange',
+  ]
+  for (const k of required) {
+    assert.ok(k in zh, `zh 缺词条 ${k}`)
+    assert.ok(k in en, `en 缺词条 ${k}`)
+    assert.ok(zh[k].trim() !== '' && en[k].trim() !== '', `词条 ${k} 不得为空`)
+  }
+  // 描述行占位两语一致:场景规模/结果集规模
+  const names = (s) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',')
+  for (const k of ['nav.explorer.metaScenario', 'nav.explorer.metaResults']) {
+    assert.equal(names(zh[k]), names(en[k]), `词条 ${k} 占位两语一致`)
+  }
+  // 复数形两语齐全(WB-11.17:zh 恒 other,.one 仅为键集对齐)
+  assert.match(en['nav.explorer.metaChanges.one'], /\{n\}/)
+  assert.match(en['nav.explorer.metaChanges.other'], /\{n\}/)
+  assert.match(zh['nav.explorer.metaChanges.one'], /\{n\}/)
+  assert.match(zh['nav.explorer.metaChanges.other'], /\{n\}/)
+})
+
 test('WB-11.12:参数页词条双语齐全(筛选/表头/检查器/批量/YAML 编辑)', () => {
   // params.* 全集在两种语言里键集合一致且非空;ts 侧还有 en satisfies 锁,
   // 这里点名的关键面是运行时兜底:漏一个,参数页就有一处中文漏翻退兜底

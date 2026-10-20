@@ -602,3 +602,20 @@ test('WB-02.18 桌面本地查询迁入交换页:纯逻辑出壳,服务层唯一
   assert.match(page, /columnsFromLocal\(await queryLocal\(/, '面板 run 必须经纯逻辑整形再渲染')
   assert.match(page, /\{isDesktop && \(/, '本地查询段仅桌面渲染')
 })
+
+test('WB-11.11 资源树演示数据侧接词典:分组/文档名走 t(),数据本体保持原文', () => {
+  const app = read('src/workbench/WorkbenchApp.tsx')
+  // 分组名与演示文档名随 locale;文档标签同源键复用(nav.tab.*)
+  assert.match(app, /title: t\(locale, 'nav\.explorer\.config'\)/)
+  assert.match(app, /title: t\(locale, 'nav\.tab\.parameters'\)/)
+  assert.match(app, /title: t\(locale, 'nav\.tab\.designer'\)/)
+  assert.match(app, /title: t\(locale, 'nav\.tab\.analysis'\)/)
+  assert.match(app, /tPlural\(locale, 'nav\.explorer\.metaChanges'/, '变更数描述行走复数词条')
+  // 命令面板页面行 label/hint 与参数名随 locale,不再写死 zh-CN
+  assert.match(app, /label: t\(locale, NAV_PAGE_LABEL\[p\]\)/)
+  assert.match(app, /hint: t\(locale, NAV_TAB_LABEL\[p\]\)/)
+  assert.ok(!/displayParamName\(param\.path, 'zh-CN'\)/.test(app), '命令面板参数名必须随 locale')
+  // 数据本体保持原文:导出文件名不进词典(与项目名同一口径)
+  assert.match(app, /title: '候选汇总\.csv'/)
+  assert.match(app, /title: '实验快照\.json'/)
+})

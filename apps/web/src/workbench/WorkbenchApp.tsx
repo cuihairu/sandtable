@@ -34,7 +34,7 @@ import {
   deriveDocuments, explorerGroupsFor, getState, hasUnsavedWork, paramYamlView, persistDraft, subscribe, dispatch,
 } from './state/workbenchStore.ts'
 import type { WorkbenchState } from './state/workbenchStore.ts'
-import { parseHash, pageDef } from './routing.ts'
+import { parseHash } from './routing.ts'
 import type { PageId } from './routing.ts'
 import { globalShortcutFor } from './keyboard.ts'
 import {
@@ -57,9 +57,26 @@ import * as runManager from './state/runManager.ts'
 import type { Job } from './state/jobLogic.ts'
 import { notify } from './state/notifications.ts'
 import { candidateIdFor } from './ids.ts'
-import { t } from '../lib/i18n/index.ts'
+import { t, tPlural } from '../lib/i18n/index.ts'
+import { fmtNumber } from '../lib/i18n/format.ts'
 import { localeSession, useLocale } from './state/localeStore.ts'
 import { DEMO_BASELINE_ID, DEMO_EXPERIMENT_ID } from './demo/sampleProject.ts'
+
+// WB-11.11 · 命令面板页面行的词典键(label=功能轨名,hint=文档标签名)
+const NAV_PAGE_LABEL: Record<PageId, 'nav.analysis' | 'nav.parameters' | 'nav.designer' | 'nav.runs' | 'nav.exchange'> = {
+  analysis: 'nav.analysis',
+  parameters: 'nav.parameters',
+  designer: 'nav.designer',
+  runs: 'nav.runs',
+  exchange: 'nav.exchange',
+}
+const NAV_TAB_LABEL: Record<PageId, 'nav.tab.analysis' | 'nav.tab.parameters' | 'nav.tab.designer' | 'nav.tab.runs' | 'nav.tab.exchange'> = {
+  analysis: 'nav.tab.analysis',
+  parameters: 'nav.tab.parameters',
+  designer: 'nav.tab.designer',
+  runs: 'nav.tab.runs',
+  exchange: 'nav.tab.exchange',
+}
 
 type OverlayState = {
   commandSearch: boolean
@@ -292,15 +309,16 @@ export default function WorkbenchApp(): JSX.Element {
   const draftChanges = modifiedPaths(parseConfig(paramView.base), parseConfig(paramView.cand)).length
   const candValues = numericValuesOf(parseConfig(paramView.cand))
 
-  /* 命令表:页面 + 文档 + 参数(可独立接数据——后续加动作命令) */
+  /* 命令表:页面 + 文档 + 参数(可独立接数据——后续加动作命令)。
+     WB-11.11:页面行 label/hint 与参数名随 locale 走词典(菜单面),
+     locale 进依赖,切语言后命令表即刻换文案。 */
   const commands: CommandEntry[] = useMemo(() => {
     const entries: CommandEntry[] = []
     for (const p of ['analysis', 'parameters', 'designer', 'runs', 'exchange'] as PageId[]) {
-      const def = pageDef(p)
       entries.push({
         id: `page:${p}`,
-        label: def.label,
-        hint: def.tab,
+        label: t(locale, NAV_PAGE_LABEL[p]),
+        hint: t(locale, NAV_TAB_LABEL[p]),
         icon: p === 'analysis' ? 'chart' : p === 'parameters' ? 'table' : p === 'designer' ? 'flask' : p === 'runs' ? 'terminal' : 'exchange',
         run: () => dispatch({ type: 'navigate', page: p }),
       })
@@ -308,7 +326,7 @@ export default function WorkbenchApp(): JSX.Element {
     for (const param of PARAM_REGISTRY) {
       entries.push({
         id: `param:${param.path}`,
-        label: displayParamName(param.path, 'zh-CN'),
+        label: displayParamName(param.path, locale),
         hint: param.path,
         icon: 'table',
         run: () => {
@@ -318,7 +336,7 @@ export default function WorkbenchApp(): JSX.Element {
       })
     }
     return entries
-  }, [])
+  }, [locale])
 
   /* 导出(演示数据,明确来源标注;WB-09 接真实 run) */
   const doExport = (scope: ExportScope, format: ExportFormat): void => {
@@ -371,17 +389,20 @@ export default function WorkbenchApp(): JSX.Element {
   const saveLabel = state.project
     ? unsavedCount > 0 ? t(locale, 'common.saveChangesCount', { count: unsavedCount }) : t(locale, 'common.savedWithFile')
     : t(locale, 'common.demoNoSaveFile')
+  // WB-11.11 · 资源树演示数据侧文案:分组名/演示文档名/描述行随 locale 走词典
+  // (文档名与文档标签同源 nav.tab.*);文件名候选汇总.csv/实验快照.json 与
+  // registry / defaults 是数据本体,保持原文(与项目名同一口径,WB-11.20)。
   const demoGroups: ExplorerGroup[] = [
     {
       id: 'config',
-      title: '模型与配置',
+      title: t(locale, 'nav.explorer.config'),
       open: true,
       resources: [
         {
           id: 'resource:baseline',
           page: 'parameters',
           icon: 'file-code',
-          title: '基础参数表',
+          title: t(locale, 'nav.explorer.baseline'),
           meta: 'registry / defaults',
         },
         {
@@ -389,51 +410,59 @@ export default function WorkbenchApp(): JSX.Element {
           id: candidateIdFor(DEMO_BASELINE_ID, candValues),
           page: 'parameters',
           icon: 'git-branch',
-          title: '候选方案 A',
-          meta: draftChanges > 0 ? `${draftChanges} 项参数变更` : '与基线一致',
+          title: t(locale, 'nav.tab.parameters'),
+          meta: draftChanges > 0
+            ? tPlural(locale, 'nav.explorer.metaChanges', draftChanges)
+            : t(locale, 'nav.explorer.metaSameAsBaseline'),
           dirty: !state.paramDraft.saved,
         },
         {
           id: 'resource:scenario',
           page: 'designer',
           icon: 'sliders',
-          title: '实验配置',
-          meta: '30 天 · 10,000 玩家',
+          title: t(locale, 'nav.explorer.scenario'),
+          meta: t(locale, 'nav.explorer.metaScenario', {
+            days: fmtNumber(locale, 30),
+            players: fmtNumber(locale, 10000),
+          }),
         },
       ],
     },
     {
       id: 'experiments',
-      title: '实验',
+      title: t(locale, 'nav.explorer.experiments'),
       open: true,
       resources: [
         {
           id: `${DEMO_EXPERIMENT_ID}:design-draft`,
           page: 'designer',
           icon: 'flask',
-          title: '初始攻击力扫描',
-          meta: 'Grid · 单参数',
+          title: t(locale, 'nav.tab.designer'),
+          meta: t(locale, 'nav.explorer.metaSweepMode'),
         },
       ],
     },
     {
       id: 'results',
-      title: '结果集',
+      title: t(locale, 'nav.explorer.results'),
       open: true,
       resources: [
         {
           id: String(DEMO_RESULT.runId),
           page: 'analysis',
           icon: 'chart',
-          title: '攻击力扫描结果',
-          meta: '11 候选 · 20 replicates',
+          title: t(locale, 'nav.tab.analysis'),
+          meta: t(locale, 'nav.explorer.metaResults', {
+            candidates: fmtNumber(locale, DEMO_RESULT.candidates.length),
+            replicates: fmtNumber(locale, 20),
+          }),
           demoSource: true,
         },
       ],
     },
     {
       id: 'exchange',
-      title: '数据交换',
+      title: t(locale, 'nav.explorer.exchange'),
       resources: [
         { id: 'resource:csv', page: 'exchange', icon: 'table', title: '候选汇总.csv' },
         { id: 'resource:json', page: 'exchange', icon: 'file-code', title: '实验快照.json' },

@@ -125,6 +125,20 @@ export const en = {
   'nav.tab.designer': 'Initial attack sweep',
   'nav.tab.runs': 'Task queue',
   'nav.tab.exchange': 'Data exchange',
+  // WB-11.11 · resource-tree demo-side copy: groups, demo document names and
+  // meta lines go through the dictionary (file names stay as-is, they are data)
+  'nav.explorer.config': 'Model & config',
+  'nav.explorer.experiments': 'Experiments',
+  'nav.explorer.results': 'Results',
+  'nav.explorer.exchange': 'Data exchange',
+  'nav.explorer.baseline': 'Baseline parameters',
+  'nav.explorer.scenario': 'Scenario config',
+  'nav.explorer.metaChanges.one': '{n} param change',
+  'nav.explorer.metaChanges.other': '{n} param changes',
+  'nav.explorer.metaSameAsBaseline': 'Same as baseline',
+  'nav.explorer.metaScenario': '{days} days · {players} players',
+  'nav.explorer.metaSweepMode': 'Grid · single param',
+  'nav.explorer.metaResults': '{candidates} candidates · {replicates} replicates',
 
   // 参数
   'params.search': 'Search parameters',
