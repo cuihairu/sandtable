@@ -8,7 +8,7 @@ import { METRIC_KEYS } from '../src/lib/types.ts'
 import { abView, availableMetrics, dailyRows, findCandidate, inspectorSources, interpolationText, orderViews, overallOutcome, recommendationView, responsePoints, sensitivityNoteLabel, stepSelection, targetSpan, xAxisDomain, yAutoDomain } from '../src/lib/analysisView.ts'
 import { candidateIdFor } from '../src/workbench/ids.ts'
 import { copyCandidate, feasibility, formatMetric, fullValues, orderedRows, ranBaseline, resultRows, rowState, statText } from '../src/workbench/analysis/resultModel.ts'
-import { currentRealJob, scopeCounts, scopeRows, scopedRunJson } from '../src/workbench/analysis/exportScope.ts'
+import { currentRealJob, scopeCounts, scopeRows, scopedRunCsv, scopedRunJson } from '../src/workbench/analysis/exportScope.ts'
 import { addCandidateDraft, analysisSnapshot, editCandidateDraft, patchResultUI, setAnalysisJob } from '../src/workbench/analysis/analysisStore.ts'
 
 let assertions = 0
@@ -310,4 +310,77 @@ test('WB-09.01:当前 run 解析口径(会话 job 优先 → 选择器 run → �
   assert.equal(currentRealJob(pool, null, null).id, 'job_third')
   assert.equal(currentRealJob([{ ...job, id: 'job_demo', demo: true }], 'job_demo', null), null)
   assert.equal(currentRealJob([], null, null), null)
+})
+
+/* —— WB-09.02:真实 run 候选表 CSV(稳定列名/量纲标注/统计量/空值与失败原因) —— */
+const CSV_UI = { selectedId: null, order: { filter: 'all', by: 'index', dir: 1 } }
+const CSV_HEADER = [
+  'data_source', 'run_id', 'experiment_id', 'candidate_id', 'candidate_index', 'replicates',
+  'model.warrior.attack', 'status', 'fail_reason', 'verdict',
+  'retention_d3.mean[ratio_0_1]', 'retention_d3.ci95_lo[ratio_0_1]', 'retention_d3.ci95_hi[ratio_0_1]', 'retention_d3.sd[ratio_0_1]', 'retention_d3.n[count]',
+  'win_rate.mean[ratio_0_1]', 'win_rate.ci95_lo[ratio_0_1]', 'win_rate.ci95_hi[ratio_0_1]', 'win_rate.sd[ratio_0_1]', 'win_rate.n[count]',
+  'gold_per_player.mean[amount]', 'gold_per_player.ci95_lo[amount]', 'gold_per_player.ci95_hi[amount]', 'gold_per_player.sd[amount]', 'gold_per_player.n[count]',
+  'power_p50.mean[amount]', 'power_p50.ci95_lo[amount]', 'power_p50.ci95_hi[amount]', 'power_p50.sd[amount]', 'power_p50.n[count]',
+  'churn_rate.mean[ratio_0_1]', 'churn_rate.ci95_lo[ratio_0_1]', 'churn_rate.ci95_hi[ratio_0_1]', 'churn_rate.sd[ratio_0_1]', 'churn_rate.n[count]',
+]
+
+test('WB-09.02:CSV 列名稳定且带量纲标注,范围不改变列集', () => {
+  const csv = scopedRunCsv(job, CSV_UI, 'all', 'exp_analysis0001')
+  assert.ok(csv.startsWith('﻿'), 'BOM 与演示 CSV 同一封装')
+  const lines = csv.split('\r\n')
+  assert.deepEqual(lines[0].slice(1).split(','), CSV_HEADER)
+  // 同一 run 的任意范围:表头逐字一致(稳定列名)
+  assert.equal(
+    scopedRunCsv(job, { selectedId: all[0].id, order: CSV_UI.order }, 'selected', 'exp_analysis0001').split('\r\n')[0],
+    lines[0],
+  )
+  assert.equal(
+    scopedRunCsv(job, { selectedId: null, order: { filter: 'fail', by: 'index', dir: 1 } }, 'filtered', null).split('\r\n')[0],
+    lines[0],
+  )
+  // 未登记实验 ID = 空单元格,不虚构
+  const noExp = scopedRunCsv(job, CSV_UI, 'all', null).split('\r\n')[1].slice(0)
+  assert.equal(noExp.split(',')[2], '')
+})
+
+test('WB-09.02:统计量与内核逐字对齐(规范十进制,0–1 比例不乘 100)', () => {
+  const lines = scopedRunCsv(job, CSV_UI, 'all', 'exp_analysis0001').split('\r\n')
+  assert.equal(lines.length, 1 + plan.candidates.length)
+  const row0 = lines[1].split(',')
+  assert.equal(row0[0], 'kernel')
+  assert.equal(row0[1], 'run_analysis0001')
+  assert.equal(row0[2], 'exp_analysis0001')
+  assert.equal(row0[4], '0')
+  assert.equal(row0[5], String(plan.replicates))
+  assert.equal(row0[6], '90')
+  assert.equal(row0[7], 'ok')
+  assert.equal(row0[8], '')
+  assert.equal(row0[9], 'pass')
+  const ret = results[0].metric_stats.find(([k]) => k === 'retention_d3')[1]
+  assert.equal(row0[10], String(ret.mean))
+  assert.equal(row0[11], String(ret.ci95_lo))
+  assert.equal(row0[12], String(ret.ci95_hi))
+  assert.equal(row0[13], String(ret.sd))
+  assert.equal(row0[14], String(ret.n))
+  // 候选 ID 内容寻址,与视图行同源
+  assert.equal(row0[3], all[0].id)
+})
+
+test('WB-09.02:失败原因明确——候选级 config_error 原文带引号,运行级失败落到未运行行', () => {
+  const message = '配置错误: bad value, really'
+  const errResults = [...results]
+  errResults[1] = { values: plan.candidates[1], status: { config_error: message }, metric_stats: [], target_outcomes: [] }
+  const errJob = cloneJob({ exec: { results: errResults } })
+  const lines = scopedRunCsv(errJob, CSV_UI, 'all', 'exp_analysis0001').split('\r\n')
+  const errLine = lines[2]
+  assert.match(errLine, /,config_error,"配置错误: bad value, really",,/, 'RFC4180 引号由 toCsv 收口;引号后紧跟空 verdict 单元格')
+  assert.ok(errLine.endsWith(','.repeat(25)), 'config_error 行统计列全空,空单元格不写 0')
+  // 运行级失败:pending 行带上运行失败原文,不静默留空
+  const failed = scopedRunCsv(
+    cloneJob({ status: 'failed', exec: { results: [results[0]], errorMessage: '预算超限: 太多' } }),
+    CSV_UI, 'all', 'exp_analysis0001',
+  ).split('\r\n')
+  assert.equal(failed[1].split(',')[7], 'ok')
+  assert.equal(failed[2].split(',')[7], 'failed')
+  assert.equal(failed[2].split(',')[8], '预算超限: 太多')
 })

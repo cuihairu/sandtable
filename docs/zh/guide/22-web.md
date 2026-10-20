@@ -67,7 +67,11 @@ wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试
 
 ### 导出绑定真实 run（WB-09.01）
 
-导出对话框有两种互斥上下文：演示上下文（导出内置样例，产物标注 `synthetic_demo`）与真实 run 上下文（分析页真实视图打开）。真实上下文里，范围计数与产物一律派生自当前 run——解析口径（会话选中 job → 选择器 runId → 最新真实 job）由 `analysis/exportScope.ts` 的 `currentRealJob` 单点提供，分析页与对话框共用；范围 = 全部计划内候选 / 分析页当前筛选（overall 判定同一口径）/ 当前选中候选，选项显示实际数量，所选为空时该项禁用、无候选时下载禁用。产物 JSON 信封：`data_source=kernel`、`run_id`、`spec`、`status`、`results`（按计划下标对位保留范围行，未进入范围的候选不出现在产物里）、`recommendation` 与 `export_scope` 证据（scope/candidates/total；部分返回的运行只导出已返回槽位，证据仍记全集计划数）；未运行的草稿与演示数据绝不进入这份产物。机器输出口径（WB-11.19）：数字走 `machineJson` 规范十进制，locale 无关。真实上下文先只放 JSON 格式，CSV / SVG 随 WB-09.02/.05 落地后放开。
+导出对话框有两种互斥上下文：演示上下文（导出内置样例，产物标注 `synthetic_demo`）与真实 run 上下文（分析页真实视图打开）。真实上下文里，范围计数与产物一律派生自当前 run——解析口径（会话选中 job → 选择器 runId → 最新真实 job）由 `analysis/exportScope.ts` 的 `currentRealJob` 单点提供，分析页与对话框共用；范围 = 全部计划内候选 / 分析页当前筛选（overall 判定同一口径）/ 当前选中候选，选项显示实际数量，所选为空时该项禁用、无候选时下载禁用。产物 JSON 信封：`data_source=kernel`、`run_id`、`spec`、`status`、`results`（按计划下标对位保留范围行，未进入范围的候选不出现在产物里）、`recommendation` 与 `export_scope` 证据（scope/candidates/total；部分返回的运行只导出已返回槽位，证据仍记全集计划数）；未运行的草稿与演示数据绝不进入这份产物。机器输出口径（WB-11.19）：数字走 `machineJson` 规范十进制，locale 无关。真实上下文已开放 JSON / CSV（CSV 契约见下），SVG 随 WB-09.05 落地后放开。
+
+真实上下文的 CSV（WB-09.02）导出 `<run_id>-candidates.csv`：稳定机器列名——`data_source / run_id / experiment_id`（运行登记缺省时空单元格，不虚构）/ `candidate_id`（内容寻址）/ `candidate_index` / `replicates` / 每个参数 ID 一列 / `status`（ok|config_error|pending|failed|cancelled）/ `fail_reason` / `verdict`（pass|borderline|fail，未判定空单元格），指标统计列 `<metric>.mean|ci95_lo|ci95_hi|sd|n` 且量纲进列名（percent 维度 `[ratio_0_1]` = 内核 0–1 原口径、导出绝不乘 100；amount 维度 `[amount]`；`n` 恒 `[count]`）；指标集 = 计划 targets + 实际产出过的指标，范围无关因此列名稳定；不可用统计 = 空单元格、绝不写 0；失败原因明确——候选级 = 内核 config_error 原文（逗号/引号走 RFC4180），运行级失败原文落到未运行行；数值走 `machineNumber` 规范十进制，locale 无关（中英文列名一致）；BOM + CRLF 与演示 CSV 同一封装。
+
+
 
 ## 等价验收
 
