@@ -471,6 +471,26 @@ export function readRunsIndex(text: string): RunsIndexRead {
   return { ok: true, runs }
 }
 
+/** WB-09.07 · 归档重开:运行索引 + 产物回读为登记簿形态,重开后续接再导出。
+ * 索引缺失 = 空恢复不报错(零运行项目);索引不可读 = 可读错误(结果文件
+ * 仍按字节保留,不静默丢);产物只收在场条目,缺失交给 auditRunArtifacts 点名。 */
+export function restoreRunsFromArchive(
+  files: ReadonlyMap<string, Uint8Array>,
+): { runs: RunIndexEntry[]; artifacts: Record<string, string | Uint8Array>; error: string | null } {
+  const indexBytes = files.get(RUNS_INDEX_PATH)
+  if (indexBytes === undefined) return { runs: [], artifacts: {}, error: null }
+  const read = readRunsIndex(new TextDecoder().decode(indexBytes))
+  if (!read.ok) return { runs: [], artifacts: {}, error: read.error }
+  const artifacts: Record<string, string | Uint8Array> = {}
+  for (const r of read.runs) {
+    for (const f of r.files) {
+      const bytes = files.get(f)
+      if (bytes !== undefined) artifacts[f] = bytes
+    }
+  }
+  return { runs: read.runs, artifacts, error: null }
+}
+
 /* —— 保存编排(WB-04.07/04.10) —— */
 
 /** 保存构建:全部配置(选中与未选中)+ 完整产物,一次进归档。 */

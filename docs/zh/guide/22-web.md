@@ -77,6 +77,8 @@ wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试
 
 SVG 导出（WB-09.05）序列化分析页当前指标的主图：所选候选的高亮随图带出，图表样式与白底内嵌进文件（独立打开不丢外观），轴刻度与指标/单位标注按渲染原样保留；来源随根节点声明 `data-source=kernel`、`data-run=<run id>`、`data-metric=<指标 ID>`，`xml:lang` 与 `data-locale` 记录导出语言，title/desc 声明数据与判定来自内核、统计不经前端改写。产物命名 `<run_id>-<指标>.svg`；分析页没有主图可序列化时不下载也不提示成功。演示与真实两种 SVG 走同一个序列化封装（`svgSerialize`），只有来源、标注与 data-run 由真实侧换成 kernel 口径。
 
+归档与重开（WB-09.07）：真实 run 终局（成功 / 取消 / 失败）即把机器快照落进项目产物 `results/<run_id>.report.json`——与分析页导出同一份 `scopedRunJson` 口径，`spec` 携带关联配置，信封带来源与版本；运行索引的 `files` 与在场产物同步登记，缺失仍由审计逐条点名。保存项目时产物随 `results/` 平铺写入并附 `results/runs.json` 索引；重开归档时运行登记簿与在场产物自动恢复（索引不可读给可读错误，结果文件仍按字节保留），项目面板的运行登记里每份在场产物可再次下载导出。
+
 ## 等价验收
 
 路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。

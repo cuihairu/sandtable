@@ -165,3 +165,40 @@ test('WB-02.13 关闭项目后重开同一项目,浏览器草稿层可恢复未�
   assert.equal(restored.content, DEMO_BASE_YAML + '\n# roundtrip')
   assert.equal(restored.saved, false)
 })
+
+test('WB-09.07 终局产物落档:run/artifacts 合并产物并同步索引 files,重复触发幂等', () => {
+  const base = getState()
+  const withRun = reduce(base, { type: 'run/register', entry: { ...RUN_ENTRY, files: [] } })
+  const artifact = 'results/run_storetest0001.report.json'
+  // 终局落档:产物写入 + 空的索引 files 补上产物路径(audit 不点名)
+  const s1 = reduce(withRun, {
+    type: 'run/artifacts',
+    runId: 'run_storetest0001',
+    artifacts: { [artifact]: '{"data_source":"kernel"}' },
+  })
+  assert.deepEqual(s1.runArtifacts[artifact], '{"data_source":"kernel"}')
+  assert.deepEqual(s1.runs[0].files, [artifact], '索引 files 与在场产物同步登记')
+  // 重复触发(同 run 同键):内容覆盖、files 不重复入列
+  const s2 = reduce(s1, {
+    type: 'run/artifacts',
+    runId: 'run_storetest0001',
+    artifacts: { [artifact]: '{"data_source":"kernel","rerun":true}' },
+  })
+  assert.deepEqual(s2.runs[0].files, [artifact], 'files 去重,不产生重复条目')
+  assert.deepEqual(s2.runArtifacts[artifact], '{"data_source":"kernel","rerun":true}')
+  // 多产物一次落档:全部登记且保持声明顺序
+  const s3 = reduce(withRun, {
+    type: 'run/artifacts',
+    runId: 'run_storetest0001',
+    artifacts: { [artifact]: '{}', 'results/run_storetest0001.candidates.csv': 'a,b\r\n' },
+  })
+  assert.deepEqual(s3.runs[0].files, [artifact, 'results/run_storetest0001.candidates.csv'])
+  // 未登记的 run:产物仍收(内容不丢),runs 不动
+  const s4 = reduce(s3, {
+    type: 'run/artifacts',
+    runId: 'run_unknown99999',
+    artifacts: { 'results/run_unknown99999.report.json': '{}' },
+  })
+  assert.equal(s4.runs.length, 1)
+  assert.ok(s4.runArtifacts['results/run_unknown99999.report.json'])
+})

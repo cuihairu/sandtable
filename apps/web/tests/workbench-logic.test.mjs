@@ -165,7 +165,8 @@ import {
   draftOf, writeDraft, undoDraft, resetDraft, markSaved, unsavedKeys,
 } from '../src/workbench/state/projectDoc.ts'
 import {
-  snapshotRun, seedOfYaml, runArtifactPaths, runsIndexFile, readRunsIndex,
+  snapshotRun, seedOfYaml, runArtifactPaths, runsIndexFile, readRunsIndex, restoreRunsFromArchive,
+  auditRunArtifacts,
   RUNS_INDEX_PATH, RUNS_INDEX_SCHEMA,
 } from '../src/workbench/state/projectDoc.ts'
 import { buildProjectSave, persistObjectDrafts, restoreObjectDrafts, clearObjectDrafts } from '../src/workbench/state/projectDoc.ts'
@@ -412,6 +413,47 @@ test('WB-03.02 缺失产物审计:索引声称的 files 逐条点名,不静默�
   assert.equal(auditRunArtifacts([runs[1]], ['results/run_b0000002.analysis.json']).length, 1)
   // 空索引零产物:无缺失可报,不给任何虚构条目
   assert.deepEqual(auditRunArtifacts([], new Set()), [])
+})
+
+test('WB-09.07 归档重开:运行索引与在场产物回读为登记簿形态,重开可再导出', () => {
+  const enc = (s) => new TextEncoder().encode(s)
+  const entry = {
+    run_id: 'run_abc12345', experiment_id: 'exp_x', scenario_path: null, experiment_path: null,
+    config_hash: 'a'.repeat(64), model_version: 'm1', schema_version: '1',
+    seed: 12345, conditions: { method: 'grid' }, data_source: 'kernel', created_at_unix: 0,
+    files: ['results/run_abc12345.report.json', 'results/run_abc12345.days.csv'],
+  }
+  const files = new Map([
+    [RUNS_INDEX_PATH, enc(runsIndexFile([entry]))],
+    ['results/run_abc12345.report.json', enc('{"data_source":"kernel"}')],
+    // days.csv 缺席:恢复不报错,缺失交给 auditRunArtifacts 点名
+  ])
+  const restored = restoreRunsFromArchive(files)
+  assert.equal(restored.error, null)
+  assert.equal(restored.runs.length, 1)
+  assert.deepEqual(restored.runs[0].files, entry.files, '登记条目原样回读(files 不重排)')
+  // 在场产物回读;不在场的不虚构空串占位
+  assert.deepEqual(restored.artifacts['results/run_abc12345.report.json'], enc('{"data_source":"kernel"}'))
+  assert.equal(restored.artifacts['results/run_abc12345.days.csv'], undefined)
+  assert.deepEqual(
+    auditRunArtifacts(restored.runs, new Set([...files.keys(), ...Object.keys(restored.artifacts)])),
+    [{ runId: 'run_abc12345', file: 'results/run_abc12345.days.csv' }],
+    '重开后 audit 仍逐条点名缺失',
+  )
+})
+
+test('WB-09.07 归档重开:零运行不报错,索引损坏给可读错误不静默丢产物', () => {
+  const enc = (s) => new TextEncoder().encode(s)
+  // 没有 runs.json(零运行项目):空恢复、无错误
+  const quiet = restoreRunsFromArchive(new Map([['results/days.csv', enc('day,active\n1,9\n')]]))
+  assert.deepEqual(quiet, { runs: [], artifacts: {}, error: null })
+  // 索引存在但不可读(坏 schema):可读错误,产物文件仍按字节保留在 doc.files
+  const broken = restoreRunsFromArchive(new Map([
+    [RUNS_INDEX_PATH, enc(JSON.stringify({ schema_version: '9', runs: [] }))],
+    ['results/run_x.report.json', enc('{}')],
+  ]))
+  assert.equal(broken.runs.length, 0)
+  assert.match(broken.error, /schema_version/, '错误点名 schema 版本,不静默吞掉')
 })
 
 test('WB-04.07/08 保存多配置:未选中条目与既有结果不丢,运行索引入归档', async () => {

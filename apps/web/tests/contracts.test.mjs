@@ -625,3 +625,31 @@ test('WB-11.11 资源树演示数据侧接词典:分组/文档名走 t(),数据�
   assert.match(app, /title: '候选汇总\.csv'/)
   assert.match(app, /title: '实验快照\.json'/)
 })
+
+test('WB-09.07 真实 run 终局落档与归档重开:登记簿回显、产物可再导出、失败不显示成功', () => {
+  // App:终局落档接线 —— 机器快照走 scopedRunJson(spec = 关联配置),run 只落一次
+  const app = read('src/workbench/WorkbenchApp.tsx')
+  assert.match(
+    app,
+    /results\/\$\{exec\.runId\}\.report\.json.*scopedRunJson\(/s,
+    '终局快照 = 运行 JSON 单点口径,spec 关联配置随档案走',
+  )
+  assert.match(app, /type: 'run\/artifacts'/)
+  assert.match(app, /restoreRunsFromArchive\(doc\.files\)/, '重开归档恢复登记簿')
+  // 恢复失败给可读错误;在场产物逐 run 挂回登记簿
+  assert.match(app, /if \(restored\.error !== null\)/)
+  assert.match(app, /type: 'run\/register', entry, artifacts: own \}/)
+  // 纯逻辑:恢复只收在场条目,缺失不虚构占位
+  const doc = read('src/workbench/state/projectDoc.ts')
+  assert.match(doc, /export function restoreRunsFromArchive\(/)
+  assert.match(doc, /if \(bytes !== undefined\) artifacts\[f\] = bytes/, '不在场不占位')
+  // 状态机:产物合并 + 索引 files 去重登记
+  const store = read('src/workbench/state/workbenchStore.ts')
+  assert.match(store, /case 'run\/artifacts':/)
+  assert.match(store, /paths\.filter\(\(p\) => !r\.files\.includes\(p\)\)/)
+  // 登记簿:在场产物给下载再导出;内容不在场不下载不提示成功
+  const panels = read('src/workbench/project/ProjectPanels.tsx')
+  assert.match(panels, /artifactOf\(f\)/)
+  assert.match(panels, /if \(data !== undefined\) download\(/, '竞态缺内容不下载不显示成功')
+  assert.match(panels, /t\(locale, 'data\.project\.downloadArtifact'\)/)
+})

@@ -52,6 +52,7 @@ import { packProject } from '../lib/project.ts'
 // WB-04 · 项目打开/保存/草稿/快照(纯逻辑见 state/projectDoc.ts)
 import {
   baseContentOf, buildProjectSave, openProject, projectFromYaml, readPickedFile, runsIndexFile, unsavedKeys,
+  restoreRunsFromArchive,
 } from './state/projectDoc.ts'
 import * as runManager from './state/runManager.ts'
 import type { Job } from './state/jobLogic.ts'
@@ -142,6 +143,29 @@ export default function WorkbenchApp(): JSX.Element {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [])
 
+  /* WB-09.07 · 真实 run 终局落档:机器快照(含 spec = 关联配置)写进运行
+   * 产物,索引 files 同步登记——重开归档后可再次导出。每个 run 只落一次。 */
+  const archivedRuns = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    for (const j of jobs) {
+      const exec = j.exec
+      if (j.demo || exec === undefined) continue
+      if (j.status !== 'succeeded' && j.status !== 'cancelled' && j.status !== 'failed') continue
+      if (archivedRuns.current.has(j.id)) continue
+      archivedRuns.current.add(j.id)
+      const runEntry = getState().runs.find((r) => r.run_id === exec.runId) ?? null
+      dispatch({
+        type: 'run/artifacts',
+        runId: exec.runId,
+        artifacts: {
+          [`results/${exec.runId}.report.json`]: scopedRunJson(
+            j, { selectedId: null, order: defaultResultUI.order }, 'all', runEntry,
+          ),
+        },
+      })
+    }
+  }, [jobs])
+
   /* —— WB-04 · 项目打开 / 保存(WB-04.01/02/10/12/13) —— */
   const fileInputRef = useRef<HTMLInputElement>(null)
   /** 应用栏项目入口:打开系统文件选择器;取消 = 无 change 事件 = 什么也不发生 */
@@ -160,6 +184,20 @@ export default function WorkbenchApp(): JSX.Element {
     const ne = doc.objects.filter((o) => o.kind === 'experiment').length
     const nr = doc.objects.filter((o) => o.kind === 'result').length
     dispatch({ type: 'project/open', doc })
+    // WB-09.07 · 重开恢复运行登记簿与在场产物:登记簿回显、产物可再次导出;
+    // 索引不可读给可读错误(结果文件仍按字节保留,不静默丢)
+    const restored = restoreRunsFromArchive(doc.files)
+    if (restored.error !== null) {
+      notify('error', restored.error)
+    }
+    for (const entry of restored.runs) {
+      const own: Record<string, string | Uint8Array> = {}
+      for (const f of entry.files) {
+        const bytes = restored.artifacts[f]
+        if (bytes !== undefined) own[f] = bytes
+      }
+      dispatch({ type: 'run/register', entry, artifacts: own })
+    }
     notify('success', t(locale, 'common.notifyProjectOpened', { name: doc.name, scenarios: ns, experiments: ne, results: nr }))
     dispatch({ type: 'navigate', page: 'designer' })
   }

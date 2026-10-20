@@ -814,9 +814,10 @@ export const en = {
   'data.project.colInputHash': 'Input sha256',
   'data.project.colConditions': 'Experiment conditions',
   'data.project.colArtifacts': 'Artifact paths',
-  'data.project.noFiles': '— (added once execution lands)',
+  'data.project.downloadArtifact': 'Download',
+  'data.project.noFiles': '— (no artifact files for this run)',
   'data.project.missingArtifact': 'missing',
-  'data.project.registryNote': 'Snapshots freeze at submit time (same input → same run ID); until kernel execution lands, model/schema is honestly shown as unknown. On save, registrations and artifacts are written flat as results/<run_id>.<artifact> plus a results/runs.json index.',
+  'data.project.registryNote': 'Snapshots freeze at submit time (same input → same run ID); when a real run terminates, its machine snapshot (spec carries the associated configs) lands as results/<run_id>.report.json, the registry files list stays in sync with present artifacts, and reopened archives can re-export. On save, registrations and artifacts are written flat as results/<run_id>.<artifact> plus a results/runs.json index.',
 
   // 错误信息({detail} = raw kernel message)
   'errors.parse': 'Parse failure: {detail}',

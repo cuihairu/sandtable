@@ -223,6 +223,9 @@ export type WorkbenchAction =
   | { type: 'project/mark-saved' }
   /** WB-04.09/08 · 登记运行提交时的不可变输入快照与产物路径 */
   | { type: 'run/register'; entry: RunIndexEntry; artifacts?: Record<string, string | Uint8Array> }
+  /** WB-09.07 · 终局产物落档:真实 run 结束后机器快照写进运行产物,
+   * 索引 files 同步登记(同键覆盖 + files 去重,重复触发幂等) */
+  | { type: 'run/artifacts'; runId: string; artifacts: Record<string, string | Uint8Array> }
 
 /* —— WB-05 · 参数候选 YAML 的统一写入/撤销/重做(演示与项目两模式) —— */
 
@@ -464,6 +467,17 @@ export function reduce(state: WorkbenchState, action: WorkbenchAction): Workbenc
           : [...state.runs, action.entry],
         runArtifacts: { ...state.runArtifacts, ...action.artifacts },
       }
+    case 'run/artifacts': {
+      const paths = Object.keys(action.artifacts)
+      return {
+        ...state,
+        runArtifacts: { ...state.runArtifacts, ...action.artifacts },
+        // WB-09.07 · 索引 files 与在场产物同步(audit 不点名);重复登记不重复入列
+        runs: state.runs.map((r) =>
+          r.run_id !== action.runId ? r : { ...r, files: [...r.files, ...paths.filter((p) => !r.files.includes(p))] },
+        ),
+      }
+    }
     default:
       return state
   }

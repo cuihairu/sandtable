@@ -4,8 +4,8 @@
 // - ProjectResultsPanel:打开项目时载入的已保存结果与版本状态,
 //   未知 schema_version 给出可读提示(WB-04.04);
 // - RunRegistry:运行提交时登记的不可变输入快照(配置哈希/版本/seed/
-//   实验条件)与产物路径(WB-04.09/08)。内核执行接入前(WB-07)如实
-//   标注:只有输入快照,没有产物。
+//   实验条件)与产物路径(WB-04.09/08);WB-09.07 起真实 run 终局落档,
+//   在场产物可下载再导出,缺失产物仍点名(audit)。
 // WB-11.16 · 面板文案走词典(data.project.*);report schema 版本行与
 // unknown-version 的内核消息保持原文(内核契约)。
 import type { JSX } from 'react'
@@ -14,6 +14,7 @@ import { dispatch } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
 import { auditRunArtifacts, baseContentOf, draftOf } from '../state/projectDoc.ts'
 import type { ResultFileStatus } from '../state/projectDoc.ts'
+import { download } from '../demo/export.ts'
 import { t } from '../../lib/i18n/index.ts'
 import type { Locale } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
@@ -126,13 +127,20 @@ export function ProjectResultsPanel({ state }: { state: WorkbenchState }): JSX.E
 export function RunRegistry({ state }: { state: WorkbenchState }): JSX.Element | null {
   const locale = useLocale()
   if (!state.project) return null
+  const doc = state.project
   const runs = state.runs
   // WB-03.02 · 索引声称的产物逐条与在场文件对照:缺失的点名标出,不静默跳过
   const present = new Set<string>([
-    ...(state.project.files.keys()),
+    ...(doc.files.keys()),
     ...Object.keys(state.runArtifacts),
   ])
   const missing = new Set(auditRunArtifacts(runs, present).map((m) => m.file))
+  // WB-09.07 · 在场产物内容:本会话终局落档优先,归档回读的文件字节兜底;
+  // 两者都没有 = 缺失(上面点名),此处不再触发下载(不显示成功)
+  const artifactOf = (f: string): string | Uint8Array | undefined =>
+    state.runArtifacts[f] ?? doc.files.get(f)
+  const mimeOf = (f: string): string =>
+    f.endsWith('.json') ? 'application/json' : f.endsWith('.csv') ? 'text/csv' : 'application/octet-stream'
   return (
     <section className="form-section" aria-label={t(locale, 'data.project.registryAria')}>
       <div className="form-section-heading">
@@ -172,7 +180,22 @@ export function RunRegistry({ state }: { state: WorkbenchState }): JSX.Element |
                               <WbIcon name="warning" /> {f} · {t(locale, 'data.project.missingArtifact')}
                             </span>
                           )
-                          : <span key={f}>{f}</span>
+                          : (
+                            <span key={f} style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                              <span>{f}</span>
+                              <button
+                                className="btn"
+                                style={{ padding: '0 6px', fontSize: 11 }}
+                                onClick={() => {
+                                  const data = artifactOf(f)
+                                  // 内容不在场(竞态)不下载也不提示成功
+                                  if (data !== undefined) download(f.split('/').pop() ?? f, data, mimeOf(f))
+                                }}
+                              >
+                                {t(locale, 'data.project.downloadArtifact')}
+                              </button>
+                            </span>
+                          )
                         return i === 0 ? [node] : [' ', node]
                       })}
                 </td>
