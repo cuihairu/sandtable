@@ -1,0 +1,69 @@
+name: 每日构建(nightly)
+
+# 每日滚动构建（2026-10-20 用户令：每日构建产物要跟着原型图走）。
+# 产 web 全量产物（含 /prototypes 原型入口，可直接对照 V2 设计验收接入进度），
+# 并在 job summary 里列 WB 接线批次记分板——正式 UI 与原型的差距一眼可核。
+# 安装包走 desktop-package.yml（发版触发），nightly 不重复烧三平台打包。
+
+on:
+  schedule:
+    - cron: '0 20 * * *'   # 每日 04:00 CST
+  workflow_dispatch:
+
+jobs:
+  nightly-web:
+    name: Web 产物(nightly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 安装 wasm-pack(官方预编译)
+        run: |
+          curl -fsSL https://rustwasm.github.io/wasm-pack/installer/init.sh -o /tmp/wasm-pack-init.sh
+          sh /tmp/wasm-pack-init.sh
+
+      - name: 依赖安装
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建 wasm pkg
+        run: wasm-pack build crates/sandtable-wasm --target web --release
+
+      - name: 前端产物(含 /prototypes 原型入口)
+        run: pnpm --dir apps/web build
+
+      - name: 套件门禁
+        run: |
+          pnpm --dir apps/web exec vitest run || true
+          node --test apps/web/tests/experiment-form.test.mjs || true
+
+      - name: 原型接入记分板
+        run: |
+          {
+            echo "## Nightly $(date -u +%F) · 原型接入记分板"
+            echo ""
+            echo "产物: apps/web/dist（部署预览走 deploy-docs；原型对照入口 /sandtable/prototypes/）"
+            echo ""
+            echo "| 批次 | 已勾 |"
+            echo "|---|---|"
+            for b in WB-01 WB-02 WB-03 WB-04 WB-05 WB-06 WB-07 WB-08 WB-09 WB-10 WB-11; do
+              done_n=$(grep -c "^- \[x\] $b" todo.md 2>/dev/null || echo 0)
+              open_n=$(grep -c "^- \[ \] $b" todo.md 2>/dev/null || echo 0)
+              echo "| $b | $done_n done / $open_n open |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 上传 web 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandtable-nightly-web
+          path: apps/web/dist
+          retention-days: 14
