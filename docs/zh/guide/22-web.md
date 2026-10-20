@@ -35,6 +35,14 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - `meta` 只带 `schema_version / model_version`;`generated_at_unix / git_sha` 属环境字段,由前端构建注入(`VITE_GIT_SHA`,CI 构建期注入;未注入回退 `unknown`,与 CLI 未设 `SANDTABLE_GIT_SHA` 时同),绑定层不伪造;
 - replicates 上限 64(Web 定位小中型,WASM 内存 4GB 上限、单线程,文档 [数据输出](./09-data-output)),更大的实验引导走 CLI / 桌面。
 
+### 配置回写/序列化契约(WB-03.07)
+
+配置在前端有两条通道,职责不重叠:
+
+- **人工写回走 YAML 文本层**:`applyParamEdit(s)` 做 token 级替换,不重序列化——注释、键序、未编辑的结构性配置(枚举 `damage_model`、公式 `xp_needed`、逐层 `tier_table`、loot `tables/rewards/on_victory`、`gacha`、`training`)逐字节保留(工作台测试锁);`serde` 重序列化会丢注释、重排键,**禁止**作为人工写回通道。
+- **内核对象通道只出 hash 与回读值**:`param_apply` 按 `registry::apply_numeric` 应用后重验(显式性契约——如 loot 在场必须整配——在编辑期把关),返回 `{config_hash, path, value}`,**不返回 YAML**;`config_hash` 是内核 canonical SHA-256,YAML 文本本身不进哈希。
+- 数值桥接对结构性参数(时长 / 公式 / 结构表 / 枚举开关)一律「该参数不是数值」拒绝——结构配置只能经文本编辑或专用结构编辑器修改。
+
 ## 等价验收
 
 路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。

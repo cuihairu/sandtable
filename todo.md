@@ -168,7 +168,9 @@
 - [x] WB-03.06：补数值参数应用桥接，复用 core 类型与参数寻址；未知路径、非数值结构和非法类型返回明确错误。
   - 落点:wasm 新导出 `param_apply(yaml,path,value)`(内核寻址 `registry::apply_numeric` 单条编辑 → **应用后重验** → read_numeric 回读,返回 `{config_hash,path,value}`,apply/read 镜像证明);Tauri 同构命令 `param_apply`(已注册);TS 服务层 `paramApply(yaml,path,value)`(wasm.ts 双路径)。已代决:单条编辑口径(批 = JS 循环;内核侧批量已有 sweep_candidate 通道),错误逐类明确——未知路径带相近路径建议、非数值槽「该参数不是数值」、u32/u64 为负「不能为负」,全部 `配置错误: ` 前缀走 classifyWasmError;重验把关显式性契约(未配置 loot 应用 rate_mult 会经 get_or_insert 物化半配置 loot,编辑期即报 on_victory 缺失,不等运行期)。文本层 applyParamEdits(保留注释)仍负责写回,归 WB-03.07 契约。
   - 测试:wasm Rust 14/14(新增 param_apply_uses_kernel_addressing_and_revalidates:回读值/hash 64 位/异值异 hash/未知路径/非数值槽/负值/loot 半配置重验);contracts.test.mjs 12/12(新增 WB-03.06 运行时锁同七断言组 + wasm.ts 双路径接线守卫);全套 node 199/199;desktop cargo check ✓;tsc -b 0 错;oxlint 0 警;vite build ✓。
-- [ ] WB-03.07：设计配置回写/序列化契约，保留枚举、公式、逐层表、loot 等未编辑的结构配置。
+- [x] WB-03.07：设计配置回写/序列化契约，保留枚举、公式、逐层表、loot 等未编辑的结构配置。
+  - 落点:双通道契约成文于 docs/guide/22-web.md(绑定纪律节,中英双份)——①人工写回走 YAML 文本层(applyParamEdit token 级替换不重序列化,注释/键序/未编辑结构逐字节保留,serde 重序列化丢注释重排键禁作人工写回);②内核对象通道只出 hash 与回读值(param_apply 重验后回 {config_hash,path,value},永不回 YAML;config_hash 是内核 canonical SHA-256,YAML 文本不进哈希);③数值桥接对结构性参数一律「该参数不是数值」拒绝,结构配置只走文本编辑或专用结构编辑器。文本层既有实现(configYaml.ts)不改,契约是对既有行为的成文+锁死。
+  - 测试:contracts.test.mjs 13/13(新增 WB-03.07 契约锁:param_apply 恰三字段不出 YAML;全结构段样本——枚举/公式/逐层表/loot/gacha/training——无关数值编辑后逐字节保留);params-config 22/22(WB-05.15 文本层 round-trip 原锁不动);docs:build ✓(全站 36.6s,VitePress 双语言路由过)。
 - [ ] WB-03.08：明确 u64/seed 等值的 JS 安全整数边界；不安全值采用无损表达或明确拒绝，不静默舍入。
 - [ ] WB-03.09：补 KPI 名称、可用性、统计口径与可展示格式的入口，区分内核 ID 和本地化显示名。
 - [ ] WB-03.10：补 A/B 比较调用的完整输入契约：两侧快照、replicates、seed/配对策略、所选 KPI。

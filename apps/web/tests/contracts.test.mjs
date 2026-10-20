@@ -17,6 +17,7 @@ import { dirname, join } from 'node:path'
 import * as wasm from '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js'
 import { METRIC_KEYS, SWEEP_MODES } from '../src/lib/types.ts'
 import { PARAM_REGISTRY } from '../src/workbench/params/paramRegistry.ts'
+import { applyParamEdits } from '../src/workbench/params/configYaml.ts'
 import { classifyWasmError } from '../src/lib/errors.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -291,4 +292,50 @@ test('WB-03.06 数值应用桥接:内核寻址,错误逐类明确,应用后重�
   const svc = read('src/lib/wasm.ts')
   assert.match(svc, /invoke\('param_apply', \{ yaml, path, value \}\)/, '桌面路径走 param_apply 命令')
   assert.match(svc, /paramApplyBinding\(yaml, path, value\)/, '浏览器路径走 wasm 绑定')
+})
+
+test('WB-03.07 回写契约:内核通道只出 hash/回读值不出 YAML;文本层保留全部结构段', () => {
+  // 内核对象通道:param_apply 返回恰三字段,永不回 YAML(serde 重序列化丢注释、
+  // 重排键,禁止作为人工写回;docs/guide/22-web.md 绑定纪律节)
+  const ok = JSON.parse(wasm.param_apply(YAML, 'model.warrior.attack', 250))
+  assert.deepEqual(Object.keys(ok).sort(), ['config_hash', 'path', 'value'], 'param_apply 不回 YAML')
+  // 文本层:全部结构性配置(枚举/公式/逐层表/loot/gacha/training)在无关数值编辑后逐字节保留
+  const composed = [
+    "schema_version: '1'",
+    'scenario: {population: 40, duration: "3d", seed: 7}',
+    'model:',
+    '  warrior: {attack: 100}',
+    '  training: {xp: 5, gold: 3}',
+    '  formulas:',
+    "    xp_needed: 'xp_base * level ^ xp_pow'",
+    '  combat: {damage_model: ratio, ratio_k: 2.5}',
+    '  gacha:',
+    '    base_rate: 0.02',
+    '    pity_hard: 90',
+    '  loot:',
+    '    on_victory: chest',
+    '    tables:',
+    '      chest:',
+    '        weights: { gold_small: 70, gem: 30 }',
+    '    rewards:',
+    '      gold_small: { gold: 10, xp: 0 }',
+    '  dungeon:',
+    '    tier_table:',
+    '      - { hp: 165, attack: 85, defense: 245 }',
+    '',
+  ].join('\n')
+  const applied = applyParamEdits(composed, [{ path: 'model.warrior.attack', text: '250' }])
+  assert.equal(applied.ok, true)
+  assert.ok(applied.yaml.includes('warrior: {attack: 250}'), '只动了目标 token')
+  for (const frag of [
+    'training: {xp: 5, gold: 3}',
+    "xp_needed: 'xp_base * level ^ xp_pow'",
+    'damage_model: ratio',
+    'pity_hard: 90',
+    'weights: { gold_small: 70, gem: 30 }',
+    'gold_small: { gold: 10, xp: 0 }',
+    '- { hp: 165, attack: 85, defense: 245 }',
+  ]) {
+    assert.ok(applied.yaml.includes(frag), `结构段应逐字节保留: ${frag}`)
+  }
 })

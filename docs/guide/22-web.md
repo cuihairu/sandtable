@@ -34,6 +34,14 @@ Page capabilities (current increment):
 - `meta` carries only `schema_version / model_version`; `generated_at_unix / git_sha` are environment fields, injected by the frontend build (`VITE_GIT_SHA`, injected during the CI build; falling back to `unknown` when not injected, the same as the CLI without `SANDTABLE_GIT_SHA`); the binding layer does not fabricate them;
 - The ceiling on replicates is 64 (the Web form targets small-to-medium simulations: the 4GB WASM memory cap, single-threaded, [data output](./09-data-output.md)); larger experiments are steered to the CLI / desktop.
 
+### Config write-back / serialization contract (WB-03.07)
+
+Configuration has two channels on the frontend with non-overlapping duties:
+
+- **Human write-back goes through the YAML text layer**: `applyParamEdit(s)` performs token-level replacement, never re-serialization — comments, key order and all unedited structural config (the `damage_model` enum, the `xp_needed` formula, per-tier `tier_table`, loot `tables/rewards/on_victory`, `gacha`, `training`) are preserved byte for byte (locked by workbench tests). `serde` re-serialization drops comments and reorders keys and is **forbidden** as the human write-back channel.
+- **The kernel-object channel emits only the hash and the read-back value**: `param_apply` applies via `registry::apply_numeric`, then re-validates (the explicitness contract — e.g. loot must arrive fully configured — is enforced at edit time) and returns `{config_hash, path, value}` — **never YAML**. `config_hash` is the kernel-canonical SHA-256; the YAML text itself never enters the hash.
+- Numeric bridges reject structural parameters (duration / formula / structural tables / enum switches) with "该参数不是数值" (not a numeric slot) — structural config can only change through text editing or dedicated structural editors.
+
 ## Equivalence acceptance
 
 The roadmap's Phase 6 acceptance criterion: **the browser and the CLI, with the same configuration and the same seed, produce statistically equivalent results**. It is locked down by `crates/sandtable-cli/tests/web_parity.rs` — with the same configuration and the same seed, the report.json from the CLI's `simulate` and the results from the binding's `run_simulation_native` are **identical value by value** (not merely close in statistics; `serde_json` has `float_roundtrip` enabled, so an f64 written to disk and read back is bit-identical).
