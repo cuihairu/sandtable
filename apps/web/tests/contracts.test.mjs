@@ -653,3 +653,40 @@ test('WB-09.07 真实 run 终局落档与归档重开:登记簿回显、产物�
   assert.match(panels, /if \(data !== undefined\) download\(/, '竞态缺内容不下载不显示成功')
   assert.match(panels, /t\(locale, 'data\.project\.downloadArtifact'\)/)
 })
+
+test('WB-09.08 下载成功口径:真实产物名可追溯(run id),失败/取消不显示成功', () => {
+  const app = read('src/workbench/WorkbenchApp.tsx')
+  const page = read('src/workbench/pages/AnalysisPage.tsx')
+  // 真实上下文导出名全部带 run id(可追溯;不用虚构时间戳,溯源键是 run)
+  assert.ok(app.includes('`${exec.runId}-candidates.csv`'), 'CSV 名带 run id')
+  assert.ok(app.includes('`${exec.runId}-${metric}.svg`'), 'SVG 名带 run id 与指标')
+  assert.ok(app.includes('`${exec.runId}.json`'), 'JSON 名带 run id')
+  assert.ok(page.includes('`${exec.runId}-drafts.json`'), '草稿批量名带 run id')
+  // 成功提示只在真实下载之后:csv/svg/json 分支 notify 都紧跟 download 落行
+  assert.match(
+    app,
+    /download\(`\$\{exec\.runId\}-candidates\.csv`[\s\S]{0,120}notify\('success', t\(locale, 'common\.notifyCsvDownloaded'/,
+    'CSV 成功提示在下载之后',
+  )
+  assert.match(
+    app,
+    /download\(`\$\{exec\.runId\}-\$\{metric\}\.svg`[\s\S]{0,200}notify\('success', t\(locale, 'analysis\.exportRunSvgDone'/,
+    'SVG 成功提示在下载之后',
+  )
+  assert.match(
+    app,
+    /download\(`\$\{exec\.runId\}\.json`[\s\S]{0,200}notify\('success'/,
+    'JSON 成功提示在下载之后',
+  )
+  // SVG 无主图分支:不下载也不提示成功(notify 在 mainChart 非空守卫内)
+  assert.match(
+    app,
+    /if \(mainChart !== null\) \{\s*const metric[\s\S]*download\(`\$\{exec\.runId\}-\$\{metric\}\.svg`[\s\S]*?exportRunSvgDone[\s\S]*?\}\s*return\s*\}/,
+    '无主图时整段跳过(无下载无成功提示)',
+  )
+  // 桌面壳:下载落 ~/Downloads 重名加序号(不覆盖),落盘结果显式上报(不静默)
+  const desktop = read('../../apps/desktop/src-tauri/src/lib.rs')
+  assert.match(desktop, /DownloadEvent::Finished \{ success/, '下载完成态显式上报(无头走查凭据)')
+  assert.match(desktop, /download_destination/, '重名加序号落点')
+  assert.match(desktop, /fn download_destination_uniquifies/, '桌面落点有独立测试(web 侧不重复验)')
+})

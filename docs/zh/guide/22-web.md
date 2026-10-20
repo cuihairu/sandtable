@@ -79,6 +79,8 @@ SVG 导出（WB-09.05）序列化分析页当前指标的主图：所选候选�
 
 归档与重开（WB-09.07）：真实 run 终局（成功 / 取消 / 失败）即把机器快照落进项目产物 `results/<run_id>.report.json`——与分析页导出同一份 `scopedRunJson` 口径，`spec` 携带关联配置，信封带来源与版本；运行索引的 `files` 与在场产物同步登记，缺失仍由审计逐条点名。保存项目时产物随 `results/` 平铺写入并附 `results/runs.json` 索引；重开归档时运行登记簿与在场产物自动恢复（索引不可读给可读错误，结果文件仍按字节保留），项目面板的运行登记里每份在场产物可再次下载导出。
 
+下载口径（WB-09.08）：成功提示只在真实下载落地之后给出——真实上下文 CSV / JSON / SVG 三个分支的 notify 都跟在 `download(...)` 落行之后，分析页没有主图可序列化时整段跳过（无下载也无成功提示），取消文件选择不是错误也不提示成功；桌面端经壳 `on_download` 落 `~/Downloads`（重名加 `(n)` 序号不覆盖上一次产物，`Finished` 显式上报落盘结果，桌面落点有独立 Rust 测试，web 侧不重复验）。真实上下文的产物名全部以 run id 开头（`<run_id>.json` / `<run_id>-candidates.csv` / `<run_id>-<指标>.svg` / `<run_id>-drafts.json`），溯源键是 run，不用虚构时间戳。
+
 ## 等价验收
 
 路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。
