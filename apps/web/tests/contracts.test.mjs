@@ -10,9 +10,9 @@
 //   node --test apps/web/tests/contracts.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 
 import * as wasm from '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js'
 import { METRIC_KEYS, SWEEP_MODES } from '../src/lib/types.ts'
@@ -497,4 +497,25 @@ test('WB-03.13 绑定生成守卫:TS 包装的命名导入必在 pkg 双面生�
       assert.match(dts, new RegExp(`export function ${orig}\\b`), `pkg(web).d.ts 未声明 ${orig}:须重建 pkg(--target web --release)`)
     }
   }
+})
+
+test('WB-03.14 服务层唯一面:内核数据通道只经 lib/wasm.ts(+ Worker 入口),组件不散落 invoke / wasm 直连', () => {
+  // 允许直连的两个面:统一服务层(桌面 invoke / 浏览器 init 的分流都在这里)
+  // 与 Worker 入口(Worker 线程内独立 init 是其本职)
+  const allowed = ['src/lib/wasm.ts', 'src/workbench/state/sweepWorker.entry.ts']
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [join(dir, e.name)] : [],
+    )
+  const srcRoot = join(here, '..', 'src')
+  const offenders = []
+  for (const abs of walk(srcRoot)) {
+    const rel = relative(srcRoot, abs).split(sep).join('/')
+    if (allowed.includes(`src/${rel}`)) continue
+    const src = readFileSync(abs, 'utf8')
+    if (/from\s+['"]sandtable-wasm['"]/.test(src)) offenders.push(`${rel}: 直连 sandtable-wasm 绑定`)
+    if (/@tauri-apps\/api\/core/.test(src)) offenders.push(`${rel}: 直连 tauri invoke/Channel`)
+    if (/'__TAURI_INTERNALS__'/.test(src)) offenders.push(`${rel}: 重复嗅探桌面环境(isDesktop 走服务层)`)
+  }
+  assert.deepEqual(offenders, [], '内核数据通道必须经 lib/wasm.ts 服务层双路径分流(桌面 invoke / 浏览器 wasm init),组件不得散落直连')
 })
