@@ -157,6 +157,9 @@ jobs:
   # 人工验收清单挡过,无自动化门。scripts/desktop_smoke.sh 在本机实测的配方
   # (Xvfb + openbox + 关 DMABUF/合成渲染器 + resize 重试)升为 CI 门:进程存活
   # 且截屏色数达标(空白窗 <100 色即 fail),debug 构建提速。
+  # 判据按「窗口是否真上屏 + 截到的是否 RGB 像素」分级,别把环境问题报成白屏
+  # (2026-10-20 run 39412546114:主窗要启动后 ~32 秒才创建,旧的 15+24 秒预算
+  # 采到的是空桌面,1 色被误判 webview 未绘制)。
   desktop-smoke:
     name: 桌面无头冒烟(启动链)
     runs-on: ubuntu-24.04  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
@@ -174,12 +177,14 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
 
       # webkit2gtk dev 包一并带来运行库(与 test job 同一镜像已验过);
-      # xvfb/openbox/xdotool/imagemagick 为冒烟配方依赖
+      # xvfb/openbox/xdotool/imagemagick 为冒烟配方依赖,x11-utils 提供
+      # xwininfo——冒烟用它核对显示深度与窗口映射态,把「空桌面/没上屏」和
+      # 「上屏了但空白」分开报(2026-10-20 run 39412546114 误报空白窗)
       - name: 安装桌面依赖与冒烟工具
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
-            xvfb openbox xdotool imagemagick
+            xvfb openbox xdotool imagemagick x11-utils
 
       # custom-protocol 在编译期内嵌 frontendDist=web/dist,前端产物须先行;
       # tsc 要解析 sandtable-wasm 的 file:pkg 类型声明,须先出 pkg(首跑 2026-10-13
