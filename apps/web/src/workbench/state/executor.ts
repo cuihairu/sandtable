@@ -266,9 +266,15 @@ export function startExec(
     if (be.compare === null) {
       return outcome('failed', 'bridge', 'A/B 统计比较需内核 Comparison 桥接(WB-03.10/11);双臂仿真已真跑并保留,统计判定不由前端另算', { arms: armsOut() })
     }
+    // 单次仿真在臂内已返回;能走到这里的都是双臂(A/B)。ExecSpec 是 kind 判别
+    // 联合,baseYaml/candYaml/metric 只在 ab 变体上,先收窄再取字段。
+    const ab = spec.kind === 'ab' ? spec : null
+    if (ab === null) {
+      return outcome('failed', 'run', 'A/B 比较只适用于双臂规格;当前规格无第二臂', { arms: armsOut() })
+    }
     let comparison: Comparison
     try {
-      comparison = await be.compare(spec.baseYaml, spec.candYaml, spec.metric, outputs.base!, outputs.cand!)
+      comparison = await be.compare(ab.baseYaml, ab.candYaml, ab.metric, outputs.base!, outputs.cand!)
     } catch (e) {
       // 内核显式拒绝(种子错位/指标不可用/replicate 不等长/未知指标):
       // 双臂输出保留,错误原样进错误通道(配置错误/参数错误前缀)

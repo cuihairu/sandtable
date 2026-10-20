@@ -72,7 +72,7 @@ export function scopedRunJson(job: Job, ui: ScopeUI, scope: ExportScope): string
     status: job.status,
     results: exec.results.filter((_r, i) => kept.has(i)),
     recommendation: exec.recommendation,
-    export_scope: { scope, candidates: rows.length, total: exec.spec.plan.candidates.length },
+    export_scope: { scope, candidates: rows.length, total: resultRows(job).length },
   })
 }
 
@@ -104,9 +104,12 @@ function rowFailReason(job: Job, row: ResultRow): string {
 
 /** 全 run 指标集(范围无关 → 列名稳定):计划 targets + 实际产出过的指标 */
 function runMetrics(job: Job): MetricKey[] {
+  const spec = job.exec!.spec
   const rows = resultRows(job)
+  // targets 只在扫描规格里存在:收窄 kind 后从运行自带的分析上下文取计划
+  const targets = spec.kind === 'sweep' ? spec.analysis?.plan?.targets ?? [] : []
   return METRIC_KEYS.filter((m) =>
-    job.exec!.spec.plan.targets.some((tg) => tg.metric === m)
+    targets.some((tg) => tg.metric === m)
     || rows.some((r) => r.result?.stats.has(m)),
   )
 }
@@ -121,7 +124,8 @@ function runMetrics(job: Job): MetricKey[] {
  */
 export function scopedRunCsv(job: Job, ui: ScopeUI, scope: ExportScope, experimentId: string | null): string {
   const exec = job.exec!
-  const axes = Object.keys(exec.spec.plan.candidates[0] ?? {})
+  // 扫描轴取计划内首个候选的取值键(非扫描规格无扫描轴 → 无参数列)
+  const axes = Object.keys(resultRows(job)[0]?.values ?? {})
   const metrics = runMetrics(job)
   const header = [
     'data_source', 'run_id', 'experiment_id', 'candidate_id', 'candidate_index', 'replicates',
@@ -141,5 +145,5 @@ export function scopedRunCsv(job: Job, ui: ScopeUI, scope: ExportScope, experime
       return ms ? [ms.mean, ms.ci95_lo, ms.ci95_hi, ms.sd, ms.n] as const : [null, null, null, null, null] as const
     }),
   ])
-  return '\uFEFF' + toCsv(header, rows)
+  return '\ufeff' + toCsv(header, rows)
 }

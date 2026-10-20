@@ -359,7 +359,8 @@ export default function WorkbenchApp(): JSX.Element {
     if (exportCtx) {
       const exec = exportCtx.job.exec!
       const kept = scopeRows(exportCtx.job, exportCtx.ui, scope).length
-      const total = exec.spec.plan.candidates.length
+      // 计划内槽位总数与导出信封同一口径(ExecSpec 是 kind 判别联合,plan 只在扫描规格上)
+      const total = scopeRows(exportCtx.job, exportCtx.ui, 'all').length
       const experimentId = state.runs.find((r) => r.run_id === exec.runId)?.experiment_id ?? null
       if (format === 'csv') {
         download(`${exec.runId}-candidates.csv`, scopedRunCsv(exportCtx.job, exportCtx.ui, scope, experimentId), 'text/csv;charset=utf-8')

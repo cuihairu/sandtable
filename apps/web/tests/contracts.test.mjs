@@ -460,9 +460,12 @@ test('WB-03.10/11 A/B 桥:compare_arms 内核直出 Comparison,成对前提/可�
   const svc = read('src/lib/wasm.ts')
   assert.match(svc, /invoke\('ab_compare', \{/, '桌面路径走 ab_compare 命令')
   assert.match(svc, /abCompareBinding\(/, '浏览器路径走 wasm 绑定')
-  // 执行器接线:唯一调用点带双臂 YAML + metric;worker 协议含 ab_compare 面
+  // 执行器接线:唯一调用点带双臂 YAML + metric;worker 协议含 ab_compare 面。
+  // ExecSpec 是 kind 判别联合(baseYaml/candYaml/metric 只在 ab 变体),
+  // 先按 kind 收窄再取字段——直接 spec.baseYaml 会不编译。
   const exec = read('src/workbench/state/executor.ts')
-  assert.match(exec, /be\.compare\(spec\.baseYaml, spec\.candYaml, spec\.metric, outputs\.base!, outputs\.cand!\)/)
+  assert.match(exec, /const ab = spec\.kind === 'ab' \? spec : null/, '比较调用前先按 kind 收窄到 ab 变体')
+  assert.match(exec, /be\.compare\(ab\.baseYaml, ab\.candYaml, ab\.metric, outputs\.base!, outputs\.cand!\)/)
   assert.match(exec, /kind: 'ab_compare'/)
   assert.match(exec, /wasm\.abCompare\(baseYaml, candYaml, metric, base\.results, cand\.results\)/)
   // 设计页入队:比较指标 = 首个设计目标(缺省 win_rate,内核判定合法性)
