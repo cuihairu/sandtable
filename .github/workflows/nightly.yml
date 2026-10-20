@@ -38,31 +38,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # 工具链对齐 CI Web 腿(ci.yml:117-140)：npm ci @ apps/web，勿自造 pnpm 口径
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-
-      - name: 安装 pnpm
-        uses: pnpm/action-setup@v6   # 版本取 package.json packageManager，勿在此重复指定
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: 安装 wasm-pack(官方预编译)
-        run: |
-          curl -fsSL https://rustwasm.github.io/wasm-pack/installer/init.sh -o /tmp/wasm-pack-init.sh
-          sh /tmp/wasm-pack-init.sh
-
-      - name: 依赖安装
-        run: pnpm install --frozen-lockfile
+        run: curl -fsSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
 
       - name: 构建 wasm pkg
         run: wasm-pack build crates/sandtable-wasm --target web --release
 
       - name: 前端产物(含 /prototypes 原型入口)
-        run: pnpm --dir apps/web build
-
-      - name: 套件门禁
+        working-directory: apps/web
         run: |
-          pnpm --dir apps/web exec vitest run || true
-          node --test apps/web/tests/experiment-form.test.mjs || true
+          npm ci
+          npm run build
 
       - name: 原型接入记分板
         run: |
