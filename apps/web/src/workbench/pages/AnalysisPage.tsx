@@ -15,7 +15,7 @@ import { DemoAnalysisPage } from '../analysis/DemoAnalysisPage.tsx'
 import { addCandidateDraft, analysisSnapshot, defaultResultUI, editCandidateDraft, patchResultUI, setAnalysisJob, subscribeAnalysis } from '../analysis/analysisStore.ts'
 import { copyCandidate, feasibility, formatMetric, fullValues, orderedRows, ranBaseline, resultRows, rowState, statText } from '../analysis/resultModel.ts'
 import type { ResultRow } from '../analysis/resultModel.ts'
-import { currentRealJob } from '../analysis/exportScope.ts'
+import { currentRealJob, draftJson, draftsJson, scopedRunJson } from '../analysis/exportScope.ts'
 import { dispatch } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
 import * as runManager from '../state/runManager.ts'
@@ -24,7 +24,6 @@ import { notify } from '../state/notifications.ts'
 import { createId, ID_PREFIXES } from '../ids.ts'
 import type { CandidateId } from '../ids.ts'
 import { download } from '../demo/export.ts'
-import { machineJson } from '../../lib/machineExport.ts'
 import { parseConfig } from '../params/configYaml.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
@@ -126,7 +125,7 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
         <label htmlFor="real-filter">{t(locale, 'analysis.filter')}</label><select id="real-filter" value={ui.order.filter} onChange={(e) => patch({ order: { ...ui.order, filter: e.target.value as ResultFilter } })}>
           <option value="all">{t(locale, 'analysis.filterAll')}</option><option value="pass">hard pass</option><option value="borderline">hard borderline</option><option value="fail">hard fail</option>
         </select>
-        <button className="btn" onClick={() => download(`${exec.runId}.json`, machineJson({ data_source: 'kernel', run_id: exec.runId, spec: exec.spec, status: job.status, results: exec.results, recommendation: exec.recommendation }), 'application/json')}>{t(locale, 'analysis.downloadJson')}</button>
+        <button className="btn" onClick={() => download(`${exec.runId}.json`, scopedRunJson(job, ui, 'all', runEntry), 'application/json')}>{t(locale, 'analysis.downloadJson')}</button>
         {/* WB-09.01 · 导出对话框绑定当前 run:范围计数由这份 job 派生 */}
         <button className="btn" onClick={onExport}>{t(locale, 'analysis.exportRun')}</button>
       </div>
@@ -194,12 +193,12 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
       <p className="note">{t(locale, 'analysis.dailyNote', { run: exec.runId })}</p>
       {daily.ok ? <table className="candidate-table"><thead><tr><th>day</th><th>win_rate</th><th>inflation</th></tr></thead><tbody>{daily.rows.map((r) => <tr key={r.day}><td>{r.day}</td><td>{formatMetric(r.win_rate, 'win_rate', false, locale)}</td><td>{r.inflation === null ? t(locale, 'analysis.unavailable') : fmtPercent(locale, r.inflation)}</td></tr>)}</tbody></table> : <p>{daily.reason}</p>}
     </section>}
-    {a.drafts.length > 0 && <section><h2>{t(locale, 'analysis.draftsTitle')}</h2>{a.drafts.map((d) => <div key={d.id} className="result-draft">
+    {a.drafts.length > 0 && <section><h2>{t(locale, 'analysis.draftsTitle')}</h2><button className="btn" onClick={() => { download(`${exec.runId}-drafts.json`, draftsJson(a.drafts, exec.runId), 'application/json'); notify('success', t(locale, 'analysis.draftsJsonDone', { count: a.drafts.length })) }}>{t(locale, 'analysis.downloadDraftsJson')}</button>{a.drafts.map((d) => <div key={d.id} className="result-draft">
       <p>{t(locale, 'analysis.draftLine', { id: d.id, run: d.sourceRunId, cand: d.sourceCandidateId, base: d.baselineId })}</p>
       <label htmlFor={d.id}>{t(locale, 'analysis.draftYamlLabel')}</label><textarea id={d.id} value={d.yaml} rows={12} onChange={(e) => editCandidateDraft(d.id, e.target.value)} />
       <p className="note">{t(locale, 'analysis.draftNote')}</p>
       <button className="btn" disabled={parseConfig(d.yaml).errors.length > 0} onClick={() => download(`${d.id}.yaml`, d.yaml, 'application/yaml')}>{t(locale, 'analysis.downloadDraftYaml')}</button>
-      <button className="btn" onClick={() => download(`${d.id}.source.json`, machineJson(d), 'application/json')}>{t(locale, 'analysis.downloadDraftJson')}</button>
+      <button className="btn" onClick={() => download(`${d.id}.source.json`, draftJson(d), 'application/json')}>{t(locale, 'analysis.downloadDraftJson')}</button>
       {parseConfig(d.yaml).errors.length > 0 && <p role="alert">{t(locale, 'analysis.draftParseError')}</p>}
     </div>)}{a.draftPersistenceError && <p role="alert">{a.draftPersistenceError}</p>}</section>}
   </div>

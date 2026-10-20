@@ -588,6 +588,8 @@ export const zh = {
   'analysis.draftNote': '只创建草稿,不改写原场景或运行。请将下载的 YAML 作为新场景打开,内核校验后再运行。',
   'analysis.downloadDraftYaml': '下载新方案草稿 YAML',
   'analysis.downloadDraftJson': '下载方案与来源 JSON',
+  'analysis.downloadDraftsJson': '下载全部未运行草稿 JSON',
+  'analysis.draftsJsonDone': '已导出 {count} 份未运行草稿方案',
   'analysis.draftParseError': '草稿解析失败,请修正后下载。',
   'analysis.copied': '已创建独立方案草稿,见本页下方;原输入与结果保留',
 

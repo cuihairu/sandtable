@@ -11,6 +11,7 @@ import type { MetricKey } from '../../lib/types.ts'
 import { METRIC_META } from '../../lib/metricMeta.ts'
 import { overallOutcome } from '../../lib/analysisView.ts'
 import { resultRows, orderedRows } from './resultModel.ts'
+import type { CandidateDraft } from './resultModel.ts'
 import type { ResultRow } from './resultModel.ts'
 import type { ResultOrder } from '../../lib/analysisView.ts'
 
@@ -56,20 +57,74 @@ export function scopeCounts(job: Job, ui: ScopeUI): { all: number; filtered: num
   }
 }
 
+/* —— WB-09.04 · run 快照信封的来源与版本;未运行草稿另存 —— */
+
+/** 运行索引里信封需要的字段(结构化;分析侧不依赖 state 模块) */
+export type RunIndexLookup = {
+  experiment_id: string | null
+  config_hash: string | null
+  seed: number | string | null
+  created_at_unix: number | null
+}
+
 /**
- * 绑定当前 run 的范围导出 JSON:run 元数据原样透传,data_source 恒 kernel,
+ * run 快照信封头部:来源与版本。缺失一律 null(WB-08.16 同口径,不虚构)——
+ * 版本取运行自带的分析上下文(model_version / schema_version)与 plan 配置哈希;
+ * 索引字段只在运行登记后存在,未登记 → registered:false + 字段 null。
+ */
+export type RunEnvelope = {
+  data_source: 'kernel'
+  run_id: string
+  status: Job['status']
+  version: {
+    model_version: string | null
+    schema_version: string | null
+    plan_config_hash: string | null
+    input_config_hash: string | null
+  }
+  source: {
+    data_source: 'kernel'
+    registered: boolean
+    experiment_id: string | null
+    seed: number | string | null
+    created_at_unix: number | null
+  }
+}
+
+export function runEnvelope(job: Job, index: RunIndexLookup | null): RunEnvelope {
+  const context = job.exec!.spec.analysis
+  return {
+    data_source: 'kernel',
+    run_id: job.exec!.runId,
+    status: job.status,
+    version: {
+      model_version: context?.modelVersion ?? null,
+      schema_version: context?.schemaVersion ?? null,
+      plan_config_hash: context?.plan?.config_hash ?? null,
+      input_config_hash: index?.config_hash ?? null,
+    },
+    source: {
+      data_source: 'kernel',
+      registered: index !== null,
+      experiment_id: index?.experiment_id ?? null,
+      seed: index?.seed ?? null,
+      created_at_unix: index?.created_at_unix ?? null,
+    },
+  }
+}
+
+/**
+ * 绑定当前 run 的范围导出 JSON:信封(来源/版本)+ run 元数据原样透传,
  * results 按范围行的计划下标对位保留(未进入范围的候选不出现在产物里,
  * 但 export_scope 如实记录范围与全集数量,便于重开核对)。
  */
-export function scopedRunJson(job: Job, ui: ScopeUI, scope: ExportScope): string {
+export function scopedRunJson(job: Job, ui: ScopeUI, scope: ExportScope, index: RunIndexLookup | null = null): string {
   const exec = job.exec!
   const rows = scopeRows(job, ui, scope)
   const kept = new Set(rows.map((r) => r.index))
   return machineJson({
-    data_source: 'kernel',
-    run_id: exec.runId,
+    ...runEnvelope(job, index),
     spec: exec.spec,
-    status: job.status,
     results: exec.results.filter((_r, i) => kept.has(i)),
     recommendation: exec.recommendation,
     export_scope: { scope, candidates: rows.length, total: resultRows(job).length },
@@ -124,7 +179,7 @@ function runMetrics(job: Job): MetricKey[] {
  */
 export function scopedRunCsv(job: Job, ui: ScopeUI, scope: ExportScope, experimentId: string | null): string {
   const exec = job.exec!
-  // 扫描轴取计划内首个候选的取值键(非扫描规格无扫描轴 → 无参数列)
+  // 扫描轴取计划内首个候选的取值键(非扫描规格无扫描轴,故无参数列)
   const axes = Object.keys(resultRows(job)[0]?.values ?? {})
   const metrics = runMetrics(job)
   const header = [
@@ -145,5 +200,54 @@ export function scopedRunCsv(job: Job, ui: ScopeUI, scope: ExportScope, experime
       return ms ? [ms.mean, ms.ci95_lo, ms.ci95_hi, ms.sd, ms.n] as const : [null, null, null, null, null] as const
     }),
   ])
-  return '\ufeff' + toCsv(header, rows)
+  return '\uFEFF' + toCsv(header, rows)
+}
+
+/* \u2014\u2014 WB-09.04 \u00B7 \u672A\u8FD0\u884C\u8349\u7A3F\u53E6\u5B58:\u6C38\u4E0D\u5192\u5145\u8BE5 run \u7684\u8F93\u5165\u6216\u8F93\u51FA \u2014\u2014 */
+
+/** \u8349\u7A3F\u7684\u673A\u5668\u5FEB\u7167(snake_case,\u539F\u59CB\u5185\u5BB9\u4E0D\u7FFB\u8BD1):\u53EA\u542B\u65B9\u6848\u672C\u4F53\u4E0E\u6765\u6E90\u6307\u9488 */
+export function draftSnapshot(d: CandidateDraft): {
+  id: string
+  source_run_id: string
+  source_candidate_id: string
+  baseline_id: string
+  values: Readonly<Record<string, number>>
+  plan_yaml: string
+  yaml: string
+} {
+  return {
+    id: d.id, source_run_id: d.sourceRunId, source_candidate_id: d.sourceCandidateId,
+    baseline_id: d.baselineId, values: d.values, plan_yaml: d.baselineYaml, yaml: d.yaml,
+  }
+}
+
+export type DraftArtifact = {
+  data_source: 'candidate_draft'
+  run_status: 'unrun'
+  included_in_run_inputs: false
+  run_id: string | null
+  count: number
+  drafts: ReturnType<typeof draftSnapshot>[]
+}
+
+/**
+ * \u672A\u8FD0\u884C\u8349\u7A3F\u7684\u6279\u91CF\u4EA7\u7269:\u4E09\u5904\u673A\u5668\u58F0\u660E(data_source / run_status /
+ * included_in_run_inputs)\u4FDD\u8BC1\u4EFB\u4F55\u4E00\u4EFD\u4E0B\u8F7D\u90FD\u65E0\u6CD5\u88AB\u5F53\u6210\u8BE5 run \u7684\u8F93\u5165\u6216\u8F93\u51FA;
+ * \u6BCF\u6761\u8349\u7A3F\u4FDD\u7559\u81EA\u5DF1\u7684\u6765\u6E90 run \u4E0E\u6765\u6E90\u5019\u9009,\u4E0D\u5E76\u5165 run \u7684\u5019\u9009\u8868\u3002
+ */
+export function draftsJson(drafts: readonly CandidateDraft[], runId: string | null): string {
+  const artifact: DraftArtifact = {
+    data_source: 'candidate_draft',
+    run_status: 'unrun',
+    included_in_run_inputs: false,
+    run_id: runId,
+    count: drafts.length,
+    drafts: drafts.map(draftSnapshot),
+  }
+  return machineJson(artifact)
+}
+
+/** \u5355\u4EFD\u8349\u7A3F\u4EA7\u7269:\u540C\u4E00\u7EC4\u58F0\u660E,\u5355\u6761\u4E0B\u8F7D\u540C\u6837\u4E0D\u4F1A\u5192\u5145 run \u8F93\u5165 */
+export function draftJson(d: CandidateDraft): string {
+  return machineJson({ data_source: 'candidate_draft', run_status: 'unrun', included_in_run_inputs: false, draft: draftSnapshot(d) })
 }

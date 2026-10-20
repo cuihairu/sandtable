@@ -361,14 +361,16 @@ export default function WorkbenchApp(): JSX.Element {
       const kept = scopeRows(exportCtx.job, exportCtx.ui, scope).length
       // 计划内槽位总数与导出信封同一口径(ExecSpec 是 kind 判别联合,plan 只在扫描规格上)
       const total = scopeRows(exportCtx.job, exportCtx.ui, 'all').length
-      const experimentId = state.runs.find((r) => r.run_id === exec.runId)?.experiment_id ?? null
+      // 运行索引条目单点取值:CSV 的 experiment_id 与 JSON 信封的来源字段同源
+      const runEntry = state.runs.find((r) => r.run_id === exec.runId) ?? null
+      const experimentId = runEntry?.experiment_id ?? null
       if (format === 'csv') {
         download(`${exec.runId}-candidates.csv`, scopedRunCsv(exportCtx.job, exportCtx.ui, scope, experimentId), 'text/csv;charset=utf-8')
         notify('success', t(locale, 'common.notifyCsvDownloaded', { count: kept, source: 'kernel' }))
         patchOverlays({ exportDialog: { open: false, scope: 'all' } })
         return
       }
-      download(`${exec.runId}.json`, scopedRunJson(exportCtx.job, exportCtx.ui, scope), 'application/json')
+      download(`${exec.runId}.json`, scopedRunJson(exportCtx.job, exportCtx.ui, scope, runEntry), 'application/json')
       notify('success', t(locale, 'analysis.exportRunJsonDone', { run: exec.runId, kept, total }))
       patchOverlays({ exportDialog: { open: false, scope: 'all' } })
       return

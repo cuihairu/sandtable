@@ -73,6 +73,8 @@ wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试
 
 
 
+真实 run 的 JSON 快照（WB-09.04）在信封里显式带来源与版本：`version` = `model_version` / `schema_version`（来自运行自带的分析上下文，缺则 `null` 不虚构）+ `plan_config_hash`（计划配置哈希）+ `input_config_hash`（运行索引登记的输入哈希），`source` = `registered`（是否登记）/ `experiment_id` / `seed` / `created_at_unix`（未登记一律 `null`）；分析页工具栏的「下载来源 JSON」与导出对话框同走这一份信封（`scopedRunJson`），页面不再内联拼装。当前未运行草稿另存为独立产物 `<run_id>-drafts.json`：`data_source=candidate_draft`、`run_status=unrun`、`included_in_run_inputs=false` 三处机器声明保证任何一份下载都无法被当成该 run 的输入或输出；每条草稿保留自己的 `source_run_id` / `source_candidate_id` / 基线 / 全量取值 / 独立 YAML 编辑缓冲（snake_case、原文不翻译），草稿的内容与存在都不进入该 run 的 JSON/CSV 导出；单份草稿的「方案与来源 JSON」带同一组声明。
+
 ## 等价验收
 
 路线图的 Phase 6 验收:**浏览器与 CLI 用同一配置同 seed,结果统计等价**。由 `crates/sandtable-cli/tests/web_parity.rs` 锁死——同配置同 seed 下,CLI `simulate` 的 report.json 与绑定 `run_simulation_native` 的 results **逐值一致**(不只统计近似;`serde_json` 已开 `float_roundtrip`,写盘读回的 f64 逐位一致)。

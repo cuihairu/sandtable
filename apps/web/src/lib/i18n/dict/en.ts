@@ -587,6 +587,8 @@ export const en = {
   'analysis.draftNote': 'Creates a draft only; the original scenario or run is untouched. Open the downloaded YAML as a new scenario and pass kernel validation before running.',
   'analysis.downloadDraftYaml': 'Download new plan draft YAML',
   'analysis.downloadDraftJson': 'Download plan and source JSON',
+  'analysis.downloadDraftsJson': 'Download unrun drafts JSON',
+  'analysis.draftsJsonDone': 'Exported {count} unrun draft plans',
   'analysis.draftParseError': 'Draft failed to parse; fix it before downloading.',
   'analysis.copied': 'Created an independent plan draft at the bottom of this page; original inputs and results are kept',
 

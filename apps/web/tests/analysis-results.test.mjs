@@ -8,7 +8,7 @@ import { METRIC_KEYS } from '../src/lib/types.ts'
 import { abView, availableMetrics, dailyRows, findCandidate, inspectorSources, interpolationText, orderViews, overallOutcome, recommendationView, responsePoints, sensitivityNoteLabel, stepSelection, targetSpan, xAxisDomain, yAutoDomain } from '../src/lib/analysisView.ts'
 import { candidateIdFor } from '../src/workbench/ids.ts'
 import { copyCandidate, feasibility, formatMetric, fullValues, orderedRows, ranBaseline, resultRows, rowState, statText } from '../src/workbench/analysis/resultModel.ts'
-import { currentRealJob, scopeCounts, scopeRows, scopedRunCsv, scopedRunJson } from '../src/workbench/analysis/exportScope.ts'
+import { currentRealJob, draftJson, draftsJson, runEnvelope, scopeCounts, scopeRows, scopedRunCsv, scopedRunJson } from '../src/workbench/analysis/exportScope.ts'
 import { addCandidateDraft, analysisSnapshot, editCandidateDraft, patchResultUI, setAnalysisJob } from '../src/workbench/analysis/analysisStore.ts'
 
 let assertions = 0
@@ -414,4 +414,71 @@ test('WB-09.03:量纲标注与指标维度一致(percent 恒 0–1 原口径,导
       else assert.equal(token, 'amount', `${metric}:amount 维度恒 [amount],不缩放`)
     }
   }
+})
+
+/* —— WB-09.04:run 快照 JSON 的来源与版本;未运行草稿另存,不冒充该 run 输入 —— */
+const INDEX = { experiment_id: 'exp_analysis0001', config_hash: 'hash_input_0001', seed: 7, created_at_unix: 1780000000 }
+
+test('WB-09.04:run 快照信封带来源与版本,未登记或上下文缺失写 null 不虚构', () => {
+  const env = runEnvelope(job, INDEX)
+  assert.equal(env.data_source, 'kernel')
+  assert.equal(env.run_id, 'run_analysis0001')
+  assert.equal(env.status, 'succeeded')
+  assert.equal(env.version.model_version, 'v-from-kernel-validation', 'model_version 来自运行自带的分析上下文')
+  assert.equal(env.version.schema_version, '1')
+  assert.equal(env.version.plan_config_hash, plan.config_hash, 'plan 配置哈希逐字透传')
+  assert.equal(env.version.input_config_hash, 'hash_input_0001', '输入配置哈希来自运行索引')
+  assert.deepEqual(env.source, { data_source: 'kernel', registered: true, experiment_id: 'exp_analysis0001', seed: 7, created_at_unix: 1780000000 })
+  // 未登记:登记态显式 false,索引字段 null,不虚构 ID
+  const anon = runEnvelope(job, null)
+  assert.deepEqual(anon.source, { data_source: 'kernel', registered: false, experiment_id: null, seed: null, created_at_unix: null })
+  assert.equal(anon.version.input_config_hash, null)
+  // 分析上下文缺版本(WB-08.16 同口径):显式 null,不编默认版本
+  const noVersion = runEnvelope(
+    cloneJob({ exec: { spec: { kind: 'sweep', yaml: experiment, plan, analysis: { baselineId: 'bls_analysis0001', baselineYaml: yaml, scenarioYaml: yaml } } } }),
+    INDEX,
+  )
+  assert.deepEqual(noVersion.version, { model_version: null, schema_version: null, plan_config_hash: null, input_config_hash: 'hash_input_0001' }, '分析上下文缺 plan 时配置哈希也是 null,不拿别的来源的哈希填')
+  // 信封随真实 run JSON 一起落盘,与结果同产一份
+  const out = JSON.parse(scopedRunJson(job, CSV_UI, 'all', INDEX))
+  assert.equal(out.version.schema_version, '1')
+  assert.equal(out.source.experiment_id, 'exp_analysis0001')
+  assert.equal(out.source.data_source, 'kernel')
+  assert.equal(out.export_scope.total, plan.candidates.length)
+})
+
+test('WB-09.04:未运行草稿另存为独立产物,与 run 结果和 run 输入完全隔离', () => {
+  const draft = copyCandidate(job, all[0], 'cnd_draft0001')
+  const marker = '未运行草稿 marker'
+  const edited = { ...draft, id: 'cnd_draft0002', yaml: `model:\n  warrior:\n    attack: 200 # ${marker}` }
+  const artifact = JSON.parse(draftsJson([draft, edited], job.exec.runId))
+  assert.equal(artifact.data_source, 'candidate_draft', '产物自带数据来源,不与 kernel 结果混淆')
+  assert.equal(artifact.run_status, 'unrun', '产物自己声明:这些方案没有运行过')
+  assert.equal(artifact.included_in_run_inputs, false, '明确不冒充该 run 的输入')
+  assert.equal(artifact.run_id, 'run_analysis0001')
+  assert.equal(artifact.count, 2)
+  assert.deepEqual(
+    Object.keys(artifact.drafts[0]),
+    ['id', 'source_run_id', 'source_candidate_id', 'baseline_id', 'values', 'plan_yaml', 'yaml'],
+  )
+  assert.equal(artifact.drafts[0].id, 'cnd_draft0001')
+  assert.equal(artifact.drafts[0].source_run_id, 'run_analysis0001')
+  assert.equal(artifact.drafts[0].source_candidate_id, all[0].id)
+  assert.ok(Object.entries(all[0].values).every(([k, v]) => artifact.drafts[0].values[k] === v), '草稿保留候选全量取值,含未扫描轴')
+  assert.equal(artifact.drafts[0].plan_yaml, yaml)
+  assert.equal(artifact.drafts[0].yaml, draft.yaml)
+  assert.equal(artifact.drafts[1].yaml, edited.yaml, '独立编辑缓冲原文逐字保留,UTF-8 中文不改写')
+  for (const forbidden of ['results', 'spec', 'candidate', 'recommendation', 'export_scope']) {
+    assert.ok(!(forbidden in artifact), `草稿产物不含 run 字段 ${forbidden}`)
+  }
+  // 隔离:草稿的内容与存在都不进入该 run 的任何导出
+  assert.ok(!scopedRunJson(job, CSV_UI, 'all', INDEX).includes(marker))
+  assert.ok(!scopedRunJson(job, CSV_UI, 'selected', INDEX).includes(marker))
+  assert.ok(!scopedRunCsv(job, CSV_UI, 'all', 'exp_analysis0001').includes(marker))
+  // 单草稿产物同一声明,单份下载也不会被误当 run 输入
+  const single = JSON.parse(draftJson(edited))
+  assert.deepEqual(single, { data_source: 'candidate_draft', run_status: 'unrun', included_in_run_inputs: false, draft: {
+    id: 'cnd_draft0002', source_run_id: 'run_analysis0001', source_candidate_id: all[0].id,
+    baseline_id: draft.baselineId, values: edited.values, plan_yaml: yaml, yaml: edited.yaml,
+  } })
 })
