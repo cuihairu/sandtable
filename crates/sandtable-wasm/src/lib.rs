@@ -336,6 +336,58 @@ pub fn sweep_recommend(yaml: &str, results_json: &str) -> Result<JsValue, JsValu
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+/// A/B 统计比较(native 纯函数,WB-03.10):双臂 YAML + 双臂**已跑**结果
+/// 数组(results JSON,与 run_simulation 输出的 `results` 字段同构)进内核。
+/// CRN 成对前提(base_seed 一致 / replicate 等长非零)、指标可用性预检、
+/// 逐 replicate extract(None 不 0 填)由 core::experiment::compare_arms
+/// 显式判定,配对统计结论由内核直出,前端不另算(WB-03.11)。
+///
+/// 错误通道与既有桥一致(classifyWasmError 直接分类):
+/// - 指标名不在 MetricKey 表、results JSON 解析失败 → `参数错误: `;
+/// - YAML 非法、成对前提破坏、指标在某臂不可用 → `配置错误: `。
+pub fn ab_compare_native(
+    base_yaml: &str,
+    cand_yaml: &str,
+    metric: &str,
+    results_a_json: &str,
+    results_b_json: &str,
+) -> Result<serde_json::Value, String> {
+    let key = core::experiment::MetricKey::parse(metric).ok_or_else(|| {
+        let all = core::experiment::MetricKey::ALL
+            .iter()
+            .map(|k| k.name())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("参数错误: 未知指标 {metric}(可选:{all})")
+    })?;
+    let cfg_a = load(base_yaml)?;
+    let cfg_b = load(cand_yaml)?;
+    let arm_a: Vec<core::metrics::RunMetrics> = serde_json::from_str(results_a_json)
+        .map_err(|e| format!("参数错误: base 臂结果解析失败: {e}"))?;
+    let arm_b: Vec<core::metrics::RunMetrics> = serde_json::from_str(results_b_json)
+        .map_err(|e| format!("参数错误: cand 臂结果解析失败: {e}"))?;
+    let comparison = core::experiment::compare_arms(&cfg_a, &cfg_b, key, &arm_a, &arm_b)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(&comparison).map_err(|e| format!("配置错误: {e}"))
+}
+
+/// A/B 统计比较(wasm 入口):JSON 字符串,形状同 [`ab_compare_native`]。
+#[wasm_bindgen]
+pub fn ab_compare(
+    base_yaml: &str,
+    cand_yaml: &str,
+    metric: &str,
+    results_a_json: &str,
+    results_b_json: &str,
+) -> Result<JsValue, JsValue> {
+    let v =
+        ab_compare_native(base_yaml, cand_yaml, metric, results_a_json, results_b_json)
+            .map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,6 +451,75 @@ mod tests {
         // 显式性契约:未配置 loot 时应用 rate_mult 物化半配置 loot,重验即在编辑期报错
         let e4 = param_apply_native(YAML, "model.loot.rate_mult", 2.0).unwrap_err();
         assert!(e4.contains("on_victory"), "{e4}");
+    }
+
+    #[test]
+    fn ab_compare_pairs_kernel_run_arms() {
+        let cand_yaml = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 7}\n",
+            "model:\n  warrior: {attack: 250}\n",
+        );
+        let a = run_simulation_native(YAML, 6).unwrap();
+        let b = run_simulation_native(cand_yaml, 6).unwrap();
+        let out = ab_compare_native(
+            YAML,
+            cand_yaml,
+            "win_rate",
+            &a["results"].to_string(),
+            &b["results"].to_string(),
+        )
+        .unwrap();
+        assert_eq!(out["metric"], "win_rate");
+        assert_eq!(out["arm_a"]["n"], 6);
+        assert_eq!(out["arm_b"]["n"], 6);
+        // 配对差均值 = B 均值 − A 均值(内核直出,前端不重算)
+        let mean = |v: &serde_json::Value| -> f64 {
+            v["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|m| m["win_rate"].as_f64().unwrap())
+                .sum::<f64>()
+                / 6.0
+        };
+        let expected = mean(&b) - mean(&a);
+        assert!((out["diff_mean"].as_f64().unwrap() - expected).abs() < 1e-9);
+        // verdict 是内核三值之一(序列化为枚举名)
+        assert!(
+            ["BHigher", "AHigher", "NoDifference"].contains(&out["verdict"].as_str().unwrap()),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn ab_compare_rejects_bad_inputs_explicitly() {
+        let cand_yaml = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 9}\n",
+        );
+        let a = run_simulation_native(YAML, 4).unwrap();
+        let b = run_simulation_native(cand_yaml, 4).unwrap();
+        let a_json = &a["results"].to_string();
+        let b_json = &b["results"].to_string();
+        // 未知指标 → 参数错误 + 可选清单
+        let e = ab_compare_native(YAML, YAML, "winrate", a_json, a_json).unwrap_err();
+        assert!(e.starts_with("参数错误") && e.contains("win_rate"), "{e}");
+        // 种子错位 → CRN 成对前提破坏,配置错误
+        let e = ab_compare_native(YAML, cand_yaml, "win_rate", a_json, b_json).unwrap_err();
+        assert!(e.starts_with("配置错误") && e.contains("base_seed 不一致"), "{e}");
+        // results JSON 解析失败 → 参数错误
+        let e = ab_compare_native(YAML, YAML, "win_rate", "[{\"win_rate\":", a_json).unwrap_err();
+        assert!(e.starts_with("参数错误") && e.contains("base 臂结果解析失败"), "{e}");
+        // 指标在某臂不可用(3d 配置没有 retention_d7)→ 配置错误,不静默跳过
+        let e = ab_compare_native(YAML, YAML, "retention_d7", a_json, a_json).unwrap_err();
+        assert!(e.starts_with("配置错误") && e.contains("不可用"), "{e}");
+        // replicate 不等长 → 配置错误
+        let two = run_simulation_native(YAML, 2).unwrap();
+        let e =
+            ab_compare_native(YAML, YAML, "win_rate", a_json, &two["results"].to_string())
+                .unwrap_err();
+        assert!(e.contains("replicate 数不一致或为 0"), "{e}");
     }
 
     #[test]

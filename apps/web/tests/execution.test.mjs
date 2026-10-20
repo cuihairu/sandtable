@@ -127,11 +127,25 @@ test('WB-07.08:协议信封版本 + 请求/响应守卫(非协议消息丢弃)',
   assert.equal(isWorkerRequest({ protocol: 1, kind: 'plan', taskId: 'x', yaml: 'a', replicatesOverride: 0 }), true)
   assert.equal(isWorkerRequest({ protocol: 1, kind: 'sim', taskId: 'x', yaml: 'a', replicates: 2 }), true)
   assert.equal(isWorkerRequest({ protocol: 1, kind: 'recommend', taskId: 'x', yaml: 'a', results: [] }), true)
+  assert.equal(
+    isWorkerRequest({ protocol: 1, kind: 'ab_compare', taskId: 'x', baseYaml: 'a', candYaml: 'b', metric: 'win_rate', resultsA: [], resultsB: [] }),
+    true,
+  )
+  assert.equal(
+    isWorkerRequest({ protocol: 1, kind: 'ab_compare', taskId: 'x', baseYaml: 'a', candYaml: 'b', metric: 'win_rate', resultsA: [], resultsB: 'nope' }),
+    false,
+    'ab_compare 双臂 results 必须是数组',
+  )
   assert.equal(isWorkerRequest(null), false)
   assert.equal(isWorkerRequest('hello'), false)
 
   const res = { protocol: WORKER_PROTOCOL_VERSION, kind: 'result', taskId: 'wreq_1', reqKind: 'plan', value: { reqKind: 'plan', plan: {} } }
   assert.equal(isWorkerResponse(res), true)
+  assert.equal(
+    isWorkerResponse({ protocol: 1, kind: 'result', taskId: 'wreq_1', reqKind: 'ab_compare', value: { reqKind: 'ab_compare', comparison: { verdict: 'BHigher' } } }),
+    true,
+    'ab_compare 结果响应在协议内',
+  )
   assert.equal(isWorkerResponse({ ...res, protocol: 0 }), false)
   assert.equal(isWorkerResponse({ protocol: 1, kind: 'error', taskId: 'x', reqKind: null, errorClass: 'init', retryable: true, message: 'm' }), true)
   // progress 是协议内可用事件形态(serve 端不伪造,见 WB-07.05 断言)
@@ -196,6 +210,50 @@ test('WB-07.09:Worker 服务端运行错误为 run 类且不可原样重试', as
   assert.equal(outbox[0].errorClass, 'run')
   assert.equal(outbox[0].retryable, false)
   assert.match(outbox[0].message, /配置错误/)
+})
+
+test('WB-03.10/03.12:Worker 服务端 ab_compare 转发双臂载荷;内核拒绝 = run 类结构化错误', async () => {
+  const seen = []
+  const outbox = []
+  const server = serveSweepWorker({
+    post: (m) => outbox.push(m),
+    init: async () => {},
+    plan: async () => ({}),
+    sim: async () => ({}),
+    candidate: async () => ({}),
+    recommend: async () => ({}),
+    abCompare: async (baseYaml, candYaml, metric, resultsA, resultsB) => {
+      seen.push({ baseYaml, candYaml, metric, resultsA, resultsB })
+      if (metric === 'boom') throw new Error('配置错误: 双臂 base_seed 不一致(base=7 cand=9),CRN 成对比较要求同种子')
+      return { metric, verdict: 'BHigher' }
+    },
+  })
+  await server.onMessage({
+    protocol: 1,
+    kind: 'ab_compare',
+    taskId: 't1',
+    baseYaml: 'a',
+    candYaml: 'b',
+    metric: 'win_rate',
+    resultsA: [{ win_rate: 0.5 }],
+    resultsB: [{ win_rate: 0.6 }],
+  })
+  assert.deepEqual(seen, [{
+    baseYaml: 'a',
+    candYaml: 'b',
+    metric: 'win_rate',
+    resultsA: [{ win_rate: 0.5 }],
+    resultsB: [{ win_rate: 0.6 }],
+  }], '载荷原样进内核桥(双臂 YAML + metric + results 数组)')
+  assert.equal(outbox[0].kind, 'result')
+  assert.equal(outbox[0].reqKind, 'ab_compare')
+  assert.equal(outbox[0].value.comparison.verdict, 'BHigher')
+  // 内核显式拒绝(种子错位等)→ run 类结构化错误,内核文案原样过边界
+  await server.onMessage({ protocol: 1, kind: 'ab_compare', taskId: 't2', baseYaml: 'a', candYaml: 'b', metric: 'boom', resultsA: [], resultsB: [] })
+  assert.equal(outbox[1].kind, 'error')
+  assert.equal(outbox[1].errorClass, 'run')
+  assert.equal(outbox[1].retryable, false)
+  assert.match(outbox[1].message, /base_seed 不一致/)
 })
 
 // ————— WB-07.03/05/07 · 扫描执行:逐候选 runSweepCandidate + 候选边界进度 —————
@@ -352,11 +410,16 @@ test('WB-07.06:桌面取消接 cancelRun——「取消请求已发出」与「�
   assert.deepEqual(statuses, ['running', 'cancelling'])
 })
 
-test('WB-07.03:A/B 双臂真跑 + 桥接调用点(桥接未发布 = bridge 错误且双臂保留;注入 = 真调用)', async () => {
-  // 场景 1:桥接未发布(compare = null)→ 如实 failed(bridge),双臂输出保留
+test('WB-07.03:A/B 双臂真跑 + 桥接调用点(compare = null 防御分支报 bridge;注入 = 真调用)', async () => {
+  // 场景 1:compare = null(防御/测试注入分支)→ 如实 failed(bridge),双臂输出保留
   const plain = fakeBackends()
   const { hooks: h1 } = jobPatchSink()
-  const c1 = startExec({ kind: 'ab', baseYaml: 'base-yaml', candYaml: 'cand-yaml', replicates: 2 }, plain.backends, h1, JOB)
+  const c1 = startExec(
+    { kind: 'ab', baseYaml: 'base-yaml', candYaml: 'cand-yaml', replicates: 2, metric: 'win_rate' },
+    plain.backends,
+    h1,
+    JOB,
+  )
   const out1 = await c1.promise
   assert.equal(out1.status, 'failed')
   assert.equal(out1.errorClass, 'bridge')
@@ -367,19 +430,31 @@ test('WB-07.03:A/B 双臂真跑 + 桥接调用点(桥接未发布 = bridge 错�
   assert.equal(out1.comparison, null, '不冒充统计判定')
   assert.equal(recoveryFor('bridge', 'ab').includes('WB-03.10/11'), true)
 
-  // 场景 2:桥接已注入(WB-03.12 发布后)→ 调用点真调内核比较
+  // 场景 2:桥接已注入(WB-03.12 双端同构)→ 以双臂 YAML + metric + 已跑输出真调
   const cmpCalls = []
   const withBridge = fakeBackends({
-    compare: async (base, cand) => {
-      cmpCalls.push({ base: base.config_hash, cand: cand.config_hash })
-      return { metric: 'win_rate', diff_mean: 0.02, verdict: 'BHigher' }
+    compare: async (baseYaml, candYaml, metric, base, cand) => {
+      cmpCalls.push({ baseYaml, candYaml, metric, base: base.config_hash, cand: cand.config_hash })
+      return { metric, diff_mean: 0.02, verdict: 'BHigher' }
     },
   })
   const { hooks: h2 } = jobPatchSink()
-  const c2 = startExec({ kind: 'ab', baseYaml: 'base-yaml', candYaml: 'cand-yaml', replicates: 2 }, withBridge.backends, h2, JOB)
+  const c2 = startExec(
+    { kind: 'ab', baseYaml: 'base-yaml', candYaml: 'cand-yaml', replicates: 2, metric: 'win_rate' },
+    withBridge.backends,
+    h2,
+    JOB,
+  )
   const out2 = await c2.promise
   assert.equal(out2.status, 'succeeded')
   assert.equal(cmpCalls.length, 1, '比较桥接以真实双臂输出调用')
+  assert.deepEqual(cmpCalls[0], {
+    baseYaml: 'base-yaml',
+    candYaml: 'cand-yaml',
+    metric: 'win_rate',
+    base: 'hash-1',
+    cand: 'hash-2',
+  })
   assert.equal(out2.comparison.verdict, 'BHigher')
   assert.equal(out2.arms.base.config_hash, 'hash-1')
   assert.equal(out2.arms.cand.config_hash, 'hash-2')

@@ -18,6 +18,8 @@ export type ServeEnv = {
   sim: (yaml: string, replicates: number) => Promise<unknown>
   candidate: (yaml: string, replicates: number, values: Record<string, number>) => Promise<unknown>
   recommend: (yaml: string, results: readonly unknown[]) => Promise<unknown>
+  /** A/B 统计比较(双臂 YAML + metric + 已跑 results 数组 → 内核 Comparison) */
+  abCompare: (baseYaml: string, candYaml: string, metric: string, resultsA: readonly unknown[], resultsB: readonly unknown[]) => Promise<unknown>
 }
 
 export type SweepWorkerServer = {
@@ -81,6 +83,10 @@ export function serveSweepWorker(env: ServeEnv): SweepWorkerServer {
         case 'recommend': {
           const rec = await env.recommend(req.yaml, req.results)
           return ok(req.taskId, 'recommend', { reqKind: 'recommend', rec } as WorkerResultValue)
+        }
+        case 'ab_compare': {
+          const comparison = await env.abCompare(req.baseYaml, req.candYaml, req.metric, req.resultsA, req.resultsB)
+          return ok(req.taskId, 'ab_compare', { reqKind: 'ab_compare', comparison } as WorkerResultValue)
         }
       }
     } catch (e) {

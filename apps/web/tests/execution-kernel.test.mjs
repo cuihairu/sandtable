@@ -34,7 +34,8 @@ if (!existsSync(pkgNode)) {
     '',
   ].join('\n')
 
-  // 真实内核绑定(与桌面/浏览器同源 core 纯函数):runSweepCandidate 等价面
+  // 真实内核绑定(与桌面/浏览器同源 core 纯函数):runSweepCandidate 等价面 +
+  // A/B 统计比较桥(WB-03.10/11/12,ab_compare 双端同构)
   const kernelBackends = {
     mode: 'desktop',
     sim: async (yaml, replicates) => JSON.parse(wasm.run_simulation(yaml, replicates)),
@@ -43,7 +44,8 @@ if (!existsSync(pkgNode)) {
     recommend: async (yaml, results) =>
       JSON.parse(wasm.sweep_recommend(yaml, JSON.stringify(results))),
     kernelCancel: async () => false,
-    compare: null, // 内核 Comparison 桥接由 WB-03.10/11/12 发布;当前 pkg 无此导出
+    compare: (baseYaml, candYaml, metric, base, cand) =>
+      JSON.parse(wasm.ab_compare(baseYaml, candYaml, metric, JSON.stringify(base.results), JSON.stringify(cand.results))),
   }
 
   const sink = () => {
@@ -91,24 +93,64 @@ if (!existsSync(pkgNode)) {
     assert.deepEqual(JSON.parse(JSON.stringify(out.results)), direct, '数据可追溯:与内核直调逐值一致')
   })
 
-  test('WB-07.03:A/B 双臂真跑(真实内核 SimOutput);桥接未发布 = 如实报 bridge,不冒充', async () => {
+  test('WB-07.03/03.10:A/B 双臂真跑 + 内核 ab_compare 桥接 → 真实 Comparison(CRN 配对,统计不由前端另算)', async () => {
     const baseYaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\n'
     const candYaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\nmodel:\n  warrior:\n    attack: 110\n'
     const { hooks } = sink()
     const ctl = startExec(
-      { kind: 'ab', baseYaml, candYaml, replicates: 2 },
+      { kind: 'ab', baseYaml, candYaml, replicates: 2, metric: 'win_rate' },
       kernelBackends,
       hooks,
       'job_kernel03',
     )
     const out = await ctl.promise
-    assert.equal(out.status, 'failed')
-    assert.equal(out.errorClass, 'bridge')
-    assert.match(out.message, /WB-03\.10\/11/)
+    assert.equal(out.status, 'succeeded', `双臂 + 桥接应成功: ${out.errorClass ?? ''} ${out.message ?? ''}`)
     // 双臂是真实内核输出(带 config_hash 与真实 schema 版本)
     assert.equal(out.arms.base.config_hash, JSON.parse(wasm.validate_config(baseYaml)).config_hash)
     assert.equal(out.arms.cand.config_hash, JSON.parse(wasm.validate_config(candYaml)).config_hash)
     assert.equal(out.arms.base.meta.schema_version, out.arms.cand.meta.schema_version)
-    assert.equal(out.comparison, null, '统计判定不由前端伪造')
+    // Comparison 是内核直出(WB-03.01 同构形状):指标/逐臂 n/verdict 三值之一
+    assert.equal(out.comparison.metric, 'win_rate')
+    assert.equal(out.comparison.arm_a.n, 2)
+    assert.equal(out.comparison.arm_b.n, 2)
+    assert.ok(['BHigher', 'AHigher', 'NoDifference'].includes(out.comparison.verdict))
+    // CRN 配对口径:diff_mean = cand 臂均值 − base 臂均值(内核 compare)
+    const mean = (arm) => arm.results.reduce((s, m) => s + m.win_rate, 0) / arm.results.length
+    const expected = mean(out.arms.cand) - mean(out.arms.base)
+    assert.ok(Math.abs(out.comparison.diff_mean - expected) < 1e-9)
+  })
+
+  test('WB-03.10:内核显式拒绝经执行器如实报 run(种子错位),双臂输出保留', async () => {
+    const baseYaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\n'
+    const candYaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 9}\n'
+    const { hooks } = sink()
+    const ctl = startExec(
+      { kind: 'ab', baseYaml, candYaml, replicates: 2, metric: 'win_rate' },
+      kernelBackends,
+      hooks,
+      'job_kernel04',
+    )
+    const out = await ctl.promise
+    assert.equal(out.status, 'failed')
+    assert.equal(out.errorClass, 'run')
+    assert.match(out.message, /base_seed 不一致/, '内核 CRN 前提校验原样过错误通道')
+    assert.notEqual(out.arms.base, null)
+    assert.notEqual(out.arms.cand, null)
+    assert.equal(out.comparison, null, '拒绝时不冒充统计判定')
+  })
+
+  test('WB-03.10:未知指标 = 参数错误通道(可选清单来自内核)', async () => {
+    const baseYaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\n'
+    const { hooks } = sink()
+    const ctl = startExec(
+      { kind: 'ab', baseYaml, candYaml: baseYaml, replicates: 1, metric: 'winrate' },
+      kernelBackends,
+      hooks,
+      'job_kernel05',
+    )
+    const out = await ctl.promise
+    assert.equal(out.status, 'failed')
+    assert.equal(out.errorClass, 'run')
+    assert.match(out.message, /参数错误: 未知指标 winrate/)
   })
 }

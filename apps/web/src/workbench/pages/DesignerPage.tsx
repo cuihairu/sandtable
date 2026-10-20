@@ -271,14 +271,17 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
             },
           })
           dispatch({ type: 'run/register', entry: runIndexEntryOf(snap, info?.config_hash) })
-          // WB-07.03 · A/B 真实执行:双臂逐 replicate 仿真 + 内核 Comparison
-          // 桥接调用点(桥接由 WB-03.10/11 发布;未发布前如实报 bridge)
+          // WB-07.03/03.10 · A/B 真实执行:双臂逐 replicate 仿真 + 内核
+          // Comparison 桥接(compare_arms);比较指标 = 设计目标的首个指标
+          // (未勾选任何 KPI 时回退 win_rate),metric 合法性由内核
+          // MetricKey::parse 判定(参数错误通道)
           const job = runManager.enqueueRun({
             experimentId,
             runId: snap.runId,
             name: design.name,
             method: 'AB',
             spec: { kind: 'ab', baseYaml: view.base, candYaml: view.cand, replicates: design.reps,
+              metric: design.targets[0]?.metric ?? 'win_rate',
               analysis: { baselineId: doc && view.scenarioPath ? baselineOfProject(doc, view.scenarioPath).baselineId : DEMO_BASELINE_ID,
                 baselineYaml: view.base, scenarioYaml: view.cand, modelVersion: info?.model_version, schemaVersion: info?.schema_version } },
           })

@@ -9,6 +9,7 @@ import init, {
   param_values as paramValuesBinding,
   param_apply as paramApplyBinding,
   kpi_availability as kpiAvailabilityBinding,
+  ab_compare as abCompareBinding,
   sweep_plan as sweepPlanBinding,
   sweep_candidate as sweepCandidateBinding,
   sweep_recommend as sweepRecommendBinding,
@@ -16,8 +17,10 @@ import init, {
 import { Channel, invoke } from '@tauri-apps/api/core'
 import type {
   CandidateResult,
+  Comparison,
   LocalQueryResult,
   ParamDefinition,
+  RunMetrics,
   SimOutput,
   SimProgress,
   SweepPlan,
@@ -90,6 +93,34 @@ export async function kpiAvailability(yaml: string): Promise<KpiUnavailable[]> {
   if (isDesktop) return invoke('kpi_availability', { yaml })
   await ensureInit()
   return JSON.parse(kpiAvailabilityBinding(yaml) as unknown as string) as KpiUnavailable[]
+}
+
+// A/B 统计比较(WB-03.10):双臂 YAML + metric + 双臂**已跑** results 数组
+// 进内核 compare_arms——同 base_seed(CRN 成对前提)、指标可用性、逐
+// replicate extract(None 不 0 填)与配对统计全部由内核显式判定,前端不另算
+// (WB-03.11)。结论 Comparison 与 core::experiment::Comparison 序列化同构
+// (types.ts);未知指标/结果解析失败抛 参数错误,成对前提破坏/指标不可用
+// 抛 配置错误(内核原文)。
+export async function abCompare(
+  baseYaml: string,
+  candYaml: string,
+  metric: string,
+  baseResults: RunMetrics[],
+  candResults: RunMetrics[],
+): Promise<Comparison> {
+  if (isDesktop) {
+    return invoke('ab_compare', {
+      baseYaml,
+      candYaml,
+      metric,
+      resultsAJson: JSON.stringify(baseResults),
+      resultsBJson: JSON.stringify(candResults),
+    })
+  }
+  await ensureInit()
+  return JSON.parse(
+    abCompareBinding(baseYaml, candYaml, metric, JSON.stringify(baseResults), JSON.stringify(candResults)) as unknown as string,
+  ) as Comparison
 }
 
 // 长任务(桌面异步命令):onProgress 经 Channel 逐 replicate 收 {done,total};

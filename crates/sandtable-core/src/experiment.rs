@@ -95,7 +95,7 @@ impl Verdict {
 }
 
 /// 一对臂在某指标上的比较结果。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Comparison {
     pub metric: String,
     pub arm_a: SampleStats,
@@ -271,6 +271,69 @@ impl<'de> Deserialize<'de> for MetricKey {
     }
 }
 
+/// A/B 双臂 CRN 成对比较入口(WB-03.10):双臂配置 + 双臂**已跑**结果数组
+/// 进内核,结论由 [`compare`] 直出——桥接层(wasm / 桌面)只做 YAML →
+/// SimConfig 与 results JSON → RunMetrics 反序列化,统计判定全部在内核,
+/// 前端不另算。
+///
+/// 成对前提全部在这里显式失败,不静默降级:
+/// - 双臂 base_seed 必须一致(CRN 按 replicate 序号配对,种子错位则
+///   成对差值无意义);
+/// - 指标在任一臂不可用(天数不足 / gacha / loot 未配置,
+///   [`MetricKey::unavailable_reason`])直接报错,不做单臂跳过;
+/// - 双臂 replicate 数等长非零;
+/// - 某 replicate 的 [`MetricKey::extract`] 为 None(该臂此指标不产数)
+///   报错,不 0 填充(WB-03.02 空值语义)。
+pub fn compare_arms(
+    cfg_a: &crate::config::SimConfig,
+    cfg_b: &crate::config::SimConfig,
+    key: MetricKey,
+    arm_a: &[crate::metrics::RunMetrics],
+    arm_b: &[crate::metrics::RunMetrics],
+) -> crate::Result<Comparison> {
+    if cfg_a.base_seed != cfg_b.base_seed {
+        return Err(crate::Error::Config(format!(
+            "双臂 base_seed 不一致(base={} cand={}),CRN 成对比较要求同种子",
+            cfg_a.base_seed, cfg_b.base_seed
+        )));
+    }
+    let name = key.name();
+    if let Some(reason) = key.unavailable_reason(cfg_a) {
+        return Err(crate::Error::Config(format!(
+            "指标 {name} 在 base 臂不可用:{reason}"
+        )));
+    }
+    if let Some(reason) = key.unavailable_reason(cfg_b) {
+        return Err(crate::Error::Config(format!(
+            "指标 {name} 在 cand 臂不可用:{reason}"
+        )));
+    }
+    if arm_a.is_empty() || arm_a.len() != arm_b.len() {
+        return Err(crate::Error::Config(format!(
+            "双臂 replicate 数不一致或为 0(base={} cand={}),CRN 成对要求等长非零",
+            arm_a.len(),
+            arm_b.len()
+        )));
+    }
+    let extract_all =
+        |arm: &[crate::metrics::RunMetrics]| -> crate::Result<Vec<f64>> {
+            arm.iter()
+                .enumerate()
+                .map(|(i, m)| {
+                    key.extract(m).ok_or_else(|| {
+                        crate::Error::Config(format!(
+                            "指标 {name} 在 replicate {i} 不可用(extract None),\
+                             不用 0 填充;检查该臂的快照日/系统配置"
+                        ))
+                    })
+                })
+                .collect()
+        };
+    let vals_a = extract_all(arm_a)?;
+    let vals_b = extract_all(arm_b)?;
+    Ok(compare(name, &vals_a, &vals_b))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,8 +388,8 @@ mod tests {
         assert_eq!(MetricKey::parse("d7"), Some(MetricKey::RetentionD7));
         assert_eq!(MetricKey::parse("nope"), None);
         let m = crate::metrics::RunMetrics {
-            schema_version: "1",
-            model_version: "0.1.0",
+            schema_version: "1".to_string(),
+            model_version: "0.1.0".to_string(),
             config_hash: "x".into(),
             replicate: 0,
             seed: 0,
@@ -374,5 +437,123 @@ mod tests {
         assert_eq!(s.n, 1);
         assert_eq!(s.sd, 0.0);
         assert_eq!((s.ci95_lo, s.ci95_hi), (0.7, 0.7));
+    }
+
+    // —— compare_arms(WB-03.10:A/B 桥的内核入口)——
+
+    fn test_cfg(days: u32, attack: i64) -> crate::config::SimConfig {
+        crate::config::SimConfig {
+            players: 40,
+            days,
+            base_seed: 7,
+            warrior: crate::config::WarriorConfig {
+                attack,
+                ..crate::config::WarriorConfig::default()
+            },
+            ..crate::config::SimConfig::default()
+        }
+    }
+
+    fn kernel_arm(cfg: &crate::config::SimConfig, reps: u32) -> Vec<crate::metrics::RunMetrics> {
+        (0..reps).map(|r| crate::sim::run(cfg, r)).collect()
+    }
+
+    /// 双臂同种子、指标可用:结论与手工 extract + compare 逐字段一致
+    /// (桥接层契约 = 内核 compare 语义,不另立统计口径)。
+    #[test]
+    fn compare_arms_matches_manual_extract_and_compare() {
+        let cfg_a = test_cfg(7, 100);
+        let cfg_b = test_cfg(7, 140);
+        let arm_a = kernel_arm(&cfg_a, 8);
+        let arm_b = kernel_arm(&cfg_b, 8);
+        let out = compare_arms(&cfg_a, &cfg_b, MetricKey::WinRate, &arm_a, &arm_b).unwrap();
+        let manual: Vec<f64> = arm_a.iter().map(|m| m.win_rate).collect();
+        let manual_b: Vec<f64> = arm_b.iter().map(|m| m.win_rate).collect();
+        let expected = compare("win_rate", &manual, &manual_b);
+        assert_eq!(out, expected);
+        assert_eq!(out.metric, "win_rate");
+        assert_eq!(out.arm_a.n, 8);
+        assert_eq!(out.arm_b.n, 8);
+    }
+
+    /// 种子错位:CRN 成对前提破坏,显式拒绝。
+    #[test]
+    fn compare_arms_rejects_seed_mismatch() {
+        let cfg_a = test_cfg(7, 100);
+        let mut cfg_b = test_cfg(7, 140);
+        cfg_b.base_seed = 99;
+        let arm_a = kernel_arm(&cfg_a, 4);
+        let arm_b = kernel_arm(&cfg_b, 4);
+        let err = compare_arms(&cfg_a, &cfg_b, MetricKey::WinRate, &arm_a, &arm_b)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("base_seed 不一致"), "{err}");
+    }
+
+    /// 任一臂指标不可用(天数不足)→ 显式报错,不单臂跳过。
+    #[test]
+    fn compare_arms_rejects_unavailable_metric() {
+        let cfg_a = test_cfg(2, 100);
+        let cfg_b = test_cfg(2, 140);
+        let arm_a = kernel_arm(&cfg_a, 4);
+        let arm_b = kernel_arm(&cfg_b, 4);
+        let err = compare_arms(&cfg_a, &cfg_b, MetricKey::RetentionD7, &arm_a, &arm_b)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("retention_d7") && err.contains("不可用"), "{err}");
+    }
+
+    /// 长度为 0 / 不等长:等长非零前提,显式拒绝。
+    #[test]
+    fn compare_arms_rejects_length_mismatch_or_empty() {
+        let cfg_a = test_cfg(7, 100);
+        let cfg_b = test_cfg(7, 140);
+        let arm_a = kernel_arm(&cfg_a, 4);
+        let arm_b = kernel_arm(&cfg_b, 4);
+        let err = compare_arms(&cfg_a, &cfg_b, MetricKey::WinRate, &arm_a[..3], &arm_b)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("replicate 数不一致或为 0"), "{err}");
+        let err = compare_arms(&cfg_a, &cfg_b, MetricKey::WinRate, &[], &[])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("replicate 数不一致或为 0"), "{err}");
+    }
+
+    /// 某 replicate extract 为 None(此处:期末无 Power 快照,config 级
+    /// unavailable_reason 查不出)→ 显式报错,不 0 填充(WB-03.02)。
+    #[test]
+    fn compare_arms_rejects_extract_none() {
+        let cfg_a = test_cfg(7, 100);
+        let cfg_b = test_cfg(7, 140);
+        let mut arm_a = kernel_arm(&cfg_a, 2);
+        let arm_b = kernel_arm(&cfg_b, 2);
+        arm_a[1].power_snapshots.clear();
+        let err = compare_arms(&cfg_a, &cfg_b, MetricKey::PowerP50Final, &arm_a, &arm_b)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("replicate 1") && err.contains("不用 0 填充"), "{err}");
+    }
+
+    /// results JSON 回读契约(A/B 桥通道):kernel 序列化的结果数组原样
+    /// 反序列化回 Vec<RunMetrics>,版本/分群 String 字段与数值逐字段一致;
+    /// 序列化形状不因 owned 化改变。
+    #[test]
+    fn run_metrics_results_json_roundtrip() {
+        let cfg = test_cfg(7, 100);
+        let arm = kernel_arm(&cfg, 2);
+        let json = serde_json::to_string(&arm).unwrap();
+        let back: Vec<crate::metrics::RunMetrics> = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.len(), arm.len());
+        for (orig, got) in arm.iter().zip(back.iter()) {
+            assert_eq!(orig.schema_version, got.schema_version);
+            assert_eq!(orig.model_version, got.model_version);
+            assert_eq!(orig.win_rate, got.win_rate);
+            assert_eq!(orig.day_stats.len(), got.day_stats.len());
+            assert_eq!(orig.cohort_stats.len(), got.cohort_stats.len());
+            assert_eq!(orig.cohort_stats[0].cohort, got.cohort_stats[0].cohort);
+            assert_eq!(orig.power_snapshots.len(), got.power_snapshots.len());
+        }
+        assert_eq!(serde_json::to_string(&back).unwrap(), json);
     }
 }

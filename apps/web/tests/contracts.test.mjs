@@ -1,10 +1,10 @@
 // 类型契约守卫(节点侧,CI web job 跑):src/lib/types.ts 的类型族与 Rust
 // serde 实际序列化逐键对齐(WB-03.01)。真值源是 pkg-node 真跑内核——
 // validate / run_simulation / sweep_plan / sweep_candidate / sweep_recommend
-// 的实际 JSON 键与 TS interface 声明键双向对齐,漂移即红;错误类型锁
-// 绑定层字符串前缀契约(配置错误 / 参数错误)与候选 config_error 形状。
-// 运行时还没有出口的族(参数定义 / 配置 / A/B 比较结果)由存在性断言
-// 兜底,待 WB-03.04/05/10/11 桥接落地后升级为运行时锁。
+// / ab_compare 的实际 JSON 键与 TS interface 声明键双向对齐,漂移即红;
+// 错误类型锁绑定层字符串前缀契约(配置错误 / 参数错误)与候选
+// config_error 形状。参数定义 / 配置读写 / KPI 可用性 / A/B 比较
+// (WB-03.04~.11)已全部升级为运行时锁。
 // 跑法(仓库根):
 //   wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
 //   node --test apps/web/tests/contracts.test.mjs
@@ -402,4 +402,64 @@ test('WB-03.09 KPI 入口:可用性来自内核规则,可空位与内核 extract
   const svc = read('src/lib/wasm.ts')
   assert.match(svc, /invoke\('kpi_availability', \{ yaml \}\)/, '桌面路径走 kpi_availability 命令')
   assert.match(svc, /kpiAvailabilityBinding\(yaml\)/, '浏览器路径走 wasm 绑定')
+})
+
+test('WB-03.10/11 A/B 桥:compare_arms 内核直出 Comparison,成对前提/可用性/未知指标显式拒绝', () => {
+  // 真跑双臂(同 seed,attack 不同)→ 内核 CRN 配对结论
+  const baseYaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\n'
+  const candYaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\nmodel:\n  warrior:\n    attack: 110\n'
+  const a = JSON.parse(wasm.run_simulation(baseYaml, 3))
+  const b = JSON.parse(wasm.run_simulation(candYaml, 3))
+  const cmp = JSON.parse(wasm.ab_compare(baseYaml, candYaml, 'win_rate', JSON.stringify(a.results), JSON.stringify(b.results)))
+  // 键集与 TS Comparison 同构(WB-03.01 口径):恰 8 键,verdict 是内核三值
+  assert.deepEqual(Object.keys(cmp).sort(), ['arm_a', 'arm_b', 'diff_ci95_hi', 'diff_ci95_lo', 'diff_mean', 'effect_size_d', 'metric', 'verdict'])
+  assert.ok(['BHigher', 'AHigher', 'NoDifference'].includes(cmp.verdict), `${cmp.verdict}`)
+  assert.ok(['BHigher', 'AHigher', 'NoDifference'].includes(cmp.arm_a.verdict ?? cmp.arm_b.verdict) === false, 'SampleStats 无 verdict')
+  assert.equal(cmp.metric, 'win_rate')
+  assert.equal(cmp.arm_a.n, 3)
+  assert.equal(cmp.arm_b.n, 3)
+  // CRN 配对口径:diff_mean = cand 均值 − base 均值(内核算,前端不重算)
+  const mean = (arm) => arm.results.reduce((s, m) => s + m.win_rate, 0) / arm.results.length
+  assert.ok(Math.abs(cmp.diff_mean - (mean(b) - mean(a))) < 1e-9)
+  // 桥接签名带双臂 YAML(内核校验同种子)与 metric
+  const wrongSeed = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 9}\n'
+  const c = JSON.parse(wasm.run_simulation(wrongSeed, 3))
+  assert.throws(
+    () => wasm.ab_compare(baseYaml, wrongSeed, 'win_rate', JSON.stringify(a.results), JSON.stringify(c.results)),
+    (e) => String(e).includes('base_seed 不一致') && classifyWasmError(String(e)).kind === 'config',
+    'CRN 成对前提破坏 = 配置错误',
+  )
+  // 指标在某臂不可用 → 配置错误,不静默跳过
+  assert.throws(
+    () => wasm.ab_compare(baseYaml, candYaml, 'retention_d7', JSON.stringify(a.results), JSON.stringify(b.results)),
+    (e) => String(e).includes('retention_d7') && String(e).includes('不可用') && classifyWasmError(String(e)).kind === 'config',
+  )
+  // 未知指标 → 参数错误 + 内核可选清单
+  assert.throws(
+    () => wasm.ab_compare(baseYaml, candYaml, 'winrate', JSON.stringify(a.results), JSON.stringify(b.results)),
+    (e) => String(e).includes('参数错误: 未知指标 winrate') && String(e).includes('win_rate'),
+  )
+  // results 不是合法结果数组 → 参数错误
+  assert.throws(
+    () => wasm.ab_compare(baseYaml, candYaml, 'win_rate', '[{"win_rate":', JSON.stringify(b.results)),
+    (e) => String(e).includes('参数错误') && String(e).includes('base 臂结果解析失败'),
+  )
+  // replicate 不等长 → 配置错误
+  const one = JSON.parse(wasm.run_simulation(baseYaml, 1))
+  assert.throws(
+    () => wasm.ab_compare(baseYaml, candYaml, 'win_rate', JSON.stringify(one.results), JSON.stringify(b.results)),
+    (e) => String(e).includes('replicate 数不一致或为 0'),
+  )
+  // TS 桥接接线(双通道):桌面 invoke + 浏览器绑定,双端同构
+  const svc = read('src/lib/wasm.ts')
+  assert.match(svc, /invoke\('ab_compare', \{/, '桌面路径走 ab_compare 命令')
+  assert.match(svc, /abCompareBinding\(/, '浏览器路径走 wasm 绑定')
+  // 执行器接线:唯一调用点带双臂 YAML + metric;worker 协议含 ab_compare 面
+  const exec = read('src/workbench/state/executor.ts')
+  assert.match(exec, /be\.compare\(spec\.baseYaml, spec\.candYaml, spec\.metric, outputs\.base!, outputs\.cand!\)/)
+  assert.match(exec, /kind: 'ab_compare'/)
+  assert.match(exec, /wasm\.abCompare\(baseYaml, candYaml, metric, base\.results, cand\.results\)/)
+  // 设计页入队:比较指标 = 首个设计目标(缺省 win_rate,内核判定合法性)
+  const page = read('src/workbench/pages/DesignerPage.tsx')
+  assert.match(page, /metric: design\.targets\[0\]\?\.metric \?\? 'win_rate'/)
 })

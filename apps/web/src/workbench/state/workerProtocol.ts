@@ -6,7 +6,7 @@
 //   Worker 内核执行是同步 wasm,候选内/仿真内没有真实进度,serve 端
 //   不得伪造 progress(WB-07.05 红线:未提供的进度不得推算成真进度);
 // - 输入 = 请求载荷原文(输入快照自足,不引用主线程可变状态)。
-import type { CandidateResult, SimOutput, SweepPlan, SweepRecOutput } from '../../lib/types.ts'
+import type { CandidateResult, Comparison, RunMetrics, SimOutput, SweepPlan, SweepRecOutput } from '../../lib/types.ts'
 
 export const WORKER_PROTOCOL_VERSION = 1
 
@@ -22,6 +22,19 @@ export type WorkerRequest =
   | { protocol: 1; kind: 'sim'; taskId: string; yaml: string; replicates: number }
   | { protocol: 1; kind: 'candidate'; taskId: string; yaml: string; replicates: number; values: Record<string, number> }
   | { protocol: 1; kind: 'recommend'; taskId: string; yaml: string; results: readonly CandidateResult[] }
+  | {
+      protocol: 1
+      kind: 'ab_compare'
+      taskId: string
+      /** 双臂 YAML:内核校验同 base_seed 的 CRN 成对前提 */
+      baseYaml: string
+      candYaml: string
+      /** 比较指标:内核 MetricKey::parse 判定(参数错误通道) */
+      metric: string
+      /** 双臂已跑 results 数组(结构化克隆回 Worker,内核回读提取) */
+      resultsA: readonly RunMetrics[]
+      resultsB: readonly RunMetrics[]
+    }
 
 /** Worker 侧错误类:init = WASM 初始化失败(可重试,retryable: true);run = 内核运行错误。 */
 export type WorkerErrorClass = 'init' | 'run'
@@ -45,6 +58,7 @@ export type WorkerResultValue =
   | { reqKind: 'sim'; output: SimOutput }
   | { reqKind: 'candidate'; result: CandidateResult }
   | { reqKind: 'recommend'; rec: SweepRecOutput }
+  | { reqKind: 'ab_compare'; comparison: Comparison }
 
 /** 守卫:入站消息必须过协议检查,非协议消息被丢弃(不进入执行)。 */
 export function isWorkerRequest(v: unknown): v is WorkerRequest {
@@ -64,6 +78,14 @@ export function isWorkerRequest(v: unknown): v is WorkerRequest {
       )
     case 'recommend':
       return typeof r.yaml === 'string' && Array.isArray(r.results)
+    case 'ab_compare':
+      return (
+        typeof r.baseYaml === 'string' &&
+        typeof r.candYaml === 'string' &&
+        typeof r.metric === 'string' &&
+        Array.isArray(r.resultsA) &&
+        Array.isArray(r.resultsB)
+      )
     default:
       return false
   }
@@ -75,10 +97,12 @@ export function isWorkerResponse(v: unknown): v is WorkerResponse {
   if (r.protocol !== WORKER_PROTOCOL_VERSION || typeof r.taskId !== 'string' || r.taskId === '') return false
   switch (r.kind) {
     case 'result':
-      return r.reqKind === 'plan' || r.reqKind === 'sim' || r.reqKind === 'candidate' || r.reqKind === 'recommend'
+      return (
+        r.reqKind === 'plan' || r.reqKind === 'sim' || r.reqKind === 'candidate' || r.reqKind === 'recommend' || r.reqKind === 'ab_compare'
+      )
     case 'error':
       return (
-        (r.reqKind === null || r.reqKind === 'plan' || r.reqKind === 'sim' || r.reqKind === 'candidate' || r.reqKind === 'recommend') &&
+        (r.reqKind === null || r.reqKind === 'plan' || r.reqKind === 'sim' || r.reqKind === 'candidate' || r.reqKind === 'recommend' || r.reqKind === 'ab_compare') &&
         (r.errorClass === 'init' || r.errorClass === 'run') &&
         typeof r.retryable === 'boolean' &&
         typeof r.message === 'string'

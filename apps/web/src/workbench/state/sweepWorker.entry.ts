@@ -6,6 +6,7 @@ import init, {
   sweep_plan as sweepPlan,
   sweep_candidate as sweepCandidate,
   sweep_recommend as sweepRecommend,
+  ab_compare as abCompare,
 } from 'sandtable-wasm'
 import { serveSweepWorker } from './sweepWorker.ts'
 
@@ -20,6 +21,8 @@ const server = serveSweepWorker({
     JSON.parse(sweepCandidate(yaml, replicates, JSON.stringify(values)) as unknown as string),
   recommend: async (yaml, results) =>
     JSON.parse(sweepRecommend(yaml, JSON.stringify(results)) as unknown as string),
+  abCompare: async (baseYaml, candYaml, metric, resultsA, resultsB) =>
+    JSON.parse(abCompare(baseYaml, candYaml, metric, JSON.stringify(resultsA), JSON.stringify(resultsB)) as unknown as string),
 })
 
 self.onmessage = (e: MessageEvent): void => {

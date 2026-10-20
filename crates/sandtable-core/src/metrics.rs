@@ -11,12 +11,12 @@
 //!
 //! 聚合只用整数计数器与整数和,浮点只在最终比值处出现。
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::{Cohort, SimConfig};
 
 /// 单日聚合(时间序列的一个点)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DayStat {
     pub day: u32,
     /// 当日活跃玩家数(至少一次会话)
@@ -52,7 +52,7 @@ pub struct DayStat {
 }
 
 /// 快照日 Power 分布(精确分位数)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PowerSnapshot {
     pub day: u32,
     pub n: u64,
@@ -62,9 +62,11 @@ pub struct PowerSnapshot {
 }
 
 /// 按分群的期末切片(文档 13 章"按 cohort 切片输出"的最小实现)。
-#[derive(Debug, Clone, Serialize)]
+/// String 字段:序列化 JSON 形状不变(&str 同为字符串),owned 化是为了
+/// results JSON 可回读(Deserialize,A/B 桥把已跑结果喂回内核比较)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CohortStat {
-    pub cohort: &'static str,
+    pub cohort: String,
     pub count: u64,
     pub churned: u64,
     pub mean_power: f64,
@@ -73,10 +75,13 @@ pub struct CohortStat {
 }
 
 /// 单次 replicate 的全部指标输出。
-#[derive(Debug, Clone, Serialize)]
+/// String 字段(schema/model/cohort)与 &str 序列化 JSON 逐字节相同;
+/// owned 化只为 Deserialize:results JSON 可原样回读内核(A/B 桥,
+/// WB-03.10),不做第二套部分镜像结构。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunMetrics {
-    pub schema_version: &'static str,
-    pub model_version: &'static str,
+    pub schema_version: String,
+    pub model_version: String,
     pub config_hash: String,
     pub replicate: u32,
     pub seed: u64,
@@ -347,8 +352,8 @@ impl RunAggregator {
             Some(self.active_in_cohort[n as usize] as f64 / self.day1_cohort as f64)
         };
         RunMetrics {
-            schema_version: crate::SCHEMA_VERSION,
-            model_version: crate::MODEL_VERSION,
+            schema_version: crate::SCHEMA_VERSION.to_string(),
+            model_version: crate::MODEL_VERSION.to_string(),
             config_hash: crate::config::config_hash(cfg),
             replicate,
             seed,
@@ -393,7 +398,7 @@ impl RunAggregator {
 /// 期末按分群切片统计(仅最后一天日结时传入 `end_day`)。
 pub fn cohort_slice(actors: &[crate::world::Actor]) -> Vec<CohortStat> {
     let mut stats = Cohort::ALL.map(|c| CohortStat {
-        cohort: c.name(),
+        cohort: c.name().to_string(),
         count: 0,
         churned: 0,
         mean_power: 0.0,

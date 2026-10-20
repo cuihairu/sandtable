@@ -27,7 +27,7 @@ export type ExecErrorClass = 'init' | 'run' | 'budget' | 'bridge'
 /** WB-07.03 · 执行输入快照(数据自足:切项目/切页不读 store,任务重试同 spec)。 */
 export type ExecSpec = (
   | { kind: 'sweep'; yaml: string; plan: { candidates: ReadonlyArray<Record<string, number>>; replicates: number; sims: number } }
-  | { kind: 'ab'; baseYaml: string; candYaml: string; replicates: number }
+  | { kind: 'ab'; baseYaml: string; candYaml: string; replicates: number; metric: string }
   | { kind: 'single'; yaml: string; replicates: number }
 ) & { readonly analysis?: AnalysisContext }
 

@@ -69,6 +69,7 @@ pub fn run() {
             param_values,
             param_apply,
             kpi_availability,
+            ab_compare,
             run_simulation,
             cancel_run,
             sweep_plan,
@@ -235,6 +236,39 @@ fn kpi_availability(yaml: String) -> Result<serde_json::Value, String> {
             })
             .collect::<Vec<_>>()
     ))
+}
+
+/// A/B 统计比较(WB-03.10):双臂 YAML + 双臂已跑 results JSON 进内核,
+/// 成对前提与指标可用性由 core::experiment::compare_arms 显式判定,
+/// 配对统计结论内核直出,前端不另算(WB-03.11),与 wasm ab_compare 同构。
+/// 指标名 / results JSON 解析失败是 参数错误,其余走 配置错误 通道。
+#[tauri::command]
+fn ab_compare(
+    base_yaml: String,
+    cand_yaml: String,
+    metric: String,
+    results_a_json: String,
+    results_b_json: String,
+) -> Result<serde_json::Value, String> {
+    let key = sandtable_core::experiment::MetricKey::parse(&metric).ok_or_else(|| {
+        let all = sandtable_core::experiment::MetricKey::ALL
+            .iter()
+            .map(|k| k.name())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("参数错误: 未知指标 {metric}(可选:{all})")
+    })?;
+    let cfg_a = load(&base_yaml)?;
+    let cfg_b = load(&cand_yaml)?;
+    let arm_a: Vec<sandtable_core::metrics::RunMetrics> =
+        serde_json::from_str(&results_a_json)
+            .map_err(|e| format!("参数错误: base 臂结果解析失败: {e}"))?;
+    let arm_b: Vec<sandtable_core::metrics::RunMetrics> =
+        serde_json::from_str(&results_b_json)
+            .map_err(|e| format!("参数错误: cand 臂结果解析失败: {e}"))?;
+    let comparison = sandtable_core::experiment::compare_arms(&cfg_a, &cfg_b, key, &arm_a, &arm_b)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(&comparison).map_err(|e| format!("配置错误: {e}"))
 }
 
 /// 逐 replicate 执行:每个 replicate 开跑前检查取消令牌,完成后上报一次进度。
@@ -527,6 +561,52 @@ mod tests {
         )
         .unwrap_err()
         .starts_with("配置错误"));
+    }
+
+    #[test]
+    fn ab_compare_matches_kernel_semantics() {
+        let cand = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 7}\n",
+            "model:\n  warrior: {attack: 250}\n",
+        );
+        let a = run_simulation_impl(YAML.into(), 4, &fresh_flag(), &mut |_| {}).unwrap();
+        let b = run_simulation_impl(cand.into(), 4, &fresh_flag(), &mut |_| {}).unwrap();
+        let v = ab_compare(
+            YAML.into(),
+            cand.into(),
+            "win_rate".into(),
+            a["results"].to_string(),
+            b["results"].to_string(),
+        )
+        .unwrap();
+        assert_eq!(v["metric"], "win_rate");
+        assert_eq!(v["arm_a"]["n"], 4);
+        assert!(["BHigher", "AHigher", "NoDifference"].contains(&v["verdict"].as_str().unwrap()));
+        // 错误通道:未知指标是参数错误;种子错位是配置错误(与 wasm 同构)
+        assert!(ab_compare(
+            YAML.into(),
+            YAML.into(),
+            "winrate".into(),
+            a["results"].to_string(),
+            a["results"].to_string(),
+        )
+        .unwrap_err()
+        .starts_with("参数错误"));
+        let other_seed = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '3d', seed: 9}\n",
+        );
+        let c = run_simulation_impl(other_seed.into(), 4, &fresh_flag(), &mut |_| {}).unwrap();
+        let err = ab_compare(
+            YAML.into(),
+            other_seed.into(),
+            "win_rate".into(),
+            a["results"].to_string(),
+            c["results"].to_string(),
+        )
+        .unwrap_err();
+        assert!(err.starts_with("配置错误") && err.contains("base_seed 不一致"), "{err}");
     }
 
     #[test]

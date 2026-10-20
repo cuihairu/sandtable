@@ -370,7 +370,7 @@ export interface SimConfig {
 }
 
 // —— A/B 比较(WB-03.01 对照 core::experiment::Comparison 序列化;桥接出口
-// 是 WB-03.10/11,落地后 contracts 守卫升级运行时锁)——
+// ab_compare 已发布(WB-03.10/11/12),contracts 守卫运行时锁)——
 
 /** 判定来自配对差 CI 与 0 的关系(内核枚举 PascalCase 原样序列化) */
 export type CompareVerdict = 'BHigher' | 'AHigher' | 'NoDifference'

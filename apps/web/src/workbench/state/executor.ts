@@ -11,8 +11,10 @@
 //   扫描取消绝不调用内核 cancelRun;
 // - 竞争条件(WB-07.16):终态先到先得(settled 单向闸),重复取消幂等,
 //   取消晚于完成 = 完成生效。
-// 桥接说明:内核 Comparison 桥接由 WB-03.10/11/12 发布;ExecBackends.compare
-// 是唯一调用点,发布前为 null → A/B 任务如实报 bridge 错误类,不冒充统计判定。
+// 桥接说明:内核 Comparison 桥接已发布(WB-03.10/11/12):ExecBackends.compare
+// 是唯一调用点——双臂 YAML + metric + 已跑 SimOutput 进内核 compare_arms,
+// 成对前提与指标可用性由内核显式判定,前端不另算统计;compare = null 仍作
+// 假后端/防御分支保留(null → A/B 任务如实报 bridge,不冒充统计判定)。
 import type {
   CandidateResult,
   Comparison,
@@ -30,8 +32,9 @@ import type { WorkerRequest, WorkerRequestInput, WorkerResultValue } from './wor
 export const MAX_CANDIDATE_RESULTS_IN_MEMORY = 1000
 
 /** 执行后端:桌面 = native 命令面(lib/wasm invoke);浏览器 = Worker 协议。
- *  compare = 内核 A/B 统计桥接(WB-03.10/11 发布前为 null,调用点已就绪);
- *  terminate = 浏览器端"终止 Worker"的升级取消(桌面无此面)。 */
+ *  compare = 内核 A/B 统计桥接(WB-03.10/11):双臂 YAML + metric + 已跑
+ *  SimOutput 进内核 compare_arms,CRN 成对结论内核直出;null 仅为测试
+ *  注入/防御分支保留。terminate = 浏览器端"终止 Worker"的升级取消(桌面无此面)。 */
 export type ExecBackends = {
   mode: 'desktop' | 'worker'
   sim: (yaml: string, replicates: number, onProgress?: (p: SimProgress) => void) => Promise<SimOutput>
@@ -39,7 +42,12 @@ export type ExecBackends = {
   recommend: (yaml: string, results: CandidateResult[]) => Promise<SweepRecOutput>
   /** 内核取消令牌(仅桌面 run_simulation;浏览器恒 false) */
   kernelCancel: () => Promise<boolean>
-  compare: ((base: SimOutput, cand: SimOutput) => Promise<Comparison>) | null
+  /** A/B 统计比较(WB-03.10/11):双臂 YAML(内核校验同 base_seed 的 CRN
+   *  前提)+ metric + 双臂已跑 SimOutput(results 数组回读内核),配对结论
+   *  与可用性/成对校验全部由内核 compare_arms 判定,前端不另算。 */
+  compare:
+    | ((baseYaml: string, candYaml: string, metric: string, base: SimOutput, cand: SimOutput) => Promise<Comparison>)
+    | null
   terminate?: () => void
 }
 
@@ -253,14 +261,17 @@ export function startExec(
       // 双臂都完成但取消先落:不继续比较,双臂输出保留为部分结果
       return outcome('cancelled', null, null, { arms: armsOut(), boundary: { kind: 'arm', done: arms.length, total: arms.length } })
     }
-    // WB-07.03 · A/B 调用真实比较桥接:桥接发布前 compare 为 null → 如实报错
+    // WB-07.03 · A/B 调用真实比较桥接(WB-03.10/11):双臂 YAML + metric +
+    // 已跑输出进内核;compare = null 仅防御/测试注入分支 → 如实报 bridge
     if (be.compare === null) {
       return outcome('failed', 'bridge', 'A/B 统计比较需内核 Comparison 桥接(WB-03.10/11);双臂仿真已真跑并保留,统计判定不由前端另算', { arms: armsOut() })
     }
     let comparison: Comparison
     try {
-      comparison = await be.compare(outputs.base!, outputs.cand!)
+      comparison = await be.compare(spec.baseYaml, spec.candYaml, spec.metric, outputs.base!, outputs.cand!)
     } catch (e) {
+      // 内核显式拒绝(种子错位/指标不可用/replicate 不等长/未知指标):
+      // 双臂输出保留,错误原样进错误通道(配置错误/参数错误前缀)
       return outcome('failed', 'run', String(e), { arms: armsOut() })
     }
     update({ status: 'succeeded', done: doneBase, exec: { comparison, arms: armsOut() } })
@@ -402,13 +413,20 @@ export function workerBackends(spawn: () => WorkerLike): ExecBackends {
       return v.rec
     },
     kernelCancel: async () => false,
-    compare: null,
+    compare: async (baseYaml, candYaml, metric, base, cand) => {
+      const v = expect(
+        'ab_compare',
+        await connection.request({ kind: 'ab_compare', baseYaml, candYaml, metric, resultsA: base.results, resultsB: cand.results }),
+      )
+      if (v.reqKind !== 'ab_compare') throw new Error('unreachable')
+      return v.comparison
+    },
     terminate: () => connection.terminate(),
   }
 }
 
 /** 真实后端解析:桌面走 native 命令面;浏览器走 Worker(动态 import,节点
- *  测试注入假后端时绝不触发)。compare 随 WB-03.12 桥接发布接入。 */
+ *  测试注入假后端时绝不触发)。compare = 内核 A/B 统计桥接(WB-03.12 双端同构)。 */
 export async function resolveBackends(): Promise<ExecBackends> {
   const wasm = await import('../../lib/wasm.ts')
   if (wasm.isDesktop) {
@@ -418,7 +436,8 @@ export async function resolveBackends(): Promise<ExecBackends> {
       candidate: wasm.runSweepCandidate,
       recommend: wasm.recommendSweep,
       kernelCancel: wasm.cancelRun,
-      compare: null, // WB-03.10/11/12 桥接发布前为 null(调用点已就绪)
+      compare: (baseYaml, candYaml, metric, base, cand) =>
+        wasm.abCompare(baseYaml, candYaml, metric, base.results, cand.results),
     }
   }
   return workerBackends(
