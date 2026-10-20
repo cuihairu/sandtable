@@ -4,6 +4,7 @@ import type { JSX } from 'react'
 import { METRIC_KEYS } from '../../lib/types.ts'
 import type { MetricKey } from '../../lib/types.ts'
 import { METRIC_META, metricLabel, metricUnit } from '../../lib/metricMeta.ts'
+import { fmtPercent } from '../../lib/i18n/format.ts'
 import { abView, dailyRows, interpolationText, overallOutcome, recommendationView, responsePoints, sensitivityNoteLabel, stepSelection, yAutoDomain } from '../../lib/analysisView.ts'
 import type { ResultFilter } from '../../lib/analysisView.ts'
 import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
@@ -187,7 +188,7 @@ function RealResult({ job, state }: { job: Job; state: WorkbenchState }): JSX.El
       <label>{t(locale, 'analysis.armLabel')} <select value={ui.arm} onChange={(e) => patch({ arm: e.target.value as 'base' | 'cand' })}><option value="base">{t(locale, 'analysis.armA')}</option><option value="cand">B</option></select></label>
       <label>replicate <select value={ui.replicate} onChange={(e) => patch({ replicate: Number(e.target.value) })}>{(sim?.results ?? []).map((r) => <option key={r.replicate} value={r.replicate}>{t(locale, 'analysis.replicateOption', { ui: r.replicate + 1, kernel: r.replicate })}</option>)}</select></label>
       <p className="note">{t(locale, 'analysis.dailyNote', { run: exec.runId })}</p>
-      {daily.ok ? <table className="candidate-table"><thead><tr><th>day</th><th>win_rate</th><th>inflation</th></tr></thead><tbody>{daily.rows.map((r) => <tr key={r.day}><td>{r.day}</td><td>{r.win_rate}</td><td>{r.inflation}</td></tr>)}</tbody></table> : <p>{daily.reason}</p>}
+      {daily.ok ? <table className="candidate-table"><thead><tr><th>day</th><th>win_rate</th><th>inflation</th></tr></thead><tbody>{daily.rows.map((r) => <tr key={r.day}><td>{r.day}</td><td>{formatMetric(r.win_rate, 'win_rate', false, locale)}</td><td>{r.inflation === null ? t(locale, 'analysis.unavailable') : fmtPercent(locale, r.inflation)}</td></tr>)}</tbody></table> : <p>{daily.reason}</p>}
     </section>}
     {a.drafts.length > 0 && <section><h2>{t(locale, 'analysis.draftsTitle')}</h2>{a.drafts.map((d) => <div key={d.id} className="result-draft">
       <p>{t(locale, 'analysis.draftLine', { id: d.id, run: d.sourceRunId, cand: d.sourceCandidateId, base: d.baselineId })}</p>

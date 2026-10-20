@@ -155,7 +155,10 @@
 - [x] WB-03.02：定义字段可空、指标 unavailable、候选 `config_error` 和缺失产物的表达，禁止用 0 填空。
   - 落点:可空字段按内核 `CandidateStatus` 原样透传(lib/types.ts 可空字段,零值≠缺值);指标 null → `formatMetric` 返回「不可用」不用 0 填空(analysis-results.test.mjs);候选 `config_error` 状态原样上报并在结果面板红字标注(ProjectPanels ProjectResultsPanel);缺失产物新增 `auditRunArtifacts`(state/projectDoc.ts):索引声称的 files 与在场文件(项目 files ∪ runArtifacts)逐条对照,缺失逐条点名返回 `{runId, file}`,UI 侧 RunRegistry 对缺失路径红字 + 警示图标标「缺失」,不静默跳过。
   - 测试:workbench-logic.test.mjs 18/18(新增 WB-03.02 审计 4 断言组:缺失点名/全在场为空/数组入参等价/空索引为空);i18n 30/30(新键 data.project.missingArtifact zh/en 对齐);tsc -b 0 错;oxlint 0 警;vite build ✓。
-- [ ] WB-03.03：明确内核比例值与 UI 百分比、绝对差与百分点的转换规则；存储和传输保持原始口径。
+- [x] WB-03.03：明确内核比例值与 UI 百分比、绝对差与百分点的转换规则；存储和传输保持原始口径。
+  - 规则落点:ratio 类(win_rate/retention/churn)内核原始值恒 0–1,×100 只发生在显示层(formatMetric 与 lib/i18n/fmtPercent,源码守卫禁 Intl 外逸);绝对差后缀 `pp`(百分点)且小数位 +1 收口;amount 类不缩放只附单位;存储/视图模型/CSV/SVG 导出/跨端传输保持原始口径(sweep-view:104、machine-export csvCell 原样断言既有)。
+  - 破口修复:AnalysisPage 逐日表曾裸渲染内核 0–1 比例(day_stats.win_rate/inflation 直出)——现 win_rate 走 formatMetric、inflation 走 fmtPercent,null 显示「不可用」不用 0 填空;规则全文注释在 formatMetric(analysis/resultModel.ts)。
+  - 测试:analysis-results 21/21(新增 WB-03.03 源码守卫:内核逐日值 ≤1 确认口径、daily 单元格必须走换算入口、禁止裸渲染);全套 196/196;tsc -b 0 错;oxlint 0 警;vite build ✓。
 - [ ] WB-03.04：补参数定义读取桥接，返回 path/kind/default/desc；可选元信息缺失保持空值。
 - [ ] WB-03.05：补当前配置参数读取桥接，通过 core 读取真实有效值，不把 default 当当前值。
 - [ ] WB-03.06：补数值参数应用桥接，复用 core 类型与参数寻址；未知路径、非数值结构和非法类型返回明确错误。

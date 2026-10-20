@@ -1,5 +1,6 @@
 import test, { after } from 'node:test'
 import strictAssert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import * as wasm from '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js'
 import { candidateViews } from '../src/lib/sweepView.ts'
 import { METRIC_META } from '../src/lib/metricMeta.ts'
@@ -150,6 +151,17 @@ test('08.13: real kernel replicate indices are zero-based and daily selection is
   }
   assert.equal(dailyRows(sim, 99).ok, false)
   assert.equal(dailyRows(null, 0).ok, false)
+})
+test('03.03: daily kernel ratios render through the display-layer conversion, never bare', () => {
+  // 存储与视图层保持内核 0–1 原始口径(上条 08.13 已锁原样透传);
+  // ×100 只发生在显示层:win_rate 走 formatMetric,inflation 走 fmtPercent
+  const day = JSON.parse(wasm.run_simulation(yaml, 1)).results[0].day_stats[0]
+  assert.ok(day.win_rate <= 1, `内核逐日 win_rate 是 0–1 比例,实测 ${day.win_rate}`)
+  const page = readFileSync(new URL('../src/workbench/pages/AnalysisPage.tsx', import.meta.url), 'utf8')
+  const dailyCell = /<tr key=\{r\.day\}>[\s\S]{0,260}?<\/tr>/.exec(page)?.[0] ?? ''
+  assert.match(dailyCell, /formatMetric\(r\.win_rate, 'win_rate'/, 'win_rate 单元格走 formatMetric 换算')
+  assert.match(dailyCell, /fmtPercent\(locale, r\.inflation\)/, 'inflation 单元格走 fmtPercent 换算')
+  assert.ok(!/>[{]r\.win_rate[}]</.test(dailyCell) && !/>[{]r\.inflation[}]</.test(dailyCell), '禁止裸渲染内核比例')
 })
 test('08.14: recommendation and sensitivities come directly from real recommendSweep', () => {
   const raw = JSON.parse(wasm.sweep_recommend(experiment, JSON.stringify(results)))

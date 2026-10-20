@@ -86,6 +86,16 @@ export function rowState(row: ResultRow, job: Job, locale?: Locale): string {
   return typeof row.result.status === 'object' ? `config_error · ${row.result.status.config_error}` : 'ok'
 }
 
+/**
+ * WB-03.03 · 内核口径 → 显示口径的唯一换算入口。规则:
+ * - 内核 ratio 类指标(win_rate/retention/churn)原始值恒为 0–1;
+ *   乘 100 只发生在这里(与 lib/i18n/fmtPercent 同一显示层),
+ *   存储、视图模型、CSV/SVG 机器导出、跨端传输一律保持原始口径;
+ * - 绝对差(level 之差,同为 0–1 尺度)后缀用百分点 `pp`,
+ *   小数位比 level 多 1 位收口,避免 0.0 pp 把真差压成零;
+ * - amount 类不做任何缩放,只附本地化单位;
+ * - null/undefined/非有限值返回「不可用」,绝不用 0 填空(WB-03.02)。
+ */
 export function formatMetric(value: number | null | undefined, key: MetricKey, delta = false, locale?: Locale): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return msg(locale, 'analysis.unavailable')
   const meta = METRIC_META[key]
