@@ -6,6 +6,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { DEFAULT_PAGE, formatHash, parseHash, PAGES, HASH_BASE } from '../src/workbench/routing.ts'
+import { entryRoute, legacyHash, LEGACY_HASH_BASE } from '../src/entryRoute.ts'
 import { filterAndSort, verdictFor, verdictOf } from '../src/workbench/demo/sampleProject.ts'
 import { DEMO_RESULT } from '../src/workbench/demo/sampleProject.ts'
 import { isTerminal, requestCancel, runningCount, settleJobs, tickJobs } from '../src/workbench/state/jobLogic.ts'
@@ -30,6 +31,21 @@ test('路由:hash 深链解析与序列化 roundtrip + 非法回退', () => {
   // 缺省页
   assert.equal(DEFAULT_PAGE, 'analysis')
   assert.ok(PAGES.length === 5)
+})
+
+test('入口路由:默认进 V2 工作台,legacy 深链保留旧界面', () => {
+  assert.equal(entryRoute(''), 'workbench')
+  assert.equal(entryRoute('#/workbench/parameters?param=model.warrior.attack'), 'workbench')
+  assert.equal(entryRoute('#arbitrary'), 'workbench')
+  assert.equal(entryRoute('#/workbench/parameters'), 'workbench')
+  assert.equal(entryRoute(LEGACY_HASH_BASE), 'legacy')
+  assert.equal(entryRoute('#/legacy/experiment'), 'legacy')
+  assert.equal(LEGACY_HASH_BASE, '#/legacy')
+
+  assert.equal(legacyHash(''), LEGACY_HASH_BASE)
+  assert.equal(legacyHash('#arbitrary'), LEGACY_HASH_BASE)
+  assert.equal(legacyHash('#/legacy'), LEGACY_HASH_BASE)
+  assert.equal(legacyHash('#/legacy/experiment'), '#/legacy/experiment')
 })
 
 test('候选筛选/排序:verdict 优先序与数值方向', () => {
