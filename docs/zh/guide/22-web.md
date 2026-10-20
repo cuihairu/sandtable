@@ -42,6 +42,7 @@ Phase 6 的交付(文档 [路线图](./18-roadmap)):**"Try in your browser"**—
 - **人工写回走 YAML 文本层**:`applyParamEdit(s)` 做 token 级替换,不重序列化——注释、键序、未编辑的结构性配置(枚举 `damage_model`、公式 `xp_needed`、逐层 `tier_table`、loot `tables/rewards/on_victory`、`gacha`、`training`)逐字节保留(工作台测试锁);`serde` 重序列化会丢注释、重排键,**禁止**作为人工写回通道。
 - **内核对象通道只出 hash 与回读值**:`param_apply` 按 `registry::apply_numeric` 应用后重验(显式性契约——如 loot 在场必须整配——在编辑期把关),返回 `{config_hash, path, value}`,**不返回 YAML**;`config_hash` 是内核 canonical SHA-256,YAML 文本本身不进哈希。
 - 数值桥接对结构性参数(时长 / 公式 / 结构表 / 枚举开关)一律「该参数不是数值」拒绝——结构配置只能经文本编辑或专用结构编辑器修改。
+- **u64 安全整数边界(WB-03.08)**:seed / 保底抽数等 u64 槽位读取时,≤ 2^53−1 返回 JSON 数字,超出 JS 安全整数以**十进制字符串**无损表达;写入越界值内核明确拒绝(「超出安全整数上限 2^53−1」)——两侧都不静默舍入。
 
 ## 等价验收
 

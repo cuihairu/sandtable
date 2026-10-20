@@ -41,6 +41,7 @@ Configuration has two channels on the frontend with non-overlapping duties:
 - **Human write-back goes through the YAML text layer**: `applyParamEdit(s)` performs token-level replacement, never re-serialization — comments, key order and all unedited structural config (the `damage_model` enum, the `xp_needed` formula, per-tier `tier_table`, loot `tables/rewards/on_victory`, `gacha`, `training`) are preserved byte for byte (locked by workbench tests). `serde` re-serialization drops comments and reorders keys and is **forbidden** as the human write-back channel.
 - **The kernel-object channel emits only the hash and the read-back value**: `param_apply` applies via `registry::apply_numeric`, then re-validates (the explicitness contract — e.g. loot must arrive fully configured — is enforced at edit time) and returns `{config_hash, path, value}` — **never YAML**. `config_hash` is the kernel-canonical SHA-256; the YAML text itself never enters the hash.
 - Numeric bridges reject structural parameters (duration / formula / structural tables / enum switches) with "该参数不是数值" (not a numeric slot) — structural config can only change through text editing or dedicated structural editors.
+- **u64 safe-integer boundary (WB-03.08)**: u64 slots (seed, pity counters) read as JSON numbers while ≤ 2^53−1; values beyond the JS safe-integer range come back as **lossless decimal strings**. Writing an out-of-range value is explicitly rejected by the kernel ("exceeds the safe-integer cap 2^53−1") — neither direction ever rounds silently.
 
 ## Equivalence acceptance
 

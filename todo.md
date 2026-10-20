@@ -171,8 +171,12 @@
 - [x] WB-03.07：设计配置回写/序列化契约，保留枚举、公式、逐层表、loot 等未编辑的结构配置。
   - 落点:双通道契约成文于 docs/guide/22-web.md(绑定纪律节,中英双份)——①人工写回走 YAML 文本层(applyParamEdit token 级替换不重序列化,注释/键序/未编辑结构逐字节保留,serde 重序列化丢注释重排键禁作人工写回);②内核对象通道只出 hash 与回读值(param_apply 重验后回 {config_hash,path,value},永不回 YAML;config_hash 是内核 canonical SHA-256,YAML 文本不进哈希);③数值桥接对结构性参数一律「该参数不是数值」拒绝,结构配置只走文本编辑或专用结构编辑器。文本层既有实现(configYaml.ts)不改,契约是对既有行为的成文+锁死。
   - 测试:contracts.test.mjs 13/13(新增 WB-03.07 契约锁:param_apply 恰三字段不出 YAML;全结构段样本——枚举/公式/逐层表/loot/gacha/training——无关数值编辑后逐字节保留);params-config 22/22(WB-05.15 文本层 round-trip 原锁不动);docs:build ✓(全站 36.6s,VitePress 双语言路由过)。
-- [ ] WB-03.08：明确 u64/seed 等值的 JS 安全整数边界；不安全值采用无损表达或明确拒绝，不静默舍入。
-- [ ] WB-03.09：补 KPI 名称、可用性、统计口径与可展示格式的入口，区分内核 ID 和本地化显示名。
+- [x] WB-03.08：明确 u64/seed 等值的 JS 安全整数边界；不安全值采用无损表达或明确拒绝，不静默舍入。
+  - 落点:内核 apply_numeric 加 exact_u64 门(seed/pity_hard/pity_soft_start 三 u64 槽):> 2^53−1 明确拒绝「超出安全整数上限 2^53−1…不静默舍入」;registry 新增 read_u64_raw 无损读通道(param_values/param_apply 双侧复用);桥接面:≤ 2^53−1 返回 JSON 数字,越界以**十进制字符串**无损表达(TS paramValues Record<string,number|string>、ParamApplyResult.value number|string);契约条目成文 22-web.md 双语言。
+  - 测试:wasm Rust 16/16(新增 u64_beyond_safe_integer_is_lossless_or_rejected:越界读=字符串、范围内读=数字、越界写拒绝、pity 同门);contracts 16/16(新增 WB-03.08 锁:BigInt 字面量保证 YAML 精确且断言「2^53+1 在 JS number 下必舍入」前提、读写字两侧、类型面 string 分支);核心 165 全过(apply/read 镜像不受影响);desktop check ✓;tsc/oxlint/build ✓;全套 node 202/202。
+- [x] WB-03.09：补 KPI 名称、可用性、统计口径与可展示格式的入口，区分内核 ID 和本地化显示名。
+  - 落点:wasm/Tauri 新导出 `kpi_availability(yaml)`(内核 MetricKey::ALL 逐项 unavailable_reason,返回 [{metric, reason}](内核中文原文透传),空=全部可用);TS kpiAvailability(wasm.ts 双路径);metricMeta.ts METRIC_META 补 nullable 位(内核 extract Option 事实)并成文 KPI 入口汇总(ID/显示名分面、统计口径=SampleStats 内核直出、可展示格式=dimension/decimals/unit+formatMetric、可空=nullable+内核规则原文 kpiAvailability)。
+  - 测试:contracts 16/16(新增 WB-03.09 锁:3d 无 gacha/loot → 恰 d7/gacha/loot 三项不可用且 reason 带 ID 前缀、配齐→空数组、非法 YAML 配置错误通道、2 天真跑内核→可空指标如实缺席(retention null/gacha/loot 键省略,WB-03.01 口径)、METRIC_META nullable 表与内核逐项对齐、metricLabel 两语言≠内核 ID、wasm.ts 接线守卫);wasm Rust 16/16(新增 kpi_availability_comes_from_kernel_rules);全套 node 202/202;desktop check ✓;tsc/oxlint/build ✓。
 - [ ] WB-03.10：补 A/B 比较调用的完整输入契约：两侧快照、replicates、seed/配对策略、所选 KPI。
 - [ ] WB-03.11：A/B 后端复用 core 指标提取与 `experiment::compare`；配对差值、CI、效应量由内核输出，不在前端另算一套。
 - [ ] WB-03.12：将新增桥接同时接到 WASM 导出和 Tauri command，注册到各自入口并保持返回形状一致。

@@ -21,18 +21,30 @@ export type MetricMeta = {
   /** 显示收口小数位(percent 用 fmtPercent 的 fractionDigits) */
   readonly decimals: number
   readonly unit: string
+  /** 内核可空(extract 返回 Option):不可用时显示「不可用」,不用 0 填空
+   *  (WB-03.02/.09);可用性规则原文经 kpiAvailability 从内核取 */
+  readonly nullable: boolean
 }
 
 export const METRIC_META: Readonly<Record<MetricKey, MetricMeta>> = {
-  win_rate: { id: 'win_rate', label: '战斗胜率', dimension: 'percent', decimals: 1, unit: '%' },
-  retention_d7: { id: 'retention_d7', label: 'D7 留存率', dimension: 'percent', decimals: 1, unit: '%' },
-  retention_d3: { id: 'retention_d3', label: 'D3 留存率', dimension: 'percent', decimals: 1, unit: '%' },
-  churn_rate: { id: 'churn_rate', label: '总流失率', dimension: 'percent', decimals: 1, unit: '%' },
-  gold_per_player: { id: 'gold_per_player', label: '人均金币产出', dimension: 'amount', decimals: 1, unit: '金币/玩家' },
-  loot_gold_per_player: { id: 'loot_gold_per_player', label: '人均战利品金币', dimension: 'amount', decimals: 1, unit: '金币/玩家' },
-  power_p50: { id: 'power_p50', label: 'P50 功率', dimension: 'amount', decimals: 1, unit: '功率' },
-  gacha_pulls_to_hit: { id: 'gacha_pulls_to_hit', label: '抽卡至命中次数', dimension: 'amount', decimals: 1, unit: '抽' },
+  win_rate: { id: 'win_rate', label: '战斗胜率', dimension: 'percent', decimals: 1, unit: '%', nullable: false },
+  retention_d7: { id: 'retention_d7', label: 'D7 留存率', dimension: 'percent', decimals: 1, unit: '%', nullable: true },
+  retention_d3: { id: 'retention_d3', label: 'D3 留存率', dimension: 'percent', decimals: 1, unit: '%', nullable: true },
+  churn_rate: { id: 'churn_rate', label: '总流失率', dimension: 'percent', decimals: 1, unit: '%', nullable: false },
+  gold_per_player: { id: 'gold_per_player', label: '人均金币产出', dimension: 'amount', decimals: 1, unit: '金币/玩家', nullable: false },
+  loot_gold_per_player: { id: 'loot_gold_per_player', label: '人均战利品金币', dimension: 'amount', decimals: 1, unit: '金币/玩家', nullable: true },
+  power_p50: { id: 'power_p50', label: 'P50 功率', dimension: 'amount', decimals: 1, unit: '功率', nullable: false },
+  gacha_pulls_to_hit: { id: 'gacha_pulls_to_hit', label: '抽卡至命中次数', dimension: 'amount', decimals: 1, unit: '抽', nullable: true },
 } as const
+
+/**
+ * WB-03.09 · KPI 入口汇总:内核 ID(id)与本地化显示名(metricLabel/
+ * metricUnit,走词典 analysis.kpi.*)分面;统计口径 = 内核 SampleStats
+ * (mean + 95% CI + n,replicate 样本,内核直出不前端重算,WB-03.11);
+ * 可展示格式 = dimension/decimals/unit + formatMetric(显示层换算唯一入口,
+ * WB-03.03);可空指标 = nullable(内核 extract Option,不可用显式标注,
+ * 可用性规则原文 kpiAvailability(yaml) 从内核取)。
+ */
 
 // WB-11.14:显示名与单位走词典(analysis.kpi.*/analysis.kpiUnit.*),
 // 上表 zh 值是同源回退(缺词时兜底;键集由 i18n 守卫测试锁死)。

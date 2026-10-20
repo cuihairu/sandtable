@@ -68,6 +68,7 @@ pub fn run() {
             param_registry,
             param_values,
             param_apply,
+            kpi_availability,
             run_simulation,
             cancel_run,
             sweep_plan,
@@ -177,12 +178,24 @@ fn param_registry() -> serde_json::Value {
 
 /// 当前配置数值读取:{path: 当前生效值}(WB-03.05),与 wasm param_values
 /// 同构——数值槽逐路径 read_numeric;非数值槽缺键 ≠ 0;loot/gacha 未配置
-/// 返回内核真实生效缺省,不拿注册表 default 补值。
+/// 返回内核真实生效缺省,不拿注册表 default 补值。u64 槽位走无损通道
+/// (WB-03.08):≤ 2^53−1 是 JSON 数字,超出 JS 安全整数以十进制字符串
+/// 无损表达,不静默舍入。
 #[tauri::command]
 fn param_values(yaml: String) -> Result<serde_json::Value, String> {
+    const MAX_SAFE: u64 = 9_007_199_254_740_991;
     let cfg = load(&yaml)?;
     let mut out = serde_json::Map::new();
     for spec in sandtable_core::registry::all() {
+        if let Some(raw) = sandtable_core::registry::read_u64_raw(&cfg, spec.path) {
+            let v = if raw <= MAX_SAFE {
+                serde_json::json!(raw)
+            } else {
+                serde_json::json!(raw.to_string())
+            };
+            out.insert(spec.path.to_string(), v);
+            continue;
+        }
         if let Ok(v) = sandtable_core::registry::read_numeric(&cfg, spec.path) {
             out.insert(spec.path.to_string(), serde_json::json!(v));
         }
@@ -206,6 +219,22 @@ fn param_apply(yaml: String, path: String, value: f64) -> Result<serde_json::Val
         "path": path,
         "value": back,
     }))
+}
+
+/// KPI 可用性:内核 MetricKey::ALL 逐项 unavailable_reason,返回
+/// [{metric, reason}](空 = 全部可用)(WB-03.09),与 wasm 同构。
+#[tauri::command]
+fn kpi_availability(yaml: String) -> Result<serde_json::Value, String> {
+    let cfg = load(&yaml)?;
+    Ok(serde_json::json!(
+        sandtable_core::experiment::MetricKey::ALL
+            .iter()
+            .filter_map(|k| {
+                sandtable_core::experiment::MetricKey::unavailable_reason(*k, &cfg)
+                    .map(|reason| serde_json::json!({ "metric": k.name(), "reason": reason }))
+            })
+            .collect::<Vec<_>>()
+    ))
 }
 
 /// 逐 replicate 执行:每个 replicate 开跑前检查取消令牌,完成后上报一次进度。

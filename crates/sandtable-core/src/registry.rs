@@ -497,9 +497,21 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
             Ok(v)
         }
     };
+    // u64 槽位安全整数门(WB-03.08):f64 在 2^53 之外整数值会静默舍入,
+    // seed / 保底抽数是确定性语义,错 1 就是另一个实验——明确拒绝不静默。
+    let exact_u64 = |v: f64, ty: &str| -> Result<f64, Error> {
+        unsigned(v, ty)?;
+        if v > 9_007_199_254_740_991.0 {
+            Err(Error::Config(format!(
+                "{path}: {ty} 超出安全整数上限 2^53−1(得到 {v}),请在 YAML 直接编辑,不静默舍入"
+            )))
+        } else {
+            Ok(v)
+        }
+    };
     match path {
         "scenario.population" => cfg.players = unsigned(value, "population")?.round() as u32,
-        "scenario.seed" => cfg.base_seed = unsigned(value, "seed")?.round() as u64,
+        "scenario.seed" => cfg.base_seed = exact_u64(value, "seed")?.round() as u64,
         "scenario.population_mix.casual" => cfg.cohort_weights[0] = value,
         "scenario.population_mix.core" => cfg.cohort_weights[1] = value,
         "scenario.population_mix.whale" => cfg.cohort_weights[2] = value,
@@ -593,12 +605,12 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.gacha.pity_hard" => {
             cfg.gacha
                 .get_or_insert_with(crate::config::GachaConfig::default)
-                .pity_hard = unsigned(value, "pity_hard")?.round() as u64;
+                .pity_hard = exact_u64(value, "pity_hard")?.round() as u64;
         }
         "model.gacha.pity_soft_start" => {
             cfg.gacha
                 .get_or_insert_with(crate::config::GachaConfig::default)
-                .pity_soft_start = unsigned(value, "pity_soft_start")?.round() as u64;
+                .pity_soft_start = exact_u64(value, "pity_soft_start")?.round() as u64;
         }
         "model.gacha.pity_soft_step" => {
             cfg.gacha
@@ -621,6 +633,23 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         _ => return Err(unknown(path)),
     }
     Ok(())
+}
+
+/// 读 u64 槽位的原始整数值(WB-03.08 无损通道):u64 经 [`read_numeric`]
+/// 的 f64 会在 2^53 之外静默舍入,seed / 保底抽数要原始通道;桥接层对
+/// 超出 JS 安全整数的值以十进制字符串无损表达。非 u64 路径返回 None。
+pub fn read_u64_raw(cfg: &SimConfig, path: &str) -> Option<u64> {
+    match path {
+        "scenario.seed" => Some(cfg.base_seed),
+        "model.gacha.pity_hard" => Some(cfg.gacha.as_ref().map(|g| g.pity_hard).unwrap_or(0)),
+        "model.gacha.pity_soft_start" => Some(
+            cfg.gacha
+                .as_ref()
+                .map(|g| g.pity_soft_start)
+                .unwrap_or(0),
+        ),
+        _ => None,
+    }
 }
 
 fn key_str(k: &Value) -> Result<String, Error> {

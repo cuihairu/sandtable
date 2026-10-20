@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path'
 
 import * as wasm from '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js'
 import { METRIC_KEYS, SWEEP_MODES } from '../src/lib/types.ts'
+import { METRIC_META, metricLabel } from '../src/lib/metricMeta.ts'
 import { PARAM_REGISTRY } from '../src/workbench/params/paramRegistry.ts'
 import { applyParamEdits } from '../src/workbench/params/configYaml.ts'
 import { classifyWasmError } from '../src/lib/errors.ts'
@@ -338,4 +339,67 @@ test('WB-03.07 回写契约:内核通道只出 hash/回读值不出 YAML;文本�
   ]) {
     assert.ok(applied.yaml.includes(frag), `结构段应逐字节保留: ${frag}`)
   }
+})
+
+test('WB-03.08 u64 安全整数边界:越界读无损表达、写明确拒绝,不静默舍入', () => {
+  // 读:2^53+1 的 seed → 十进制字符串(JSON 数字会被 JS parse 成 2^53,静默丢精度)
+  // BigInt 字面量保证 YAML 文本精确,BigInt 本身证明 JS number 表达不了它
+  const BIG = 9007199254740993n
+  assert.notEqual(`${BIG}`, `${Number(BIG)}`, '前提:2^53+1 在 JS number 下必舍入')
+  const bigYaml = `schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: ${BIG}}\n`
+  const vals = JSON.parse(wasm.param_values(bigYaml))
+  assert.equal(vals['scenario.seed'], `${BIG}`, '越界 u64 读 = 字符串无损')
+  assert.equal(typeof vals['scenario.seed'], 'string')
+  // 读:安全范围内仍是数字;gacha 未配置时 pity 缺省 0 是数字
+  const small = JSON.parse(wasm.param_values(YAML))
+  assert.equal(small['scenario.seed'], 7)
+  assert.equal(small['model.gacha.pity_hard'], 0)
+  // 写:越界明确拒绝(2^53−1 上限,不静默舍入)
+  assert.throws(() => wasm.param_apply(YAML, 'scenario.seed', Number(BIG)), (e) => {
+    assert.match(String(e), /2\^53−1/)
+    assert.equal(classifyWasmError(String(e)).kind, 'config')
+    return true
+  })
+  // 写:边界内正常应用且回读数字
+  const ok = JSON.parse(wasm.param_apply(bigYaml, 'scenario.seed', 42))
+  assert.equal(ok.value, 42)
+  // TS 类型面:值字段与读取表允许 string 分支
+  const src = read('src/lib/wasm.ts')
+  assert.match(src, /Record<string, number \| string>/, 'paramValues 类型含无损字符串分支')
+  assert.match(src, /value: number \| string/, 'ParamApplyResult.value 含无损字符串分支')
+})
+
+test('WB-03.09 KPI 入口:可用性来自内核规则,可空位与内核 extract 对齐,ID 与显示名分面', () => {
+  // 可用性 = 内核 unavailable_reason(天数/配置门槛),不是前端猜测
+  const short = JSON.parse(wasm.kpi_availability(YAML))
+  const ids = short.map((x) => x.metric).sort()
+  assert.deepEqual(ids, ['gacha_pulls_to_hit', 'loot_gold_per_player', 'retention_d7'], '3d 无 gacha/loot:d7/gacha/loot 不可用')
+  assert.ok(short.every((x) => typeof x.reason === 'string' && x.reason.length > 0), 'reason = 内核原文')
+  // 配齐(days ≥7 + gacha + loot)→ 空 = 全部可用
+  const full = 'schema_version: "1"\nscenario: {population: 40, duration: "7d", seed: 7}\nmodel:\n  gacha: {base_rate: 0.05}\n  loot:\n    on_victory: chest\n    tables:\n      chest:\n        weights: { gold_small: 100 }\n    rewards:\n      gold_small: { gold: 5, xp: 0 }\n'
+  assert.deepEqual(JSON.parse(wasm.kpi_availability(full)), [], '配齐后全部可用')
+  // 非法配置 → 配置错误通道
+  assert.throws(() => wasm.kpi_availability('scenario: {population: -5}\n'), /^配置错误:/)
+  // 可空位运行时锁:2 天跑真内核 → 可空指标如实缺席(WB-03.01 口径:
+  // retention 系 = null;gacha/loot = 键省略型 skip_serializing_if),不是 0
+  const run = JSON.parse(wasm.run_simulation('schema_version: "1"\nscenario: {population: 40, duration: "2d", seed: 7}\n', 1))
+  const m = run.results[0]
+  assert.equal(m.retention_d7, null, 'd7 可空位 = null')
+  assert.equal(m.retention_d3, null, 'd3 可空位 = null')
+  assert.ok(!('gacha_pulls_to_hit' in m), 'gacha 未配置 = 键省略')
+  assert.ok(!('loot_gold_per_player' in m), 'loot 未配置 = 键省略')
+  assert.ok(m.win_rate !== null && typeof m.win_rate === 'number', '非空位有值')
+  // metricMeta nullable 表与内核逐项对齐(与上面 null 集合一致)
+  const meta = METRIC_META
+  for (const key of METRIC_KEYS) {
+    const nullAtRun = ['retention_d7', 'retention_d3', 'gacha_pulls_to_hit', 'loot_gold_per_player'].includes(key)
+    assert.equal(meta[key].nullable, nullAtRun, `${key} nullable 应与内核 extract Option 对齐`)
+  }
+  // ID 与显示名分面:显示名 ≠ 内核 ID(两语言),ID 是机器列名
+  assert.notEqual(metricLabel('win_rate', 'zh-CN'), 'win_rate')
+  assert.notEqual(metricLabel('win_rate', 'en-US'), 'win_rate')
+  // TS 桥接接线
+  const svc = read('src/lib/wasm.ts')
+  assert.match(svc, /invoke\('kpi_availability', \{ yaml \}\)/, '桌面路径走 kpi_availability 命令')
+  assert.match(svc, /kpiAvailabilityBinding\(yaml\)/, '浏览器路径走 wasm 绑定')
 })

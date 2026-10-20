@@ -8,6 +8,7 @@ import init, {
   param_registry as paramRegistryBinding,
   param_values as paramValuesBinding,
   param_apply as paramApplyBinding,
+  kpi_availability as kpiAvailabilityBinding,
   sweep_plan as sweepPlanBinding,
   sweep_candidate as sweepCandidateBinding,
   sweep_recommend as sweepRecommendBinding,
@@ -54,17 +55,20 @@ export async function paramDefinitions(): Promise<ParamDefinition[]> {
 
 // 当前配置数值读取(WB-03.05):core read_numeric 的真实生效值,
 // 不把注册表 default 当当前值;非数值槽(时长/公式/结构表)缺键 ≠ 0;
-// loot/gacha 未配置时返回内核真实生效缺省。
-export async function paramValues(yaml: string): Promise<Record<string, number>> {
+// loot/gacha 未配置时返回内核真实生效缺省。u64 槽位(seed/pity_*)走
+// 无损通道(WB-03.08):超出 JS 安全整数(2^53−1)的值以十进制字符串
+// 表达(string 分支),绝不静默舍入。
+export async function paramValues(yaml: string): Promise<Record<string, number | string>> {
   if (isDesktop) return invoke('param_values', { yaml })
   await ensureInit()
-  return JSON.parse(paramValuesBinding(yaml) as unknown as string) as Record<string, number>
+  return JSON.parse(paramValuesBinding(yaml) as unknown as string) as Record<string, number | string>
 }
 
 // 数值参数应用(WB-03.06):内核寻址 apply_numeric 单条编辑,应用后重验
 // (显式性契约在编辑期报错),返回应用后 config_hash 与回读值;未知路径/
 // 非数值槽/非法类型抛 配置错误: 前缀字符串(经 classifyWasmError 分类)。
-export type ParamApplyResult = { config_hash: string; path: string; value: number }
+// u64 槽位越界值(> 2^53−1)内核明确拒绝,同样不静默舍入(WB-03.08)。
+export type ParamApplyResult = { config_hash: string; path: string; value: number | string }
 
 export async function paramApply(
   yaml: string,
@@ -74,6 +78,18 @@ export async function paramApply(
   if (isDesktop) return invoke('param_apply', { yaml, path, value })
   await ensureInit()
   return JSON.parse(paramApplyBinding(yaml, path, value) as unknown as string) as ParamApplyResult
+}
+
+// KPI 可用性(WB-03.09):内核 MetricKey::ALL 逐项 unavailable_reason,
+// 返回 [{metric, reason}](空 = 全部可用)。metric 是内核 ID(snake_case),
+// reason 是内核中文原文(错误通道原样透传);名称/显示名/可展示格式在
+// metricMeta 显示层(内核 ID 与本地化显示名分面)。
+export type KpiUnavailable = { metric: string; reason: string }
+
+export async function kpiAvailability(yaml: string): Promise<KpiUnavailable[]> {
+  if (isDesktop) return invoke('kpi_availability', { yaml })
+  await ensureInit()
+  return JSON.parse(kpiAvailabilityBinding(yaml) as unknown as string) as KpiUnavailable[]
 }
 
 // 长任务(桌面异步命令):onProgress 经 Channel 逐 replicate 收 {done,total};

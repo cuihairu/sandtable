@@ -208,12 +208,23 @@ pub fn param_registry() -> JsValue {
 ///   其有效形态就是配置文本本身(WB-03.07 回写契约);
 /// - loot/gacha 未配置时返回的是内核真实生效缺省(read_numeric 的
 ///   unwrap_or),不是前端拿注册表 default 补值;
-/// - u64/seed 走 f64 通道与 read_numeric 同精度边界(JS 安全整数面
-///   归 WB-03.08)。
+/// - u64 槽位(seed/pity_*)走无损通道(WB-03.08):≤ 2^53−1 返回 JSON
+///   数字;超出 JS 安全整数的值以**十进制字符串**无损表达,
+///   不经 f64 静默舍入(apply 侧对越界值明确拒绝,见 apply_numeric)。
 pub fn param_values_native(yaml: &str) -> Result<serde_json::Value, String> {
+    const MAX_SAFE: u64 = 9_007_199_254_740_991;
     let cfg = load(yaml)?;
     let mut out = serde_json::Map::new();
     for spec in core::registry::all() {
+        if let Some(raw) = core::registry::read_u64_raw(&cfg, spec.path) {
+            let v = if raw <= MAX_SAFE {
+                json!(raw)
+            } else {
+                json!(raw.to_string())
+            };
+            out.insert(spec.path.to_string(), v);
+            continue;
+        }
         if let Ok(v) = core::registry::read_numeric(&cfg, spec.path) {
             out.insert(spec.path.to_string(), json!(v));
         }
@@ -256,6 +267,33 @@ pub fn param_apply_native(yaml: &str, path: &str, value: f64) -> Result<serde_js
 #[wasm_bindgen]
 pub fn param_apply(yaml: &str, path: &str, value: f64) -> Result<JsValue, JsValue> {
     let v = param_apply_native(yaml, path, value).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// KPI 可用性入口(native 纯函数):对给定配置,内核 `MetricKey::ALL` 逐项
+/// `unavailable_reason`(WB-03.09 可用性语义 = 内核口径:天数不足 /
+/// gacha / loot 未配置)。返回 `[{metric, reason}]`,空数组 = 全部可用;
+/// metric 是内核 ID(snake_case),reason 是内核原文(中文,进错误通道
+/// 原样透传,不前端改写)。名称/显示名/格式在 TS metricMeta 面(显示层)。
+pub fn kpi_availability_native(yaml: &str) -> Result<serde_json::Value, String> {
+    let cfg = load(yaml)?;
+    Ok(json!(
+        core::experiment::MetricKey::ALL
+            .iter()
+            .filter_map(|k| {
+                core::experiment::MetricKey::unavailable_reason(*k, &cfg)
+                    .map(|reason| json!({ "metric": k.name(), "reason": reason }))
+            })
+            .collect::<Vec<_>>()
+    ))
+}
+
+/// KPI 可用性(wasm 入口):JSON 字符串,形状同 [`kpi_availability_native`]。
+#[wasm_bindgen]
+pub fn kpi_availability(yaml: &str) -> Result<JsValue, JsValue> {
+    let v = kpi_availability_native(yaml).map_err(|e| JsValue::from_str(&e))?;
     serde_json::to_string(&v)
         .map(|s| JsValue::from_str(&s))
         .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -384,6 +422,55 @@ mod tests {
         // 非法配置报配置错误(与 validate_config 同前缀)
         let err = param_values_native("schema_version: '1'\nscenario: {population: -5}\n").unwrap_err();
         assert!(err.starts_with("配置错误"), "{err}");
+    }
+
+    #[test]
+    fn u64_beyond_safe_integer_is_lossless_or_rejected() {
+        // 读:超出 2^53−1 的 seed 以十进制字符串无损表达,不经 f64 舍入
+        let big = 9_007_199_254_740_993u64; // 2^53 + 1
+        let yaml = format!("schema_version: '1'\nscenario: {{population: 40, duration: '3d', seed: {big}}}\n");
+        let vals = param_values_native(&yaml).unwrap();
+        assert_eq!(vals["scenario.seed"], json!(big.to_string()), "越界 u64 读 = 字符串无损表达");
+        // 读:安全范围内的 seed 仍是数字
+        let small = param_values_native(YAML).unwrap();
+        assert_eq!(small["scenario.seed"], json!(7), "范围内 u64 读 = 数字");
+        // 写:越界值明确拒绝,不静默舍入
+        let e = param_apply_native(YAML, "scenario.seed", big as f64).unwrap_err();
+        assert!(e.contains("2^53−1") && e.contains("不静默舍入"), "{e}");
+        // 写:pity_hard 同门(未配置 gacha 时 get_or_insert 后仍要先过安全整数门)
+        let e2 = param_apply_native(YAML, "model.gacha.pity_hard", 9_100_000_000_000_000.0).unwrap_err();
+        assert!(e2.contains("2^53−1"), "{e2}");
+    }
+
+    #[test]
+    fn kpi_availability_comes_from_kernel_rules() {
+        // 3 天 + 无 gacha/loot:d3(需 ≥3 之内可用?days=3 满足 d3)——
+        // d7 与 gacha、loot 三项不可用,reason 是内核原文
+        let yaml = "schema_version: '1'\nscenario: {population: 40, duration: '3d', seed: 7}\n";
+        let out = kpi_availability_native(yaml).unwrap();
+        let items = out.as_array().unwrap();
+        assert_eq!(items.len(), 3, "d7/gacha/loot 三项不可用");
+        for it in items {
+            assert!(it["reason"].as_str().unwrap().starts_with("retention_d7")
+                || it["reason"].as_str().unwrap().starts_with("gacha_pulls_to_hit")
+                || it["reason"].as_str().unwrap().starts_with("loot_gold_per_player"),
+                "reason 带内核 ID 前缀: {}", it["reason"]);
+        }
+        // 7 天 + gacha + loot 齐备 → 空数组 = 全部可用
+        let full = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '7d', seed: 7}\n",
+            "model:\n",
+            "  gacha: {base_rate: 0.05}\n",
+            "  loot:\n",
+            "    on_victory: chest\n",
+            "    tables:\n",
+            "      chest:\n",
+            "        weights: { gold_small: 100 }\n",
+            "    rewards:\n",
+            "      gold_small: { gold: 5, xp: 0 }\n",
+        );
+        assert!(kpi_availability_native(full).unwrap().as_array().unwrap().is_empty());
     }
 
     #[test]
