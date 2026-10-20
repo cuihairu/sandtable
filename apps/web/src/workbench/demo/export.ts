@@ -91,21 +91,22 @@ export function svgAnnotation(locale: string, metricLabel: string): { title: str
   }
 }
 
-/** 从 React 渲染出的主图 SVG 元素序列化为独立 SVG 文件(带来源标注)。
- * WB-11.23:导出语言必传——记录进产物根节点(xml:lang + data-locale),
- * 可读标注(title/desc)经 svgAnnotation 用同一 locale 出词,不混语言。 */
-export function svgFromElement(
+/** SVG 序列化共用封装(WB-09.05 起真实 run 复用):xmlns + locale 元数据
+ * (xml:lang + data-locale)+ 可读标注 + 内嵌图表样式 + 白底;来源与数据
+ * 属性由调用方给定(演示 = synthetic_demo,真实 = kernel + data-run)。 */
+export function svgSerialize(
   svg: SVGSVGElement,
-  metricLabel: string,
-  metricId: string,
   locale: string,
+  annotation: { title: string; desc: string },
+  dataSource: string,
+  dataMetric: string,
+  dataRun: string | null,
 ): string {
   const clone = svg.cloneNode(true) as SVGSVGElement
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
   for (const [name, value] of Object.entries(svgLanguageMeta(locale))) {
     clone.setAttribute(name, value)
   }
-  const annotation = svgAnnotation(locale, metricLabel)
   const title = document.createElementNS('http://www.w3.org/2000/svg', 'title')
   title.textContent = annotation.title
   const desc = document.createElementNS('http://www.w3.org/2000/svg', 'desc')
@@ -117,9 +118,22 @@ export function svgFromElement(
   bg.setAttribute('height', '100%')
   bg.setAttribute('fill', 'white')
   clone.replaceChildren(title, desc, style, bg, ...Array.from(clone.children))
-  clone.setAttribute('data-source', DATA_SOURCE)
-  clone.setAttribute('data-metric', metricId)
+  clone.setAttribute('data-source', dataSource)
+  clone.setAttribute('data-metric', dataMetric)
+  if (dataRun !== null) clone.setAttribute('data-run', dataRun)
   return new XMLSerializer().serializeToString(clone)
+}
+
+/** 从 React 渲染出的主图 SVG 元素序列化为独立 SVG 文件(带来源标注)。
+ * WB-11.23:导出语言必传——记录进产物根节点(xml:lang + data-locale),
+ * 可读标注(title/desc)经 svgAnnotation 用同一 locale 出词,不混语言。 */
+export function svgFromElement(
+  svg: SVGSVGElement,
+  metricLabel: string,
+  metricId: string,
+  locale: string,
+): string {
+  return svgSerialize(svg, locale, svgAnnotation(locale, metricLabel), DATA_SOURCE, metricId, null)
 }
 
 export function download(name: string, data: string | Uint8Array, mime: string): void {

@@ -17,6 +17,7 @@ import {
   RAW_FIELD_KINDS, isRawFieldKind,
 } from '../src/lib/machineExport.ts'
 import { svgAnnotation } from '../src/workbench/demo/export.ts'
+import { svgRunAnnotation } from '../src/workbench/analysis/svgExport.ts'
 import { readFileSync } from 'node:fs'
 
 test('WB-11.22:machineNumber 规范十进制——小数点恒为点,无千分位,-0 归一', () => {
@@ -138,6 +139,35 @@ test('WB-11.23:调用侧把导出语言与本地化显示名传入 SVG 产物', 
   const app = readFileSync(new URL('../src/workbench/WorkbenchApp.tsx', import.meta.url), 'utf8')
   assert.ok(app.includes("svgFromElement(mainChart, metricLabel(metric.id"), 'SVG 标题用导出语言的指标显示名,不写死 zh label')
   assert.match(app, /svgFromElement\([\s\S]{0,200}?,\s*locale\)/, 'SVG 导出传入导出时 locale')
+})
+
+test('WB-09.05:真实 run SVG 标注随导出语言走词典,声明内核来源与可追溯 run', () => {
+  const zh = svgRunAnnotation('zh-CN', '胜率', 'run_0001', 'completed')
+  assert.equal(zh.title, '胜率 · kernel · run run_0001 · completed')
+  assert.match(zh.desc, /内核/)
+  assert.match(zh.desc, /run_0001/, '说明带 run id,可追溯')
+  assert.match(zh.desc, /completed/, '说明带运行状态')
+  assert.ok(!/\{/.test(zh.title + zh.desc), '占位符全部替换,不漏 {label}/{run}/{status}')
+  const en = svgRunAnnotation('en-US', 'Win rate', 'run_0001', 'completed')
+  assert.equal(en.title, 'Win rate · kernel · run run_0001 · completed')
+  assert.ok(!/[一-龥]/.test(en.title + en.desc), '英文 locale 标注无中文(不混语言)')
+  assert.doesNotThrow(() => svgRunAnnotation('fr-FR', '指标', 'run_0001', 'completed'), '未知 locale 回退仍成形')
+})
+
+test('WB-09.05:真实 run SVG 序列化带 kernel 来源与 data-run,弹窗提供 svg 格式', () => {
+  // 源级守卫:真实产物必须 kernel 来源 + data-run 可追溯,且走与演示同一
+  // svgSerialize 封装(内嵌样式/xml:lang/data-locale 一处出);demo 侧只写
+  // data-source=值由调用方给定,真实侧传 KERNEL_SOURCE
+  const run = readFileSync(new URL('../src/workbench/analysis/svgExport.ts', import.meta.url), 'utf8')
+  assert.ok(run.includes('KERNEL_SOURCE'), '来源常量是 kernel,不冒充合成演示数据')
+  assert.match(run, /KERNEL_SOURCE, metricId, runId\)/, 'data-run 与标注共用同一个 run id')
+  const serialize = readFileSync(new URL('../src/workbench/demo/export.ts', import.meta.url), 'utf8')
+  assert.match(serialize, /setAttribute\('data-source', dataSource\)/, 'svgSerialize 写 data-source')
+  assert.match(serialize, /setAttribute\('data-run', dataRun\)/, 'svgSerialize 写 data-run(真实产物非空)')
+  const app = readFileSync(new URL('../src/workbench/WorkbenchApp.tsx', import.meta.url), 'utf8')
+  assert.ok(app.includes('svgRunFromElement(mainChart, locale, metricLabel(metric, locale)'), '真实 SVG 用导出语言的指标显示名 + locale')
+  assert.ok(app.includes("'#workspace svg.main-chart'"), '序列化的是分析页主图(所选候选高亮随图带出)')
+  assert.match(app, /formats=\{exportCtx \? \['json', 'csv', 'svg'\] : undefined\}/, '真实运行导出弹窗提供 SVG 格式')
 })
 
 test('WB-11.19:原始字段六类登记在册,机器导出只收原始值', () => {

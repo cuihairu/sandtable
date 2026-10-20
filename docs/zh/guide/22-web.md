@@ -67,13 +67,15 @@ wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试
 
 ### 导出绑定真实 run（WB-09.01）
 
-导出对话框有两种互斥上下文：演示上下文（导出内置样例，产物标注 `synthetic_demo`）与真实 run 上下文（分析页真实视图打开）。真实上下文里，范围计数与产物一律派生自当前 run——解析口径（会话选中 job → 选择器 runId → 最新真实 job）由 `analysis/exportScope.ts` 的 `currentRealJob` 单点提供，分析页与对话框共用；范围 = 全部计划内候选 / 分析页当前筛选（overall 判定同一口径）/ 当前选中候选，选项显示实际数量，所选为空时该项禁用、无候选时下载禁用。产物 JSON 信封：`data_source=kernel`、`run_id`、`spec`、`status`、`results`（按计划下标对位保留范围行，未进入范围的候选不出现在产物里）、`recommendation` 与 `export_scope` 证据（scope/candidates/total；部分返回的运行只导出已返回槽位，证据仍记全集计划数）；未运行的草稿与演示数据绝不进入这份产物。机器输出口径（WB-11.19）：数字走 `machineJson` 规范十进制，locale 无关。真实上下文已开放 JSON / CSV（CSV 契约见下），SVG 随 WB-09.05 落地后放开。
+导出对话框有两种互斥上下文：演示上下文（导出内置样例，产物标注 `synthetic_demo`）与真实 run 上下文（分析页真实视图打开）。真实上下文里，范围计数与产物一律派生自当前 run——解析口径（会话选中 job → 选择器 runId → 最新真实 job）由 `analysis/exportScope.ts` 的 `currentRealJob` 单点提供，分析页与对话框共用；范围 = 全部计划内候选 / 分析页当前筛选（overall 判定同一口径）/ 当前选中候选，选项显示实际数量，所选为空时该项禁用、无候选时下载禁用。产物 JSON 信封：`data_source=kernel`、`run_id`、`spec`、`status`、`results`（按计划下标对位保留范围行，未进入范围的候选不出现在产物里）、`recommendation` 与 `export_scope` 证据（scope/candidates/total；部分返回的运行只导出已返回槽位，证据仍记全集计划数）；未运行的草稿与演示数据绝不进入这份产物。机器输出口径（WB-11.19）：数字走 `machineJson` 规范十进制，locale 无关。真实上下文已开放 JSON / CSV / SVG（CSV 契约见下；SVG 见 WB-09.05 段）。
 
 真实上下文的 CSV（WB-09.02）导出 `<run_id>-candidates.csv`：稳定机器列名——`data_source / run_id / experiment_id`（运行登记缺省时空单元格，不虚构）/ `candidate_id`（内容寻址）/ `candidate_index` / `replicates` / 每个参数 ID 一列 / `status`（ok|config_error|pending|failed|cancelled）/ `fail_reason` / `verdict`（pass|borderline|fail，未判定空单元格），指标统计列 `<metric>.mean|ci95_lo|ci95_hi|sd|n` 且量纲进列名（percent 维度 `[ratio_0_1]` = 内核 0–1 原口径、导出绝不乘 100；amount 维度 `[amount]`；`n` 恒 `[count]`）；指标集 = 计划 targets + 实际产出过的指标，范围无关因此列名稳定；不可用统计 = 空单元格、绝不写 0；失败原因明确——候选级 = 内核 config_error 原文（逗号/引号走 RFC4180），运行级失败原文落到未运行行；数值走 `machineNumber` 规范十进制，locale 无关（中英文列名一致）；BOM + CRLF 与演示 CSV 同一封装。
 
 
 
 真实 run 的 JSON 快照（WB-09.04）在信封里显式带来源与版本：`version` = `model_version` / `schema_version`（来自运行自带的分析上下文，缺则 `null` 不虚构）+ `plan_config_hash`（计划配置哈希）+ `input_config_hash`（运行索引登记的输入哈希），`source` = `registered`（是否登记）/ `experiment_id` / `seed` / `created_at_unix`（未登记一律 `null`）；分析页工具栏的「下载来源 JSON」与导出对话框同走这一份信封（`scopedRunJson`），页面不再内联拼装。当前未运行草稿另存为独立产物 `<run_id>-drafts.json`：`data_source=candidate_draft`、`run_status=unrun`、`included_in_run_inputs=false` 三处机器声明保证任何一份下载都无法被当成该 run 的输入或输出；每条草稿保留自己的 `source_run_id` / `source_candidate_id` / 基线 / 全量取值 / 独立 YAML 编辑缓冲（snake_case、原文不翻译），草稿的内容与存在都不进入该 run 的 JSON/CSV 导出；单份草稿的「方案与来源 JSON」带同一组声明。
+
+SVG 导出（WB-09.05）序列化分析页当前指标的主图：所选候选的高亮随图带出，图表样式与白底内嵌进文件（独立打开不丢外观），轴刻度与指标/单位标注按渲染原样保留；来源随根节点声明 `data-source=kernel`、`data-run=<run id>`、`data-metric=<指标 ID>`，`xml:lang` 与 `data-locale` 记录导出语言，title/desc 声明数据与判定来自内核、统计不经前端改写。产物命名 `<run_id>-<指标>.svg`；分析页没有主图可序列化时不下载也不提示成功。演示与真实两种 SVG 走同一个序列化封装（`svgSerialize`），只有来源、标注与 data-run 由真实侧换成 kernel 口径。
 
 ## 等价验收
 

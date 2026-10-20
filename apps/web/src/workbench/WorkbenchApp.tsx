@@ -59,6 +59,7 @@ import { notify } from './state/notifications.ts'
 import { candidateIdFor } from './ids.ts'
 import { t, tPlural } from '../lib/i18n/index.ts'
 import { currentRealJob, scopeCounts, scopeRows, scopedRunCsv, scopedRunJson } from './analysis/exportScope.ts'
+import { svgRunFromElement } from './analysis/svgExport.ts'
 import { analysisSnapshot, defaultResultUI, subscribeAnalysis } from './analysis/analysisStore.ts'
 import { fmtNumber } from '../lib/i18n/format.ts'
 import { localeSession, useLocale } from './state/localeStore.ts'
@@ -370,6 +371,17 @@ export default function WorkbenchApp(): JSX.Element {
         patchOverlays({ exportDialog: { open: false, scope: 'all' } })
         return
       }
+      if (format === 'svg') {
+        // WB-09.05:序列化分析页当前指标主图(所选候选高亮随图带出),kernel 来源标注
+        const mainChart = document.querySelector<SVGSVGElement>('#workspace svg.main-chart')
+        if (mainChart !== null) {
+          const metric = exportCtx.ui.metric
+          download(`${exec.runId}-${metric}.svg`, svgRunFromElement(mainChart, locale, metricLabel(metric, locale), metric, exec.runId, exportCtx.job.status), 'image/svg+xml')
+          notify('success', t(locale, 'analysis.exportRunSvgDone', { run: exec.runId, metric }))
+          patchOverlays({ exportDialog: { open: false, scope: 'all' } })
+        }
+        return
+      }
       download(`${exec.runId}.json`, scopedRunJson(exportCtx.job, exportCtx.ui, scope, runEntry), 'application/json')
       notify('success', t(locale, 'analysis.exportRunJsonDone', { run: exec.runId, kept, total }))
       patchOverlays({ exportDialog: { open: false, scope: 'all' } })
@@ -632,7 +644,7 @@ export default function WorkbenchApp(): JSX.Element {
             }).length,
             selected: 1,
           }}
-        formats={exportCtx ? ['json', 'csv'] : undefined}
+        formats={exportCtx ? ['json', 'csv', 'svg'] : undefined}
         sourceNote={exportCtx
           ? t(locale, 'data.exportDialog.runLine', { run: exportCtx.job.exec!.runId, status: exportCtx.job.status })
           : undefined}
