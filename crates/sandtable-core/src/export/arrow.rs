@@ -152,7 +152,7 @@ pub fn cohort_batch(m: &RunMetrics) -> ArrowResult<RecordBatch> {
     ]);
     let cols: Vec<ArrayRef> = vec![
         Arc::new(StringArray::from_iter_values(
-            m.cohort_stats.iter().map(|c| c.cohort),
+            m.cohort_stats.iter().map(|c| c.cohort.clone()),
         )),
         Arc::new(UInt64Array::from_iter_values(
             m.cohort_stats.iter().map(|c| c.count),

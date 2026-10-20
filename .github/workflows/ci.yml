@@ -144,9 +144,12 @@ jobs:
       # 项目打包/解包闭环 + 路径纪律(打包产物过真实内核 validate)
       - name: 前端守卫(node --test)
         run: |
-          node --test apps/web/tests/columns.test.mjs apps/web/tests/tokens.test.mjs apps/web/tests/workbench-ids.test.mjs apps/web/tests/workbench-logic.test.mjs apps/web/tests/i18n.test.mjs apps/web/tests/params-config.test.mjs apps/web/tests/sweep-view.test.mjs apps/web/tests/machine-export.test.mjs apps/web/tests/execution.test.mjs apps/web/tests/workbench-store.test.mjs apps/web/tests/workbench-shortcuts.test.mjs apps/web/tests/workbench-locale.test.mjs apps/web/tests/experiment-form.test.mjs
+          # 不依赖 wasm pkg 的套件先跑;需要 pkg-node 的测试必须在下面 wasm-pack
+          # nodejs 构建之后(experiment-form 曾错列在此组,全新 checkout 无 pkg-node)
+          node --test apps/web/tests/columns.test.mjs apps/web/tests/tokens.test.mjs apps/web/tests/workbench-ids.test.mjs apps/web/tests/workbench-logic.test.mjs apps/web/tests/i18n.test.mjs apps/web/tests/params-config.test.mjs apps/web/tests/sweep-view.test.mjs apps/web/tests/machine-export.test.mjs apps/web/tests/execution.test.mjs apps/web/tests/workbench-store.test.mjs apps/web/tests/workbench-shortcuts.test.mjs apps/web/tests/workbench-locale.test.mjs
           wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
-          node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs apps/web/tests/contracts.test.mjs apps/web/tests/execution-kernel.test.mjs
+          # 依赖 pkg-node 的套件(sandtable_wasm.js 由上一步构建)
+          node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs apps/web/tests/contracts.test.mjs apps/web/tests/execution-kernel.test.mjs apps/web/tests/experiment-form.test.mjs
           node --test apps/web/tests/analysis-results.test.mjs
 
   # 桌面启动链守卫(2026-10-13 接入):无 custom-protocol 的构建是开发形态——窗口
