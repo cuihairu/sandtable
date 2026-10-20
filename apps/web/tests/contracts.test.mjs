@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path'
 
 import * as wasm from '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js'
 import { METRIC_KEYS, SWEEP_MODES } from '../src/lib/types.ts'
+import { PARAM_REGISTRY } from '../src/workbench/params/paramRegistry.ts'
 import { classifyWasmError } from '../src/lib/errors.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -206,8 +207,33 @@ test('错误类型:绑定层前缀可分类,候选 config_error 照常上报', (
   assert.equal(bad.target_outcomes.length, 0)
 })
 
-test('无运行时出口的族已声明(参数定义/配置/A/B 比较,桥接落地后升级运行时锁)', () => {
-  for (const name of ['ParamDefinition', 'SimConfig', 'Comparison']) {
+test('无运行时出口的族已声明(配置/A/B 比较,桥接落地后升级运行时锁)', () => {
+  for (const name of ['SimConfig', 'Comparison']) {
     assert.ok(TYPES.has(name), `types.ts 缺 ${name}(WB-03.01 六族之一)`)
   }
+})
+
+test('WB-03.04 参数定义桥接:内核注册表原样入界,恰四字段,无内核外元信息', () => {
+  const defs = JSON.parse(wasm.param_registry())
+  const kinds = new Set(PARAM_REGISTRY.map((p) => p.kind))
+  assert.equal(defs.length, PARAM_REGISTRY.length, `条数 = 注册表全量(${PARAM_REGISTRY.length})`)
+  for (let i = 0; i < defs.length; i++) {
+    const d = defs[i]
+    // 恰四字段:内核未提供的可选元信息一概不出场(缺席保持缺席,不造默认值)
+    assert.deepEqual(Object.keys(d).sort(), ['default', 'desc', 'kind', 'path'])
+    for (const f of ['path', 'kind', 'default', 'desc']) {
+      assert.equal(typeof d[f], 'string', `${d.path ?? i}.${f} 应为字符串`)
+    }
+    // 逐字段 = 注册表原文(声明序也锁);TS 镜像与内核任一侧漂移即红
+    assert.equal(d.path, PARAM_REGISTRY[i].path, `第 ${i} 项 path`)
+    assert.equal(d.kind, PARAM_REGISTRY[i].kind, `${d.path} kind`)
+    assert.ok(kinds.has(d.kind), `kind "${d.kind}" 越界 ParamKind`)
+    assert.equal(d.default, PARAM_REGISTRY[i].default, `${d.path} default`)
+    assert.equal(d.desc, PARAM_REGISTRY[i].desc, `${d.path} desc`)
+  }
+  // TS 服务层两路径同源:桌面 invoke 与浏览器 wasm 绑定形状一致(WB-03.12 前置)
+  const svc = read('src/lib/wasm.ts')
+  assert.match(svc, /invoke\('param_registry'\)/, '桌面路径走 param_registry 命令')
+  assert.match(svc, /paramRegistryBinding\(\)/, '浏览器路径走 wasm 绑定')
+  assert.match(svc, /as ParamDefinition\[\]/, '返回形状声明为 ParamDefinition[]')
 })

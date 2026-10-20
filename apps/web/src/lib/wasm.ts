@@ -5,6 +5,7 @@
 import init, {
   run_simulation as runSim,
   validate_config as validateCfg,
+  param_registry as paramRegistryBinding,
   sweep_plan as sweepPlanBinding,
   sweep_candidate as sweepCandidateBinding,
   sweep_recommend as sweepRecommendBinding,
@@ -13,6 +14,7 @@ import { Channel, invoke } from '@tauri-apps/api/core'
 import type {
   CandidateResult,
   LocalQueryResult,
+  ParamDefinition,
   SimOutput,
   SimProgress,
   SweepPlan,
@@ -36,6 +38,16 @@ export async function validateConfig(yaml: string): Promise<ValidateInfo> {
   if (isDesktop) return invoke('validate_config', { yaml })
   await ensureInit()
   return JSON.parse(validateCfg(yaml) as unknown as string) as ValidateInfo
+}
+
+// 参数定义注册表(WB-03.04):静态全量 {path, kind, default, desc},
+// 浏览器 wasm 与桌面 native 命令同源 core::registry::all,返回形状逐字段一致。
+// 内核没有的可选元信息不出场(缺失保持缺席,不造默认值);desc 是注册表
+// zh 原文,译名在前端显示层(displayParamName)。
+export async function paramDefinitions(): Promise<ParamDefinition[]> {
+  if (isDesktop) return invoke('param_registry')
+  await ensureInit()
+  return JSON.parse(paramRegistryBinding() as unknown as string) as ParamDefinition[]
 }
 
 // 长任务(桌面异步命令):onProgress 经 Channel 逐 replicate 收 {done,total};

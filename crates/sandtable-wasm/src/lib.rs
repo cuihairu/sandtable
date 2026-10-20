@@ -188,6 +188,19 @@ pub fn validate_config(yaml: &str) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+/// 参数定义注册表(native 纯函数):静态全量 `core::registry::all()`,
+/// 每项恰为 {path, kind, default, desc}(WB-03.04)。注册表不含配置读取,
+/// 无入参、不会失败;desc 是注册表里的 zh 原文,译名在前端显示层。
+pub fn param_registry_native() -> serde_json::Value {
+    json!(core::registry::all().cloned().collect::<Vec<_>>())
+}
+
+/// 参数定义注册表(wasm 入口):JSON 字符串,形状同 [`param_registry_native`]。
+#[wasm_bindgen]
+pub fn param_registry() -> JsValue {
+    JsValue::from_str(&param_registry_native().to_string())
+}
+
 /// 运行仿真(wasm 入口):返回 JSON 字符串(形状同 [`run_simulation_native`])。
 #[wasm_bindgen]
 pub fn run_simulation(yaml: &str, replicates: u32) -> Result<JsValue, JsValue> {

@@ -65,6 +65,7 @@ pub fn run() {
         .manage(TaskRegistry::default())
         .invoke_handler(tauri::generate_handler![
             validate_config,
+            param_registry,
             run_simulation,
             cancel_run,
             sweep_plan,
@@ -163,6 +164,13 @@ fn validate_config(yaml: String) -> Result<serde_json::Value, String> {
         "schema_version": sandtable_core::SCHEMA_VERSION,
         "model_version": sandtable_core::MODEL_VERSION,
     }))
+}
+
+/// 参数定义注册表:静态全量 {path, kind, default, desc}(WB-03.04),
+/// 与 wasm param_registry 逐字段同构(core 直连,不经 wasm 边界)。
+#[tauri::command]
+fn param_registry() -> serde_json::Value {
+    serde_json::json!(sandtable_core::registry::all().cloned().collect::<Vec<_>>())
 }
 
 /// 逐 replicate 执行:每个 replicate 开跑前检查取消令牌,完成后上报一次进度。

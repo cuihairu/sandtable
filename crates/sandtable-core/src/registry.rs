@@ -8,8 +8,10 @@ use crate::config::SimConfig;
 use crate::Error;
 use serde_yaml_ng::Value;
 
-/// 参数类型(注册表面)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 参数类型(注册表面)。serde 小写串(#[serde(rename_all)]),wasm / Tauri
+/// 桥接与 TS ParamKind 字面量同形(WB-03.04)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ParamKind {
     U32,
     U64,
@@ -25,8 +27,10 @@ pub enum ParamKind {
     Table,
 }
 
-/// 单个参数的注册项。
-#[derive(Debug, Clone, Copy)]
+/// 单个参数的注册项。Serialize 直出桥接面(WB-03.04):恰四字段
+/// path/kind/default/desc,内核没有的可选元信息一概不出场(缺失保持
+/// 缺席,由消费方按空值处理),不造默认元信息。
+#[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct ParamSpec {
     pub path: &'static str,
     pub kind: ParamKind,
