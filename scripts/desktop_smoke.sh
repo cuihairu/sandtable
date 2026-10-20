@@ -89,9 +89,11 @@ cleanup() {
 }
 trap cleanup EXIT
 # X 就绪且深度确实是 24:显示号被占用时会挂到别人的服务器上,先拦下来。
+# 注意 set -e -o pipefail:Xvfb 还没就绪时 xwininfo 非零退出,命令替换会把整个
+# 脚本带走(exit 1 且无输出)——CI run 39421463675 就是这样死的。必须 || true。
 DEPTH=""
 for _ in $(seq 1 50); do
-  DEPTH=$(DISPLAY="$DISP" xwininfo -root 2>/dev/null | awk -F: '/Depth:/ {gsub(/ /,"",$2); print $2}')
+  DEPTH=$(DISPLAY="$DISP" xwininfo -root 2>/dev/null | awk -F: '/Depth:/ {gsub(/ /,"",$2); print $2}') || true
   [ "$DEPTH" = "24" ] && break
   kill -0 "$XVFB" 2>/dev/null || break
   sleep 0.2
@@ -106,12 +108,16 @@ DISPLAY="$DISP" WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE
 
 # 窗口工具:xwininfo -id 只认 0x 十六进制,xdotool 给的是十进制,必须转。
 # 主窗 = class=sandtable 里「已映射且面积最大」者;10x10 辅助窗从不映射,天然被排除。
+window_geometry() {
+  local out
+  out=$(DISPLAY="$DISP" xwininfo -id "$(printf '0x%x' "$1")" 2>/dev/null) || out=""
+  printf '%s\n' "$out"
+}
 map_state() {
-  DISPLAY="$DISP" xwininfo -id "$(printf '0x%x' "$1")" 2>/dev/null | \
-    awk -F: '/Map State:/ {gsub(/ /,"",$2); print $2}'
+  window_geometry "$1" | awk -F: '/Map State:/ {gsub(/ /,"",$2); print $2}'
 }
 window_area() {
-  DISPLAY="$DISP" xwininfo -id "$(printf '0x%x' "$1")" 2>/dev/null | awk -F: '
+  window_geometry "$1" | awk -F: '
     /Width:/ && !w {gsub(/ /,"",$2); w=$2} /Height:/ && !h {gsub(/ /,"",$2); h=$2}
     END {print (w+0) * (h+0)}'
 }
@@ -163,9 +169,9 @@ for i in 1 2 3 4 5 6 7 8; do
   DISPLAY="$DISP" xdotool windowsize "$WID" $((1260 + i)) 780 2>/dev/null || true
   DISPLAY="$DISP" xdotool windowraise "$WID" 2>/dev/null || true
   sleep 4
-  DISPLAY="$DISP" import -window root /tmp/sandtable_desktop_smoke.png
-  BEST=$(DISPLAY="$DISP" convert /tmp/sandtable_desktop_smoke.png -depth 8 -format "%k" info:)
-  CHANNELS=$(DISPLAY="$DISP" convert /tmp/sandtable_desktop_smoke.png -format "%[channels]" info: | awk '{print $1}')
+  DISPLAY="$DISP" import -window root /tmp/sandtable_desktop_smoke.png || true
+  BEST=$(DISPLAY="$DISP" convert /tmp/sandtable_desktop_smoke.png -depth 8 -format "%k" info:) || BEST=0
+  CHANNELS=$(DISPLAY="$DISP" convert /tmp/sandtable_desktop_smoke.png -format "%[channels]" info: | awk '{print $1}') || CHANNELS="none"
   LAST_MAP=$(map_state "$WID")
   [ "$BEST" -gt "$MIN_COLORS" ] && break
 done
