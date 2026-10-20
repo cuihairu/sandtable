@@ -264,3 +264,31 @@ test('WB-03.05 当前配置读取:生效值来自配置,不拿注册表 default 
   assert.match(svc, /invoke\('param_values', \{ yaml \}\)/, '桌面路径走 param_values 命令')
   assert.match(svc, /paramValuesBinding\(yaml\)/, '浏览器路径走 wasm 绑定')
 })
+
+test('WB-03.06 数值应用桥接:内核寻址,错误逐类明确,应用后重验', () => {
+  // 正常应用:回读值 = 应用值,hash 64 位
+  const ok = JSON.parse(wasm.param_apply(YAML, 'model.warrior.attack', 250))
+  assert.equal(ok.value, 250)
+  assert.equal(ok.path, 'model.warrior.attack')
+  assert.equal(ok.config_hash.length, 64)
+  // 改值 → hash 变
+  const base = JSON.parse(wasm.param_apply(YAML, 'model.warrior.attack', 100))
+  assert.notEqual(base.config_hash, ok.config_hash)
+  // 未知路径:带相近路径建议
+  assert.throws(() => wasm.param_apply(YAML, 'model.warrior.atk', 1), (e) => {
+    assert.match(String(e), /^配置错误:/)
+    assert.match(String(e), /未知参数/)
+    assert.equal(classifyWasmError(String(e)).kind, 'config')
+    return true
+  })
+  // 非数值槽
+  assert.throws(() => wasm.param_apply(YAML, 'scenario.duration', 30), /该参数不是数值/)
+  // 非法范围:u32 为负
+  assert.throws(() => wasm.param_apply(YAML, 'scenario.population', -1), /不能为负/)
+  // 显式性契约:未配置 loot 应用 rate_mult → 编辑期重验即报 on_victory 缺失
+  assert.throws(() => wasm.param_apply(YAML, 'model.loot.rate_mult', 2), /on_victory/)
+  // TS 服务层双路径接线
+  const svc = read('src/lib/wasm.ts')
+  assert.match(svc, /invoke\('param_apply', \{ yaml, path, value \}\)/, '桌面路径走 param_apply 命令')
+  assert.match(svc, /paramApplyBinding\(yaml, path, value\)/, '浏览器路径走 wasm 绑定')
+})

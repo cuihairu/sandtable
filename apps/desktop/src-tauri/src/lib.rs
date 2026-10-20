@@ -67,6 +67,7 @@ pub fn run() {
             validate_config,
             param_registry,
             param_values,
+            param_apply,
             run_simulation,
             cancel_run,
             sweep_plan,
@@ -187,6 +188,24 @@ fn param_values(yaml: String) -> Result<serde_json::Value, String> {
         }
     }
     Ok(serde_json::Value::Object(out))
+}
+
+/// 数值参数应用:内核寻址 apply_numeric 单条编辑,应用后重验(显式性契约
+/// 在编辑期报错,如半配置 loot),返回应用后 config_hash 与回读值
+/// (WB-03.06),与 wasm param_apply 同构。
+#[tauri::command]
+fn param_apply(yaml: String, path: String, value: f64) -> Result<serde_json::Value, String> {
+    let mut cfg = load(&yaml)?;
+    sandtable_core::registry::apply_numeric(&mut cfg, &path, value)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    sandtable_core::config::validate(&cfg).map_err(|e| format!("配置错误: {e}"))?;
+    let back = sandtable_core::registry::read_numeric(&cfg, &path)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    Ok(serde_json::json!({
+        "config_hash": sandtable_core::config::config_hash(&cfg),
+        "path": path,
+        "value": back,
+    }))
 }
 
 /// 逐 replicate 执行:每个 replicate 开跑前检查取消令牌,完成后上报一次进度。

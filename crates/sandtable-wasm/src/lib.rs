@@ -230,6 +230,37 @@ pub fn param_values(yaml: &str) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+/// 数值参数应用(native 纯函数):按内核寻址 `registry::apply_numeric`
+/// 应用单条数值编辑,应用后**重验**(显式性契约:如对未配置 loot 的配置
+/// 应用 rate_mult 会经 get_or_insert 物化半配置 loot,on_victory 空必须
+/// 在编辑期报错而不是等到运行),通过后返回应用后 config_hash 与回读值
+/// (apply/read 镜像证明)(WB-03.06)。
+///
+/// 错误全部 `配置错误: ` 前缀(与 validate_config 同通道,前端
+/// classifyWasmError 直接分类):未知路径带相近路径建议、非数值槽
+/// (时长/公式/结构表)、非法类型与范围(u32/u64 为负等)。u64/seed 经
+/// f64 通道,超过 JS 安全整数的精度边界归 WB-03.08。
+pub fn param_apply_native(yaml: &str, path: &str, value: f64) -> Result<serde_json::Value, String> {
+    let mut cfg = load(yaml)?;
+    core::registry::apply_numeric(&mut cfg, path, value).map_err(|e| format!("配置错误: {e}"))?;
+    core::config::validate(&cfg).map_err(|e| format!("配置错误: {e}"))?;
+    let back = core::registry::read_numeric(&cfg, path).map_err(|e| format!("配置错误: {e}"))?;
+    Ok(json!({
+        "config_hash": core::config::config_hash(&cfg),
+        "path": path,
+        "value": back,
+    }))
+}
+
+/// 数值参数应用(wasm 入口):JSON 字符串,形状同 [`param_apply_native`]。
+#[wasm_bindgen]
+pub fn param_apply(yaml: &str, path: &str, value: f64) -> Result<JsValue, JsValue> {
+    let v = param_apply_native(yaml, path, value).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 /// 运行仿真(wasm 入口):返回 JSON 字符串(形状同 [`run_simulation_native`])。
 #[wasm_bindgen]
 pub fn run_simulation(yaml: &str, replicates: u32) -> Result<JsValue, JsValue> {
@@ -306,6 +337,30 @@ mod tests {
             4,
             "恰四字段,可选元信息不出场"
         );
+    }
+
+    #[test]
+    fn param_apply_uses_kernel_addressing_and_revalidates() {
+        // 正常应用:回读值 = 应用的值,hash 是 64 位十六进制
+        let ok = param_apply_native(YAML, "model.warrior.attack", 250.0).unwrap();
+        assert_eq!(ok["value"].as_f64(), Some(250.0));
+        assert_eq!(ok["path"], "model.warrior.attack");
+        assert_eq!(ok["config_hash"].as_str().unwrap().len(), 64, "SHA-256 hex");
+        // 同值重放不改 hash(应用是幂等写)
+        let replay = param_apply_native(YAML, "model.warrior.attack", 100.0).unwrap();
+        assert_ne!(replay["config_hash"], ok["config_hash"], "不同值必不同 hash");
+        // 未知路径:带相近路径建议,配置错误前缀
+        let e = param_apply_native(YAML, "model.warrior.atk", 1.0).unwrap_err();
+        assert!(e.starts_with("配置错误") && e.contains("未知参数"), "{e}");
+        // 非数值槽:不可数值扫描
+        let e2 = param_apply_native(YAML, "scenario.duration", 30.0).unwrap_err();
+        assert!(e2.contains("该参数不是数值"), "{e2}");
+        // 非法类型/范围:u32 为负
+        let e3 = param_apply_native(YAML, "scenario.population", -1.0).unwrap_err();
+        assert!(e3.contains("不能为负"), "{e3}");
+        // 显式性契约:未配置 loot 时应用 rate_mult 物化半配置 loot,重验即在编辑期报错
+        let e4 = param_apply_native(YAML, "model.loot.rate_mult", 2.0).unwrap_err();
+        assert!(e4.contains("on_victory"), "{e4}");
     }
 
     #[test]

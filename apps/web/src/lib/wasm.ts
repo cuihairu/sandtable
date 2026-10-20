@@ -7,6 +7,7 @@ import init, {
   validate_config as validateCfg,
   param_registry as paramRegistryBinding,
   param_values as paramValuesBinding,
+  param_apply as paramApplyBinding,
   sweep_plan as sweepPlanBinding,
   sweep_candidate as sweepCandidateBinding,
   sweep_recommend as sweepRecommendBinding,
@@ -58,6 +59,21 @@ export async function paramValues(yaml: string): Promise<Record<string, number>>
   if (isDesktop) return invoke('param_values', { yaml })
   await ensureInit()
   return JSON.parse(paramValuesBinding(yaml) as unknown as string) as Record<string, number>
+}
+
+// 数值参数应用(WB-03.06):内核寻址 apply_numeric 单条编辑,应用后重验
+// (显式性契约在编辑期报错),返回应用后 config_hash 与回读值;未知路径/
+// 非数值槽/非法类型抛 配置错误: 前缀字符串(经 classifyWasmError 分类)。
+export type ParamApplyResult = { config_hash: string; path: string; value: number }
+
+export async function paramApply(
+  yaml: string,
+  path: string,
+  value: number,
+): Promise<ParamApplyResult> {
+  if (isDesktop) return invoke('param_apply', { yaml, path, value })
+  await ensureInit()
+  return JSON.parse(paramApplyBinding(yaml, path, value) as unknown as string) as ParamApplyResult
 }
 
 // 长任务(桌面异步命令):onProgress 经 Channel 逐 replicate 收 {done,total};

@@ -165,7 +165,9 @@
 - [x] WB-03.05：补当前配置参数读取桥接，通过 core 读取真实有效值，不把 default 当当前值。
   - 落点:wasm 新导出 `param_values(yaml)`(load+validate 后逐数值注册路径 `registry::read_numeric`,返回 `{path: 当前生效值}`);Tauri 同构命令 `param_values`(已注册);TS 服务层 `paramValues(yaml)`(lib/wasm.ts 双路径)。已代决:只回数值槽(u32/u64/i64/f64/mix,58 项中的 57 数值路径),非数值槽(时长/公式/结构表)缺键 ≠ 0、有效形态即配置文本(归 WB-03.07);loot/gacha 未配置时返回内核真实生效缺省(read_numeric 的 unwrap_or),不是前端拿注册表 default 补值;u64 走 read_numeric 同精度边界(JS 安全整数面归 WB-03.08)。参数页基线列本就从打开 YAML 读真实值(cellOf),不经过注册表 default。
   - 测试:wasm Rust 13/13(新增 param_values_reads_effective_not_registry_default:改动值按当前值读出、loot 缺省=内核口径、非数值槽缺键、57 全覆盖、非法 YAML 配置错误前缀);contracts.test.mjs 11/11(新增 WB-03.05 运行时锁:seed/attack 生效值、loot 1.0、缺键断言、数量=数值路径数、错误分类 config、wasm.ts 双路径接线守卫);全套 node 198/198;desktop cargo check ✓;tsc -b 0 错;oxlint 0 警;vite build ✓。
-- [ ] WB-03.06：补数值参数应用桥接，复用 core 类型与参数寻址；未知路径、非数值结构和非法类型返回明确错误。
+- [x] WB-03.06：补数值参数应用桥接，复用 core 类型与参数寻址；未知路径、非数值结构和非法类型返回明确错误。
+  - 落点:wasm 新导出 `param_apply(yaml,path,value)`(内核寻址 `registry::apply_numeric` 单条编辑 → **应用后重验** → read_numeric 回读,返回 `{config_hash,path,value}`,apply/read 镜像证明);Tauri 同构命令 `param_apply`(已注册);TS 服务层 `paramApply(yaml,path,value)`(wasm.ts 双路径)。已代决:单条编辑口径(批 = JS 循环;内核侧批量已有 sweep_candidate 通道),错误逐类明确——未知路径带相近路径建议、非数值槽「该参数不是数值」、u32/u64 为负「不能为负」,全部 `配置错误: ` 前缀走 classifyWasmError;重验把关显式性契约(未配置 loot 应用 rate_mult 会经 get_or_insert 物化半配置 loot,编辑期即报 on_victory 缺失,不等运行期)。文本层 applyParamEdits(保留注释)仍负责写回,归 WB-03.07 契约。
+  - 测试:wasm Rust 14/14(新增 param_apply_uses_kernel_addressing_and_revalidates:回读值/hash 64 位/异值异 hash/未知路径/非数值槽/负值/loot 半配置重验);contracts.test.mjs 12/12(新增 WB-03.06 运行时锁同七断言组 + wasm.ts 双路径接线守卫);全套 node 199/199;desktop cargo check ✓;tsc -b 0 错;oxlint 0 警;vite build ✓。
 - [ ] WB-03.07：设计配置回写/序列化契约，保留枚举、公式、逐层表、loot 等未编辑的结构配置。
 - [ ] WB-03.08：明确 u64/seed 等值的 JS 安全整数边界；不安全值采用无损表达或明确拒绝，不静默舍入。
 - [ ] WB-03.09：补 KPI 名称、可用性、统计口径与可展示格式的入口，区分内核 ID 和本地化显示名。
