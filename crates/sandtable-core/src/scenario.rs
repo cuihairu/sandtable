@@ -648,6 +648,8 @@ scenario:
 model:
   churn:
     p_stall: 0.2
+  warrior:
+    attack: 90
 "#,
         )
         .unwrap();
@@ -655,7 +657,24 @@ model:
         assert_eq!(cfg.days, 30);
         assert_eq!(cfg.churn.p_stall, 0.2);
         assert_eq!(cfg.churn.p_base, SimConfig::default().churn.p_base);
-        assert_eq!(cfg.warrior.attack, 100);
+        // warrior 部分覆盖:只给 attack 时 defense / hp 回退默认,不能被清零
+        // (example_yaml 承诺「省略任何节或字段都会回退默认值」)
+        assert_eq!(cfg.warrior.attack, 90);
+        assert_eq!(cfg.warrior.defense, SimConfig::default().warrior.defense);
+        assert_eq!(cfg.warrior.hp, SimConfig::default().warrior.hp);
+    }
+
+    #[test]
+    fn warrior_default_is_single_sourced() {
+        // WarriorConfig::Default 曾 derive 成全零,与 SimConfig::default() 的
+        // 100/80/1000 分叉;部分覆盖小节时兄弟字段就静默归零。这里锁同源。
+        let d = SimConfig::default();
+        let w = WarriorConfig::default();
+        assert_eq!((w.attack, w.defense, w.hp), (100, 80, 1000));
+        assert_eq!(
+            (w.attack, w.defense, w.hp),
+            (d.warrior.attack, d.warrior.defense, d.warrior.hp)
+        );
     }
 
     #[test]

@@ -49,12 +49,25 @@ impl Cohort {
 }
 
 /// 初始角色数值(文档 03 章 Model 示例的 warrior 实体;attack 即 A/B 的被扫参数)。
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WarriorConfig {
     pub attack: i64,
     pub defense: i64,
     pub hp: i64,
+}
+
+impl Default for WarriorConfig {
+    /// 必须与 `SimConfig::default()` 同源。derive(Default) 给的是全零,而本节按
+    /// 「部分覆盖小节、其余字段回退默认」的契约加载——全零会让 YAML 只写
+    /// `model.warrior.attack` 时 defense / hp 静默归零(单点无敌)。
+    fn default() -> Self {
+        Self {
+            attack: 100,
+            defense: 80,
+            hp: 1000,
+        }
+    }
 }
 
 /// 战斗伤害口径(文档 21 阻力 #1)。
@@ -570,11 +583,7 @@ impl Default for SimConfig {
             days: 30,
             base_seed: 12345,
             cohort_weights: [0.60, 0.30, 0.10],
-            warrior: WarriorConfig {
-                attack: 100,
-                defense: 80,
-                hp: 1000,
-            },
+            warrior: WarriorConfig::default(),
             whale_gain_mult: 2,
             combat: CombatConfig::default(),
             dungeon: DungeonConfig::default(),
