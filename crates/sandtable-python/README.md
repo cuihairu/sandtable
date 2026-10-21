@@ -54,7 +54,7 @@ st.run_str_with_day_hook(yaml, lambda p: seen.append(p))
 ```
 
 每日 `DayClose` 记账完成后回调一次,**只读**——同配置同 seed 结果与 `run_str`
-逐值一致(pytest 锁死)。成本见 [scripts/scripting-perf-report.md](../../../scripts/scripting-perf-report.md)
+逐值一致(pytest 锁死)。成本见 scripts/scripting-perf-report.md
 (默认 5 列观测面 30 天 ≈20% 基线,原型/分析定位);事件级回调是设计红线,不提供。
 
 ## 错误语义
