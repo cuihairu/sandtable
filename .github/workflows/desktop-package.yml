@@ -422,7 +422,8 @@ jobs:
     needs: [package, cli-headless]
     if: >-
       always() && needs.package.result == 'success' &&
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || inputs.nightly == true)
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'push' || inputs.nightly == true)
     runs-on: ubuntu-24.04
     permissions:
       contents: write
