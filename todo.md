@@ -347,7 +347,7 @@
 
 #### P1 · 日常策划工作效率
 
-- [ ] **项目与场景管理**：项目创建/复制/归档、多个场景与配置版本、基线切换、多个候选并排比较、命名与改动备注；保留模型假设与适用边界。
+- [x] **项目与场景管理**：项目创建/复制/归档、多个场景与配置版本、基线切换、多个候选并排比较、命名与改动备注；保留模型假设与适用边界。(2026-10-21 证据：6d28432；纯编辑面,不改内核语义——项目内容始终走既有数据层 ProjectDoc → buildProjectSave → packProject 写回 .sandtable(17c95fc 已验回写路径),注册表/版本簿只存元数据不另建内容状态库。① 项目库:apps/web/src/workbench/project/projectRegistry.ts:42(创建/复制/归档=可恢复软态/恢复/重命名/项目备注,StorageLike 持久化,坏载荷整表丢弃)+ projectOps.ts:26/50(创建=单场景默认配置起步;复制=新项目 ID+同内容独立文档)+ project/ProjectsPanel.tsx:46(应用栏「项目库」入口+命令面板行);② 每场景独立配置版本:project/scenarioVersions.ts:57(saveVersion 内容寻址同内容去重、追加有序)+ project/ScenarioVersionsPanel.tsx:18(版本表+版本/场景可编辑备注);③ 基线切换:scenarioVersions.ts:112 setBaseline 指定任一已存版本、:136 revertBaseline 按指定历史逐级回切、退无可退回项目文件原文,:151 effectiveBaseline 生效基线如实标注来源;基线保持只读,切换只改参照系指向不改写已存内容;④ 多候选并排比较:project/candidateCompare.ts:36(字段并集+缺失显式 null+差异行+基线对照)+ CandidateComparePanel.tsx:24(分析页候选草稿 ≥2 时字段级 diff 表,可只看差异);⑤ 命名与改动备注:项目(projectRegistry.note+workbenchStore.ts:437 project/rename,保存落 manifest name)/场景(scenarioVersions.notes)/版本(version.note)三层可编辑。测试 apps/web/tests/project-management.test.mjs:1 九条:注册表创建/复制/归档软态幂等/持久化与坏载荷防御、项目文档创建与复制独立性、回写持久化闭环(创建/复制/改名三条 packProject → openProject,manifest 名与场景 YAML 字节保真)、版本历史去重与备注、基线指定与回切、版本簿按项目隔离持久化+回写后版本内容同源、候选比较字段级 diff 与 YAML 数值口径;进 CI 免 pkg 组 .github/workflows/ci.yml:149。门禁 cargo fmt --check、cargo clippy --all-targets -- -D warnings、cargo test --workspace 272 通过、tsc -b 0、oxlint 0 警告、node 全套 277/277(基线 268+9)、vite build ✓)
 - [ ] **参数元信息层**：建立可维护、可版本化的显示名、单位、建议范围、步长、系统分组、标签、来源与影响 KPI；缺失显示未定义。加入收藏、最近修改、缺元信息与校验错误筛选。
 - [ ] **结构化编辑器**：成长曲线、公式、掉落/权重表、阶段规则；公式语法与引用提示、示例求值、概率/权重合计校验；支持批量粘贴，保存前预览 diff 与影响范围。
 - [ ] **不可变实验历史**：归档输入快照、配置哈希、模型/指标版本、随机策略、场景规模、时间、产物与结论；支持搜索、复制、复跑和从历史候选继续编辑，禁止覆盖旧运行输入。
