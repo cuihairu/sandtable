@@ -371,6 +371,35 @@ export type ApplyOutcome =
 const splice = (yaml: string, start: number, end: number, text: string): string =>
   yaml.slice(0, start) + text + yaml.slice(end)
 
+function yamlScalar(value: unknown): string {
+  if (typeof value === 'string' && (value === '' || /^[0-9+-].|true|false|null/.test(value))) return `'${value}'`
+  return String(value)
+}
+
+function lootToModelYaml(loot: unknown): string | null {
+  if (loot === null || typeof loot !== 'object') return null
+  const lines = Object.entries(loot as Record<string, unknown>).map(([childKey, child]) => {
+    if (child !== null && typeof child === 'object' && !Array.isArray(child)) {
+      const nested = yamlScalarMap(child as Record<string, unknown>, 6)
+      return nested === null ? null : `    ${childKey}:\n${nested}`
+    }
+    return `    ${childKey}: ${yamlScalar(child)}`
+  })
+  return lines.includes(null) ? null : ['  loot:', ...lines].join('\n')
+}
+
+function yamlScalarMap(value: Record<string, unknown>, indent: number): string | null {
+  const pad = ' '.repeat(indent)
+  const lines = Object.entries(value).map(([childKey, child]) => {
+    if (child !== null && typeof child === 'object' && !Array.isArray(child)) {
+      const nested = yamlScalarMap(child as Record<string, unknown>, indent + 2)
+      return nested === null ? null : `${pad}${childKey}:\n${nested}`
+    }
+    return `${pad}${childKey}: ${yamlScalar(child)}`
+  })
+  return lines.includes(null) ? null : lines.join('\n')
+}
+
 /** 把单条编辑写到 YAML:已有值 → 值 token 原位替换(注释与缩进保留);
  * 缺值 → 就近插入(流内补键 / 节尾补链 / 无节时文末建节)。 */
 export function applyParamEdit(yaml: string, parsed: ParsedConfig, path: string, newText: string): ApplyOutcome {
@@ -550,6 +579,25 @@ export function applyTierTable(yaml: string, rows: readonly TierTableRow[]): App
     .map((section) => section.endLine)
   const insertAt = dungeonLines.length === 0 ? dungeon.endLine : Math.max(...dungeonLines)
   lines.splice(insertAt, 0, '    tier_table:', table)
+  return { ok: true, yaml: lines.join('\n') }
+}
+
+/** 把掉落配置整段写回 model.loot;已有节剪切保留注释前一行,缺段追加文件尾。
+ * loot 是结构化整体,整段替换避免编辑过程中留下 on_victory/rewards 半配置。 */
+export function applyLootConfig(yaml: string, loot: unknown): ApplyOutcome {
+  const lines = yaml.split('\n')
+  const parsed = parseConfig(yaml)
+  if (parsed.errors.length > 0) return { ok: false, error: `第 ${parsed.errors[0].line} 行:${parsed.errors[0].message}` }
+  const block = lootToModelYaml(loot)
+  if (block === null) return { ok: false, error: 'loot: 无法序列化为受支持 YAML' }
+  const section = parsed.sections.find((item) => item.path === 'model.loot')
+  if (section) {
+    lines.splice(section.startLine - 1, section.endLine - section.startLine + 1, block)
+    return { ok: true, yaml: lines.join('\n') }
+  }
+  const model = parsed.sections.find((item) => item.path === 'model')
+  if (!model) return { ok: false, error: 'model 节不存在;请先用高级 YAML 编辑创建结构' }
+  lines.splice(model.endLine, 0, block)
   return { ok: true, yaml: lines.join('\n') }
 }
 

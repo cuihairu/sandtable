@@ -39,6 +39,7 @@
 .wb-app .growth-review{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px; }
 .wb-app .growth-diff,.wb-app .growth-impact{ margin:5px 0 0; padding-left:18px; font-size:11px; }
 .wb-app .growth-actions{ display:flex; gap:8px; margin-top:12px; }
+.wb-app .loot-totals{ display:grid; gap:4px; font-size:11px; font-family:var(--wb-mono); }
 @media (max-width:900px){ .wb-app .growth-grid,.wb-app .growth-review{ grid-template-columns:1fr; } .wb-app .growth-editor{ max-height:none; } }
 /* WB-02.17 · 嵌入的 SQL 查询面板:工作台按钮重置会把 legacy button.primary 拍平成透明底,这里恢复 */
 .wb-app .exchange-query{ border: 1px solid var(--wb-line); border-radius: 10px; padding: 14px; margin: 2px 0 20px; background: #fbfdfd; }

@@ -31,6 +31,8 @@ import {
 import { versionsSaveVersion } from '../project/scenarioVersions.ts'
 import { ParamMetaPanel } from '../project/ParamMetaPanel.tsx'
 import { GrowthCurveEditor } from '../params/GrowthCurveEditor.tsx'
+import { FormulaEditor } from '../params/FormulaEditor.tsx'
+import { LootTableEditor } from '../params/LootTableEditor.tsx'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { notify } from '../state/notifications.ts'
@@ -45,6 +47,8 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
   // WB-11.12 · 页面文案走词典;locale 订阅会话(语言切换即时生效)
   const locale = useLocale()
   const [growthOpen, setGrowthOpen] = useState(false)
+  const [formulaOpen, setFormulaOpen] = useState(false)
+  const [lootOpen, setLootOpen] = useState(false)
   const view = paramYamlView(state)
   const baseParsed = parseConfig(view.base)
   const candParsed = parseConfig(view.cand)
@@ -184,6 +188,19 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
     notify('success', t(locale, 'params.growth.applied'))
   }
 
+  const applyStructured = (yaml: string): void => {
+    dispatch({ type: 'param/write', yaml })
+    notify('success', locale.startsWith('en') ? 'Structured edit written to the candidate draft' : '结构化编辑已写入候选草稿')
+  }
+
+  const saveStructuredVersion = (yaml: string): void => {
+    if (!view.scenarioPath) return
+    const saved = versionsSaveVersion(view.scenarioPath, yaml, { label: 'structured editor' })
+    notify(saved.ok ? 'success' : 'error', saved.ok
+      ? locale.startsWith('en') ? 'Structured edit saved as a scenario config version' : '结构化编辑已保存为场景配置版本'
+      : saved.error ?? (locale.startsWith('en') ? 'Version save failed' : '版本保存失败'))
+  }
+
   const saveGrowthVersion = (yaml: string): void => {
     if (!view.scenarioPath) return
     const saved = versionsSaveVersion(view.scenarioPath, yaml, { label: 'growth curve' })
@@ -276,12 +293,9 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         onResetAll={onRequestResetAll}
       />
       <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 16px 8px' }}>
-        <button
-          className="btn"
-          onClick={() => setGrowthOpen(true)}
-        >
-          {t(locale, 'params.growth.open')}
-        </button>
+        <button className="btn" onClick={() => setGrowthOpen(true)}>{t(locale, 'params.growth.open')}</button>
+        <button className="btn" onClick={() => setFormulaOpen(true)}>{locale.startsWith('en') ? 'Formula editor' : '公式编辑器'}</button>
+        <button className="btn" onClick={() => setLootOpen(true)}>{locale.startsWith('en') ? 'Loot editor' : '掉落编辑器'}</button>
       </div>
       {paramSelected.length > 0 && (
         <BulkActionBar
@@ -351,6 +365,23 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         initialRows={readGrowthRows(view.cand) ?? []}
         onApply={applyGrowthCurve}
         onSaveVersion={saveGrowthVersion}
+      />
+      <FormulaEditor
+        open={formulaOpen}
+        onClose={() => setFormulaOpen(false)}
+        baseYaml={view.base}
+        candidateYaml={view.cand}
+        onApply={applyStructured}
+        onSaveVersion={saveStructuredVersion}
+      />
+      <LootTableEditor
+        key={`${view.cand}`}
+        open={lootOpen}
+        onClose={() => setLootOpen(false)}
+        baseYaml={view.base}
+        candidateYaml={view.cand}
+        onApply={applyStructured}
+        onSaveVersion={saveStructuredVersion}
       />
       <OverlayDialog
         open={yamlEdit.open}
