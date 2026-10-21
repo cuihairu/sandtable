@@ -65,10 +65,15 @@ jobs:
       # 平台之间不互相拖:Windows / macOS 编译较慢,任一平台失败不中断其它平台
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-24.04
-          - windows-2025
-          - macos-15
+        # 按平台出各自安装器(2026-10-21 用户令补 rpm;全局 bundle.targets 会让
+        # Windows/macOS 无包可出——tauri.conf 不再写 targets,改由 --bundles 逐腿指定)
+        include:
+          - os: ubuntu-24.04
+            bundles: deb,rpm
+          - os: windows-2025
+            bundles: msi,nsis
+          - os: macos-15
+            bundles: dmg,app
     steps:
       - uses: actions/checkout@v7
 
@@ -126,7 +131,7 @@ jobs:
       - name: 构建安装包
         uses: tauri-apps/tauri-action@v1.0.0
         with:
-          args: --features custom-protocol
+          args: --bundles ${{ matrix.bundles }} --features custom-protocol
 
       # 制品而非 Release:未验收的二进制不进 Releases 页面。先于冒烟上传,
       # 冒烟失败也要能取到安装包排障
