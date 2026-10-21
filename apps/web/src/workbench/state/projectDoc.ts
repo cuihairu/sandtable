@@ -511,6 +511,80 @@ export function restoreRunsFromArchive(
   return { runs: read.runs, artifacts, error: null }
 }
 
+export type RunHistoryFilter = {
+  query?: string
+  fromDay?: string
+  toDay?: string
+}
+
+const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+/** Day-boundary epoch seconds in the viewer's local timezone (search is UI time). */
+function dayBoundary(day: string, endOfDay: boolean): number | null {
+  if (!DAY_PATTERN.test(day)) return null
+  const parsed = new Date(day + 'T00:00:00')
+  if (Number.isNaN(parsed.getTime())) return null
+  return Math.floor(parsed.getTime() / 1000) + (endOfDay ? 86_399 : 0)
+}
+
+export function filterRunHistory(
+  runs: readonly RunIndexEntry[],
+  filter: RunHistoryFilter,
+): readonly RunIndexEntry[] {
+  const query = filter.query?.trim().toLowerCase() ?? ''
+  const from = filter.fromDay === undefined ? null : dayBoundary(filter.fromDay, false)
+  const to = filter.toDay === undefined ? null : dayBoundary(filter.toDay, true)
+  return runs.filter((run) => {
+    if (from !== null && run.created_at_unix < from) return false
+    if (to !== null && run.created_at_unix > to) return false
+    if (query === '') return true
+    const haystack = [
+      run.run_id,
+      run.config_hash,
+      String(run.seed),
+      'seed=' + String(run.seed),
+      ...Object.entries(run.conditions).map(([key, value]) => `${key}=${String(value)}`),
+    ].join('\n').toLowerCase()
+    return haystack.includes(query)
+  })
+}
+
+export type RunInputSnapshot = {
+  scenarioYaml: string | null
+  experimentYaml: string | null
+  spec: unknown
+}
+
+/** Read the full execution snapshot carried by a terminal run's report. */
+export function runInputSnapshotOf(
+  entry: RunIndexEntry,
+  artifacts: Readonly<Record<string, string | Uint8Array>>,
+): RunInputSnapshot {
+  const readSpec = (): { yaml: string; spec: unknown } | null => {
+    const value = artifacts[`results/${entry.run_id}.report.json`]
+    if (value === undefined) return null
+    const reportText = typeof value === 'string' ? value : new TextDecoder().decode(value)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(reportText)
+    } catch {
+      return null
+    }
+    if (!parsed || typeof parsed !== 'object') return null
+    const spec = (parsed as { spec?: unknown }).spec
+    if (!spec || typeof spec !== 'object' || !('yaml' in spec)) return null
+    const yaml = (spec as { yaml?: unknown }).yaml
+    return typeof yaml === 'string' ? { yaml, spec } : null
+  }
+  const snapshot = readSpec()
+  if (snapshot === null) return { scenarioYaml: null, experimentYaml: null, spec: null }
+  return {
+    scenarioYaml: entry.scenario_path ? snapshot.yaml : null,
+    experimentYaml: entry.experiment_path ? snapshot.yaml : null,
+    spec: snapshot.spec,
+  }
+}
+
 /* —— 保存编排(WB-04.07/04.10) —— */
 
 /** 保存构建:全部配置(选中与未选中)+ 完整产物,一次进归档。 */

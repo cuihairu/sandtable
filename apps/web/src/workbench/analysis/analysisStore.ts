@@ -39,3 +39,5 @@ function persistDrafts(): void {
   catch { state = { ...state, draftPersistenceError: '草稿暂存失败，当前仅保留在会话中；请下载方案与来源 JSON。' } }
 }
 function emit(): void { for (const listener of listeners) listener() }
+/** Test-only state reset; production callers must use edit/add APIs. */
+export function resetForTest(): void { state = { jobId: null, byJob: {}, drafts: [], draftPersistenceError: null } }
