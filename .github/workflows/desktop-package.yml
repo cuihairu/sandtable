@@ -452,11 +452,17 @@ jobs:
           [ "${#files[@]}" -gt 0 ] || { echo "no installer found"; exit 1; }
           printf '%s\n' "${files[@]}"
           sha8="${GITHUB_SHA::8}"
-          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
-          gh release create nightly \
-            --title "nightly ${sha8}" \
-            --notes "滚动每日构建(检测到更新才发布),commit ${sha8},出自 run ${{ github.run_id }}。预发布:未走完整验收,仅用于真机走查与冒烟排障;正式版本由用户手动触发。" \
-            --prerelease --latest=false \
-            --target "$GITHUB_SHA" \
-            "${files[@]}"
+          notes="滚动每日构建(检测到更新才发布),commit ${sha8},出自 run ${{ github.run_id }}。预发布:未走完整验收,仅用于真机走查与冒烟排障;正式版本由用户手动触发。"
+          if gh release view nightly >/dev/null 2>&1; then
+            # 竞态根治: 已存在即 clobber 覆盖上传,绝不删 Release(连发互删曾致资产空)
+            gh release upload nightly "${files[@]}" --clobber
+            gh release edit nightly --title "nightly ${sha8}" --notes "$notes" 2>/dev/null || true
+          else
+            gh release create nightly \
+              --title "nightly ${sha8}" \
+              --notes "$notes" \
+              --prerelease --latest=false \
+              --target "$GITHUB_SHA" \
+              "${files[@]}"
+          fi
           echo "nightly release published at commit ${sha8}"
