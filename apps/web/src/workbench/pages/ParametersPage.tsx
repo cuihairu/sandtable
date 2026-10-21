@@ -33,6 +33,7 @@ import { ParamMetaPanel } from '../project/ParamMetaPanel.tsx'
 import { GrowthCurveEditor } from '../params/GrowthCurveEditor.tsx'
 import { FormulaEditor } from '../params/FormulaEditor.tsx'
 import { LootTableEditor } from '../params/LootTableEditor.tsx'
+import { StageRulesEditor } from '../params/StageRulesEditor.tsx'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { notify } from '../state/notifications.ts'
@@ -49,6 +50,7 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
   const [growthOpen, setGrowthOpen] = useState(false)
   const [formulaOpen, setFormulaOpen] = useState(false)
   const [lootOpen, setLootOpen] = useState(false)
+  const [stagesOpen, setStagesOpen] = useState(false)
   const view = paramYamlView(state)
   const baseParsed = parseConfig(view.base)
   const candParsed = parseConfig(view.cand)
@@ -193,6 +195,11 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
     notify('success', locale.startsWith('en') ? 'Structured edit written to the candidate draft' : '结构化编辑已写入候选草稿')
   }
 
+  const applyStageRules = (yaml: string): void => {
+    dispatch({ type: 'param/write', yaml })
+    notify('success', locale.startsWith('en') ? 'Stage rules written to the candidate draft' : '阶段规则已写入候选草稿')
+  }
+
   const saveStructuredVersion = (yaml: string): void => {
     if (!view.scenarioPath) return
     const saved = versionsSaveVersion(view.scenarioPath, yaml, { label: 'structured editor' })
@@ -296,6 +303,7 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         <button className="btn" onClick={() => setGrowthOpen(true)}>{t(locale, 'params.growth.open')}</button>
         <button className="btn" onClick={() => setFormulaOpen(true)}>{locale.startsWith('en') ? 'Formula editor' : '公式编辑器'}</button>
         <button className="btn" onClick={() => setLootOpen(true)}>{locale.startsWith('en') ? 'Loot editor' : '掉落编辑器'}</button>
+        <button className="btn" onClick={() => setStagesOpen(true)}>{locale.startsWith('en') ? 'Stage rules editor' : '阶段规则编辑器'}</button>
       </div>
       {paramSelected.length > 0 && (
         <BulkActionBar
@@ -371,13 +379,22 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         onClose={() => setFormulaOpen(false)}
         baseYaml={view.base}
         candidateYaml={view.cand}
-        onApply={applyStructured}
+        onApply={applyStageRules}
         onSaveVersion={saveStructuredVersion}
       />
       <LootTableEditor
         key={`${view.cand}`}
         open={lootOpen}
         onClose={() => setLootOpen(false)}
+        baseYaml={view.base}
+        candidateYaml={view.cand}
+        onApply={applyStageRules}
+        onSaveVersion={saveStructuredVersion}
+      />
+      <StageRulesEditor
+        key={`${view.cand}`}
+        open={stagesOpen}
+        onClose={() => setStagesOpen(false)}
         baseYaml={view.base}
         candidateYaml={view.cand}
         onApply={applyStructured}

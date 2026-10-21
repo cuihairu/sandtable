@@ -393,7 +393,10 @@ fn check_section(prefix: &str, v: &Value) -> Result<(), Error> {
     for (k, sub) in map {
         let key = key_str(k)?;
         let path = format!("{prefix}.{key}");
-        if SECTIONS.contains(&path.as_str()) {
+        if path == "model.stage_rules" {
+            sub.as_sequence()
+                .ok_or_else(|| Error::Config(format!("{path}: 应为规则序列")))?;
+        } else if SECTIONS.contains(&path.as_str()) {
             check_section(&path, sub)?;
         } else if LEGACY_PATHS.contains(&path.as_str()) {
             // 遗留字段:放行加载,不在数值通道(见 LEGACY_PATHS 注释)

@@ -137,6 +137,7 @@ export function GrowthCurveEditor({ open, onClose, baseYaml, candidateYaml, init
                       inputMode="numeric"
                       value={row[field] ?? ''}
                       aria-label={`${t(locale, `params.growth.${field}`)} ${index + 1}`}
+                      aria-invalid={nextReport.issues.some((issue) => issue.row === index + 1 && issue.message.includes(field))}
                       onChange={(event) => {
                         const raw = event.target.value
                         const value = raw === '' ? (field === 'gold' || field === 'xp' ? null : Number.NaN) : Number(raw)

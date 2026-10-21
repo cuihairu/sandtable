@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { JSX } from 'react'
 import { applyParamEdit, parseConfig, readText } from './configYaml.ts'
-import { FORMULA_VARIABLES, evalFormula, reviewFormula } from './formulaLogic.ts'
+import { FORMULA_VARIABLES, evalFormula, parseFormulaPaste, reviewFormula } from './formulaLogic.ts'
 import { useLocale } from '../state/localeStore.ts'
 
 type Inputs = Record<'level' | 'xp_base' | 'xp_pow', string>
@@ -18,6 +18,7 @@ export function FormulaEditor({ open, onClose, baseYaml, candidateYaml, onApply,
   const [text, setText] = useState(() => readText(parseConfig(candidateYaml), 'model.formulas.xp_needed') ?? '')
   const [inputs, setInputs] = useState<Inputs>({ level: '3', xp_base: '60', xp_pow: '1.3' })
   const base = useMemo(() => readText(parseConfig(baseYaml), 'model.formulas.xp_needed'), [baseYaml])
+  const paste = useMemo(() => parseFormulaPaste(text), [text])
   const report = useMemo(() => reviewFormula(text), [text])
   const numericInputs = {
     level: Number(inputs.level), xp_base: Number(inputs.xp_base), xp_pow: Number(inputs.xp_pow),
@@ -43,7 +44,12 @@ export function FormulaEditor({ open, onClose, baseYaml, candidateYaml, onApply,
       </div>
       <label className="form-field">
         {locale.startsWith('en') ? 'Expression' : '表达式'}
-        <textarea rows={3} value={text} onChange={(event) => setText(event.target.value)} />
+        <textarea
+          rows={3}
+          value={text}
+          aria-invalid={report.issues.length > 0}
+          onChange={(event) => setText(event.target.value)}
+        />
       </label>
       <p className="muted">{locale.startsWith('en')
         ? `References: ${FORMULA_VARIABLES.join(', ')}; functions: min/max/clamp/floor/ceil/abs/round.`
@@ -65,7 +71,17 @@ export function FormulaEditor({ open, onClose, baseYaml, candidateYaml, onApply,
         </div>
         <div><h3>{locale.startsWith('en') ? 'Impact scope' : '影响范围'}</h3><ul><li className="mono">model.formulas.xp_needed</li></ul></div>
       </div>
-      {report.issues.length > 0 && <div className="error-wall" role="alert"><ul>{report.issues.map((issue) => <li key={issue.message}>{issue.message}</li>)}</ul></div>}
+      {report.issues.length > 0 && (
+        <div className="error-wall" role="alert" aria-label={locale.startsWith('en') ? 'Formula errors' : '公式错误列表'}>
+          {paste.reports.some((row) => row.message !== null) && <strong>{locale.startsWith('en') ? 'Per-row paste report' : '批量粘贴逐行报告'}</strong>}
+          <ul>
+            {paste.reports.filter((row) => row.message !== null).map((row) => (
+              <li key={`${row.line}-${row.message}`}>{row.line === null ? '' : `#${row.line} `}{row.message}</li>
+            ))}
+            {report.issues.map((issue) => <li key={issue.message}>{issue.message}</li>)}
+          </ul>
+        </div>
+      )}
       <div className="growth-actions"><button className="btn primary" disabled={!report.valid} onClick={apply}>{locale.startsWith('en') ? 'Write candidate and save version' : '写入候选并存版本'}</button></div>
     </section>
   )

@@ -109,7 +109,11 @@ export function LootTableEditor({ open, onClose, baseYaml, candidateYaml, onAppl
         <div><h3>{locale.startsWith('en') ? 'Pre-save diff' : '保存前 diff'}</h3>{diff.length === 0 ? <p className="muted">{locale.startsWith('en') ? 'No difference from baseline.' : '相对基线无差异。'}</p> : <ul>{diff.map((row) => <li key={`${row.kind}-${row.key}-${row.field}`}>{row.key}.{row.field}: {row.from} → {row.to}</li>)}</ul>}</div>
         <div><h3>{locale.startsWith('en') ? 'Impact scope' : '影响范围'}</h3><ul>{diff.length === 0 ? <li>{locale.startsWith('en') ? 'No write impact.' : '无写入影响。'}</li> : <li className="mono">model.loot</li>}</ul></div>
       </div>
-      {report.issues.length > 0 && <div className="error-wall" role="alert"><ul>{report.issues.map((issue) => <li key={issue.message}>{issue.row ? `#${issue.row} ` : ''}{issue.message}</li>)}</ul></div>}
+      {report.issues.length > 0 && (
+        <div className="error-wall" role="alert" aria-label={locale.startsWith('en') ? 'Loot table errors' : '掉落表错误列表'}>
+          <ul>{report.issues.map((issue) => <li key={issue.message}>{issue.message}</li>)}</ul>
+        </div>
+      )}
       <div className="growth-actions">
         <button className="btn" disabled={!report.valid || draft.checking} onClick={() => setDraft((s) => ({ ...s, checking: true, approved: false }))}>{draft.checking ? locale.startsWith('en') ? 'Checking' : '校验中' : locale.startsWith('en') ? 'Check and validate' : '预检并校验'}</button>
         <button className="btn primary" disabled={!canApply} onClick={apply}>{locale.startsWith('en') ? 'Write candidate and save version' : '写入候选并存版本'}</button>

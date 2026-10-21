@@ -1,4 +1,5 @@
 import type { LootConfig, LootReward, LootTableConfig } from '../../lib/types.ts'
+import { parseBulkPaste } from './bulkPaste.ts'
 import type { LootDiff, LootIssue, LootReport } from './lootTable.ts'
 
 export type LootDraft = {
@@ -17,6 +18,12 @@ export type LootRewardDraft = {
   readonly name: string
   readonly gold: number
   readonly xp: number
+}
+
+export type PastedLoot = {
+  readonly draft: LootDraft
+  readonly reports: readonly import('./bulkPaste.ts').BulkPasteRow[]
+  readonly valid: boolean
 }
 
 const EMPTY_REWARD: LootReward = { gold: 0, xp: 0 }
@@ -219,4 +226,43 @@ export function lootDiff(base: LootConfig | null, next: LootDraft): LootDiff[] {
     }
   }
   return diffs
+}
+
+const lootMapper = {
+  headers: ['table', 'item', 'weight', 'gold', 'xp'],
+  fields: ['table', 'item', 'weight', 'gold', 'xp'],
+  validate: (row: Record<string, string | undefined>): string | null => {
+    if (row.table === undefined || row.table === '') return 'table 必须为文本'
+    if (row.item === undefined || row.item === '') return 'item 必须为文本'
+    for (const field of ['weight', 'gold', 'xp'] as const) {
+      if (!Number.isFinite(Number(row[field]))) return `${field} 必须为有限数值`
+    }
+    return null
+  },
+  build: (row: Record<string, string | undefined>) => ({
+    table: String(row.table ?? ''),
+    item: String(row.item ?? ''),
+    weight: Number(row.weight),
+    gold: Number(row.gold),
+    xp: Number(row.xp),
+  }),
+}
+
+/** 掉落 TSV/CSV 批量粘贴:坏行逐行保留,同表同名条目保留最后一个权重。 */
+export function parseLootPaste(text: string): PastedLoot {
+  const parsed = parseBulkPaste(text, lootMapper)
+  const tables = new Map<string, LootTableDraft>()
+  const rewards = new Map<string, LootRewardDraft>()
+  for (const row of parsed.rows) {
+    const table = tables.get(row.table) ?? { name: row.table, items: [] }
+    const items = table.items.filter((item) => item.name !== row.item)
+    items.push({ name: row.item, weight: row.weight })
+    tables.set(row.table, { ...table, items })
+    rewards.set(row.item, { name: row.item, gold: row.gold, xp: row.xp })
+  }
+  return {
+    draft: { rateMult: Number.NaN, onVictory: '', tables: [...tables.values()], rewards: [...rewards.values()] },
+    reports: parsed.reports,
+    valid: parsed.valid,
+  }
 }

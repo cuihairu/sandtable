@@ -7,28 +7,13 @@ import { dirname, join } from 'node:path'
 import { applyLootConfig, buildDefaultYaml, parseConfig, readText } from '../src/workbench/params/configYaml.ts'
 import { evalFormula, reviewFormula } from '../src/workbench/params/formulaLogic.ts'
 import {
-  draftLoot, lootDraft, lootDiff, lootRewardExpectation, lootToYaml, lootTotalWeight,
+  lootDraft, lootDiff, lootRewardExpectation, lootToYaml, lootTotalWeight,
   removeLootTable, reviewLoot, setLootWeight,
 } from '../src/workbench/params/lootYaml.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const pkgNode = join(here, '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js')
 const wasm = existsSync(pkgNode) ? await import(pkgNode) : null
-
-const lootYaml = `model:
-  loot:
-    rate_mult: 1.2
-    on_victory: chest
-    tables:
-      chest:
-        coin: 70
-        gem: 25
-        junk: 5
-    rewards:
-      coin: { gold: 10, xp: 0 }
-      gem: { gold: 50, xp: 20 }
-      junk: { gold: 0, xp: 2 }
-`
 
 test('formula syntax, references and preview match kernel semantics', () => {
   const report = reviewFormula('xp_base * level ^ xp_pow')

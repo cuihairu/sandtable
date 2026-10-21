@@ -21,6 +21,13 @@ export type TierTableRow = {
   xp: number | null
 }
 
+export type StageRuleRow = {
+  readonly from: number
+  readonly to: string
+  readonly effect: string
+  readonly chance: number
+}
+
 export type YamlLeaf = {
   /** 点分注册路径(映射键拼接;序列内部键不生成路径) */
   path: string
@@ -598,6 +605,68 @@ export function applyLootConfig(yaml: string, loot: unknown): ApplyOutcome {
   const model = parsed.sections.find((item) => item.path === 'model')
   if (!model) return { ok: false, error: 'model 节不存在;请先用高级 YAML 编辑创建结构' }
   lines.splice(model.endLine, 0, block)
+  return { ok: true, yaml: lines.join('\n') }
+}
+
+/** 读取 model.stage_rules 块序列;块缺失返回 null,不把“无规则”伪装成空规则。 */
+export function readStageRules(yaml: string, parsed: ParsedConfig = parseConfig(yaml)): readonly StageRuleRow[] | null {
+  const seq = parsed.seqBlocks.find((block) => block.path === 'model.stage_rules')
+  if (!seq) return null
+  const section = parsed.sections.find((item) => item.path === 'model.stage_rules')
+  const lines = yaml.split('\n')
+  const rows: StageRuleRow[] = []
+  const start = section?.startLine ?? seq.startLine
+  const end = section?.endLine ?? seq.endLine
+  for (let lineNo = start; lineNo <= end; lineNo++) {
+    const visible = (lines[lineNo - 1] ?? '').trim()
+    if (!visible.startsWith('-')) continue
+    const body = /^-\s*\{\s*(.*?)\s*\}\s*$/.exec(visible)?.[1]
+    if (!body) return null
+    const row: Record<string, string> = {}
+    const effectMatch = /effect:\s*([^,}]+)/.exec(body)
+    if (!effectMatch) return null
+    row.effect = unquote(effectMatch[1].trim())
+    const rest = body.replace(/,\s*effect:\s*([^,}]+)/, '')
+    for (const item of rest.split(',')) {
+      const pair = item.split(':')
+      if (pair.length !== 2) return null
+      row[unquote(pair[0].trim())] = unquote(pair[1].trim())
+    }
+    const chance = Number(row.chance)
+    if (!/^\d+$/.test(row.from ?? '') || row.to === undefined || row.effect === undefined
+      || !Number.isSafeInteger(chance) || chance < 0 || chance > 100) return null
+    rows.push({ from: Number(row.from), to: row.to, effect: row.effect, chance })
+  }
+  return rows
+}
+
+/** 整段替换 model.stage_rules;只裁剪该块,相邻 YAML、注释与内核未知键保留。 */
+export function applyStageRules(yaml: string, rows: readonly StageRuleRow[]): ApplyOutcome {
+  if (rows.length === 0) return { ok: false, error: 'model.stage_rules: 至少需要 1 条规则' }
+  const parsed = parseConfig(yaml)
+  if (parsed.errors.length > 0) {
+    return { ok: false, error: `第 ${parsed.errors[0].line} 行:${parsed.errors[0].message}` }
+  }
+  for (const row of rows) {
+    if (!/^[A-Za-z0-9_-]+$/.test(row.to) || /["']/.test(row.effect)
+      || !/^[A-Za-z0-9_./:-]+$/.test(row.effect)) {
+      return { ok: false, error: 'stage_rules: to/effect 含不受支持的 YAML 字符' }
+    }
+  }
+  const section = parsed.sections.find((item) => item.path === 'model.stage_rules')
+  const lines = yaml.split('\n')
+  const seq = parsed.seqBlocks.find((block) => block.path === 'model.stage_rules')
+  const indent = seq?.indent ?? (section?.indent ?? 2) + 2
+  const rules = rows
+    .map((row) => `${' '.repeat(indent)}- { from: ${row.from}, to: '${row.to}', effect: '${row.effect}', chance: ${row.chance} }`)
+    .join('\n')
+  if (seq) {
+    lines.splice(seq.startLine - 1, seq.endLine - seq.startLine + 1, rules)
+    return { ok: true, yaml: lines.join('\n') }
+  }
+  const model = parsed.sections.find((item) => item.path === 'model')
+  if (!model) return { ok: false, error: 'model 节不存在;请先用高级 YAML 编辑创建结构' }
+  lines.splice(model.endLine, 0, '  stage_rules:', rules)
   return { ok: true, yaml: lines.join('\n') }
 }
 

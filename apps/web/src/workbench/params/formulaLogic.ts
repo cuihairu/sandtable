@@ -7,6 +7,49 @@ export type FormulaReport = {
   readonly valid: boolean
 }
 
+export type FormulaPasteRow = {
+  readonly line: number | null
+  readonly expression: string | null
+  readonly message: string | null
+}
+
+export type PastedFormula = {
+  readonly expressions: readonly string[]
+  readonly reports: readonly FormulaPasteRow[]
+  readonly valid: boolean
+}
+
+/** TSV 优先、单字符 CSV 逐行判定;单列表头跳过,坏表达式保留报告。 */
+export function parseFormulaPaste(text: string): PastedFormula {
+  const reports: FormulaPasteRow[] = []
+  const expressions: string[] = []
+  let headerSeen = false
+  const lines = text.replace(/\r\n?/g, '\n').split('\n')
+  for (const [index, rawLine] of lines.entries()) {
+    const line = index + 1
+    const trimmed = rawLine.trim()
+    if (trimmed === '') continue
+    const cells = trimmed.includes('\t')
+      ? trimmed.split('\t')
+      : trimmed.includes(',') ? trimmed.split(',') : [trimmed]
+    const expression = cells.map((cell) => cell.trim()).filter((cell) => cell !== '').join(' ')
+    if (!headerSeen && expression.toLowerCase() === 'formula') {
+      headerSeen = true
+      continue
+    }
+    if (cells.length > 1) {
+      reports.push({ line, expression: null, message: `公式应为一列,得到 ${cells.length} 列` })
+      continue
+    }
+    expressions.push(expression)
+    reports.push({ line, expression, message: null })
+  }
+  if (expressions.length === 0 && reports.length === 0) {
+    reports.push({ line: null, expression: null, message: '粘贴内容为空' })
+  }
+  return { expressions, reports, valid: reports.every((report) => report.message === null) && expressions.length > 0 }
+}
+
 export const FORMULA_VARIABLES = ['level', 'xp_base', 'xp_pow'] as const
 const BUILTIN_ARITY: Record<string, number> = {
   min: 2, max: 2, clamp: 3, floor: 1, ceil: 1, abs: 1, round: 1,
