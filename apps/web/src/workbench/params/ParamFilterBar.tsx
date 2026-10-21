@@ -21,6 +21,19 @@ export type ParamFilterBarProps = {
   errorsOnly: boolean
   errorCount: number
   onErrorsOnly: (on: boolean) => void
+  /** P1 · 参数元信息四件套(收藏/最近修改/缺元信息/元信息校验错误) */
+  favoritesOnly: boolean
+  favoritesCount: number
+  onFavoritesOnly: (on: boolean) => void
+  recentOnly: boolean
+  recentCount: number
+  onRecentOnly: (on: boolean) => void
+  missingMetaOnly: boolean
+  missingMetaCount: number
+  onMissingMetaOnly: (on: boolean) => void
+  metaIssuesOnly: boolean
+  metaIssuesCount: number
+  onMetaIssuesOnly: (on: boolean) => void
   onResetAll?: () => void
 }
 
@@ -36,6 +49,18 @@ export function ParamFilterBar({
   errorsOnly,
   errorCount,
   onErrorsOnly,
+  favoritesOnly,
+  favoritesCount,
+  onFavoritesOnly,
+  recentOnly,
+  recentCount,
+  onRecentOnly,
+  missingMetaOnly,
+  missingMetaCount,
+  onMissingMetaOnly,
+  metaIssuesOnly,
+  metaIssuesCount,
+  onMetaIssuesOnly,
   onResetAll,
 }: ParamFilterBarProps): JSX.Element {
   const locale = useLocale()
@@ -80,6 +105,43 @@ export function ParamFilterBar({
           onChange={(e) => onErrorsOnly(e.target.checked)}
         />
         {t(locale, 'params.errorsOnly')} <span className="mono">{errorCount}</span>
+      </label>
+      {/* P1 · 参数元信息筛选四件套(状态是 UI 态,不进实验输入) */}
+      <label className="checkbox-line" style={{ margin: 0 }}>
+        <input
+          className="checkbox"
+          type="checkbox"
+          checked={favoritesOnly}
+          onChange={(e) => onFavoritesOnly(e.target.checked)}
+        />
+        {t(locale, 'params.favoritesOnly')} <span className="mono">{favoritesCount}</span>
+      </label>
+      <label className="checkbox-line" style={{ margin: 0 }}>
+        <input
+          className="checkbox"
+          type="checkbox"
+          checked={recentOnly}
+          onChange={(e) => onRecentOnly(e.target.checked)}
+        />
+        {t(locale, 'params.recentOnly')} <span className="mono">{recentCount}</span>
+      </label>
+      <label className="checkbox-line" style={{ margin: 0 }}>
+        <input
+          className="checkbox"
+          type="checkbox"
+          checked={missingMetaOnly}
+          onChange={(e) => onMissingMetaOnly(e.target.checked)}
+        />
+        {t(locale, 'params.missingMetaOnly')} <span className="mono">{missingMetaCount}</span>
+      </label>
+      <label className="checkbox-line" style={{ margin: 0 }}>
+        <input
+          className="checkbox"
+          type="checkbox"
+          checked={metaIssuesOnly}
+          onChange={(e) => onMetaIssuesOnly(e.target.checked)}
+        />
+        {t(locale, 'params.metaIssuesOnly')} <span className="mono">{metaIssuesCount}</span>
       </label>
       <div className="toolbar-end">
         {onResetAll && (

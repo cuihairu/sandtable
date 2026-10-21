@@ -36,6 +36,8 @@ const PATHS: Record<string, string> = {
   filter: 'M3 5h18M6 12h12M9 19h6',
   // WB-11.05 · 语言切换入口(双环语言标记,单线风格与表内其余图标一致)
   languages: 'M2 5h9M7 3v2M4 5c0 3 3 6 7 7M10 5c-1 3-4 6-8 7M14 20l3-8 3 8M14.8 17h4.4',
+  // P1 · 参数元信息收藏(单线五角星,风格同表内)
+  star: 'M12 3l2.7 5.6 6.3.9-4.5 4.4 1 6.1-5.5-2.9-5.5 2.9 1-6.1L3 9.5l6.3-.9L12 3Z',
 }
 
 export type IconName = keyof typeof PATHS & string

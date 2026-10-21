@@ -6,7 +6,7 @@
 // - 批量倍率:先预览/校验整批,再一次写入(WB-05.11);撤销/重做统一历史
 //   (WB-05.12);保存/运行使用冻结的已校验版本(WB-05.14,冻结动作在
 //   WorkbenchApp/DesignerPage 提交时发生)。
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { JSX } from 'react'
 import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
 import { WbIcon } from '../components/icons.tsx'
@@ -22,7 +22,12 @@ import type { ParamRowModel } from '../params/paramsLogic.ts'
 import {
   buildRowModels, bulkPreview, kernelCheck, parseCellInput, visibilityFilter,
 } from '../params/paramsLogic.ts'
-import { paramGroups } from '../params/paramRegistry.ts'
+import { paramGroups, registryParam } from '../params/paramRegistry.ts'
+import {
+  isMissingMeta, metaFilter, metaIssuePaths, recentMetaPathsNow,
+  paramMetaSnapshot, subscribeParamMeta,
+} from '../project/paramMeta.ts'
+import { ParamMetaPanel } from '../project/ParamMetaPanel.tsx'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { notify } from '../state/notifications.ts'
@@ -45,9 +50,28 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
       ? [state.paramKernelError.path as string]
       : [],
   )
-  const visible = visibilityFilter(rows, {
+  const visible0 = visibilityFilter(rows, {
     search: paramSearch, group: paramGroup, changedOnly, errorsOnly, invalidPaths, locale,
   })
+  // P1 · 参数元信息四件套(收藏/最近修改/缺元信息/校验错误):与文本搜索、
+  // 分组、变更/内核错误筛选 AND 组合;计数按全量行,不随其它开关缩放。
+  const metaStore = useSyncExternalStore(subscribeParamMeta, paramMetaSnapshot)
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [recentOnly, setRecentOnly] = useState(false)
+  const [missingMetaOnly, setMissingMetaOnly] = useState(false)
+  const [metaIssuesOnly, setMetaIssuesOnly] = useState(false)
+  const favoritePaths = new Set(Object.keys(metaStore.favorites))
+  const recentPaths = recentMetaPathsNow(metaStore)
+  const missingPaths = new Set(rows.filter((r) => isMissingMeta(metaStore, r.def.path)).map((r) => r.def.path))
+  const metaInvalidPaths = metaIssuePaths(metaStore, (p) => registryParam(p)?.kind ?? null)
+  const visible = metaFilter(visible0, {
+    favoritesOnly, recentOnly, missingOnly: missingMetaOnly, invalidOnly: metaIssuesOnly,
+    favorites: favoritePaths, recent: recentPaths, missing: missingPaths, invalid: metaInvalidPaths,
+  }, (r) => r.def.path)
+  const favoritesCount = rows.filter((r) => favoritePaths.has(r.def.path)).length
+  const recentCount = rows.filter((r) => recentPaths.has(r.def.path)).length
+  const missingMetaCount = missingPaths.size
+  const metaIssuesCount = rows.filter((r) => metaInvalidPaths.has(r.def.path)).length
   const changedCount = rows.filter((r) => r.modified).length
   const focusRow = rows.find((r) => r.def.path === paramFocusId) ?? rows[0]
   const selectedSet = new Set(paramSelected)
@@ -219,6 +243,18 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         errorsOnly={errorsOnly}
         errorCount={invalidPaths.size}
         onErrorsOnly={(on) => dispatch({ type: 'param/errors-only', on })}
+        favoritesOnly={favoritesOnly}
+        favoritesCount={favoritesCount}
+        onFavoritesOnly={setFavoritesOnly}
+        recentOnly={recentOnly}
+        recentCount={recentCount}
+        onRecentOnly={setRecentOnly}
+        missingMetaOnly={missingMetaOnly}
+        missingMetaCount={missingMetaCount}
+        onMissingMetaOnly={setMissingMetaOnly}
+        metaIssuesOnly={metaIssuesOnly}
+        metaIssuesCount={metaIssuesCount}
+        onMetaIssuesOnly={setMetaIssuesOnly}
         onResetAll={onRequestResetAll}
       />
       {paramSelected.length > 0 && (
@@ -271,6 +307,9 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
             ? t(locale, 'params.savedLabelProject')
             : state.paramDraft.saved ? t(locale, 'params.savedLabelBrowser') : t(locale, 'params.savedLabelBrowserUnsaved')}
           kernelError={state.paramKernelError}
+          metaSection={
+            <ParamMetaPanel key={focusRow.def.path} path={focusRow.def.path} projectOpen={state.project !== null} />
+          }
           onResetOne={() => dispatch({ type: 'param/reset-one', path: focusRow.def.path })}
           onAdvancedEdit={() => openAdvancedEdit(focusRow)}
           onNewExperiment={() => dispatch({ type: 'navigate', page: 'designer' })}

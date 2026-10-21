@@ -28,6 +28,7 @@ import { GlobalTaskDrawer } from './tasks/GlobalTaskDrawer.tsx'
 import { ProjectsPanel } from './project/ProjectsPanel.tsx'
 import { registryRegister } from './project/projectRegistry.ts'
 import { loadScenarioVersions, unloadScenarioVersions } from './project/scenarioVersions.ts'
+import { loadParamMeta, unloadParamMeta } from './project/paramMeta.ts'
 import { AnalysisPage } from './pages/AnalysisPage.tsx'
 import { ParametersPage } from './pages/ParametersPage.tsx'
 import { DesignerPage } from './pages/DesignerPage.tsx'
@@ -193,6 +194,7 @@ export default function WorkbenchApp(): JSX.Element {
     // P1-01/02 · 项目库登记 + 按项目恢复配置版本/基线/备注(内容仍在归档层)
     registryRegister(doc.projectId, doc.name)
     loadScenarioVersions(doc.projectId)
+    loadParamMeta(doc.projectId)
     // WB-09.07 · 重开恢复运行登记簿与在场产物:登记簿回显、产物可再次导出;
     // 索引不可读给可读错误(结果文件仍按字节保留,不静默丢)
     const restored = restoreRunsFromArchive(doc.files)
@@ -224,6 +226,7 @@ export default function WorkbenchApp(): JSX.Element {
     notify('info', t(locale, 'common.notifyYamlImported', { name: doc.name }))
     registryRegister(doc.projectId, doc.name)
     loadScenarioVersions(doc.projectId)
+    loadParamMeta(doc.projectId)
     dispatch({ type: 'navigate', page: 'designer' })
   }
 
@@ -740,6 +743,7 @@ export default function WorkbenchApp(): JSX.Element {
         onConfirm={() => {
           dispatch({ type: 'project/close' })
           unloadScenarioVersions()
+          unloadParamMeta()
           notify('info', t(locale, 'common.notifyProjectClosed'))
         }}
         onClose={() => patchOverlays({ confirmClose: false })}
@@ -771,6 +775,7 @@ export default function WorkbenchApp(): JSX.Element {
           dispatch({ type: 'project/open', doc })
           registryRegister(doc.projectId, doc.name)
           loadScenarioVersions(doc.projectId)
+          loadParamMeta(doc.projectId)
           patchOverlays({ projects: false })
           notify('success', t(localeSession.get(), 'common.notifyProjectSwitched', { name: doc.name }))
           dispatch({ type: 'navigate', page: 'designer' })
@@ -839,7 +844,7 @@ function ProjectInfoDialog({ open, onClose, onRequestConfirmClose }: {
                   } else {
                     dispatch({ type: 'project/close' })
                     unloadScenarioVersions()
-                    notify('info', t(locale, 'common.notifyProjectClosed'))
+                    unloadParamMeta()
                   }
                 }}
               >

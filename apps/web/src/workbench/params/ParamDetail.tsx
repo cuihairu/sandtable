@@ -4,6 +4,7 @@
 // 高级编辑入口(WB-05.02);内核校验失败时展示原始错误详情(WB-05.07)。
 // WB-11.12 · 检查器文案走词典;注册表原始 desc 按原文回显(WB-11.19/.20 口径)。
 import type { JSX } from 'react'
+import type { ReactNode } from 'react'
 import { WbIcon } from '../components/icons.tsx'
 import type { ParamRowModel } from './paramsLogic.ts'
 import { displayParamName, paramGroupLabel } from './paramRegistry.ts'
@@ -16,6 +17,8 @@ export type ParamDetailProps = {
   savedLabel: string
   /** 内核完整校验失败的原始详情(null = 最近校验通过/未失败) */
   kernelError: { path: string | null; message: string } | null
+  /** P1 · 参数元信息区(缺失显式「未定义」;不注入时保留占位行) */
+  metaSection?: ReactNode
   onResetOne: () => void
   onAdvancedEdit: () => void
   onNewExperiment?: () => void
@@ -39,6 +42,7 @@ export function ParamDetail({
   changedCount,
   savedLabel,
   kernelError,
+  metaSection,
   onResetOne,
   onAdvancedEdit,
   onNewExperiment,
@@ -90,14 +94,20 @@ export function ParamDetail({
       <section className="inspector-section">
         <h3>{t(locale, 'params.sectionDefinition')}</h3>
         <p className="note">{row.def.desc}。{t(locale, 'params.registryNote')}</p>
-        <div className="inspector-kv">
-          <span>{t(locale, 'params.unitMeta')}</span>
-          <span className="muted">{t(locale, 'params.metaUndefined')}</span>
-        </div>
-        <div className="inspector-kv">
-          <span>{t(locale, 'params.rangeMeta')}</span>
-          <span className="muted">{t(locale, 'params.metaUndefined')}</span>
-        </div>
+        {/* P1 · 参数元信息层:八项字段逐项展示(缺失显式「未定义」)、收藏、
+            编辑与校验问题点名;由页面容器注入(状态在 paramMeta 会话)。 */}
+        {metaSection ?? (
+          <>
+            <div className="inspector-kv">
+              <span>{t(locale, 'params.unitMeta')}</span>
+              <span className="muted">{t(locale, 'params.metaUndefined')}</span>
+            </div>
+            <div className="inspector-kv">
+              <span>{t(locale, 'params.rangeMeta')}</span>
+              <span className="muted">{t(locale, 'params.metaUndefined')}</span>
+            </div>
+          </>
+        )}
         <div className="inspector-kv">
           <span>{t(locale, 'params.registrySource')}</span>
           <span className="mono">registry.rs</span>
