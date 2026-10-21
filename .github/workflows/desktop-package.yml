@@ -464,4 +464,6 @@ jobs:
               --target "$GITHUB_SHA" \
               "${files[@]}"
           fi
+          # GitHub 曾把 workflow 建的发布留成 draft(公网 404 不可见)——强制转正兜底
+          gh release edit nightly --draft=false 2>/dev/null || true
           echo "nightly release published at commit ${sha8}"
