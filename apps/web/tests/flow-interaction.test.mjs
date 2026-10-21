@@ -172,5 +172,10 @@ if (!existsSync(pkgNode)) {
     const tasks = readFileSync(join(here, '../src/workbench/tasks/TaskList.tsx'), 'utf8')
     assert.match(tasks, /errorClassLabel\(cls, locale\)/, '队列错误分类就地显示')
     assert.match(tasks, /recoveryText\(ex\.errorClass, ex\.kind, locale\)/, '队列恢复提示就地显示')
+
+    // WB-10.13 · 提交校验必须检查送达内核的同一份 YAML(sweep 实验不能
+    // 只校验无 sweep 节的基线场景);A/B 分支的 view.cand 校验不在此行。
+    const designer = readFileSync(join(here, '../src/workbench/pages/DesignerPage.tsx'), 'utf8')
+    assert.match(designer, /kernelCheck\(snapYaml\)/, 'sweep 提交校验完整实验输入')
   })
 }

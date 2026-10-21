@@ -290,7 +290,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
           finish()
           return
         }
-        const check = await kernelCheck(view.cand)
+        const check = await kernelCheck(snapYaml)
         if (!check.ok) {
           dispatch({ type: 'param/kernel-error', error: { path: check.path, message: check.message } })
           notify('error', t(locale, 'experiment.runKernelBlocked', { message: check.message }))

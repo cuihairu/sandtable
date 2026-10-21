@@ -150,4 +150,82 @@ test('WB-10.01:闭环里的每一步在 UI 上有对应接线', () => {
   assert.ok(appBar.includes('onSaveProject'), '保存入口挂在工具栏')
 })
 
+test('WB-10.13:参数回写结果走真实内核并随运行归档重开', async () => {
+  const { applyParamEdits } = await import('../src/workbench/params/configYaml.ts')
+  const { candidateIdFor } = await import('../src/workbench/ids.ts')
+
+  const writeback = applyParamEdits(SCENARIO, [{ path: 'model.dungeon.m_attack', text: '250' }])
+  assert.equal(writeback.ok, true)
+  assert.ok(writeback.yaml.includes('  dungeon:\n    m_attack: 250'), '回写只定向新增目标参数')
+  assert.ok(writeback.yaml.includes('attack: 100 # keep comment'), '回写不改写既有结构或注释')
+
+  const edited = writeback.yaml
+  const applied = JSON.parse(wasm.param_apply(SCENARIO, 'model.dungeon.m_attack', 250))
+  assert.equal(applied.value, 250, '内核应用通道回读同一值')
+  assert.equal(
+    JSON.parse(wasm.param_values(edited))['model.dungeon.m_attack'],
+    250,
+    '文本编辑后的生效值进入参数表',
+  )
+  const experiment = buildExperimentYaml(edited, {
+    ...DESIGN,
+    factors: [{ path: 'model.dungeon.m_attack', min: 250, max: 250, step: 10 }],
+  })
+  const hashConfig = JSON.parse(wasm.validate_config(edited))
+  assert.equal(hashConfig.config_hash, applied.config_hash, '回写配置的内核哈希一致')
+  const plan = JSON.parse(wasm.sweep_plan(experiment, 0))
+  assert.equal(plan.config_hash, hashConfig.config_hash, '实验计划继承回写配置哈希')
+  assert.deepEqual(plan.candidates, [{ 'model.dungeon.m_attack': 250 }], '计划只含回写后的候选')
+  const result = JSON.parse(wasm.sweep_candidate(
+    experiment,
+    plan.replicates,
+    JSON.stringify(plan.candidates[0]),
+  ))
+  assert.equal(result.status, 'ok', '回写候选真实可运行')
+  assert.equal(result.values['model.dungeon.m_attack'], 250, '运行结果携带回写参数')
+
+  const sourceDoc = await projectFromYaml('writeback.yaml', SCENARIO)
+  const path = sourceDoc.objects[0].path
+  const savedDoc = {
+    ...sourceDoc,
+    files: new Map([...sourceDoc.files, [path, new TextEncoder().encode(edited)]]),
+  }
+  const snap = await snapshotRun({
+    experimentId: candidateIdFor('bl_writeback01', plan.candidates[0]),
+    scenarioPath: path,
+    yaml: experiment,
+    modelVersion: hashConfig.model_version,
+    schemaVersion: hashConfig.schema_version,
+    conditions: { method: 'grid', replicates: plan.replicates, candidates: 1 },
+  })
+  const entry = { ...runIndexEntryOf(snap, hashConfig.config_hash), files: [] }
+  const reportPath = runArtifactPaths(snap.runId, ['report.json'])[0]
+  const report = JSON.stringify({
+    schema_version: '1',
+    run_id: snap.runId,
+    config_hash: hashConfig.config_hash,
+    candidates: [result],
+  })
+  const index = runsIndexFile([entry])
+  const bytes = await packProject(await buildProjectSave(savedDoc, {}, {
+    runArtifacts: { [reportPath]: report },
+    runsIndex: index,
+  }))
+  const opened = await openProject(bytes, 'writeback.sandtable')
+  assert.equal(opened.ok, true, '回写产出的归档通过全量校验')
+  const reopened = opened.doc
+  assert.equal(baseContentOf(reopened, path), edited, '重开读取回写后的配置原文')
+  assert.equal(reopened.files.get(reportPath) !== undefined, true, '回写运行产物在场')
+  assert.equal(
+    new TextDecoder().decode(reopened.files.get('results/runs.json')),
+    index,
+    '运行索引逐字节保真',
+  )
+  const restored = restoreRunsFromArchive(reopened.files)
+  assert.equal(restored.error, null)
+  assert.equal(restored.runs[0].config_hash, snap.configHash)
+  assert.deepEqual(auditRunArtifacts(restored.runs, new Set(restored.runs[0].files)), [])
+  assert.equal(reopened.resultStatus[reportPath].state, 'known')
+})
+
 const read = (rel) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', rel), 'utf8')
