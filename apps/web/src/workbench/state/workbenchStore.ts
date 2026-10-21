@@ -212,6 +212,8 @@ export type WorkbenchAction =
   | { type: 'project/open-failed'; error: string }
   /** 关闭项目回到演示项目(未保存守卫由 UI 层确认后触发,WB-04.12) */
   | { type: 'project/close' }
+  /** P1-05 · 项目重命名:只改文档名(保存时落 manifest name),内容不动 */
+  | { type: 'project/rename'; name: string }
   /** 选中项目内对象(场景/实验用归档路径当 ID,不用下标,WB-04.03) */
   | { type: 'object/select'; kind: 'scenario' | 'experiment'; path: string }
   /** 写某对象的配置草稿:只动该键,切换对象不覆盖另一对象(WB-04.06) */
@@ -432,6 +434,13 @@ export function reduce(state: WorkbenchState, action: WorkbenchAction): Workbenc
         // 冻结版本属于已关闭项目(WB-05.14)
         paramFrozen: null, paramKernelError: null,
       }
+    case 'project/rename': {
+      // P1-05 · 只改名字(sourceName 同步 = 保存默认文件名跟随),内容不动;
+      // 空名拒绝(与 packProject「项目名不能为空」同口径)
+      const name = action.name.trim()
+      if (!state.project || name === '') return state
+      return { ...state, project: { ...state.project, name, sourceName: name } }
+    }
     case 'object/select':
       return {
         ...state,

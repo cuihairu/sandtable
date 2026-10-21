@@ -24,6 +24,7 @@ import { notify } from '../state/notifications.ts'
 import { createId, ID_PREFIXES } from '../ids.ts'
 import type { CandidateId } from '../ids.ts'
 import { download } from '../demo/export.ts'
+import { CandidateComparePanel } from '../project/CandidateComparePanel.tsx'
 import { parseConfig } from '../params/configYaml.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
@@ -200,6 +201,11 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
       <button className="btn" disabled={parseConfig(d.yaml).errors.length > 0} onClick={() => download(`${d.id}.yaml`, d.yaml, 'application/yaml')}>{t(locale, 'analysis.downloadDraftYaml')}</button>
       <button className="btn" onClick={() => download(`${d.id}.source.json`, draftJson(d), 'application/json')}>{t(locale, 'analysis.downloadDraftJson')}</button>
       {parseConfig(d.yaml).errors.length > 0 && <p role="alert">{t(locale, 'analysis.draftParseError')}</p>}
-    </div>)}{a.draftPersistenceError && <p role="alert">{a.draftPersistenceError}</p>}</section>}
+    </div>)}{a.draftPersistenceError && <p role="alert">{a.draftPersistenceError}</p>}
+      <CandidateComparePanel
+        drafts={a.drafts}
+        baselineYaml={a.drafts.every((d) => d.baselineYaml === a.drafts[0].baselineYaml) ? a.drafts[0].baselineYaml : null}
+      />
+    </section>}
   </div>
 }

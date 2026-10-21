@@ -25,6 +25,9 @@ import type { ExportFormat, ExportScope } from './overlays/ExportDialog.tsx'
 import { ConfirmDialog } from './overlays/ConfirmDialog.tsx'
 import { ToastStack } from './overlays/ToastStack.tsx'
 import { GlobalTaskDrawer } from './tasks/GlobalTaskDrawer.tsx'
+import { ProjectsPanel } from './project/ProjectsPanel.tsx'
+import { registryRegister } from './project/projectRegistry.ts'
+import { loadScenarioVersions, unloadScenarioVersions } from './project/scenarioVersions.ts'
 import { AnalysisPage } from './pages/AnalysisPage.tsx'
 import { ParametersPage } from './pages/ParametersPage.tsx'
 import { DesignerPage } from './pages/DesignerPage.tsx'
@@ -89,6 +92,8 @@ type OverlayState = {
   about: boolean
   projectInfo: boolean
   shortcuts: boolean
+  /** P1-01 · 项目库(创建/复制/归档/恢复/重命名/备注) */
+  projects: boolean
   /** WB-04.12 · 打开其他项目前确认放弃未保存修改(待打开内容挂起) */
   confirmOpen: {
     open: boolean
@@ -108,6 +113,7 @@ const INITIAL_OVERLAYS: OverlayState = {
   about: false,
   projectInfo: false,
   shortcuts: false,
+  projects: false,
   confirmOpen: { open: false, pending: null },
   confirmClose: false,
 }
@@ -184,6 +190,9 @@ export default function WorkbenchApp(): JSX.Element {
     const ne = doc.objects.filter((o) => o.kind === 'experiment').length
     const nr = doc.objects.filter((o) => o.kind === 'result').length
     dispatch({ type: 'project/open', doc })
+    // P1-01/02 · 项目库登记 + 按项目恢复配置版本/基线/备注(内容仍在归档层)
+    registryRegister(doc.projectId, doc.name)
+    loadScenarioVersions(doc.projectId)
     // WB-09.07 · 重开恢复运行登记簿与在场产物:登记簿回显、产物可再次导出;
     // 索引不可读给可读错误(结果文件仍按字节保留,不静默丢)
     const restored = restoreRunsFromArchive(doc.files)
@@ -213,6 +222,8 @@ export default function WorkbenchApp(): JSX.Element {
       },
     })
     notify('info', t(locale, 'common.notifyYamlImported', { name: doc.name }))
+    registryRegister(doc.projectId, doc.name)
+    loadScenarioVersions(doc.projectId)
     dispatch({ type: 'navigate', page: 'designer' })
   }
 
@@ -378,6 +389,14 @@ export default function WorkbenchApp(): JSX.Element {
         },
       })
     }
+    // P1-01 · 项目库命令入口
+    entries.push({
+      id: 'project:library',
+      label: t(locale, 'common.projects'),
+      hint: t(locale, 'common.projectsHint'),
+      icon: 'folder-open',
+      run: () => patchOverlays({ projects: true }),
+    })
     return entries
   }, [locale])
 
@@ -599,6 +618,7 @@ export default function WorkbenchApp(): JSX.Element {
         onProjectInfo={() => patchOverlays({ projectInfo: true })}
         onOpenProject={openProjectEntry}
         onSaveProject={state.project ? saveProject : null}
+        onProjects={() => patchOverlays({ projects: true })}
         saveLabel={saveLabel}
         sourceLabel={state.project ? t(locale, 'common.projectFile') : undefined}
       />
@@ -719,6 +739,7 @@ export default function WorkbenchApp(): JSX.Element {
         tone="danger"
         onConfirm={() => {
           dispatch({ type: 'project/close' })
+          unloadScenarioVersions()
           notify('info', t(locale, 'common.notifyProjectClosed'))
         }}
         onClose={() => patchOverlays({ confirmClose: false })}
@@ -736,6 +757,26 @@ export default function WorkbenchApp(): JSX.Element {
         onRequestConfirmClose={() => patchOverlays({ confirmClose: true })}
       />
       <ShortcutsDialog open={overlays.shortcuts} onClose={() => patchOverlays({ shortcuts: false })} />
+      {/* P1-01/05 · 项目库:创建/复制/归档(软态)/恢复/重命名/改动备注 */}
+      <ProjectsPanel
+        open={overlays.projects}
+        onClose={() => patchOverlays({ projects: false })}
+        doc={state.project}
+        onAdoptDoc={(doc) => {
+          // 未保存修改守卫(与打开文件同口径):不丢用户草稿
+          if (hasUnsavedWork(getState())) {
+            notify('warning', t(localeSession.get(), 'common.confirmOpenBody'))
+            return
+          }
+          dispatch({ type: 'project/open', doc })
+          registryRegister(doc.projectId, doc.name)
+          loadScenarioVersions(doc.projectId)
+          patchOverlays({ projects: false })
+          notify('success', t(localeSession.get(), 'common.notifyProjectSwitched', { name: doc.name }))
+          dispatch({ type: 'navigate', page: 'designer' })
+        }}
+        onRenameDoc={(name) => dispatch({ type: 'project/rename', name })}
+      />
       <ToastStack />
     </div>
   )
@@ -797,6 +838,7 @@ function ProjectInfoDialog({ open, onClose, onRequestConfirmClose }: {
                     onRequestConfirmClose()
                   } else {
                     dispatch({ type: 'project/close' })
+                    unloadScenarioVersions()
                     notify('info', t(locale, 'common.notifyProjectClosed'))
                   }
                 }}

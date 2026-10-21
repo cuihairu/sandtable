@@ -20,6 +20,8 @@ export type AppBarProps = {
   onOpenProject?: () => void
   /** WB-04.10 · 保存项目(仅真实项目提供;null 时不渲染按钮) */
   onSaveProject?: (() => void) | null
+  /** P1-01 · 项目库(创建/复制/归档/备注);缺省不渲染入口 */
+  onProjects?: () => void
   /** 保存按钮提示(状态可见:未保存修改 / 与项目文件一致) */
   saveLabel?: string
   /** 项目标识副标签(内置样例 / 项目文件) */
@@ -35,6 +37,7 @@ export function AppBar({
   demoMode,
   onOpenProject,
   onSaveProject,
+  onProjects,
   saveLabel,
   sourceLabel,
 }: AppBarProps): JSX.Element {
@@ -57,6 +60,12 @@ export function AppBar({
         <button className="command-trigger" onClick={onOpenProject} title={t(locale, 'common.openProjectHint')}>
           <WbIcon name="folder-open" />
           <span>{t(locale, 'common.openProject')}</span>
+        </button>
+      )}
+      {onProjects && (
+        <button className="command-trigger" onClick={onProjects} title={t(locale, 'common.projectsHint')}>
+          <WbIcon name="folder-open" />
+          <span>{t(locale, 'common.projects')}</span>
         </button>
       )}
       {onOpenProject && onSaveProject && (

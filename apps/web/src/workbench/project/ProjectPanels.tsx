@@ -14,6 +14,7 @@ import { dispatch } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
 import { auditRunArtifacts, baseContentOf, draftOf } from '../state/projectDoc.ts'
 import type { ResultFileStatus } from '../state/projectDoc.ts'
+import { ScenarioVersionsPanel } from './ScenarioVersionsPanel.tsx'
 import { download } from '../demo/export.ts'
 import { t } from '../../lib/i18n/index.ts'
 import type { Locale } from '../../lib/i18n/index.ts'
@@ -59,6 +60,14 @@ function DraftEditor({
             {t(locale, 'data.project.discardEdit')}
           </button>
         </div>
+      )}
+      {/* P1-02/03/05 · 场景配置版本:每场景独立历史 + 可指定/可回切基线 + 改动备注 */}
+      {doc.objects.find((o) => o.path === path)?.kind === 'scenario' && (
+        <ScenarioVersionsPanel
+          path={path}
+          content={d.content}
+          baseContent={base}
+        />
       )}
     </section>
   )
