@@ -18,6 +18,7 @@ import { BulkActionBar } from '../params/BulkActionBar.tsx'
 import { dispatch, paramYamlView, persistDraft } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
 import { applyParamEdits, parseConfig } from '../params/configYaml.ts'
+import { readGrowthRows } from '../params/growthCurve.ts'
 import type { ParamRowModel } from '../params/paramsLogic.ts'
 import {
   buildRowModels, bulkPreview, kernelCheck, parseCellInput, visibilityFilter,
@@ -27,7 +28,9 @@ import {
   isMissingMeta, metaFilter, metaIssuePaths, recentMetaPathsNow,
   paramMetaSnapshot, subscribeParamMeta,
 } from '../project/paramMeta.ts'
+import { versionsSaveVersion } from '../project/scenarioVersions.ts'
 import { ParamMetaPanel } from '../project/ParamMetaPanel.tsx'
+import { GrowthCurveEditor } from '../params/GrowthCurveEditor.tsx'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { notify } from '../state/notifications.ts'
@@ -41,6 +44,7 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
   const { paramSearch, paramGroup, changedOnly, errorsOnly, paramSelected, paramFocusId } = state
   // WB-11.12 · 页面文案走词典;locale 订阅会话(语言切换即时生效)
   const locale = useLocale()
+  const [growthOpen, setGrowthOpen] = useState(false)
   const view = paramYamlView(state)
   const baseParsed = parseConfig(view.base)
   const candParsed = parseConfig(view.cand)
@@ -175,6 +179,20 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
     dispatch({ type: 'param/select', ids: [] })
   }
 
+  const applyGrowthCurve = (yaml: string): void => {
+    dispatch({ type: 'param/write', yaml })
+    notify('success', t(locale, 'params.growth.applied'))
+  }
+
+  const saveGrowthVersion = (yaml: string): void => {
+    if (!view.scenarioPath) return
+    const saved = versionsSaveVersion(view.scenarioPath, yaml, { label: 'growth curve' })
+    notify(
+      saved.ok ? 'success' : 'error',
+      saved.ok ? t(locale, 'params.growth.versionSaved') : saved.error ?? t(locale, 'params.growth.versionSaved'),
+    )
+  }
+
   const save = (): void => {
     if (persistDraft(state)) {
       dispatch({ type: 'param/save' })
@@ -257,6 +275,14 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         onMetaIssuesOnly={setMetaIssuesOnly}
         onResetAll={onRequestResetAll}
       />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 16px 8px' }}>
+        <button
+          className="btn"
+          onClick={() => setGrowthOpen(true)}
+        >
+          {t(locale, 'params.growth.open')}
+        </button>
+      </div>
       {paramSelected.length > 0 && (
         <BulkActionBar
           count={paramSelected.length}
@@ -316,6 +342,16 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
           locale={locale}
         />
       </div>
+      <GrowthCurveEditor
+        key={`${view.cand}`}
+        open={growthOpen}
+        onClose={() => setGrowthOpen(false)}
+        baseYaml={view.base}
+        candidateYaml={view.cand}
+        initialRows={readGrowthRows(view.cand) ?? []}
+        onApply={applyGrowthCurve}
+        onSaveVersion={saveGrowthVersion}
+      />
       <OverlayDialog
         open={yamlEdit.open}
         onClose={() => setYamlEdit({ open: false, text: '', error: null, focusPath: null })}

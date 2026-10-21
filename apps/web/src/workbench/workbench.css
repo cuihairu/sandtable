@@ -22,6 +22,24 @@
 .wb-app .lang-option{ display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 10px; border-radius: 6px; color: #dde7e9; text-align: left; white-space: nowrap; }
 .wb-app .lang-option:hover{ background: #35444a; }
 .wb-app .lang-option[aria-selected="true"]{ color: #65c5c5; font-weight: 600; }
+/* P1 · 结构化编辑器第一批:成长曲线表格、粘贴与错误上墙 */
+.wb-app .growth-editor{ border-top:1px solid var(--wb-line); background:#fbfdfd; padding:14px 16px; overflow:auto; max-height:54vh; }
+.wb-app .growth-grid{ display:grid; grid-template-columns:minmax(430px,1.35fr) minmax(250px,.85fr); gap:14px; align-items:start; }
+.wb-app .growth-table{ width:100%; border-collapse:collapse; font-size:12px; }
+.wb-app .growth-table th,.wb-app .growth-table td{ border-bottom:1px solid var(--wb-line); padding:5px 6px; text-align:left; }
+.wb-app .growth-table input{ width:82px; min-height:26px; padding:3px 6px; }
+.wb-app .growth-side{ display:grid; gap:10px; }
+.wb-app .growth-side textarea,.wb-app .growth-side input{ width:100%; min-height:26px; padding:5px 7px; }
+.wb-app .growth-side textarea{ font-family:var(--wb-mono); font-size:11px; }
+.wb-app .growth-preview-result{ display:grid; grid-template-columns:auto 1fr; gap:3px 8px; margin:0; font-size:11px; }
+.wb-app .growth-preview-result dt{ color:var(--wb-muted); }
+.wb-app .growth-preview-result dd{ margin:0; font-family:var(--wb-mono); }
+.wb-app .error-wall{ margin-top:10px; padding:9px 11px; border:1px solid var(--wb-red); border-radius:6px; color:var(--wb-red); background:color-mix(in srgb,var(--wb-red) 7%,transparent); font-size:11px; }
+.wb-app .error-wall ul{ margin:4px 0 0; padding-left:18px; }
+.wb-app .growth-review{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px; }
+.wb-app .growth-diff,.wb-app .growth-impact{ margin:5px 0 0; padding-left:18px; font-size:11px; }
+.wb-app .growth-actions{ display:flex; gap:8px; margin-top:12px; }
+@media (max-width:900px){ .wb-app .growth-grid,.wb-app .growth-review{ grid-template-columns:1fr; } .wb-app .growth-editor{ max-height:none; } }
 /* WB-02.17 · 嵌入的 SQL 查询面板:工作台按钮重置会把 legacy button.primary 拍平成透明底,这里恢复 */
 .wb-app .exchange-query{ border: 1px solid var(--wb-line); border-radius: 10px; padding: 14px; margin: 2px 0 20px; background: #fbfdfd; }
 .wb-app .exchange-query textarea{ width: 100%; border: 1px solid var(--wb-line); border-radius: 6px; padding: 8px; background: white; color: #203237; font-family: var(--wb-mono); font-size: 12px; }

@@ -12,6 +12,15 @@
 // 都要过内核完整校验(paramsLogic.kernelCheck)。
 import { PARAM_REGISTRY, registryParam } from './paramRegistry.ts'
 
+export type TierTableRow = {
+  hp: number
+  attack: number
+  defense: number
+  /** null = 缺省,运行时回退锚点 × 产出增长率^tier */
+  gold: number | null
+  xp: number | null
+}
+
 export type YamlLeaf = {
   /** 点分注册路径(映射键拼接;序列内部键不生成路径) */
   path: string
@@ -58,7 +67,9 @@ function commentStart(line: string): number {
     const c = line[i]
     if (quote) {
       if (c === quote) quote = null
-    } else if (c === '\'' || c === '"') {
+      continue
+    }
+    if (c === '\'' || c === '"') {
       quote = c
     } else if (c === '#' && (i === 0 || line[i - 1] === ' ' || line[i - 1] === '\t')) {
       return i
@@ -235,13 +246,13 @@ export function parseConfig(yaml: string): ParsedConfig {
       }
       continue
     }
-    // 序列项的续行(块式映射项的后续键):属于项内部,不生成路径
+    // 序列项的续行(块式映射项的后续键):只属于更深缩进的项内部
+    const m = /^((?:'[^']*'|"[^"]*"|[^:\s])+?)\s*:(.*)$/.exec(content)
     if (seqOpen && indent > seqOpen.indent) {
       seqOpen.endLine = lineNo
       continue
     }
     flushSeq()
-    const m = /^((?:'[^']*'|"[^"]*"|[^:\s])+?)\s*:(.*)$/.exec(content)
     if (!m) {
       out.errors.push({ line: lineNo, message: `无法识别的行(应为 key: value):${content.slice(0, 30)}` })
       continue
@@ -463,6 +474,83 @@ export function removeParam(yaml: string, parsed: ParsedConfig, path: string): A
     return { ok: true, yaml: lines.join('\n') }
   }
   return { ok: false, error: `${path}: 配置中不存在,无需删除` }
+}
+
+/** 读取 model.dungeon.tier_table(块序列)。缺块返回 null;缺字段不猜测,
+ * 给出行号与字段错误;非法数值行原样报错。gold/xp 可选,表示回退几何产出。 */
+export function readTierTable(yaml: string, parsed: ParsedConfig = parseConfig(yaml)): readonly TierTableRow[] | null {
+  const seq = parsed.seqBlocks.find((block) => block.path === 'model.dungeon.tier_table')
+  if (!seq) return null
+  const lines = yaml.split('\n')
+  const rows: TierTableRow[] = []
+  for (let lineNo = seq.startLine; lineNo <= seq.endLine; lineNo++) {
+    const raw = lines[lineNo - 1] ?? ''
+    const visible = raw.trim()
+    if (!visible.startsWith('-')) continue
+    const flowStart = visible.indexOf('{')
+    const flowEnd = visible.lastIndexOf('}')
+    if (flowStart === -1 || flowEnd <= flowStart) return null
+    const body = visible.slice(flowStart, flowEnd + 1)
+    if (!body) return null
+    const match = /^\{\s*(.*?)\s*\}\s*$/.exec(body)
+    if (!match) return null
+    const row: Record<string, string> = {}
+    for (const item of match[1].split(',')) {
+      const pair = item.split(':')
+      if (pair.length !== 2) return null
+      row[unquote(pair[0])] = unquote(pair[1])
+    }
+    const number = (key: 'hp' | 'attack' | 'defense' | 'gold' | 'xp'): number | null => {
+      const rawValue = row[key]
+      if (rawValue === undefined) return key === 'gold' || key === 'xp' ? null : Number.NaN
+      const value = Number(rawValue)
+      return Number.isFinite(value) ? value : Number.NaN
+    }
+    const hp = number('hp')
+    const attack = number('attack')
+    const defense = number('defense')
+    if (!Number.isFinite(hp) || !Number.isFinite(attack) || !Number.isFinite(defense)) return null
+    const hpValue = hp as number
+    const attackValue = attack as number
+    const defenseValue = defense as number
+    rows.push({ hp: hpValue, attack: attackValue, defense: defenseValue, gold: number('gold'), xp: number('xp') })
+  }
+  return rows
+}
+
+/** 把成长曲线整表写回 model.dungeon.tier_table。已有表按行剪切,保留
+ * tier_table 键行与其前缀注释;缺块时按与注册默认 YAML 一致的二级缩进插入
+ * dungeon 节尾。整表一次替换,不走逐格 patch,避免半批修改。 */
+export function applyTierTable(yaml: string, rows: readonly TierTableRow[]): ApplyOutcome {
+  if (rows.length === 0) return { ok: false, error: 'model.dungeon.tier_table: 至少需要 1 行' }
+  const lines = yaml.split('\n')
+  const parsed = parseConfig(yaml)
+  if (parsed.errors.length > 0) {
+    return { ok: false, error: `第 ${parsed.errors[0].line} 行:${parsed.errors[0].message}` }
+  }
+  const seq = parsed.seqBlocks.find((block) => block.path === 'model.dungeon.tier_table')
+  const section = parsed.sections.find((item) => item.path === 'model.dungeon.tier_table')
+  const indent = seq?.indent ?? (section?.indent ?? 4) + 2
+  const table = rows
+    .map((row) => {
+      const output = row.gold === null && row.xp === null
+        ? ''
+        : `, gold: ${row.gold ?? 0}, xp: ${row.xp ?? 0}`
+      return `${' '.repeat(indent)}- { hp: ${row.hp}, attack: ${row.attack}, defense: ${row.defense}${output} }`
+    })
+    .join('\n')
+  if (seq) {
+    lines.splice(seq.startLine - 1, seq.endLine - seq.startLine + 1, table)
+    return { ok: true, yaml: lines.join('\n') }
+  }
+  const dungeon = parsed.sections.find((section) => section.path === 'model.dungeon')
+  if (!dungeon) return { ok: false, error: 'model.dungeon 节不存在;请先用高级 YAML 编辑创建结构' }
+  const dungeonLines = parsed.sections
+    .filter((section) => section.path.startsWith('model.dungeon.'))
+    .map((section) => section.endLine)
+  const insertAt = dungeonLines.length === 0 ? dungeon.endLine : Math.max(...dungeonLines)
+  lines.splice(insertAt, 0, '    tier_table:', table)
+  return { ok: true, yaml: lines.join('\n') }
 }
 
 /* ————— 基线差异(WB-05.08) ————— */
