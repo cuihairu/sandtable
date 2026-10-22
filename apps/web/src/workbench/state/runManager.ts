@@ -6,8 +6,8 @@
 // WorkbenchApp 挂载/卸载只影响订阅,任务引用与进度不丢。
 // WB-07 · 真实执行接入:enqueueRun 绑定 job/experiment/run ID,执行引擎
 // (executor.ts)按内核事件驱动进度——真实任务无定时器;取消/清理/竞争
-// 条件由本模块与 executor 共同约束(单活动任务、终态先到先得、终态后
-// 清理活动控制引用,支持再次提交)。
+// 条件由本模块与 executor 共同约束(多任务 FIFO 排队、同一时刻仅一项真实
+// 执行、终态先到先得、终态后清理活动控制引用并自动续跑下一项)。
 import { createId, ID_PREFIXES } from '../ids.ts'
 import type { JobId } from '../ids.ts'
 import * as logic from './jobLogic.ts'
@@ -36,6 +36,9 @@ let timer: ReturnType<typeof setInterval> | null = null
 
 /** WB-07.12 · 活动任务的控制引用(取消句柄);终态即清理。 */
 const activeControls = new Map<JobId, { cancel: (escalate?: boolean) => Promise<void> }>()
+
+/** WB-07.12 · 排队中的注入后端引用;启动时消费,取消/终态后清理。 */
+const queuedBackends = new Map<JobId, Promise<ExecBackends> | ExecBackends>()
 
 function emit(): void {
   for (const listener of listeners) listener()
@@ -108,11 +111,26 @@ function patchJob(id: JobId, patch: ExecJobPatch): void {
   emit()
 }
 
+/** 真实任务是否已启动执行:queued 仅排队,尚不占用活动执行槽。 */
+function isExecuting(status: Job['status']): boolean {
+  return status === 'running' || status === 'cancelling'
+}
+
+function executingCount(jobs: readonly Job[]): number {
+  return jobs.filter((job) => isExecuting(job.status)).length
+}
+
 /** 终局落地(WB-07.14/15):终态、错误分类与保留产物;清理活动引用,可再次提交。 */
 function applyOutcome(id: JobId, out: ExecOutcome): void {
   const job = jobs.find((j) => j.id === id)
-  if (!job || !job.exec) return
-  if (logic.isTerminal(job.status)) return // 竞争:终态已先落
+  if (!job || !job.exec) {
+    startNextQueued()
+    return
+  }
+  if (logic.isTerminal(job.status)) {
+    startNextQueued()
+    return
+  }
   const status = out.status === 'succeeded'
     ? ('succeeded' as const)
     : out.status === 'cancelled' ? ('cancelled' as const) : ('failed' as const)
@@ -155,6 +173,7 @@ function applyOutcome(id: JobId, out: ExecOutcome): void {
   } else {
     notify('error', { key: 'tasks.toast.failed', params: { name: job.name, class: out.errorClass ?? 'run', detail: out.message } })
   }
+  startNextQueued()
 }
 
 /** 取消边界的真实计数:候选边界 = 已完成候选 × replicates;replicate 边界用内核计数。 */
@@ -169,8 +188,10 @@ function boundaryDone(job: Job, out: ExecOutcome): number {
 
 /**
  * WB-07.02/03 · 入队一个真实执行任务:绑定 job/experiment/run ID,执行输入
- * 是提交时冻结的快照(spec 自足,切页/切项目不读 store)。受单活动任务约束
- * (WB-07.12);进度由执行引擎按内核事件推进(无定时器)。
+ * 是提交时冻结的快照(spec 自足,切页/切项目不读 store)。多个真实任务可按
+ * FIFO 排队;WB-07.12 的单并发约束保留为执行预算——同一时刻只有队首一项
+ * 真正调用 startExec,其余保持 queued。进度由执行引擎按内核事件推进(无
+ * 定时器)。当前执行终态后自动启动队列下一项。
  * backends 参数默认走真实端点解析(桌面 native / 浏览器 Worker),测试可注入。
  */
 export function enqueueRun(input: {
@@ -181,10 +202,6 @@ export function enqueueRun(input: {
   spec: ExecSpec
   backends?: Promise<ExecBackends> | ExecBackends
 }): Job | null {
-  if (logic.runningCount(jobs) > 0) {
-    notify('warning', { key: 'tasks.toast.busyReal' })
-    return null
-  }
   const job: Job = {
     id: createId(ID_PREFIXES.job) as JobId,
     experimentId: input.experimentId,
@@ -213,17 +230,34 @@ export function enqueueRun(input: {
       errorMessage: null,
     },
   }
+  queuedBackends.set(job.id, input.backends ?? resolveBackends())
   jobs = [...jobs, job]
-  emit()
-  const controls = startExec(input.spec, input.backends ?? resolveBackends(), { update: patchJob }, job.id)
-  activeControls.set(job.id, controls)
+  startNextQueued()
+  return job
+}
+
+/**
+ * 队列调度:只启动第一个真实 queued 项;已有执行槽被占用时返回,不拒绝
+ * 排队本身。顺序执行是当前诚实的并发/内存预算,不向内核发出并发承诺。
+ */
+function startNextQueued(): void {
+  // activeControls 是同步占用信号:startExec 的 queued→running 补丁经 await
+  // backends 在微任务后落地,连续入队不能靠 jobs.status 抢跑第二个执行槽。
+  if (activeControls.size > 0 || executingCount(jobs) > 0) return
+  const next = jobs.find((job) => job.exec !== undefined && job.status === 'queued')
+  if (!next || !next.exec) return
+
+  const backends = queuedBackends.get(next.id) ?? resolveBackends()
+  queuedBackends.delete(next.id)
+  const controls = startExec(next.exec.spec, backends, { update: patchJob }, next.id)
+  activeControls.set(next.id, controls)
   void controls.promise.then((out) => {
-    // WB-07.15 · 终局清理:busy/控制引用/监听随终态解除,支持再次提交
-    activeControls.delete(job.id)
-    applyOutcome(job.id, out)
+    // WB-07.15 · 终局清理:busy/控制引用/监听随终态解除;applyOutcome 内续跑下一项
+    activeControls.delete(next.id)
+    queuedBackends.delete(next.id)
+    applyOutcome(next.id, out)
   })
   emit()
-  return job
 }
 
 /**
@@ -269,10 +303,16 @@ export async function cancelJob(id: JobId): Promise<void> {
     startTimer()
     return
   }
+  if (job.status === 'queued') {
+    // 排队项取消即终态,不触碰执行槽或内核令牌(WB-07.12 令牌只对应活动任务)
+    queuedBackends.delete(id)
+    patchJob(id, { status: 'cancelled' })
+    startNextQueued()
+    return
+  }
   const controls = activeControls.get(id)
   if (!controls) {
-    // 已入队未启动:本地取消,不经内核令牌(WB-07.12 令牌只对应活动任务)
-    patchJob(id, { status: 'cancelled' })
+    // queued→cancelled 的竞争兜底:无活动控制引用且非终态时不启动内核
     return
   }
   // WB-07.10/16 · 再次取消(cancelling 中)= 浏览器端升级为终止 Worker;
@@ -303,5 +343,6 @@ export function hasActiveJobs(): boolean {
 export function resetForTest(): void {
   jobs = []
   activeControls.clear()
+  queuedBackends.clear()
   stopTimer()
 }
