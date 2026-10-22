@@ -75,13 +75,13 @@ jobs:
           - os: macos-15
             bundles: dmg,app
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@v1
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -129,14 +129,14 @@ jobs:
       # 未签名构建(拍板 2026-10-10:签名证书留到发布时再定)——Windows 不签名只影响
       # SmartScreen 首次打开体验,macOS 未签名需右键打开,均为首次安装提示非崩溃
       - name: 构建安装包
-        uses: tauri-apps/tauri-action@v1.0.0
+        uses: tauri-apps/tauri-action@v1
         with:
           args: --bundles ${{ matrix.bundles }} --features custom-protocol
 
       # 制品而非 Release:未验收的二进制不进 Releases 页面。先于冒烟上传,
       # 冒烟失败也要能取到安装包排障
       - name: 上传安装包制品
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: sandtable-${{ runner.os }}-${{ github.run_number }}
           path: |
@@ -380,11 +380,11 @@ jobs:
     name: headless CLI (linux-x64)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@v1
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
 
       - name: 构建 release CLI
         run: cargo build --release -p sandtable-cli
@@ -408,7 +408,7 @@ jobs:
           ls -la sandtable-cli-*
 
       - name: 上传 headless CLI 制品
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: sandtable-cli-linux-x64-${{ github.run_number }}
           path: |
@@ -427,7 +427,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8.0.2
         with:
           pattern: sandtable-*
           merge-multiple: true

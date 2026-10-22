@@ -17,7 +17,7 @@ jobs:
     outputs:
       active: ${{ steps.check.outputs.active }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - id: check
         name: 48 小时内有提交才继续（舰队每日构建统一规则）
         run: |
@@ -36,10 +36,10 @@ jobs:
     if: needs.freshness.outputs.active == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       # 工具链对齐 CI Web 腿(ci.yml:117-140)：npm ci @ apps/web，勿自造 pnpm 口径
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -74,7 +74,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 上传 web 产物
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: sandtable-nightly-web
           path: apps/web/dist
