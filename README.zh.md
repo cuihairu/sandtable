@@ -8,7 +8,6 @@
 
 <p align="center">
 <a href="https://github.com/cuihairu/sandtable/releases/tag/nightly"><img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"></a>
-</p>
 <a href="https://cuihairu.github.io/sandtable/"><img alt="Docs" src="https://img.shields.io/badge/docs-online-2c6e63"></a>
 <a href="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml"><img alt="Deploy Docs" src="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg"></a>
 <a href="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg"></a>
