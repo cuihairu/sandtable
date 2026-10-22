@@ -11,10 +11,11 @@ export type PanelResizerProps = {
 
 export function PanelResizer({ orientation, label, onStart, onUpdate }: PanelResizerProps): JSX.Element {
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>): void => {
+    const target = event.currentTarget
     if (event.button !== 0) return
     const origin = orientation === 'vertical' ? event.clientX : event.clientY
     const base = onStart()
-    event.currentTarget.setPointerCapture(event.pointerId)
+    target.setPointerCapture(event.pointerId)
     event.preventDefault()
 
     const move = (moveEvent: Event) => {
@@ -23,13 +24,13 @@ export function PanelResizer({ orientation, label, onStart, onUpdate }: PanelRes
       onUpdate(base + pointer - origin)
     }
     const up = () => {
-      event.currentTarget.removeEventListener('pointermove', move)
-      event.currentTarget.removeEventListener('pointerup', up)
-      event.currentTarget.removeEventListener('pointercancel', up)
+      target.removeEventListener('pointermove', move)
+      target.removeEventListener('pointerup', up)
+      target.removeEventListener('pointercancel', up)
     }
-    event.currentTarget.addEventListener('pointermove', move)
-    event.currentTarget.addEventListener('pointerup', up)
-    event.currentTarget.addEventListener('pointercancel', up)
+    target.addEventListener('pointermove', move)
+    target.addEventListener('pointerup', up)
+    target.addEventListener('pointercancel', up)
   }
 
   return (
