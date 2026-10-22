@@ -197,6 +197,55 @@ test('CSV 参数导入:XLSX 只读首个工作表并保留 CSV 语义', async ()
   ])
 })
 
+test('CSV 参数导入:XLSX 跳过隐藏工作表', async () => {
+  const shared = zipEntry('xl/sharedStrings.xml', [
+    '<?xml version="1.0"?><sst count="2" uniqueCount="2">',
+    '<si><t>model.warrior.attack</t></si>',
+    '<si><t>120</t></si>',
+    '</sst>',
+  ].join(''))
+  const workbook = zipEntry('xl/workbook.xml', [
+    '<?xml version="1.0"?>',
+    '<sheets>',
+    '<sheet name="Hidden" sheetId="1" state="hidden" r:id="rId1"/>',
+    '<sheet name="Visible" sheetId="2" state="visible" r:id="rId2"/>',
+    '</sheets>',
+  ].join(''))
+  const rels = zipEntry('xl/_rels/workbook.xml.rels', [
+    '<Relationships>',
+    '<Relationship Id="rId1"',
+    ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"',
+    ' Target="worksheets/sheet1.xml"/>',
+    '<Relationship Id="rId2"',
+    ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"',
+    ' Target="worksheets/sheet2.xml"/>',
+    '</Relationships>',
+  ].join(''))
+  const hiddenSheet = zipEntry('xl/worksheets/sheet1.xml', [
+    '<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData>',
+  ].join(''))
+  const visibleSheet = zipEntry('xl/worksheets/sheet2.xml', [
+    '<sheetData>',
+    '<row r="1"><c r="A1" t="s"><v>0</v></c></row>',
+    '<row r="2"><c r="A2"><v>120</v></c></row>',
+    '</sheetData>',
+  ].join(''))
+  const workbookEntry = zipEntry('[Content_Types].xml', '<Types/>')
+  const zip = zipFile([
+    workbookEntry,
+    rels,
+    workbook,
+    hiddenSheet,
+    visibleSheet,
+    shared,
+  ])
+  const table = await parseParameterImportFile(new File([zip], 'hidden-sheets.xlsx'))
+
+  assert.deepEqual(table.errors, [])
+  assert.deepEqual(table.headers, ['model.warrior.attack'])
+  assert.deepEqual(table.rows, [['120']])
+})
+
 test('CSV 模板表头是机器 schema,注册表每行只出现一次', () => {
   const text = 'path,value,type,unit,source\r\n'
     + PARAM_REGISTRY.map((param) => `${param.path},,${param.kind},,registry`).join('\r\n')

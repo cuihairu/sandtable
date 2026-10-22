@@ -28,6 +28,14 @@ function normalizeHeader(value: string): string {
   return value.trim().toLowerCase().replace(/[\s-]+/g, '_')
 }
 
+export function templateRole(header: string): 'path' | 'value' | null {
+  switch (normalizeHeader(header)) {
+    case TEMPLATE_PATH_HEADER: return TEMPLATE_PATH_HEADER
+    case TEMPLATE_VALUE_HEADER: return TEMPLATE_VALUE_HEADER
+    default: return null
+  }
+}
+
 export type ColumnMapping = ReadonlyArray<string | null>
 
 export function autoMapColumns(headers: readonly string[]): ColumnMapping {
@@ -164,7 +172,9 @@ export async function parseParameterImportFile(file: File): Promise<ImportTable>
     try {
       const workbook = unzipSync(new Uint8Array(await file.arrayBuffer()))
       const workbookXml = strFromU8(workbook['xl/workbook.xml'])
-      const sheetPath = workbookXml.match(/<sheet[^>]*r:id="(rId\d+)"/)?.[1]
+      const sheetElements = Array.from(workbookXml.matchAll(/<sheet\b[^>]*>/g), (match) => match[0])
+      const firstVisibleSheet = sheetElements.find((element) => !/\bstate="hidden"/.test(element))
+      const sheetPath = firstVisibleSheet?.match(/\br:id="(rId\d+)"/)?.[1]
       const relXml = strFromU8(workbook['xl/_rels/workbook.xml.rels'])
       const target = relXml
         .match(new RegExp(`<Relationship[^>]*Id="${sheetPath}"[^>]*Target="([^"]+)"`))?.[1]
@@ -172,7 +182,7 @@ export async function parseParameterImportFile(file: File): Promise<ImportTable>
       if (!sheetPath || !target) return emptyTable('workbook has no worksheets')
       const normalizedTarget = target.replace(/^\/?xl\//, '')
       const sheetXml = strFromU8(workbook[`xl/${normalizedTarget}`])
-      if (!sheetXml) return emptyTable('first worksheet is missing')
+      if (!sheetXml) return emptyTable('workbook has no visible sheets')
       return xlsxTable(sheetXml, workbook)
     } catch {
       return emptyTable('file is not a valid XLSX workbook')
