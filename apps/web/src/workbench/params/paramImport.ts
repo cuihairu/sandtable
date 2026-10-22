@@ -50,29 +50,6 @@ export function autoMapColumns(headers: readonly string[]): ColumnMapping {
   })
 }
 
-function splitCsvLine(line: string): string[] {
-  const cells: string[] = []
-  let cell = ''
-  let quoted = false
-  for (let index = 0; index < line.length; index++) {
-    const char = line[index]
-    if (quoted) {
-      if (char === '"' && line[index + 1] === '"') {
-        cell += '"'
-        index++
-      } else if (char === '"') quoted = false
-      else cell += char
-    } else if (char === '"' && cell === '') {
-      quoted = true
-    } else if (char === ',') {
-      cells.push(cell)
-      cell = ''
-    } else cell += char
-  }
-  cells.push(cell)
-  return cells
-}
-
 function parseCsvRecords(text: string): Array<{ line: number; cells: string[] }> {
   const records: Array<{ line: number; cells: string[] }> = []
   let recordLine = 1

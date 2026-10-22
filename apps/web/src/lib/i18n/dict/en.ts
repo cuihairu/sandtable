@@ -303,6 +303,7 @@ export const en = {
   'params.import.mapping': 'Column mapping',
   'params.import.dictionary': 'Parameter dictionary',
   'params.import.header': 'CSV header',
+  'params.import.templateRole': 'Template column',
   'params.import.path': 'Parameter path',
   'params.import.type': 'Type',
   'params.import.unit': 'Native unit',

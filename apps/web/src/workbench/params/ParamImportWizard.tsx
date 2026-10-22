@@ -5,7 +5,7 @@ import { PARAM_REGISTRY, displayParamName } from './paramRegistry.ts'
 import type { ParamRowModel } from './paramsLogic.ts'
 import {
   autoMapColumns, importTemplateCsv, parseCsv, parseParameterImportFile,
-  previewParamImport, unitOf,
+  previewParamImport, templateRole, unitOf,
   type ImportUnit,
 } from './paramImport.ts'
 import { toCsv } from '../../lib/machineExport.ts'
@@ -113,20 +113,28 @@ export function ParamImportWizard({
             <tbody>
               {parsed.headers.map((header, index) => {
                 const path = selected[index] ?? ''
+                const role = templateRole(header)
                 return (
                   <tr key={`${index}:${header}`}>
                     <td>{header}</td>
                     <td>
-                      <select
-                        value={path}
-                        onChange={(event) => assignPath(header, event.target.value)}
-                        aria-label={`${t(locale, 'params.import.mapping')}: ${header}`}
-                      >
-                        <option value="">{t(locale, 'params.import.unmapped')}</option>
-                        {editablePaths.map((candidate) => (
-                          <option key={candidate} value={candidate}>{candidate}</option>
-                        ))}
-                      </select>
+                      {role ? (
+                        <span
+                          className="muted"
+                          data-testid="param-import-template-role"
+                        >{t(locale, 'params.import.templateRole')}</span>
+                      ) : (
+                        <select
+                          value={path}
+                          onChange={(event) => assignPath(header, event.target.value)}
+                          aria-label={`${t(locale, 'params.import.mapping')}: ${header}`}
+                        >
+                          <option value="">{t(locale, 'params.import.unmapped')}</option>
+                          {editablePaths.map((candidate) => (
+                            <option key={candidate} value={candidate}>{candidate}</option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td>
                       {path ? (

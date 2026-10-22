@@ -303,6 +303,7 @@ export const zh = {
   'params.import.mapping': '列映射',
   'params.import.dictionary': '字段字典',
   'params.import.header': 'CSV 表头',
+  'params.import.templateRole': '模板列',
   'params.import.path': '参数路径',
   'params.import.type': '类型',
   'params.import.unit': '原生单位',
