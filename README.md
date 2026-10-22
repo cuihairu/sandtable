@@ -6,7 +6,7 @@
 
 # Sandtable
 
-[![Status](https://img.shields.io/badge/status-in%20development-orange)](https://github.com/cuihairu/sandtable/releases/tag/nightly)
+<p align="center">[![Status](https://img.shields.io/badge/status-in%20development-orange)](https://github.com/cuihairu/sandtable/releases/tag/nightly)</p>
 [![Docs](https://img.shields.io/badge/docs-online-2c6e63)](https://cuihairu.github.io/sandtable/)
 [![Deploy Docs](https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml)
 [![CI](https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg)](https://github.com/cuihairu/sandtable/actions/workflows/ci.yml)
