@@ -65,6 +65,58 @@ function splitCsvLine(line: string): string[] {
   return cells
 }
 
+function parseCsvRecords(text: string): Array<{ line: number; cells: string[] }> {
+  const records: Array<{ line: number; cells: string[] }> = []
+  let recordLine = 1
+  let line = 1
+  let cells: string[] = []
+  let cell = ''
+  let quoted = false
+
+  const finishCell = () => {
+    cells.push(cell)
+    cell = ''
+  }
+  const finishRecord = () => {
+    finishCell()
+    if (cells.some((value) => value.trim() !== '')) {
+      records.push({ line: recordLine, cells })
+    }
+    cells = []
+    recordLine = line
+  }
+
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]
+    if (char === '\r') {
+      const next = text[index + 1]
+      if (next === '\n') index++
+      line++
+      if (quoted) cell += '\n'
+      else finishRecord()
+      continue
+    }
+    if (char === '\n') {
+      line++
+      if (quoted) cell += char
+      else finishRecord()
+      continue
+    }
+    if (char === '"' && quoted) {
+      if (text[index + 1] === '"') {
+        cell += '"'
+        index++
+      } else quoted = false
+    } else if (char === '"' && cell === '') {
+      quoted = true
+    } else if (char === ',' && !quoted) {
+      finishCell()
+    } else cell += char
+  }
+  if (cell !== '' || cells.length > 0 || quoted) finishRecord()
+  return records
+}
+
 export type ImportTable = {
   headers: string[]
   rows: string[][]
@@ -72,10 +124,10 @@ export type ImportTable = {
 }
 
 export function parseCsv(text: string): ImportTable {
-  const lines = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n')
-  const first = lines.findIndex((line) => line.trim() !== '')
-  if (first < 0) return { headers: [], rows: [], errors: [{ line: 1, reason: 'CSV is empty' }] }
-  const headers = splitCsvLine(lines[first]).map((cell) => cell.trim())
+  const records = parseCsvRecords(text.replace(/^\uFEFF/, ''))
+  const first = records[0]
+  if (!first) return { headers: [], rows: [], errors: [{ line: 1, reason: 'CSV is empty' }] }
+  const headers = first.cells.map((cell) => cell.trim())
   const normalized = headers.map((header) => normalizeHeader(header))
   const missingRequired = ([TEMPLATE_PATH_HEADER, TEMPLATE_VALUE_HEADER] as const)
     .filter((required) => !normalized.includes(required))
@@ -84,11 +136,13 @@ export function parseCsv(text: string): ImportTable {
   for (const required of missingRequired) {
     errors.push({ line: 1, reason: `missing required header: ${required}` })
   }
-  for (let index = first + 1; index < lines.length; index++) {
-    if (lines[index].trim() === '') continue
-    const row = splitCsvLine(lines[index]).map((cell) => cell.trim())
+  for (const record of records.slice(1)) {
+    const row = record.cells.map((cell) => cell.trim())
     if (row.length !== headers.length) {
-      errors.push({ line: index + 1, reason: `expected ${headers.length} columns, found ${row.length}` })
+      errors.push({
+        line: record.line,
+        reason: `expected ${headers.length} columns, found ${row.length}`,
+      })
       rows.push(row)
     } else rows.push(row)
   }

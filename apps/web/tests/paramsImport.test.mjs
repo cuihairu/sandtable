@@ -149,6 +149,17 @@ test('CSV 参数导入:模板重复路径整批失败,空值仍逐行报告', ()
   assert.ok(preview.reports.some((report) => report.line === 4 && report.reason.includes('value is empty')))
 })
 
+test('CSV 参数导入:引号内换行仍归入同一条记录', () => {
+  const parsed = parseCsv([
+    'path,value',
+    'model.warrior.attack,"120\n130"',
+  ].join('\n'))
+
+  assert.deepEqual(parsed.errors, [])
+  assert.deepEqual(parsed.headers, ['path', 'value'])
+  assert.deepEqual(parsed.rows, [['model.warrior.attack', '120\n130']])
+})
+
 test('CSV 参数导入:XLSX 只读首个工作表并保留 CSV 语义', async () => {
   const shared = zipEntry('xl/sharedStrings.xml', [
     '<?xml version="1.0"?><sst count="3" uniqueCount="3">',
