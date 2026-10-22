@@ -35,6 +35,7 @@ import { GrowthCurveEditor } from '../params/GrowthCurveEditor.tsx'
 import { FormulaEditor } from '../params/FormulaEditor.tsx'
 import { LootTableEditor } from '../params/LootTableEditor.tsx'
 import { StageRulesEditor } from '../params/StageRulesEditor.tsx'
+import { ParamImportWizard } from '../params/ParamImportWizard.tsx'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { notify } from '../state/notifications.ts'
@@ -56,6 +57,7 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
   const [formulaOpen, setFormulaOpen] = useState(false)
   const [lootOpen, setLootOpen] = useState(false)
   const [stagesOpen, setStagesOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const view = paramYamlView(state)
   const baseParsed = parseConfig(view.base)
   const candParsed = parseConfig(view.cand)
@@ -261,6 +263,24 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
     notify('success', locale.startsWith('en') ? 'Stage rules written to the candidate draft' : '阶段规则已写入候选草稿')
   }
 
+  const applyParamImport = async (edits: Array<{ path: string; text: string }>): Promise<void> => {
+    const scratch = applyParamEdits(view.cand, edits)
+    if (!scratch.ok) {
+      notify('error', scratch.error)
+      return
+    }
+    const check = await kernelCheck(scratch.yaml)
+    if (!check.ok) {
+      notify('error', t(locale, 'params.import.kernelError', {
+        detail: `${check.path ? `${check.path}: ` : ''}${check.message}`,
+      }))
+      return
+    }
+    dispatch({ type: 'param/write', yaml: scratch.yaml })
+    notify('success', t(locale, 'params.import.applied', { n: edits.length }))
+    setImportOpen(false)
+  }
+
   const saveStructuredVersion = (yaml: string): void => {
     if (!view.scenarioPath) return
     const saved = versionsSaveVersion(view.scenarioPath, yaml, { label: 'structured editor' })
@@ -361,6 +381,7 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         onResetAll={onRequestResetAll}
       />
       <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 16px 8px' }}>
+        <button className="btn" onClick={() => setImportOpen(true)}>{t(locale, 'params.import.open')}</button>
         <button className="btn" onClick={() => setGrowthOpen(true)}>{t(locale, 'params.growth.open')}</button>
         <button className="btn" onClick={() => setFormulaOpen(true)}>{locale.startsWith('en') ? 'Formula editor' : '公式编辑器'}</button>
         <button className="btn" onClick={() => setLootOpen(true)}>{locale.startsWith('en') ? 'Loot editor' : '掉落编辑器'}</button>
@@ -476,6 +497,12 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         candidateYaml={view.cand}
         onApply={applyStructured}
         onSaveVersion={saveStructuredVersion}
+      />
+      <ParamImportWizard
+        open={importOpen}
+        rows={rows}
+        onClose={() => setImportOpen(false)}
+        onApply={applyParamImport}
       />
       <OverlayDialog
         open={yamlEdit.open}

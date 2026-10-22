@@ -4,9 +4,11 @@ import { OverlayDialog } from '../overlays/OverlayDialog.tsx'
 import { PARAM_REGISTRY, displayParamName } from './paramRegistry.ts'
 import type { ParamRowModel } from './paramsLogic.ts'
 import {
-  autoMapColumns, importTemplateCsv, parseCsv, previewParamImport, unitOf,
+  autoMapColumns, importTemplateCsv, parseCsv, parseParameterImportFile,
+  previewParamImport, unitOf,
   type ImportUnit,
 } from './paramImport.ts'
+import { toCsv } from '../../lib/machineExport.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 
@@ -33,10 +35,6 @@ export function ParamImportWizard({
     () => previewParamImport(rows, parsed, selected, unitByPath),
     [rows, parsed, selected, unitByPath],
   )
-  const failures = [
-    ...parsed.errors.map((error) => ({ line: error.line, reason: error.reason })),
-    ...preview.reports.filter((report) => report.reason !== null),
-  ]
 
   const apply = async (edits: Array<{ path: string; text: string }>): Promise<void> => {
     setApplying(true)
@@ -67,12 +65,11 @@ export function ParamImportWizard({
     setHeaderToPath(next)
   }
 
-  const load = (file: File): void => {
-    void file.text().then((content) => {
-      setText(content)
-      setHeaderToPath({})
-      setUnitByPath({})
-    })
+  const load = async (file: File): Promise<void> => {
+    const table = await parseParameterImportFile(file)
+    setText(table.headers.length === 0 ? '' : toCsv(table.headers, table.rows))
+    setHeaderToPath({})
+    setUnitByPath({})
   }
 
   return (
@@ -84,10 +81,10 @@ export function ParamImportWizard({
             {t(locale, 'params.import.file')}
             <input
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.txt,.xlsx,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(event) => {
                 const file = event.target.files?.[0]
-                if (file) load(file)
+                if (file) void load(file)
               }}
             />
           </label>
@@ -98,6 +95,11 @@ export function ParamImportWizard({
           onChange={(event) => setText(event.target.value)}
           aria-label={t(locale, 'params.import.paste')}
         />
+        {parsed.errors.length > 0 && (
+          <div className="parameter-error" role="alert">
+            {parsed.errors.map((error) => `${error.line}: ${error.reason}`).join('; ')}
+          </div>
+        )}
         <section>
           <h3>{t(locale, 'params.import.mapping')}</h3>
           <table>
@@ -201,9 +203,10 @@ export function ParamImportWizard({
               ))}
             </tbody>
           </table>
-          {failures.length > 0 && (
+          {preview.reports.some((report) => report.reason !== null) && (
             <div className="parameter-error" role="alert">
-              {failures.map((report) => `${report.line}: ${report.reason}`).join('; ')}
+              {preview.reports.filter((report) => report.reason !== null)
+                .map((report) => `${report.line}: ${report.path ?? ''} ${report.reason}`).join('; ')}
             </div>
           )}
         </section>
