@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: dtolnay/rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
@@ -108,7 +108,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: dtolnay/rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
 
@@ -166,7 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: dtolnay/rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2.9.3
 
