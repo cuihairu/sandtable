@@ -453,6 +453,17 @@ jobs:
           sha8="${GITHUB_SHA::8}"
           notes="滚动每日构建(检测到更新才发布),commit ${sha8},出自 run ${{ github.run_id }}。预发布:未走完整验收,仅用于真机走查与冒烟排障;正式版本由用户手动触发。"
           if gh release view nightly >/dev/null 2>&1; then
+            # 滚动每日构建（10-23 用户令: 只保留最新一轮产物）: 上传前删除
+            # 「不属于本轮文件名」的旧资产。按 basename 比对——不删 Release
+            # 本体（连发互删曾致资产空的教训保留），不碰本轮文件，
+            # 并发发布互不误删；根治 sha 命名资产无限堆积。
+            mapfile -t fresh < <(printf '%s\n' "${files[@]}" | xargs -n1 basename)
+            while IFS= read -r a; do
+              [ -z "$a" ] && continue
+              skip=0
+              for f in "${fresh[@]}"; do [ "$a" = "$f" ] && skip=1 && break; done
+              [ "$skip" -eq 0 ] && gh release delete-asset nightly "$a" -y || true
+            done < <(gh release view nightly --json assets --jq '.assets[].name' 2>/dev/null)
             # 竞态根治: 已存在即 clobber 覆盖上传,绝不删 Release(连发互删曾致资产空)
             gh release upload nightly "${files[@]}" --clobber
             gh release edit nightly --title "nightly ${sha8}" --notes "$notes" 2>/dev/null || true
