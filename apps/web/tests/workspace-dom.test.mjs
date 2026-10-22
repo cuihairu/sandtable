@@ -49,6 +49,7 @@ Object.defineProperty(globalThis.navigator, 'clipboard', {
 const { PanelResizer } = await import('../src/workbench/components/PanelResizer.tsx')
 const { ColumnMenu } = await import('../src/workbench/table/ColumnMenu.tsx')
 const { ParamTable } = await import('../src/workbench/params/ParamTable.tsx')
+const { ParamDetail } = await import('../src/workbench/params/ParamDetail.tsx')
 const { displayParamName } = await import('../src/workbench/params/paramRegistry.ts')
 const { localeSession } = await import('../src/workbench/state/localeStore.ts')
 
@@ -133,4 +134,40 @@ test('column menu toggles visibility and pinning without reordering source colum
   click(rendered.root.querySelectorAll('.pin-button')[0])
   assert.deepEqual(pref.pinnedLeft, ['name'])
   unmount(rendered)
+})
+
+test('kernel error card jumps to its located parameter row', async () => {
+  const row = {
+    def: { path: 'model.combat.p_hit', desc: 'hit probability', default: 0.5, kind: 'f64', group: 'combat' },
+    baseline: { present: true, text: '0.5', num: 0.5 },
+    candidate: { present: true, text: '1.5', num: 1.5 },
+    modified: true,
+    editable: true,
+    group: 'combat',
+  }
+  const focused = { path: null }
+  const table = render(createElement(ParamTable, {
+    id: 'parameter-table', rows: [row], columns: [{ key: 'name', label: 'Name' }],
+    columnPref: { hidden: [], pinnedLeft: [], pinnedRight: [] },
+    sortKey: null, sortDir: 1, selected: new Set(), focusId: null, kernelErrorPath: row.def.path,
+    onCommit: () => '', onSelect: () => {}, onSelectAll: () => {}, onSort: () => {},
+    onFocusRow: (path) => { focused.path = path }, onAdvancedEdit: () => {}, locale: 'en-US',
+  }))
+  const inspector = render(createElement(ParamDetail, {
+    row, changedCount: 1, savedLabel: 'saved',
+    kernelError: { path: row.def.path, message: 'probability must be in [0, 1]' },
+    onResetOne: () => {}, onAdvancedEdit: () => {},
+    onJumpToError: () => {
+      focused.path = row.def.path
+      table.root.querySelector(`[data-param-row="${row.def.path}"]`)?.focus()
+    },
+    locale: 'en-US',
+  }))
+  const jump = [...inspector.root.querySelectorAll('button')].find((button) => button.textContent?.includes('Go to located parameter'))
+  assert.ok(jump)
+  click(jump)
+  assert.equal(focused.path, row.def.path)
+  assert.equal(document.activeElement?.getAttribute('data-param-row'), row.def.path)
+  unmount(table)
+  unmount(inspector)
 })

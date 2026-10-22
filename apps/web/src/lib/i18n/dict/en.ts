@@ -262,6 +262,7 @@ export const en = {
   'params.errorPath': 'Located parameter',
   'params.errorNoPath': '(no specific parameter located)',
   'params.fixHint': 'The pending input is kept in the cell; fix it and resubmit, or undo that change.',
+  'params.jumpToError': 'Go to located parameter',
   'params.sectionSummary': 'Candidate change summary',
   'params.vsBaseline': 'vs. baseline',
   'params.changeCount': '{n} changed',

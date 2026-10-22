@@ -262,6 +262,7 @@ export const zh = {
   'params.errorPath': '定位参数',
   'params.errorNoPath': '(未定位到具体参数)',
   'params.fixHint': '待修复输入已保留在单元格中,修正后重新提交;或撤销该次修改。',
+  'params.jumpToError': '跳转到定位参数',
   'params.sectionSummary': '方案修改摘要',
   'params.vsBaseline': '相对基线',
   'params.changeCount': '{n} 项变更',

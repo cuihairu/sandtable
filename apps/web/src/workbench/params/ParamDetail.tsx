@@ -22,6 +22,7 @@ export type ParamDetailProps = {
   onResetOne: () => void
   onAdvancedEdit: () => void
   onNewExperiment?: () => void
+  onJumpToError?: () => void
   locale: Locale
 }
 
@@ -46,6 +47,7 @@ export function ParamDetail({
   onResetOne,
   onAdvancedEdit,
   onNewExperiment,
+  onJumpToError,
   locale,
 }: ParamDetailProps): JSX.Element {
   const name = displayParamName(row.def.path, locale)
@@ -125,6 +127,12 @@ export function ParamDetail({
           </div>
           <p className="note">{kernelError.message}</p>
           <p className="note">{t(locale, 'params.fixHint')}</p>
+          {kernelError.path !== null && onJumpToError && (
+            <button className="btn inspector-action" onClick={onJumpToError}>
+              <WbIcon name="search" />
+              {t(locale, 'params.jumpToError')}
+            </button>
+          )}
         </section>
       )}
       <section className="inspector-section">

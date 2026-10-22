@@ -141,6 +141,13 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
     document.querySelector<HTMLElement>(`[data-param-row="${CSS.escape(errorPath)}"]`)?.scrollIntoView({ block: 'center' })
   }, [state.paramKernelError])
 
+  const jumpToKernelError = (): void => {
+    const errorPath = state.paramKernelError?.path
+    if (!errorPath) return
+    dispatch({ type: 'param/focus', id: errorPath })
+    document.querySelector<HTMLElement>(`[data-param-row="${CSS.escape(errorPath)}"]`)?.scrollIntoView({ block: 'center' })
+  }
+
   // 批量预览状态(页面持有;整批一次性应用,WB-05.11)
   const [bulk, setBulk] = useState<{ preview: ReturnType<typeof bulkPreview> | null; checking: boolean }>({
     preview: null, checking: false,
@@ -430,6 +437,7 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
           onResetOne={() => dispatch({ type: 'param/reset-one', path: focusRow.def.path })}
           onAdvancedEdit={() => openAdvancedEdit(focusRow)}
           onNewExperiment={() => dispatch({ type: 'navigate', page: 'designer' })}
+          onJumpToError={jumpToKernelError}
           locale={locale}
         />
       </div>
