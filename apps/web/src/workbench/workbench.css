@@ -45,3 +45,20 @@
 .wb-app .exchange-query{ border: 1px solid var(--wb-line); border-radius: 10px; padding: 14px; margin: 2px 0 20px; background: #fbfdfd; }
 .wb-app .exchange-query textarea{ width: 100%; border: 1px solid var(--wb-line); border-radius: 6px; padding: 8px; background: white; color: #203237; font-family: var(--wb-mono); font-size: 12px; }
 .wb-app .exchange-query button.primary{ background: var(--wb-teal); border: 1px solid var(--wb-teal); color: white; border-radius: 6px; padding: 6px 14px; }
+.wb-app .panel-resizer{ width: 5px; cursor: col-resize; background: transparent; border: 0; padding: 0; touch-action: none; }
+.wb-app .panel-resizer:hover,.wb-app .panel-resizer:focus-visible{ background: var(--wb-teal); }
+.wb-app .panel-resizer.vertical{ width: auto; height: 5px; cursor: row-resize; }
+.wb-app .wb-shell-grid{ display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-rows: minmax(0,1fr) auto; }
+.wb-app .wb-shell-center{ min-width: 0; min-height: 0; }
+.wb-app .wb-shell-inspector{ display: grid; grid-template-rows: minmax(0,1fr); min-height: 0; }
+.wb-app .wb-shell-drawer-row{ grid-column: 1/-1; display: flex; flex-direction: column; min-height: 0; }
+.wb-app .table-tools{ display: inline-flex; gap: 6px; align-items: center; position: relative; }
+.wb-app .column-menu{ position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; min-width: 210px; max-height: 280px; overflow: auto; border: 1px solid var(--wb-line); border-radius: 6px; background: white; padding: 8px; box-shadow: 0 8px 22px rgba(20,40,48,.14); }
+.wb-app .column-menu label{ display: grid; grid-template-columns: 16px minmax(0,1fr) auto; gap: 6px; align-items: center; font-size: 11px; padding: 4px 2px; }
+.wb-app .column-menu .pin-group{ display: inline-flex; gap: 3px; }
+.wb-app .column-menu .pin-button{ font-size: 9px; padding: 2px 4px; border-radius: 3px; color: var(--wb-muted); }
+.wb-app .column-menu .pin-button.active{ background: #e4f2f1; color: var(--wb-teal-dark); }
+.wb-app .column-menu-footer{ display: flex; justify-content: space-between; gap: 8px; margin-top: 7px; border-top: 1px solid var(--wb-line); padding-top: 7px; }
+.wb-app .table-action{ white-space: nowrap; }
+.wb-app .explorer{ position: relative; }
+.wb-app .explorer .panel-resizer{ position: absolute; top: 0; right: -3px; height: 100%; z-index: 5; }

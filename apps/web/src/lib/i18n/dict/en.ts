@@ -104,6 +104,16 @@ export const en = {
   'common.notifySvgDownloaded': 'Downloaded sandtable-demo-{id}.svg (synthetic demo data)',
   'common.notifyNoMainChart': 'No main chart to export yet; open the response chart on the analysis page first',
   'common.notifyProjectClosed': 'Closed project; back to the built-in demo project',
+  'common.confirmNavigateTitle': 'Leave this document with unsaved changes?',
+  'common.confirmNavigateBody': 'The current document has unsaved changes. Leaving now keeps those changes only in this browser.',
+  'common.confirmNavigateConfirm': 'Leave',
+  'common.notifyCopied': 'Copied {rows} row(s) × {columns} column(s)',
+  'common.copyFailed': 'Copy failed; use Ctrl+C instead',
+  'params.columns': 'Columns',
+  'params.copy': 'Copy',
+  'params.pinLeft': 'Pin left',
+  'params.pinRight': 'Pin right',
+  'params.resetColumns': 'Reset columns',
 
   // 导航
   'nav.analysis': 'Analysis',

@@ -7,18 +7,29 @@
 // - dur/expr/table 类型不进数值通道:只读显示 + 高级编辑入口(WB-05.02)。
 // WB-11.12 · 表头/状态/aria 走词典(locale 由页面容器传入,与显示名同源)。
 import { useState } from 'react'
-import type { JSX } from 'react'
+import type { JSX, KeyboardEvent, ReactNode } from 'react'
 import type { ParamRowModel } from './paramsLogic.ts'
 import { parseCellInput } from './paramsLogic.ts'
-import { paramDelta } from './configYaml.ts'
 import { displayParamName } from './paramRegistry.ts'
 import { t } from '../../lib/i18n/index.ts'
 import type { Locale } from '../../lib/i18n/index.ts'
+import type { TableColumnPref } from '../table/tableState.ts'
+
+export type ParamTableColumn = {
+  key: string
+  label: string
+  numeric?: boolean
+  render: (row: ParamRowModel) => ReactNode
+}
 
 export type ParamTableProps = {
   id: string
   /** 当前可见行(全选只作用于可见项,WB-05.10) */
   rows: readonly ParamRowModel[]
+  columns: readonly ParamTableColumn[]
+  columnPref: TableColumnPref
+  sortKey: string | null
+  sortDir: 1 | -1
   selected: ReadonlySet<string>
   focusId: string | null
   /** 内核校验失败定位的参数路径(状态列给出标记,WB-05.07) */
@@ -27,7 +38,9 @@ export type ParamTableProps = {
   onCommit: (row: ParamRowModel, input: string) => string
   onSelect: (path: string, checked: boolean) => void
   onSelectAll: (checked: boolean) => void
+  onSort: (key: string) => void
   onFocusRow: (path: string) => void
+  onCopyRows?: () => void
   onAdvancedEdit: (row: ParamRowModel) => void
   locale: Locale
 }
@@ -35,21 +48,49 @@ export type ParamTableProps = {
 export function ParamTable({
   id,
   rows,
+  columns,
+  columnPref,
+  sortKey,
+  sortDir,
   selected,
   focusId,
   kernelErrorPath,
   onCommit,
   onSelect,
   onSelectAll,
+  onSort,
   onFocusRow,
+  onCopyRows,
   onAdvancedEdit,
   locale,
 }: ParamTableProps): JSX.Element {
+  const onTableKeyDown = (event: KeyboardEvent<HTMLTableElement>): void => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && !(event.key === 'c' && (event.ctrlKey || event.metaKey))) return
+    event.preventDefault()
+    const rowElements = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-param-row]')]
+    if (event.key === 'c') {
+      if (onCopyRows) onCopyRows()
+      return
+    }
+    if (rowElements.length === 0) return
+    const currentIndex = rowElements.findIndex((row) => row.classList.contains('selected'))
+    const delta = event.key === 'ArrowDown' ? 1 : -1
+    const next = currentIndex === -1 ? (delta === 1 ? 0 : rowElements.length - 1) : (currentIndex + delta + rowElements.length) % rowElements.length
+    const target = rowElements[next]
+    const path = target?.getAttribute('data-param-row')
+    if (target && path !== null) {
+      target.focus({ preventScroll: false })
+      onFocusRow(path)
+    }
+  }
+  const pinnedLeft = new Set(columnPref.pinnedLeft)
+  const pinnedRight = new Set(columnPref.pinnedRight)
+
   return (
-    <table className="parameter-table" aria-label={t(locale, 'params.tableAria')} id={id}>
+    <table className="parameter-table" tabIndex={0} aria-label={t(locale, 'params.tableAria')} id={id} onKeyDown={onTableKeyDown}>
       <thead>
-        <tr>
-          <th>
+          <tr>
+            <th className="table-index" aria-label={t(locale, 'params.selectAllAria')}>
             <input
               id="all-params"
               className="checkbox"
@@ -59,18 +100,24 @@ export function ParamTable({
               onChange={(e) => onSelectAll(e.target.checked)}
             />
           </th>
-          <th>{t(locale, 'params.colName')}</th>
-          <th>{t(locale, 'params.colType')}</th>
-          <th className="numeric">{t(locale, 'params.colBaseline')}</th>
-          <th className="numeric">{t(locale, 'params.colCandidate')}</th>
-          <th className="numeric">{t(locale, 'params.colDelta')}</th>
-          <th>{t(locale, 'params.colStatus')}</th>
+          {columns.map((column) => (
+            <th
+              key={column.key}
+              className={`${column.numeric === true ? 'numeric ' : ''}${pinnedLeft.has(column.key) ? 'pinned-left' : pinnedRight.has(column.key) ? 'pinned-right' : ''}`}
+              aria-sort={sortKey === column.key ? (sortDir === 1 ? 'ascending' : 'descending') : 'none'}
+            >
+              <button className="table-sort" onClick={() => onSort(column.key)}>
+                {column.label}
+                <span aria-hidden="true">{sortKey === column.key ? (sortDir === 1 ? '▲' : '▼') : '↕'}</span>
+              </button>
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 && (
           <tr>
-            <td colSpan={7}>
+              <td colSpan={columns.length + 1}>
               <div className="empty-state">{t(locale, 'params.empty')}</div>
             </td>
           </tr>
@@ -85,6 +132,9 @@ export function ParamTable({
             onCommit={onCommit}
             onSelect={onSelect}
             onFocusRow={onFocusRow}
+            columns={columns}
+            pinnedLeft={pinnedLeft}
+            pinnedRight={pinnedRight}
             onAdvancedEdit={onAdvancedEdit}
             locale={locale}
           />
@@ -104,11 +154,17 @@ function ParamRow({
   onFocusRow,
   onAdvancedEdit,
   locale,
+  columns,
+  pinnedLeft,
+  pinnedRight,
 }: {
   row: ParamRowModel
   selected: boolean
   focused: boolean
   kernelError: boolean
+  columns: readonly ParamTableColumn[]
+  pinnedLeft: ReadonlySet<string>
+  pinnedRight: ReadonlySet<string>
   onCommit: (row: ParamRowModel, input: string) => string
   onSelect: (path: string, checked: boolean) => void
   onFocusRow: (path: string) => void
@@ -121,7 +177,6 @@ function ParamRow({
   const name = displayParamName(row.def.path, locale)
   const committed = row.candidate
   const changed = row.modified
-  const delta = paramDelta(row.baseline.num, row.candidate.num)
 
   const commit = (): void => {
     if (buffer === null) return
@@ -141,89 +196,78 @@ function ParamRow({
   }
 
   return (
-    <tr className={focused ? 'selected' : ''} data-param-row={row.def.path}>
-      <td>
-        <input
-          className="checkbox"
-          type="checkbox"
-          checked={selected}
-          aria-label={t(locale, 'params.selectRowAria', { name })}
-          onChange={(e) => onSelect(row.def.path, e.target.checked)}
-        />
-      </td>
-      <td>
-        <button
-          style={{ padding: 0, textAlign: 'left', border: 0, background: 'none' }}
-          onClick={() => onFocusRow(row.def.path)}
+          <tr
+            className={focused ? 'selected' : ''}
+            data-param-row={row.def.path}
+            aria-invalid={kernelError}
+            tabIndex={0}
+            onClick={() => onFocusRow(row.def.path)}
+            onFocus={() => onFocusRow(row.def.path)}
+          >
+        <td className="table-index">
+          <input
+            className="checkbox"
+            type="checkbox"
+            checked={selected}
+            aria-label={t(locale, 'params.selectRowAria', { name })}
+            onChange={(e) => onSelect(row.def.path, e.target.checked)}
+          />
+        </td>
+      {columns.map((column) => (
+        <td
+          key={column.key}
+          className={`${column.numeric === true ? 'numeric ' : ''}${pinnedLeft.has(column.key) ? 'pinned-left' : pinnedRight.has(column.key) ? 'pinned-right' : ''}`}
         >
-          <span className="parameter-name">{name}</span>
-          <span className="parameter-path">{row.def.path}</span>
-        </button>
-      </td>
-      <td className="mono muted" style={{ fontSize: 10 }}>
-        {row.def.kind}
-      </td>
-      <td className="numeric muted" title={row.baseline.present
-        ? row.def.desc
-        : t(locale, 'params.baselineMissingTitle', { default: row.def.default })}
-      >
-        {row.baseline.present ? row.baseline.text : <span className="muted">{t(locale, 'params.missing')}</span>}
-      </td>
-      <td className="numeric">
-        {row.editable ? (
-          <>
-            <input
-              className={`cell-value${changed ? ' changed' : ''}${error ? ' invalid' : ''}`}
-              type="number"
-              step={row.def.kind === 'f64' || row.def.kind === 'mix' ? 'any' : '1'}
-              value={buffer ?? (committed.present ? committed.text : '')}
-              aria-label={t(locale, 'params.cellCandidateAria', { name })}
-              onChange={(e) => setBuffer(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  commit()
-                } else if (e.key === 'Escape') {
-                  // Esc 撤销当前输入:回到已提交值
-                  setBuffer(null)
-                  setError('')
-                }
-              }}
-              onBlur={commit}
-            />
-            <span className="parameter-error" aria-live="polite">
-              {error}
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="mono muted" style={{ fontSize: 10 }}>
-              {committed.present ? committed.text : t(locale, 'params.unset')}
-            </span>
+          {column.key === 'name' ? (
             <button
-              className="btn subtle"
-              style={{ fontSize: 10, padding: '1px 6px', marginLeft: 4 }}
-              onClick={() => onAdvancedEdit(row)}
-              aria-label={t(locale, 'params.advancedAria', { name })}
+              style={{ padding: 0, textAlign: 'left', border: 0, background: 'none' }}
+              onClick={() => onFocusRow(row.def.path)}
             >
-              {t(locale, 'params.advancedEdit')}
+              <span className="parameter-name">{name}</span>
+              <span className="parameter-path">{row.def.path}</span>
             </button>
-          </>
-        )}
-      </td>
-      <td className={`numeric ${changed ? 'positive' : 'muted'}`}>{delta.text}</td>
-      <td>
-        {error !== '' ? (
-          <span className="badge red" title={error}>{t(locale, 'params.invalid')}</span>
-        ) : buffer !== null ? (
-          <span className="badge amber">{t(locale, 'params.editing')}</span>
-        ) : kernelError ? (
-          <span className="badge red">{t(locale, 'params.kernelFailed')}</span>
-        ) : changed ? (
-          <span className="badge amber">{t(locale, 'params.modifiedBadge')}</span>
-        ) : (
-          <span className="muted">—</span>
-        )}
-      </td>
+          ) : column.key === 'candidate' && row.editable ? (
+            <>
+              <input
+                className={`cell-value${changed ? ' changed' : ''}${error ? ' invalid' : ''}`}
+                type="number"
+                step={row.def.kind === 'f64' || row.def.kind === 'mix' ? 'any' : '1'}
+                value={buffer ?? (committed.present ? committed.text : '')}
+                aria-label={t(locale, 'params.cellCandidateAria', { name })}
+                onChange={(e) => setBuffer(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    commit()
+                  } else if (e.key === 'Escape') {
+                    setBuffer(null)
+                    setError('')
+                  }
+                }}
+                onBlur={commit}
+              />
+              {(error !== '' || kernelError) && (
+                <span className="parameter-error" role="alert">
+                  {error !== '' ? error : t(locale, 'params.kernelFailed')}
+                </span>
+              )}
+            </>
+          ) : column.key === 'candidate' ? (
+            <>
+              <span className="mono muted" style={{ fontSize: 10 }}>
+                {committed.present ? committed.text : t(locale, 'params.unset')}
+              </span>
+              <button
+                className="btn subtle"
+                style={{ fontSize: 10, padding: '1px 6px', marginLeft: 4 }}
+                onClick={() => onAdvancedEdit(row)}
+                aria-label={t(locale, 'params.advancedAria', { name })}
+              >
+                {t(locale, 'params.advancedEdit')}
+              </button>
+            </>
+          ) : column.render(row)}
+        </td>
+      ))}
     </tr>
   )
 }

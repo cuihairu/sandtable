@@ -27,9 +27,11 @@ export type ActivityRailProps = {
   page: PageId
   onNavigate: (page: PageId) => void
   onShortcuts: () => void
+  /** 忙文档不允许丢草稿切换;壳层把目标页压入待确认。 */
+  isBlocked?: (page: PageId) => boolean
 }
 
-export function ActivityRail({ page, onNavigate, onShortcuts }: ActivityRailProps): JSX.Element {
+export function ActivityRail({ page, onNavigate, onShortcuts, isBlocked }: ActivityRailProps): JSX.Element {
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     // 纵向 roving focus:↑/↓ 移动,Enter 原生激活
     const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('.rail-button[data-page]'))
@@ -51,7 +53,10 @@ export function ActivityRail({ page, onNavigate, onShortcuts }: ActivityRailProp
           title={t(locale, NAV_LABEL[p.id])}
           aria-label={t(locale, NAV_LABEL[p.id])}
           aria-current={p.id === page ? 'page' : undefined}
-          onClick={() => onNavigate(p.id)}
+          onClick={() => {
+            if (isBlocked?.(p.id) !== true) onNavigate(p.id)
+          }}
+          aria-disabled={isBlocked?.(p.id) === true}
         >
           <WbIcon name={p.icon} />
           <span>{t(locale, NAV_SHORT[p.id])}</span>

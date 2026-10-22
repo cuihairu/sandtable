@@ -27,9 +27,11 @@ export type DocumentTabsProps = {
   documents: readonly OpenDocument[]
   activePage: string
   onActivate: (page: OpenDocument['page']) => void
+  /** 忙文档不允许丢草稿切换;壳层把目标页压入待确认。 */
+  isBlocked?: (page: OpenDocument['page']) => boolean
 }
 
-export function DocumentTabs({ documents, activePage, onActivate }: DocumentTabsProps): JSX.Element {
+export function DocumentTabs({ documents, activePage, onActivate, isBlocked }: DocumentTabsProps): JSX.Element {
   const locale = useLocale()
   const activeDoc = documents.find((d) => d.page === activePage) ?? documents[0]
 
@@ -51,7 +53,7 @@ export function DocumentTabs({ documents, activePage, onActivate }: DocumentTabs
         ? (index + 1) % documents.length
         : event.key === 'Home' ? 0 : last
     const target = documents[next]
-    if (target) onActivate(target.page)
+    if (target && isBlocked?.(target.page) !== true) onActivate(target.page)
   }
 
   return (
@@ -70,7 +72,10 @@ export function DocumentTabs({ documents, activePage, onActivate }: DocumentTabs
             aria-controls="workspace"
             tabIndex={active ? 0 : -1}
             title={`${title}${doc.unsaved ? ` · ${t(locale, 'common.unsaved')}` : ''}`}
-            onClick={() => onActivate(doc.page)}
+            onClick={() => {
+              if (isBlocked?.(doc.page) !== true) onActivate(doc.page)
+            }}
+            aria-disabled={isBlocked?.(doc.page) === true}
           >
             <WbIcon name={doc.icon} />
             {title}

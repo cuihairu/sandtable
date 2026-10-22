@@ -16,6 +16,7 @@ export type StatusBarProps = {
   onToggleExplorer: () => void
   onToggleTasks: () => void
   onShortcuts: () => void
+  onResetLayout: () => void
   draftSavedLabel: string
   draftSaved: boolean
 }
@@ -24,6 +25,7 @@ export function StatusBar({
   onToggleExplorer,
   onToggleTasks,
   onShortcuts,
+  onResetLayout,
   draftSavedLabel,
   draftSaved,
 }: StatusBarProps): JSX.Element {
@@ -57,6 +59,9 @@ export function StatusBar({
       <span>{DATA_SOURCE === 'synthetic_demo' ? t(locale, 'common.dataSourceDemo') : t(locale, 'common.dataSourceReal')}</span>
       <button onClick={onShortcuts} aria-label={t(locale, 'common.viewShortcuts')}>
         <kbd>?</kbd>
+      </button>
+      <button onClick={onResetLayout} title={t(locale, 'common.collapseExplorer')}>
+        <kbd>⤢</kbd>
       </button>
     </footer>
   )

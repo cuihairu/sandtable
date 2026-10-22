@@ -14,10 +14,11 @@ import { OverlayDialog } from '../overlays/OverlayDialog.tsx'
 import { ParamFilterBar } from '../params/ParamFilterBar.tsx'
 import { ParamTable } from '../params/ParamTable.tsx'
 import { ParamDetail } from '../params/ParamDetail.tsx'
+import { displayParamName } from '../params/paramRegistry.ts'
 import { BulkActionBar } from '../params/BulkActionBar.tsx'
 import { dispatch, paramYamlView, persistDraft } from '../state/workbenchStore.ts'
 import type { WorkbenchState } from '../state/workbenchStore.ts'
-import { applyParamEdits, parseConfig } from '../params/configYaml.ts'
+import { applyParamEdits, paramDelta, parseConfig } from '../params/configYaml.ts'
 import { readGrowthRows } from '../params/growthCurve.ts'
 import type { ParamRowModel } from '../params/paramsLogic.ts'
 import {
@@ -37,6 +38,10 @@ import { StageRulesEditor } from '../params/StageRulesEditor.tsx'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { notify } from '../state/notifications.ts'
+import { ColumnMenu } from '../table/ColumnMenu.tsx'
+import { copyTable, orderedColumns, sortRows } from '../table/tableState.ts'
+import type { CopyCell } from '../table/tableState.ts'
+import type { ParamTableColumn } from '../params/ParamTable.tsx'
 
 export type ParametersPageProps = {
   state: WorkbenchState
@@ -86,6 +91,55 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
   const focusRow = rows.find((r) => r.def.path === paramFocusId) ?? rows[0]
   const selectedSet = new Set(paramSelected)
   const groups = paramGroups().filter((g) => rows.some((r) => r.group === g))
+  const allColumns: (ParamTableColumn & { value: (row: ParamRowModel) => string })[] = [
+    { key: 'name', label: t(locale, 'params.colName'), value: (row) => row.def.path, render: (row) => <span className="parameter-path">{displayParamName(row.def.path, locale)}</span> },
+    { key: 'type', label: t(locale, 'params.colType'), value: (row) => row.def.kind, render: (row) => <span className="mono muted" style={{ fontSize: 10 }}>{row.def.kind}</span> },
+    {
+      key: 'baseline',
+      label: t(locale, 'params.colBaseline'),
+      numeric: true,
+      value: (row) => row.baseline.text,
+      render: (row) => (
+        <span className="muted" title={row.baseline.present ? row.def.desc : t(locale, 'params.baselineMissingTitle', { default: row.def.default })}>
+          {row.baseline.present ? row.baseline.text : t(locale, 'params.missing')}
+        </span>
+      ),
+    },
+    { key: 'candidate', label: t(locale, 'params.colCandidate'), numeric: true, value: (row) => row.candidate.text, render: (row) => row.candidate.text },
+    { key: 'delta', label: t(locale, 'params.colDelta'), numeric: true, value: (row) => paramDelta(row.baseline.num, row.candidate.num).text, render: (row) => paramDelta(row.baseline.num, row.candidate.num).text },
+    {
+      key: 'status',
+      label: t(locale, 'params.colStatus'),
+      value: (row) => (row.modified ? t(locale, 'params.modifiedBadge') : ''),
+      render: (row) => row.modified ? <span className="badge amber">{t(locale, 'params.modifiedBadge')}</span> : <span className="muted">—</span>,
+    },
+  ]
+  const visibleColumns = orderedColumns(allColumns, (column) => column.key, state.paramColumns)
+  const tableColumns: ParamTableColumn[] = visibleColumns.map(({ key, label, numeric, render }) => ({ key, label, numeric, render }))
+  const sortedVisible = sortRows(visible, visibleColumns.some((column) => column.key === state.sortKey)
+    ? { key: state.sortKey, dir: state.sortDir, value: (allColumns.find((column) => column.key === state.sortKey)?.value ?? ((row: ParamRowModel) => row.def.path)) }
+    : null)
+  const copyColumns: CopyCell<ParamRowModel>[] = visibleColumns.map((column) => ({ label: column.label, value: column.value }))
+  const copySelected = async (): Promise<void> => {
+    const source = paramSelected.length > 0
+      ? sortedVisible.filter((row) => paramSelected.includes(row.def.path))
+      : sortedVisible
+    try {
+      await navigator.clipboard.writeText(copyTable(source, copyColumns))
+      notify('success', t(locale, 'common.notifyCopied', { rows: source.length, columns: copyColumns.length }))
+    } catch {
+      notify('warning', t(locale, 'common.copyFailed'))
+    }
+  }
+  useEffect(() => {
+    if (paramFocusId === null || sortedVisible.some((row) => row.def.path === paramFocusId)) return
+    document.querySelector<HTMLElement>(`[data-param-row="${CSS.escape(paramFocusId)}"]`)?.focus({ preventScroll: false })
+  }, [paramFocusId, sortedVisible])
+  useEffect(() => {
+    const errorPath = state.paramKernelError?.path
+    if (errorPath === null || errorPath === undefined) return
+    document.querySelector<HTMLElement>(`[data-param-row="${CSS.escape(errorPath)}"]`)?.scrollIntoView({ block: 'center' })
+  }, [state.paramKernelError])
 
   // 批量预览状态(页面持有;整批一次性应用,WB-05.11)
   const [bulk, setBulk] = useState<{ preview: ReturnType<typeof bulkPreview> | null; checking: boolean }>({
@@ -320,9 +374,22 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
       )}
       <div className="parameters-body">
         <div className="parameters-center">
+          <div className="workspace-toolbar" style={{ justifyContent: 'flex-end' }}>
+            <ColumnMenu
+              columns={allColumns}
+              pref={state.paramColumns}
+              onChange={(pref) => dispatch({ type: 'param/column', pref })}
+              onCopy={() => void copySelected()}
+              locale={locale}
+            />
+          </div>
           <ParamTable
             id="parameter-table"
-            rows={visible}
+            rows={sortedVisible}
+            columns={tableColumns}
+            columnPref={state.paramColumns}
+            sortKey={state.paramSortKey}
+            sortDir={state.paramSortDir}
             selected={selectedSet}
             focusId={paramFocusId}
             kernelErrorPath={state.paramKernelError?.path ?? null}
@@ -338,6 +405,8 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
               dispatch({ type: 'param/select', ids: checked ? visible.map((p) => p.def.path) : [] })
             }}
             onFocusRow={(path) => dispatch({ type: 'param/focus', id: path })}
+            onSort={(key) => dispatch({ type: 'param/sort', key })}
+            onCopyRows={() => void copySelected()}
             onAdvancedEdit={(row) => openAdvancedEdit(row)}
             locale={locale}
           />

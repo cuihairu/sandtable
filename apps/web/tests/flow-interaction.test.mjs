@@ -172,6 +172,16 @@ if (!existsSync(pkgNode)) {
     const tasks = readFileSync(join(here, '../src/workbench/tasks/TaskList.tsx'), 'utf8')
     assert.match(tasks, /errorClassLabel\(cls, locale\)/, '队列错误分类就地显示')
     assert.match(tasks, /recoveryText\(ex\.errorClass, ex\.kind, locale\)/, '队列恢复提示就地显示')
+    const paramTable = readFileSync(join(here, '../src/workbench/params/ParamTable.tsx'), 'utf8')
+    assert.match(paramTable, /data-param-row=/, '参数表行有稳定焦点锚点')
+    assert.match(paramTable, /ArrowDown/, '参数表容器接上下方向键')
+    assert.match(paramTable, /onFocusRow\(path\)/, '方向键步进同步工作台选中态')
+    assert.match(paramTable, /onCopyRows\(\)/, 'Ctrl/Cmd+C 走多选复制')
+    assert.match(readFileSync(join(here, '../src/workbench/pages/ParametersPage.tsx'), 'utf8'), /scrollIntoView\(\{ block: 'center' \}\)/, '内核错误定位滚动到行')
+    assert.match(readFileSync(join(here, '../src/workbench/WorkbenchApp.tsx'), 'utf8'), /if \(link\) requestNavigate\(link\.page\)/, 'hash 深链同样受未保存守卫')
+    const taskList = readFileSync(join(here, '../src/workbench/tasks/TaskList.tsx'), 'utf8')
+    assert.match(taskList, /role=\{job\.status === 'failed' \? 'alert' : undefined\}/, '失败任务就地 role=alert')
+    assert.match(taskList, /recoveryText\(ex\.errorClass, ex\.kind, locale\)/, '失败任务带恢复提示')
 
     // WB-10.13 · 提交校验必须检查送达内核的同一份 YAML(sweep 实验不能
     // 只校验无 sweep 节的基线场景);A/B 分支的 view.cand 校验不在此行。

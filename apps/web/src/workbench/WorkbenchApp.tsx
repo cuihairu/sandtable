@@ -18,6 +18,7 @@ import { ProjectExplorer } from './components/ProjectExplorer.tsx'
 import { WorkspaceContainer } from './components/WorkspaceContainer.tsx'
 import { StatusBar } from './components/StatusBar.tsx'
 import { DocumentTabs } from './components/DocumentTabs.tsx'
+import { PanelResizer } from './components/PanelResizer.tsx'
 import { CommandSearch } from './overlays/CommandSearch.tsx'
 import type { CommandEntry } from './overlays/CommandSearch.tsx'
 import { ExportDialog } from './overlays/ExportDialog.tsx'
@@ -69,6 +70,7 @@ import { analysisSnapshot, defaultResultUI, subscribeAnalysis } from './analysis
 import { fmtNumber } from '../lib/i18n/format.ts'
 import { localeSession, useLocale } from './state/localeStore.ts'
 import { DEMO_BASELINE_ID, DEMO_EXPERIMENT_ID } from './demo/sampleProject.ts'
+import { isNavigationBlocked } from './state/workspaceGuard.ts'
 
 // WB-11.11 · 命令面板页面行的词典键(label=功能轨名,hint=文档标签名)
 const NAV_PAGE_LABEL: Record<PageId, 'nav.analysis' | 'nav.parameters' | 'nav.designer' | 'nav.runs' | 'nav.exchange'> = {
@@ -105,6 +107,8 @@ type OverlayState = {
   }
   /** WB-04.12 · 关闭项目(回到演示项目)前确认 */
   confirmClose: boolean
+  /** WB · 活动文档未保存时切页确认;目标页挂起 */
+  confirmNavigate: PageId | null
 }
 
 const INITIAL_OVERLAYS: OverlayState = {
@@ -117,6 +121,7 @@ const INITIAL_OVERLAYS: OverlayState = {
   projects: false,
   confirmOpen: { open: false, pending: null },
   confirmClose: false,
+  confirmNavigate: null,
 }
 
 export default function WorkbenchApp(): JSX.Element {
@@ -127,12 +132,19 @@ export default function WorkbenchApp(): JSX.Element {
   const [overlays, setOverlays] = useState(INITIAL_OVERLAYS)
   const patchOverlays = (patch: Partial<OverlayState>): void =>
     setOverlays((prev) => ({ ...prev, ...patch }))
+  const requestNavigate = (page: PageId): void => {
+    if (isNavigationBlocked(deriveDocuments(getState()), getState().page, page)) {
+      patchOverlays({ confirmNavigate: page })
+      return
+    }
+    dispatch({ type: 'navigate', page })
+  }
 
   /* 深链:浏览器前进/后退与初始 hash 解析 */
   useEffect(() => {
     const onHashChange = (): void => {
       const link = parseHash(window.location.hash)
-      if (link) dispatch({ type: 'navigate', page: link.page, selection: link.selection })
+      if (link) requestNavigate(link.page)
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
@@ -361,6 +373,15 @@ export default function WorkbenchApp(): JSX.Element {
 
   const documents = deriveDocuments(state)
   const activeDoc = documents.find((d) => d.page === state.page) ?? documents[0]
+  const blockedNavigate = (page: PageId): boolean => isNavigationBlocked(documents, state.page, page)
+  const openResourceGuarded = (resource: { id: string; page: PageId }): void => {
+    if (blockedNavigate(resource.page)) {
+      patchOverlays({ confirmNavigate: resource.page })
+      return
+    }
+    openResource(resource)
+  }
+  const setLayout = (patch: Partial<typeof state.layout>): void => dispatch({ type: 'layout', patch })
   // WB-05 · 候选相对基线的参数变更数(注册表 × YAML,不再依赖 18 项原型)
   const paramView = paramYamlView(state)
   const draftChanges = modifiedPaths(parseConfig(paramView.base), parseConfig(paramView.cand)).length
@@ -377,7 +398,7 @@ export default function WorkbenchApp(): JSX.Element {
         label: t(locale, NAV_PAGE_LABEL[p]),
         hint: t(locale, NAV_TAB_LABEL[p]),
         icon: p === 'analysis' ? 'chart' : p === 'parameters' ? 'table' : p === 'designer' ? 'flask' : p === 'runs' ? 'terminal' : 'exchange',
-        run: () => dispatch({ type: 'navigate', page: p }),
+        run: () => requestNavigate(p),
       })
     }
     for (const param of PARAM_REGISTRY) {
@@ -627,7 +648,8 @@ export default function WorkbenchApp(): JSX.Element {
       />
       <ActivityRail
         page={state.page}
-        onNavigate={(page) => dispatch({ type: 'navigate', page })}
+        onNavigate={requestNavigate}
+        isBlocked={blockedNavigate}
         onShortcuts={() => patchOverlays({ shortcuts: true })}
       />
       <ProjectExplorer
@@ -635,7 +657,10 @@ export default function WorkbenchApp(): JSX.Element {
         collapsed={state.explorerCollapsed}
         onToggle={() => dispatch({ type: 'toggle-explorer' })}
         activeId={activeId}
-        onOpen={openResource}
+        onOpen={openResourceGuarded}
+        isBlocked={blockedNavigate}
+        width={state.layout.explorerWidth}
+        onResize={(explorerWidth) => setLayout({ explorerWidth })}
         footerNote={
           state.project
             ? <>{t(locale, 'common.explorerFooterProject')}</>
@@ -647,36 +672,52 @@ export default function WorkbenchApp(): JSX.Element {
         <DocumentTabs
           documents={documents}
           activePage={state.page}
-          onActivate={(page) => dispatch({ type: 'navigate', page })}
+          onActivate={requestNavigate}
+          isBlocked={blockedNavigate}
         />
-        <WorkspaceContainer labelledBy={`tab-${state.page}`} focusKey={state.page}>
-          {state.page === 'analysis' && (
-            <AnalysisPage
-              key="analysis"
-              state={state}
-              onExport={() => patchOverlays({ exportDialog: { open: true, scope: 'all' } })}
+        <div className="wb-shell-grid">
+          <div className="wb-shell-center">
+            <WorkspaceContainer labelledBy={`tab-${state.page}`} focusKey={state.page}>
+              {state.page === 'analysis' && (
+                <AnalysisPage
+                  key="analysis"
+                  state={state}
+                  onExport={() => patchOverlays({ exportDialog: { open: true, scope: 'all' } })}
+                />
+              )}
+              {state.page === 'parameters' && (
+                <ParametersPage key="parameters" state={state} onRequestResetAll={() => patchOverlays({ confirmResetAll: true })} />
+              )}
+              {state.page === 'designer' && <DesignerPage key="designer" state={state} />}
+              {state.page === 'runs' && <RunsPage key="runs" state={state} />}
+              {state.page === 'exchange' && (
+                <ExchangePage key="exchange" onExport={() => patchOverlays({ exportDialog: { open: true, scope: 'all' } })} />
+              )}
+            </WorkspaceContainer>
+          </div>
+          <div className="wb-shell-drawer-row" style={state.drawerOpen ? { height: state.layout.drawerHeight } : undefined}>
+            <GlobalTaskDrawer
+              open={state.drawerOpen}
+              onToggle={() => dispatch({ type: 'toggle-drawer' })}
+              onAllJobs={() => requestNavigate('runs')}
+              onCancel={cancelJob}
             />
-          )}
-          {state.page === 'parameters' && (
-            <ParametersPage key="parameters" state={state} onRequestResetAll={() => patchOverlays({ confirmResetAll: true })} />
-          )}
-          {state.page === 'designer' && <DesignerPage key="designer" state={state} />}
-          {state.page === 'runs' && <RunsPage key="runs" state={state} />}
-          {state.page === 'exchange' && (
-            <ExchangePage key="exchange" onExport={() => patchOverlays({ exportDialog: { open: true, scope: 'all' } })} />
-          )}
-        </WorkspaceContainer>
-        <GlobalTaskDrawer
-          open={state.drawerOpen}
-          onToggle={() => dispatch({ type: 'toggle-drawer' })}
-          onAllJobs={() => dispatch({ type: 'navigate', page: 'runs' })}
-          onCancel={cancelJob}
-        />
+            {state.drawerOpen && (
+              <PanelResizer
+                orientation="horizontal"
+                label={t(locale, 'common.taskQueue')}
+                onStart={() => state.layout.drawerHeight}
+                onUpdate={(drawerHeight) => setLayout({ drawerHeight })}
+              />
+            )}
+          </div>
+        </div>
       </main>
       <StatusBar
         onToggleExplorer={() => dispatch({ type: 'toggle-explorer' })}
         onToggleTasks={() => dispatch({ type: 'toggle-drawer' })}
         onShortcuts={() => patchOverlays({ shortcuts: true })}
+        onResetLayout={() => dispatch({ type: 'layout/reset' })}
         draftSaved={state.project ? unsavedKeys(state.objectDrafts).length === 0 : state.paramDraft.saved}
         draftSavedLabel={
           state.project
@@ -730,6 +771,20 @@ export default function WorkbenchApp(): JSX.Element {
         tone="danger"
         onConfirm={confirmOpenPending}
         onClose={() => patchOverlays({ confirmOpen: { open: false, pending: null } })}
+        body={
+          <p>{t(locale, 'common.confirmNavigateBody')}</p>
+        }
+      />
+      <ConfirmDialog
+        open={overlays.confirmNavigate !== null}
+        title={t(locale, 'common.confirmNavigateTitle')}
+        confirmLabel={t(locale, 'common.confirmNavigateConfirm')}
+        tone="danger"
+        onConfirm={() => {
+          if (overlays.confirmNavigate !== null) dispatch({ type: 'navigate', page: overlays.confirmNavigate })
+          patchOverlays({ confirmNavigate: null })
+        }}
+        onClose={() => patchOverlays({ confirmNavigate: null })}
         body={
           <p>{t(locale, 'common.confirmOpenBody')}</p>
         }
@@ -872,6 +927,7 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
     [t(locale, 'common.shortcutNativeUndo'), t(locale, 'common.shortcutNativeUndoHint')],
     [t(locale, 'common.shortcutSelectNext'), '↑ / ↓'],
     [t(locale, 'common.shortcutTabSwitch'), '← / → · Home / End'],
+    [t(localeSession.get(), 'params.copy'), 'Ctrl / ⌘ + C'],
     [t(locale, 'common.shortcutChartPoint'), 'Tab → Enter'],
     [t(locale, 'common.closeDialog'), 'Esc'],
   ]

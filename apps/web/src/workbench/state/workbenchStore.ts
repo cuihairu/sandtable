@@ -26,6 +26,11 @@ import {
   baseContentOf, baselineOfProject, draftOf, markSaved, persistObjectDrafts, restoreObjectDrafts, resetDraft, undoDraft, redoDraft, unsavedKeys, writeDraft,
 } from './projectDoc.ts'
 import type { DraftMap, ProjectDoc, RunIndexEntry } from './projectDoc.ts'
+import { nextSortDir, normalizeColumnPreference } from '../table/tableState.ts'
+import { readColumnPreference, writeColumnPreference } from '../table/tablePreference.ts'
+import type { TableColumnPref } from '../table/tableState.ts'
+import { DEFAULT_WORKSPACE_LAYOUT, normalizeWorkspaceLayout, readWorkspaceLayout, writeWorkspaceLayout } from './workspaceLayout.ts'
+import type { WorkspaceLayout } from './workspaceLayout.ts'
 
 export const DRAFT_STORAGE_KEY = 'sandtable-workbench-v2-react'
 
@@ -37,6 +42,8 @@ export type WorkbenchState = {
   inspectorOpen: boolean
   /** 任务抽屉(状态栏/独立于页面) */
   drawerOpen: boolean
+  /** WB · 壳层几何:拖拽调整后记住,读取时先夹回安全范围 */
+  layout: WorkspaceLayout
   /** WB-05 · 参数候选文档(演示模式的候选 YAML + 撤销/重做历史;
    * 项目模式候选 = objectDrafts[scenario],见 paramYamlView) */
   paramDraft: {
@@ -73,6 +80,10 @@ export type WorkbenchState = {
   errorsOnly: boolean
   paramFocusId: string | null
   paramSelected: readonly string[]
+  paramSortKey: string | null
+  paramSortDir: 1 | -1
+  /** WB · 参数表列偏好:隐藏列与固定列是页内 UI 态,不进实验输入 */
+  paramColumns: TableColumnPref
   /** 实验设计草稿(切页保留) */
   design: DesignDraft
   designDirty: boolean
@@ -94,6 +105,7 @@ function initialState(): WorkbenchState {
     explorerCollapsed: false,
     inspectorOpen: true,
     drawerOpen: false,
+    layout: readWorkspaceLayout(window.localStorage),
     paramDraft: restored,
     paramFrozen: null,
     paramKernelError: null,
@@ -109,6 +121,9 @@ function initialState(): WorkbenchState {
     errorsOnly: false,
     paramFocusId: null,
     paramSelected: [],
+    paramSortKey: null,
+    paramSortDir: 1,
+    paramColumns: readColumnPreference(window.localStorage),
     design: initialDesign(),
     designDirty: false,
     project: null,
@@ -176,6 +191,8 @@ export type WorkbenchAction =
   | { type: 'toggle-explorer' }
   | { type: 'toggle-inspector' }
   | { type: 'toggle-drawer'; open?: boolean }
+  | { type: 'layout'; patch: Partial<WorkspaceLayout> }
+  | { type: 'layout/reset' }
   // —— WB-05 · 参数表(候选 = YAML 文档;演示/项目两模式统一入口) ——
   /** 写候选 YAML(页面侧用纯函数算好新文档;每次写入 = 一条历史) */
   | { type: 'param/write'; yaml: string }
@@ -200,6 +217,8 @@ export type WorkbenchAction =
   | { type: 'candidate/sort'; key: CandidateSortKey }
   | { type: 'param/focus'; id: string | null }
   | { type: 'param/select'; ids: readonly string[] }
+  | { type: 'param/sort'; key: string }
+  | { type: 'param/column'; pref: TableColumnPref }
   | { type: 'param/search'; search: string }
   | { type: 'param/group'; group: string }
   | { type: 'param/changed-only'; on: boolean }
@@ -329,6 +348,15 @@ export function reduce(state: WorkbenchState, action: WorkbenchAction): Workbenc
       return { ...state, inspectorOpen: !state.inspectorOpen }
     case 'toggle-drawer':
       return { ...state, drawerOpen: action.open ?? !state.drawerOpen }
+    case 'layout': {
+      // 几何入 store 前夹取;坏存储/异常窗口尺寸不会破坏布局
+      const layout = normalizeWorkspaceLayout({ ...state.layout, ...action.patch })
+      writeWorkspaceLayout(window.localStorage, layout)
+      return { ...state, layout }
+    }
+    case 'layout/reset':
+      writeWorkspaceLayout(window.localStorage, DEFAULT_WORKSPACE_LAYOUT)
+      return { ...state, layout: DEFAULT_WORKSPACE_LAYOUT }
     // —— WB-05 · 参数表(候选 YAML 统一历史:单项/批量/恢复/采纳) ——
     case 'param/write':
       return writeParamYaml(state, action.yaml)
@@ -389,6 +417,18 @@ export function reduce(state: WorkbenchState, action: WorkbenchAction): Workbenc
       return { ...state, paramFocusId: action.id }
     case 'param/select':
       return { ...state, paramSelected: action.ids }
+    case 'param/sort':
+      return {
+        ...state,
+        paramSortDir: nextSortDir(state.paramSortKey, action.key, state.paramSortDir),
+        paramSortKey: action.key,
+      }
+    case 'param/column':
+    {
+      const columns = normalizeColumnPreference(action.pref)
+      writeColumnPreference(window.localStorage, columns)
+      return { ...state, paramColumns: columns }
+    }
     case 'param/search':
       return { ...state, paramSearch: action.search }
     case 'param/group':

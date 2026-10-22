@@ -104,6 +104,16 @@ export const zh = {
   'common.notifySvgDownloaded': '已下载 sandtable-demo-{id}.svg(合成演示数据)',
   'common.notifyNoMainChart': '当前没有可导出的主图;先在结果分析页打开响应图',
   'common.notifyProjectClosed': '已关闭项目,回到内置演示项目',
+  'common.confirmNavigateTitle': '离开有未保存修改的文档？',
+  'common.confirmNavigateBody': '当前文档还有未保存修改。现在离开只会在浏览器中保留这些修改。',
+  'common.confirmNavigateConfirm': '离开',
+  'common.notifyCopied': '已复制 {rows} 行 × {columns} 列',
+  'common.copyFailed': '复制失败,请改用 Ctrl+C',
+  'params.columns': '列',
+  'params.copy': '复制',
+  'params.pinLeft': '固定到左侧',
+  'params.pinRight': '固定到右侧',
+  'params.resetColumns': '恢复默认列',
 
   // 导航(五个工作区,与 routing.ts 对齐)
   'nav.analysis': '结果分析',

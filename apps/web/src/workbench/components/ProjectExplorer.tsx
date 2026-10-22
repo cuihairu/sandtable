@@ -7,6 +7,7 @@ import { WbIcon } from './icons.tsx'
 import type { PageId } from '../routing.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
+import { PanelResizer } from './PanelResizer.tsx'
 
 export type ExplorerResource = {
   id: string
@@ -34,6 +35,11 @@ export type ProjectExplorerProps = {
   activeId: string | null
   onToggle: () => void
   onOpen: (resource: ExplorerResource) => void
+  /** 拖拽浏览器面板宽度;几何状态由壳层持有 */
+  onResize?: (width: number) => void
+  width?: number
+  /** 忙文档不允许丢草稿切换;壳层把目标页压入待确认。 */
+  isBlocked?: (page: PageId) => boolean
   footerNote: ReactNode
 }
 
@@ -44,12 +50,15 @@ export function ProjectExplorer({
   activeId,
   onToggle,
   onOpen,
+  isBlocked,
+  onResize,
+  width,
   footerNote,
 }: ProjectExplorerProps): JSX.Element | null {
   const locale = useLocale()
   if (collapsed) return null
   return (
-    <aside className="explorer" aria-label={t(locale, 'common.explorer')}>
+    <aside className="explorer" aria-label={t(locale, 'common.explorer')} style={width === undefined ? undefined : { width }}>
       <div className="explorer-header">
         <strong>{t(locale, 'common.explorer')}</strong>
         <button className="icon-button" onClick={onToggle} title={t(locale, 'common.collapseExplorer')} aria-label={t(locale, 'common.collapseExplorer')}>
@@ -74,7 +83,10 @@ export function ProjectExplorer({
               <button
                 key={r.id}
                 className={`resource${activeId === r.id ? ' selected' : ''}`}
-                onClick={() => onOpen(r)}
+                onClick={() => {
+                  if (isBlocked?.(r.page) !== true) onOpen(r)
+                }}
+                aria-disabled={isBlocked?.(r.page) === true}
               >
                 <WbIcon name={r.icon} />
                 <span>
@@ -96,6 +108,14 @@ export function ProjectExplorer({
         </div>
         <p>{footerNote}</p>
       </div>
+      {onResize && (
+        <PanelResizer
+          orientation="vertical"
+          label={t(locale, 'common.collapseExplorer')}
+          onStart={() => width ?? 220}
+          onUpdate={onResize}
+        />
+      )}
     </aside>
   )
 }

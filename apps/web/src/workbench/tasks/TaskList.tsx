@@ -177,7 +177,7 @@ export function TaskList({ jobs, onCancel, onRetry, emptyAction }: TaskListProps
                     : `${job.method} · ${progressKindLabel(job, locale)}`}
                 </span>
               </div>
-              <div className="job-footer">
+              <div className="job-footer" role={job.status === 'failed' ? 'alert' : undefined}>
                 {job.demo
                   ? job.status === 'succeeded'
                     ? t(locale, 'tasks.demo.done')
