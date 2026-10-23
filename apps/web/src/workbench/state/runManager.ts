@@ -12,10 +12,15 @@ import { createId, ID_PREFIXES } from '../ids.ts'
 import type { JobId } from '../ids.ts'
 import * as logic from './jobLogic.ts'
 import type { ExecSpec, Job, RetryResume } from './jobLogic.ts'
-import { startExec, resolveBackends } from './executor.ts'
+import { startExec, resolveBackends, MAX_CANDIDATE_RESULTS_IN_MEMORY } from './executor.ts'
 import type { ExecBackends, ExecJobPatch, ExecOutcome } from './executor.ts'
 import { canTransition, terminalOutcome } from './execFsm.ts'
-import { persistQueueState, restoreQueueState } from './projectDoc.ts'
+import {
+  persistQueueState,
+  persistSchedulingState,
+  restoreQueueState,
+  restoreSchedulingState,
+} from './projectDoc.ts'
 import type { StorageLike } from './projectDoc.ts'
 import { notify } from './notifications.ts'
 // WB-11.15:本文件在 WB-07.17 守卫清单内,不得 import i18n——toast 发结构化
@@ -47,6 +52,15 @@ const jobBackends = new Map<JobId, Promise<ExecBackends> | ExecBackends>()
 /** 队列状态存储(应用启动时挂上;测试直接走 projectDoc 的纯函数)。 */
 let queueStorage: StorageLike | null = null
 let queueRestored = false
+export type SchedulingConfig = {
+  concurrency: number
+  memoryBudget: number
+}
+
+const scheduling: SchedulingConfig = {
+  concurrency: 1,
+  memoryBudget: MAX_CANDIDATE_RESULTS_IN_MEMORY,
+}
 
 function emit(): void {
   for (const listener of listeners) listener()
@@ -92,6 +106,25 @@ export function listJobs(): readonly Job[] {
   return jobs
 }
 
+/** 当前执行策略快照;调用方不得直接改写内部调度状态。 */
+export function getSchedulingConfig(): SchedulingConfig {
+  return { ...scheduling }
+}
+
+/** 调整并发与内存预算后立即按新策略重排,不要求人工重试排队项。 */
+export function setSchedulingConfig(partial: Partial<SchedulingConfig>): SchedulingConfig {
+  const concurrency = Math.max(1, Math.floor(partial.concurrency ?? scheduling.concurrency))
+  const memoryBudget = Math.max(1, Math.floor(partial.memoryBudget ?? scheduling.memoryBudget))
+  scheduling.concurrency = concurrency
+  scheduling.memoryBudget = memoryBudget
+  if (queueStorage !== null) {
+    persistSchedulingState({ storage: queueStorage, config: scheduling })
+  }
+  startNextQueued()
+  emit()
+  return { ...scheduling }
+}
+
 /** 执行规格 → 任务总量口径:扫描 = 内核计划 sims;A/B = 双臂 × reps;单次 = reps。 */
 function totalOf(spec: ExecSpec): number {
   if (spec.kind === 'sweep') return spec.plan.sims
@@ -101,6 +134,11 @@ function totalOf(spec: ExecSpec): number {
 
 function replicatesOf(spec: ExecSpec): number {
   return spec.kind === 'sweep' ? spec.plan.replicates : spec.replicates
+}
+
+/** 排队预算口径与 executor 完全一致:sweep 按候选数,其余视为单份输出。 */
+function candidateMemoryCount(spec: ExecSpec): number {
+  return spec.kind === 'sweep' ? spec.plan.candidates.length : 1
 }
 
 /** 状态推进(真实任务):迁移守卫 + 终态单向闸(WB-07.01/16)。 */
@@ -122,13 +160,14 @@ function patchJob(id: JobId, patch: ExecJobPatch): void {
   emit()
 }
 
+function patchWaitReason(id: JobId, waitReason: Job['waitReason']): void {
+  jobs = jobs.map((job) => (job.id === id ? { ...job, waitReason } : job))
+  emit()
+}
+
 /** 真实任务是否已启动执行:queued 仅排队,尚不占用活动执行槽。 */
 function isExecuting(status: Job['status']): boolean {
   return status === 'running' || status === 'cancelling'
-}
-
-function executingCount(jobs: readonly Job[]): number {
-  return jobs.filter((job) => isExecuting(job.status)).length
 }
 
 /** 终局落地(WB-07.14/15):终态、错误分类与保留产物;清理活动引用,可再次提交。 */
@@ -253,28 +292,39 @@ export function enqueueRun(input: {
 }
 
 /**
- * 队列调度:只启动第一个真实 queued 项;已有执行槽被占用时返回,不拒绝
- * 排队本身。顺序执行是当前诚实的并发/内存预算,不向内核发出并发承诺。
+ * 队列调度:单趟 FIFO 扫描填满并发槽;超内存预算的队首项显式等待且不算失败。
+ *
+ * 单趟扫描而非 while+jobs.find():startExec 的 queued→running 补丁经 await
+ * backends 在微任务后落地,find 会重复命中同一队首项 → 无限 startExec 调用
+ * (activeControls.set 同 key 不增 size)→ OOM。单趟 for + activeControls.has
+ * 幂等跳过已启动项,状态更新幂等。
  */
 function startNextQueued(): void {
-  // activeControls 是同步占用信号:startExec 的 queued→running 补丁经 await
-  // backends 在微任务后落地,连续入队不能靠 jobs.status 抢跑第二个执行槽。
-  if (activeControls.size > 0 || executingCount(jobs) > 0) return
-  const next = jobs.find((job) => job.exec !== undefined && job.status === 'queued')
-  if (!next || !next.exec) return
+  for (const job of jobs) {
+    // 槽满即停(活动控制引用是同步占用信号,先于 jobs.status 落地)
+    if (activeControls.size >= scheduling.concurrency) return
+    if (job.exec === undefined || job.status !== 'queued') continue
+    if (activeControls.has(job.id)) continue // 幂等:本轮已启动,跳过
+    // 队头超预算即停:不跳过队头去启动后续项(FIFO 语义)
+    if (candidateMemoryCount(job.exec.spec) > scheduling.memoryBudget) {
+      if (job.waitReason !== 'memory-budget') patchWaitReason(job.id, 'memory-budget')
+      return
+    }
+    if (job.waitReason !== undefined) patchWaitReason(job.id, undefined)
 
-  const backends = queuedBackends.get(next.id) ?? resolveBackends()
-  queuedBackends.delete(next.id)
-  jobBackends.set(next.id, backends)
-  const controls = startExec(next.exec.spec, backends, { update: patchJob }, next.id, next.exec.resume ?? resumeOf(next))
-  activeControls.set(next.id, controls)
-  void controls.promise.then((out) => {
-    // WB-07.15 · 终局清理:busy/控制引用/监听随终态解除;applyOutcome 内续跑下一项
-    activeControls.delete(next.id)
-    queuedBackends.delete(next.id)
-    applyOutcome(next.id, out)
-  })
-  emit()
+    const backends = queuedBackends.get(job.id) ?? resolveBackends()
+    queuedBackends.delete(job.id)
+    jobBackends.set(job.id, backends)
+    const controls = startExec(job.exec.spec, backends, { update: patchJob }, job.id, job.exec.resume ?? resumeOf(job))
+    activeControls.set(job.id, controls)
+    void controls.promise.then((out) => {
+      // WB-07.15 · 终局清理:busy/控制引用/监听随终态解除;applyOutcome 内续跑下一项
+      activeControls.delete(job.id)
+      queuedBackends.delete(job.id)
+      applyOutcome(job.id, out)
+    })
+    emit()
+  }
 }
 
 /**
@@ -333,6 +383,7 @@ export function retryJob(id: JobId): Job | null {
   const retried: Job = {
     ...job,
     status: 'queued',
+    waitReason: undefined,
     done: 0,
     exec: {
       ...job.exec,
@@ -359,7 +410,9 @@ export function retryJob(id: JobId): Job | null {
 /** 挂载队列存档面;后续每次状态变化按当前顺序写同一载荷。 */
 export function attachQueueStorage(storage: StorageLike): void {
   queueStorage = storage
+  setSchedulingConfig(restoreSchedulingState(storage) ?? scheduling)
   persistQueueState({ storage, jobs })
+  persistSchedulingState({ storage, config: scheduling })
 }
 
 /** 重载恢复:运行中项因执行句柄不可持久化而回到队首执行,其余顺序不变。 */
@@ -371,13 +424,22 @@ export function restorePersistedQueue(
   queueRestored = true
   queueStorage = storage
   const restored = restoreQueueState(storage)
+  const restoredScheduling = restoreSchedulingState(storage)
+  if (restoredScheduling !== null) {
+    scheduling.concurrency = restoredScheduling.concurrency
+    scheduling.memoryBudget = restoredScheduling.memoryBudget
+  }
   if (restored === null) {
     persistQueueState({ storage, jobs })
+    persistSchedulingState({ storage, config: scheduling })
     return null
   }
   jobs = restored.map((job) => ({
     ...job,
-    status: isExecuting(job.status) || job.status === 'cancelling' ? 'queued' as const : job.status,
+    // running/cancelling 统一回 queued:执行句柄不可持久化,由槽重新启动
+    status: isExecuting(job.status) ? 'queued' as const : job.status,
+    // 恢复时清运行时字段:waitReason 由调度重新判定,resume 由 resumeOf 重建
+    waitReason: undefined,
     exec: job.exec === undefined ? undefined : { ...job.exec, resume: job.exec.resume ?? resumeOf(job) },
   }))
   for (const [id, backend] of backends) queuedBackends.set(id, backend)
@@ -385,6 +447,7 @@ export function restorePersistedQueue(
   startNextQueued()
   startTimer()
   emit()
+  persistSchedulingState({ storage, config: scheduling })
   return jobs
 }
 
@@ -433,5 +496,7 @@ export function resetForTest(): void {
   jobBackends.clear()
   queueStorage = null
   queueRestored = false
+  scheduling.concurrency = 1
+  scheduling.memoryBudget = MAX_CANDIDATE_RESULTS_IN_MEMORY
   stopTimer()
 }

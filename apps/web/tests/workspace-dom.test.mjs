@@ -50,8 +50,8 @@ const { PanelResizer } = await import('../src/workbench/components/PanelResizer.
 const { ColumnMenu } = await import('../src/workbench/table/ColumnMenu.tsx')
 const { ParamTable } = await import('../src/workbench/params/ParamTable.tsx')
 const { ParamDetail } = await import('../src/workbench/params/ParamDetail.tsx')
-const { displayParamName } = await import('../src/workbench/params/paramRegistry.ts')
-const { localeSession } = await import('../src/workbench/state/localeStore.ts')
+const { displayParamName: _displayParamName } = await import('../src/workbench/params/paramRegistry.ts')
+const { localeSession: _localeSession } = await import('../src/workbench/state/localeStore.ts')
 
 function click(element) {
   act(() => {
@@ -59,7 +59,7 @@ function click(element) {
   })
 }
 
-function key(element, keyName) {
+function _key(element, keyName) {
   element.dispatchEvent(new KeyboardEvent('keydown', { key: keyName, bubbles: true, cancelable: true }))
 }
 

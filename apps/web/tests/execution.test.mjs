@@ -15,8 +15,9 @@ import { WORKER_PROTOCOL_VERSION, isWorkerRequest, isWorkerResponse } from '../s
 import { serveSweepWorker } from '../src/workbench/state/sweepWorker.ts'
 import { startExec, workerBackends, classifyKernelCancel, MAX_CANDIDATE_RESULTS_IN_MEMORY } from '../src/workbench/state/executor.ts'
 import { METRIC_KEYS } from '../src/lib/types.ts'
-import { resetForTest, listJobs, enqueueRun, cancelJob, retryJob } from '../src/workbench/state/runManager.ts'
-import { QUEUE_STORAGE_KEY, persistQueueState, restoreQueueState } from '../src/workbench/state/projectDoc.ts'
+import { resetForTest, listJobs, enqueueRun, cancelJob, retryJob, getSchedulingConfig, setSchedulingConfig, restorePersistedQueue } from '../src/workbench/state/runManager.ts'
+import { WAIT_REASON_LABEL } from '../src/workbench/state/jobLogic.ts'
+import { QUEUE_STORAGE_KEY, SCHEDULE_STORAGE_KEY, persistQueueState, restoreQueueState, persistSchedulingState, restoreSchedulingState } from '../src/workbench/state/projectDoc.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const read = (p) => readFileSync(join(here, '..', p), 'utf8')
@@ -819,6 +820,142 @@ test('队列持久化:版本/形状损坏整体丢弃;载荷按序恢复且执�
   assert.equal(peak, 1, '恢复后仍只有一个执行槽')
   assert.deepEqual(calls.sim, ['q0', 'q1', 'q2'])
   fresh.resetForTest()
+})
+
+test('批量调度:并发 2 同时执行且结果保持 FIFO 一致', async () => {
+  resetForTest()
+  setSchedulingConfig({ concurrency: 2 })
+  let active = 0
+  let peak = 0
+  const calls = { candidate: [], sim: [] }
+  const { backends } = fakeBackends({
+    candidate: async (yaml, replicates, values) => {
+      active += 1
+      peak = Math.max(peak, active)
+      calls.candidate.push(values['model.warrior.attack'])
+      await new Promise((resolve) => setTimeout(resolve, 2))
+      active -= 1
+      return { values, status: 'ok', metric_stats: [], target_outcomes: [] }
+    },
+    sim: async (yaml) => {
+      active += 1
+      peak = Math.max(peak, active)
+      calls.sim.push(yaml)
+      await new Promise((resolve) => setTimeout(resolve, 2))
+      active -= 1
+      return { config_hash: yaml, meta: {}, results: [], days_csv: yaml }
+    },
+  })
+  const first = enqueueRun({
+    experimentId: 'exp_parallel', runId: 'run_parallel_1', name: '并发一', method: 'GRID',
+    spec: { kind: 'sweep', yaml: 'parallel', plan: PLAN3 }, backends,
+  })
+  const second = enqueueRun({
+    experimentId: 'exp_parallel', runId: 'run_parallel_2', name: '并发二', method: 'GRID',
+    spec: { kind: 'sweep', yaml: 'parallel', plan: PLAN3 }, backends,
+  })
+  const third = enqueueRun({
+    experimentId: 'exp_parallel', runId: 'run_parallel_3', name: '并发三', method: 'SINGLE',
+    spec: { kind: 'single', yaml: 'single-3', replicates: 1 }, backends,
+  })
+
+  await new Promise((resolve) => setTimeout(resolve, 1))
+  let live = listJobs()
+  assert.equal(live.find((job) => job.id === first.id).status, 'running')
+  assert.equal(live.find((job) => job.id === second.id).status, 'running')
+  assert.equal(live.find((job) => job.id === third.id).status, 'queued')
+  await new Promise((resolve) => setTimeout(resolve, 15))
+  live = listJobs()
+  assert.equal(peak, 2, '并发配置生效且不超槽')
+  assert.deepEqual(calls.candidate, [90, 90, 100, 100, 110, 110], '第一实验内部候选序不因并发交错')
+  assert.equal(calls.sim.at(-1), 'single-3', '第三个任务在前两个槽释放后续跑')
+  assert.deepEqual(live.map((job) => [job.name, job.status]), [
+    ['并发一', 'succeeded'], ['并发二', 'succeeded'], ['并发三', 'succeeded'],
+  ])
+  resetForTest()
+})
+
+test('内存预算:超预算任务显式等待,预算放宽后自动续跑', async () => {
+  resetForTest()
+  setSchedulingConfig({ concurrency: 1, memoryBudget: 2 })
+  const { backends, calls } = fakeBackends({
+    candidate: async (yaml, replicates, values) => {
+      calls.candidate.push(values)
+      return { values, status: 'ok', metric_stats: [], target_outcomes: [] }
+    },
+  })
+  const bigSpec = {
+    kind: 'sweep', yaml: 'big',
+    plan: { candidates: PLAN3.candidates.concat(PLAN3.candidates), replicates: 1, sims: 6 },
+  }
+  const waiting = enqueueRun({
+    experimentId: 'exp_budget', runId: 'run_budget', name: '等预算', method: 'GRID',
+    spec: bigSpec, backends,
+  })
+  await new Promise((resolve) => setTimeout(resolve, 1))
+  const waited = listJobs().find((job) => job.id === waiting.id)
+  assert.equal(waited.status, 'queued')
+  assert.equal(waited.waitReason, 'memory-budget')
+  assert.equal(waited.exec.errorClass, null)
+  assert.deepEqual(calls.candidate, [])
+  assert.equal(WAIT_REASON_LABEL['memory-budget'].zh, '等内存预算')
+  assert.equal(WAIT_REASON_LABEL['memory-budget'].en, 'Waiting for memory budget')
+
+  setSchedulingConfig({ memoryBudget: 6 })
+  await new Promise((resolve) => setTimeout(resolve, 1))
+  assert.equal(listJobs().find((job) => job.id === waiting.id).status, 'succeeded')
+  assert.equal(listJobs().find((job) => job.id === waiting.id).waitReason, undefined)
+  assert.equal(calls.candidate.length, 6)
+  resetForTest()
+})
+
+test('调度配置持久化:独立载荷恢复并驱动并发与预算', async () => {
+  resetForTest()
+  const storage = memoryStorage()
+  assert.equal(persistSchedulingState({ storage, config: { concurrency: 2, memoryBudget: 2 } }), true)
+  assert.deepEqual(restoreSchedulingState(storage), { concurrency: 2, memoryBudget: 2 })
+  storage.setItem(SCHEDULE_STORAGE_KEY, '{"version":"0","concurrency":2,"memoryBudget":2}')
+  assert.equal(restoreSchedulingState(storage), null)
+  assert.equal(persistSchedulingState({ storage, config: { concurrency: 2, memoryBudget: 2 } }), true)
+
+  const jobs = [
+    persistedRealJob('job_sched01', 'queued', { kind: 'single', yaml: 'small', replicates: 1 }),
+    persistedRealJob('job_sched02', 'queued', {
+      kind: 'sweep', yaml: 'large',
+      plan: { candidates: [1, 2, 3].map((value) => ({ 'model.warrior.attack': value })), replicates: 1, sims: 3 },
+    }),
+  ]
+  persistQueueState({ storage, jobs })
+  const started = []
+  const backend = {
+    mode: 'desktop',
+    sim: async (yaml) => {
+      started.push(yaml)
+      return { config_hash: yaml, meta: {}, results: [], days_csv: yaml }
+    },
+    candidate: async (yaml, replicates, values) => {
+      started.push(values)
+      return { values, status: 'ok', metric_stats: [], target_outcomes: [] }
+    },
+    recommend: async () => ({ elasticities: [], recommendation: null }),
+    kernelCancel: async () => true,
+    compare: null,
+  }
+  const restored = restorePersistedQueue(storage, new Map([
+    ['job_sched01', backend], ['job_sched02', backend],
+  ]))
+  assert.deepEqual(getSchedulingConfig(), { concurrency: 2, memoryBudget: 2 })
+  await new Promise((resolve) => setTimeout(resolve, 1))
+  const live = listJobs()
+  assert.equal(live.find((job) => job.id === 'job_sched01').status, 'succeeded')
+  assert.equal(live.find((job) => job.id === 'job_sched02').status, 'queued')
+  assert.equal(live.find((job) => job.id === 'job_sched02').waitReason, 'memory-budget')
+  assert.equal(restoreSchedulingState(storage).concurrency, 2)
+  assert.equal(getSchedulingConfig().concurrency, 2)
+  assert.notEqual(restored, null)
+  resetForTest()
+  setSchedulingConfig({ concurrency: 1, memoryBudget: MAX_CANDIDATE_RESULTS_IN_MEMORY })
+  resetForTest()
 })
 
 test('批量队列:真实任务按 FIFO 自动续跑,同一时刻仅启动一项真实执行', async () => {

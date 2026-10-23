@@ -15,6 +15,13 @@ export type JobStatus =
   | 'succeeded'
   | 'failed'
 
+/** WB-07.12 · 显式排队原因:状态仍是 queued,界面不得把等待伪装成失败。 */
+export type JobWaitReason = 'memory-budget'
+
+export const WAIT_REASON_LABEL: Readonly<Record<JobWaitReason, Readonly<{ zh: string; en: string }>>> = {
+  'memory-budget': { zh: '等内存预算', en: 'Waiting for memory budget' },
+}
+
 /** WB-07.01 · 状态机六态不变;真实任务的状态推进由 executor 按内核事件驱动。 */
 export type ExecKind = 'sweep' | 'ab' | 'single'
 
@@ -74,6 +81,8 @@ export type Job = {
   createdAt: number
   /** WB-07 · 真实执行视图;undefined = 演示任务 */
   exec?: JobExec
+  /** WB-07.12 · queued 的等待原因;运行/终态必须清空。 */
+  waitReason?: JobWaitReason
 }
 
 /** 重跑的真实续点：失败/部分完成后仍保留且可复用的进度。 */

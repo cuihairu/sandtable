@@ -743,8 +743,11 @@ export function clearObjectDrafts(storage: StorageLike, doc: ProjectDoc): void {
 
 /** 与草稿存档分离:队列是应用级运行状态,不随某个项目文档生命周期清除。 */
 export const QUEUE_STORAGE_KEY = 'sandtable-wb2-run-queue'
+/** 调度配置独立于队列存档:恢复旧队列时不反向污染执行策略。 */
+export const SCHEDULE_STORAGE_KEY = 'sandtable-wb2-run-schedule'
 
 const QUEUE_PERSIST_VERSION = '1'
+const SCHEDULE_PERSIST_VERSION = '1'
 const QUEUE_JOB_STATUSES = new Set<JobStatus>([
   'queued', 'running', 'cancelling', 'cancelled', 'succeeded', 'failed',
 ])
@@ -755,16 +758,27 @@ type PersistedQueuePayload = {
   jobs: Job[]
 }
 
+type PersistedSchedulingPayload = {
+  version: string
+  savedAt: number
+  concurrency: number
+  memoryBudget: number
+}
+
 /** 队列状态序列化;执行句柄与未消费续点都不落盘,恢复时重新建立续点。 */
 export function persistQueueState(input: { storage: StorageLike; jobs: readonly Job[] }): boolean {
   try {
     const payload: PersistedQueuePayload = {
       version: QUEUE_PERSIST_VERSION,
       savedAt: Date.now(),
-      jobs: input.jobs.map((job) => ({
-        ...job,
-        exec: job.exec === undefined ? undefined : { ...job.exec, resume: null },
-      })),
+      jobs: input.jobs.map((job) => {
+        // 规范化载荷:剔除 waitReason/resume 等运行时字段,恢复时由调度重建
+        const { waitReason: _stripped, ...rest } = job
+        return {
+          ...rest,
+          exec: job.exec === undefined ? undefined : { ...job.exec, resume: null },
+        }
+      }),
     }
     input.storage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(payload))
     return true
@@ -792,6 +806,57 @@ function isRestorableJob(value: unknown): value is Job {
       && typeof exec.spec === 'object' && exec.spec !== null
       && (exec.spec as Record<string, unknown>).kind === exec.kind
     ))
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && Number.isFinite(value) && value > 0
+}
+
+/** 调度配置序列化;默认并发 1、默认预算沿用 executor 的内存上限。 */
+export function persistSchedulingState(input: {
+  storage: StorageLike
+  config: Readonly<{ concurrency: number; memoryBudget: number }>
+}): boolean {
+  try {
+    const payload: PersistedSchedulingPayload = {
+      version: SCHEDULE_PERSIST_VERSION,
+      savedAt: Date.now(),
+      concurrency: input.config.concurrency,
+      memoryBudget: input.config.memoryBudget,
+    }
+    input.storage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(payload))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** 恢复调度配置;损坏或越界值返回 null,由调用方保留当前默认策略。 */
+export function restoreSchedulingState(storage: StorageLike): {
+  concurrency: number
+  memoryBudget: number
+} | null {
+  let raw: string | null
+  try {
+    raw = storage.getItem(SCHEDULE_STORAGE_KEY)
+  } catch {
+    return null
+  }
+  if (raw === null) return null
+  let parsed: PersistedSchedulingPayload
+  try {
+    parsed = JSON.parse(raw) as PersistedSchedulingPayload
+  } catch {
+    return null
+  }
+  if (
+    parsed.version !== SCHEDULE_PERSIST_VERSION
+    || !isPositiveInteger(parsed.concurrency)
+    || !isPositiveInteger(parsed.memoryBudget)
+  ) {
+    return null
+  }
+  return { concurrency: parsed.concurrency, memoryBudget: parsed.memoryBudget }
 }
 
 /**
