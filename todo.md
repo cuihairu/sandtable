@@ -360,7 +360,8 @@
 
 #### P2 · 专项数值分析
 
-- [ ] **A/B 分析视图**：基线/候选均值、配对差值、绝对/相对变化、CI、效应量与约束判定；按 KPI 分面显示配对效应图，不能把不同单位共用一个轴。
+- [x] **A/B 分析视图**：基线/候选均值、配对差值、绝对/相对变化、CI、效应量与约束判定；按 KPI 分面显示配对效应图，不能把不同单位共用一个轴。
+  - 2026-10-23 证据：`ff8850b`。真实数据链路 = executor 在 A/B 双臂真跑完成后按 METRIC_KEYS 逐 KPI 调内核 `compare_arms`（与主指标同一桥接调用点，`apps/web/src/workbench/state/executor.ts:322` 扇出；拒绝逐条原文记录进 `exec.comparisonErrors`，`jobLogic.ts:50`），视图层 `apps/web/src/lib/abEffect.ts:34` `abFacets` 派生基线/候选均值、配对差、绝对/相对变化、CI、效应量 d、内核判定与显著性读数（CI 与 0 关系，不新做检验；基线均值 0 → 相对变化如实「不可用」）；分面图 `AbEffectChart.tsx:35` 每 KPI 一张 SVG、轴域由 `effectDomain` 逐分面独立计算（`abEffect.ts:83`）——percent 分面轴保持 0–1 尺度量级、amount 分面轴为绝对量量级，不同单位结构上不共轴，比例差显示 pp（显示层唯一换算 formatMetric）。守卫 `apps/web/tests/ab-effect.test.mjs:98` 真内核全链路走查（pkg-node）+ `execution.test.mjs:457` 注入后端逐 KPI 调用序/拒绝记录。门禁：node --test 全套 341/341、tsc -b 0、oxlint 0（仅 2 条 workspace-dom 既有 warning）、vite build ✓。真实走查数字（population 200/14d/seed 42，m_attack 10→120，R=12）：win_rate Δ=-0.57 pp CI[-0.66,-0.48] d=-5.71 AHigher；gold_per_player Δ=-1201.9 金币/玩家 CI[-1273.9,-1129.9] d=-5.32 相对 -42.1%；churn_rate Δ=+3.38 pp CI[2.11,4.64] d=2.01 BHigher；retention_d3 Δ=0 pp CI[0,0] 不区分；gacha_pulls_to_hit / loot_gold_per_player 内核显式拒绝（未配置 model.gacha/model.loot，原文入不可用列表）。jsdom + 浏览器渲染截图核验 6 分面各自独立轴。origin/main HEAD `ff8850b`。
 - [ ] **多维扫描设计**：多因子边界、步长、离散水平、组合预算、Random/LHS 采样、重复候选处理、失败点追踪；复用现有扫描和推荐能力。
 - [ ] **专业图型**：双轴 Grid 离散热图、Random/LHS 散点、OAT 敏感性矩阵、可行候选/Pareto 前沿；缺失候选留空，选点联动候选配置与运行记录。
 - [ ] **逐日与 cohort 分析**：单次 run/replicate 的趋势曲线、群体分面、分布/分位数与长尾；逐日跨 replicate 均值和 CI 须先有内核聚合输出，禁止给单次 `days.csv` 套置信带。
