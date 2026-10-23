@@ -52,6 +52,8 @@ export type JobExec = {
   sim: SimOutput | null
   errorClass: ExecErrorClass | null
   errorMessage: string | null
+  /** 重试/恢复时的可复用续点;启动执行时消费并清空 */
+  resume?: RetryResume | null
 }
 
 export type Job = {
@@ -69,6 +71,11 @@ export type Job = {
   /** WB-07 · 真实执行视图;undefined = 演示任务 */
   exec?: JobExec
 }
+
+/** 重跑的真实续点：失败/部分完成后仍保留且可复用的进度。 */
+export type RetryResume =
+  | { kind: 'sweep'; nextCandidateIndex: number; results: readonly CandidateResult[] }
+  | { kind: 'ab'; completedArms: { base: SimOutput | null; cand: SimOutput | null } }
 
 export function isTerminal(status: JobStatus): boolean {
   return status === 'cancelled' || status === 'succeeded' || status === 'failed'

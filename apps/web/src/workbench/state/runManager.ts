@@ -11,10 +11,12 @@
 import { createId, ID_PREFIXES } from '../ids.ts'
 import type { JobId } from '../ids.ts'
 import * as logic from './jobLogic.ts'
-import type { ExecSpec, Job } from './jobLogic.ts'
+import type { ExecSpec, Job, RetryResume } from './jobLogic.ts'
 import { startExec, resolveBackends } from './executor.ts'
 import type { ExecBackends, ExecJobPatch, ExecOutcome } from './executor.ts'
 import { canTransition, terminalOutcome } from './execFsm.ts'
+import { persistQueueState, restoreQueueState } from './projectDoc.ts'
+import type { StorageLike } from './projectDoc.ts'
 import { notify } from './notifications.ts'
 // WB-11.15:本文件在 WB-07.17 守卫清单内,不得 import i18n——toast 发结构化
 // 词条 { key, params },由 notifications 在入队时按当前 locale 解析。
@@ -39,9 +41,18 @@ const activeControls = new Map<JobId, { cancel: (escalate?: boolean) => Promise<
 
 /** WB-07.12 · 排队中的注入后端引用;启动时消费,取消/终态后清理。 */
 const queuedBackends = new Map<JobId, Promise<ExecBackends> | ExecBackends>()
+/** 真实任务的执行端点引用:重试沿用提交/恢复时的端点,不静默换执行面。 */
+const jobBackends = new Map<JobId, Promise<ExecBackends> | ExecBackends>()
+
+/** 队列状态存储(应用启动时挂上;测试直接走 projectDoc 的纯函数)。 */
+let queueStorage: StorageLike | null = null
+let queueRestored = false
 
 function emit(): void {
   for (const listener of listeners) listener()
+  if (queueStorage !== null) {
+    persistQueueState({ storage: queueStorage, jobs })
+  }
 }
 
 function startTimer(): void {
@@ -137,6 +148,7 @@ function applyOutcome(id: JobId, out: ExecOutcome): void {
   patchJob(id, {
     status,
     exec: {
+      resume: null,
       results: out.results,
       recommendation: out.recommendation,
       recommendationError: out.recommendationError,
@@ -228,9 +240,11 @@ export function enqueueRun(input: {
       sim: null,
       errorClass: null,
       errorMessage: null,
+      resume: null,
     },
   }
   queuedBackends.set(job.id, input.backends ?? resolveBackends())
+  jobBackends.set(job.id, input.backends ?? resolveBackends())
   jobs = [...jobs, job]
   startNextQueued()
   return job
@@ -249,7 +263,8 @@ function startNextQueued(): void {
 
   const backends = queuedBackends.get(next.id) ?? resolveBackends()
   queuedBackends.delete(next.id)
-  const controls = startExec(next.exec.spec, backends, { update: patchJob }, next.id)
+  jobBackends.set(next.id, backends)
+  const controls = startExec(next.exec.spec, backends, { update: patchJob }, next.id, next.exec.resume ?? resumeOf(next))
   activeControls.set(next.id, controls)
   void controls.promise.then((out) => {
     // WB-07.15 · 终局清理:busy/控制引用/监听随终态解除;applyOutcome 内续跑下一项
@@ -291,6 +306,86 @@ export function enqueueDemo(input: {
   return job
 }
 
+/** 从失败/部分完成执行提取真实续点；null = 缺少可复用进度,保持整跑语义。 */
+function resumeOf(job: Job): RetryResume | null {
+  const exec = job.exec
+  if (!exec) return null
+  if (exec.kind === 'sweep') {
+    return { kind: 'sweep', nextCandidateIndex: exec.results.length, results: exec.results }
+  }
+  if (exec.kind === 'ab' && exec.arms && (exec.arms.base !== null || exec.arms.cand !== null)) {
+    return { kind: 'ab', completedArms: { base: exec.arms.base, cand: exec.arms.cand } }
+  }
+  return null
+}
+
+/**
+ * WB-07.14/16 · 失败/取消后重试:原位恢复同一 Job 与执行快照,已完成候选
+ * /臂不重跑,失败点从断点继续;缺少可复用进度时保持同输入整跑语义。
+ */
+export function retryJob(id: JobId): Job | null {
+  const job = jobs.find((j) => j.id === id)
+  if (!job || !job.exec || !logic.isTerminal(job.status)) return null
+  if (job.status === 'succeeded') return null
+  const resume = resumeOf(job)
+  const retried: Job = {
+    ...job,
+    status: 'queued',
+    done: 0,
+    exec: {
+      ...job.exec,
+      progressKind: 'none',
+      candidatesDone: 0,
+      results: [],
+      recommendation: null,
+      recommendationError: null,
+      comparison: null,
+      arms: null,
+      sim: null,
+      errorClass: null,
+      errorMessage: null,
+      resume,
+    },
+  }
+  jobs = [...jobs.filter((item) => item.id !== id), retried]
+  queuedBackends.set(id, jobBackends.get(id) ?? resolveBackends())
+  startNextQueued()
+  emit()
+  return jobs.find((item) => item.id === id) ?? null
+}
+
+/** 挂载队列存档面;后续每次状态变化按当前顺序写同一载荷。 */
+export function attachQueueStorage(storage: StorageLike): void {
+  queueStorage = storage
+  persistQueueState({ storage, jobs })
+}
+
+/** 重载恢复:运行中项因执行句柄不可持久化而回到队首执行,其余顺序不变。 */
+export function restorePersistedQueue(
+  storage: StorageLike,
+  backends: ReadonlyMap<JobId, Promise<ExecBackends> | ExecBackends> = new Map(),
+): Job[] | null {
+  if (queueRestored) return null
+  queueRestored = true
+  queueStorage = storage
+  const restored = restoreQueueState(storage)
+  if (restored === null) {
+    persistQueueState({ storage, jobs })
+    return null
+  }
+  jobs = restored.map((job) => ({
+    ...job,
+    status: isExecuting(job.status) || job.status === 'cancelling' ? 'queued' as const : job.status,
+    exec: job.exec === undefined ? undefined : { ...job.exec, resume: job.exec.resume ?? resumeOf(job) },
+  }))
+  for (const [id, backend] of backends) queuedBackends.set(id, backend)
+  for (const [id, backend] of backends) jobBackends.set(id, backend)
+  startNextQueued()
+  startTimer()
+  emit()
+  return jobs
+}
+
 /** 取消:请求落管理器;演示任务走演示状态机,真实任务走执行引擎取消语义。 */
 export async function cancelJob(id: JobId): Promise<void> {
   const job = jobs.find((j) => j.id === id)
@@ -304,9 +399,12 @@ export async function cancelJob(id: JobId): Promise<void> {
     return
   }
   if (job.status === 'queued') {
-    // 排队项取消即终态,不触碰执行槽或内核令牌(WB-07.12 令牌只对应活动任务)
+    // 排队项取消即终态,不触碰内核令牌(WB-07.12 令牌只对应活动任务)。
+    // backends 已被 startNextQueued 消费但状态尚未迁 running 时,活动控制
+    // 引用已代表槽被本项占用;该项已判为 queued 取消终态,故同步释放槽。
     queuedBackends.delete(id)
     patchJob(id, { status: 'cancelled' })
+    activeControls.delete(id)
     startNextQueued()
     return
   }
@@ -321,20 +419,6 @@ export async function cancelJob(id: JobId): Promise<void> {
   await controls.cancel(escalate)
 }
 
-/** WB-07.16 · 失败后重试:同一执行快照重新入队(同输入 ⇒ 同 run 引用)。 */
-export function retryJob(id: JobId): Job | null {
-  const job = jobs.find((j) => j.id === id)
-  if (!job || !job.exec) return null
-  return enqueueRun({
-    experimentId: job.experimentId,
-    runId: job.exec.runId,
-    name: job.name,
-    method: job.method,
-    spec: job.exec.spec,
-  })
-}
-
-/** 会话恢复(本批:任务队列不持久化——刷新即空,与原型口径一致)。 */
 export function hasActiveJobs(): boolean {
   return logic.runningCount(jobs) > 0
 }
@@ -344,5 +428,8 @@ export function resetForTest(): void {
   jobs = []
   activeControls.clear()
   queuedBackends.clear()
+  jobBackends.clear()
+  queueStorage = null
+  queueRestored = false
   stopTimer()
 }

@@ -23,7 +23,7 @@ import type {
   SweepRecOutput,
 } from '../../lib/types.ts'
 import type { JobId } from '../ids.ts'
-import type { ExecErrorClass, ExecSpec, JobExec, JobStatus } from './jobLogic.ts'
+import type { ExecErrorClass, ExecSpec, JobExec, JobStatus, RetryResume } from './jobLogic.ts'
 import { isWorkerResponse } from './workerProtocol.ts'
 import type { WorkerRequest, WorkerRequestInput, WorkerResultValue } from './workerProtocol.ts'
 
@@ -125,6 +125,7 @@ export function startExec(
   backends: Promise<ExecBackends> | ExecBackends,
   hooks: ExecHooks,
   jobId: JobId,
+  resume: RetryResume | null = null,
 ): ExecControls {
   // 单向闸:终局写出后任何 update/取消都不再生效(WB-07.16 终态先到先得)
   let settled = false
@@ -158,12 +159,24 @@ export function startExec(
       // WB-07.12 内存预算:开跑前拒绝,不半途丢弃
       return outcome('failed', 'budget', `候选数 ${total} 超出内存预算(${MAX_CANDIDATE_RESULTS_IN_MEMORY}),请缩小实验规模`, {})
     }
+    const startIndex = resume?.kind === 'sweep'
+      ? Math.min(Math.max(resume.nextCandidateIndex, 0), total, resume.results.length)
+      : 0
+    const results: CandidateResult[] = resume?.kind === 'sweep'
+      ? resume.results.slice(0, startIndex)
+      : []
     update({
       status: 'running',
-      exec: { ...baseExec(), progressKind: 'candidates', replicates: reps, candidatesDone: 0, candidatesTotal: total },
+      exec: {
+        ...baseExec(),
+        progressKind: 'candidates',
+        replicates: reps,
+        candidatesDone: results.length,
+        candidatesTotal: total,
+        results: [...results],
+      },
     })
-    const results: CandidateResult[] = []
-    for (let i = 0; i < total; i++) {
+    for (let i = startIndex; i < total; i++) {
       if (cancelRequested) {
         // WB-07.07 · 候选边界检查:保留已完成候选,不碰内核令牌
         return outcome('cancelled', null, null, { results: [...results], boundary: { kind: 'candidate', done: results.length, total } })
@@ -211,17 +224,33 @@ export function startExec(
   ): Promise<ExecOutcome> => {
     // 浏览器 Worker 内单次仿真无逐 replicate 进度面(同步 wasm),如实标 none
     const progressKind = be.mode === 'desktop' ? 'replicates' : 'none'
+    const completedArms = resume?.kind === 'ab' ? resume.completedArms : null
+    const startIndex = completedArms === null
+      ? 0
+      : (() => {
+        const firstIncomplete = arms.findIndex((arm) => completedArms[arm.label as 'base' | 'cand'] === null)
+        return firstIncomplete === -1 ? arms.length : firstIncomplete
+      })()
+    const skipArms = startIndex > 0 ? arms.slice(0, startIndex) : []
+    const restoredDone = skipArms.length * reps
     update({
       status: 'running',
-      exec: { ...baseExec(), progressKind, replicates: reps, candidatesDone: 0, candidatesTotal: 0 },
+      exec: {
+        ...baseExec(),
+        progressKind,
+        replicates: reps,
+        candidatesDone: 0,
+        candidatesTotal: 0,
+        ...(spec.kind === 'ab' && completedArms !== null ? { arms: completedArms } : {}),
+      },
     })
 
-    const outputs: { base: SimOutput | null; cand: SimOutput | null } = { base: null, cand: null }
+    const outputs: { base: SimOutput | null; cand: SimOutput | null } = completedArms ?? { base: null, cand: null }
     const armsOut = (): { base: SimOutput | null; cand: SimOutput | null } | null =>
       spec.kind === 'ab' ? { base: outputs.base, cand: outputs.cand } : null
 
-    let doneBase = 0
-    for (const arm of arms) {
+    let doneBase = restoredDone
+    for (const arm of arms.slice(startIndex)) {
       if (cancelRequested) {
         // WB-07.16 · 臂间边界取消:已完成臂保留(双臂);单次已完成则保留输出
         if (spec.kind === 'single' && outputs.base !== null) {

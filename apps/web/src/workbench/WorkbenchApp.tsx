@@ -165,6 +165,11 @@ export default function WorkbenchApp(): JSX.Element {
   /* WB-09.07 · 真实 run 终局落档:机器快照(含 spec = 关联配置)写进运行
    * 产物,索引 files 同步登记——重开归档后可再次导出。每个 run 只落一次。 */
   const archivedRuns = useRef<Set<string>>(new Set())
+  /* WB-07 · 批量队列刷新恢复:模块单例只恢复一次;执行中的项回队列,
+   * 由同一个执行槽继续,不会与恢复前遗留句柄双开。 */
+  useEffect(() => {
+    runManager.restorePersistedQueue(window.localStorage)
+  }, [])
   useEffect(() => {
     for (const j of jobs) {
       const exec = j.exec

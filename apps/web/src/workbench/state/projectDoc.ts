@@ -19,6 +19,7 @@ import { candidateIdFor, hashId, ID_PREFIXES, runIdFor } from '../ids.ts'
 import type { BaselineId, CandidateId, ProjectId, RunId } from '../ids.ts'
 import { DEMO_SOURCE, KERNEL_SOURCE, isDataSource } from '../../lib/dataSource.ts'
 import type { DataSource } from '../../lib/dataSource.ts'
+import type { Job, JobStatus } from './jobLogic.ts'
 
 /* —— 打开项目(WB-04.02/03/04) —— */
 
@@ -736,6 +737,83 @@ export function clearObjectDrafts(storage: StorageLike, doc: ProjectDoc): void {
   } catch {
     // 存储不可用:清不掉就留着,不影响当前会话
   }
+}
+
+/* —— 批量运行队列持久化(WB-07 状态持久化) —— */
+
+/** 与草稿存档分离:队列是应用级运行状态,不随某个项目文档生命周期清除。 */
+export const QUEUE_STORAGE_KEY = 'sandtable-wb2-run-queue'
+
+const QUEUE_PERSIST_VERSION = '1'
+const QUEUE_JOB_STATUSES = new Set<JobStatus>([
+  'queued', 'running', 'cancelling', 'cancelled', 'succeeded', 'failed',
+])
+
+type PersistedQueuePayload = {
+  version: string
+  savedAt: number
+  jobs: Job[]
+}
+
+/** 队列状态序列化;执行句柄与未消费续点都不落盘,恢复时重新建立续点。 */
+export function persistQueueState(input: { storage: StorageLike; jobs: readonly Job[] }): boolean {
+  try {
+    const payload: PersistedQueuePayload = {
+      version: QUEUE_PERSIST_VERSION,
+      savedAt: Date.now(),
+      jobs: input.jobs.map((job) => ({
+        ...job,
+        exec: job.exec === undefined ? undefined : { ...job.exec, resume: null },
+      })),
+    }
+    input.storage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(payload))
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isRestorableJob(value: unknown): value is Job {
+  if (typeof value !== 'object' || value === null) return false
+  const job = value as Record<string, unknown>
+  const exec = typeof job.exec === 'object' && job.exec !== null ? job.exec as Record<string, unknown> : null
+  return typeof job.id === 'string'
+    && typeof job.experimentId === 'string'
+    && typeof job.name === 'string'
+    && typeof job.method === 'string'
+    && typeof job.total === 'number' && Number.isFinite(job.total) && job.total >= 0
+    && typeof job.done === 'number' && Number.isFinite(job.done) && job.done >= 0
+    && typeof job.status === 'string' && QUEUE_JOB_STATUSES.has(job.status as JobStatus)
+    && typeof job.demo === 'boolean'
+    && typeof job.createdAt === 'number' && Number.isFinite(job.createdAt)
+    && (exec === null || (
+      typeof exec.runId === 'string'
+      && typeof exec.kind === 'string'
+      && typeof exec.spec === 'object' && exec.spec !== null
+      && (exec.spec as Record<string, unknown>).kind === exec.kind
+    ))
+}
+
+/**
+ * 刷新恢复:载荷版本或任一任务形状损坏时整体丢弃,避免半份队列造成
+ * 状态与执行输入错位;不做局部拼装。
+ */
+export function restoreQueueState(storage: StorageLike): Job[] | null {
+  let raw: string | null
+  try {
+    raw = storage.getItem(QUEUE_STORAGE_KEY)
+  } catch {
+    return null
+  }
+  if (raw === null) return null
+  let parsed: PersistedQueuePayload
+  try {
+    parsed = JSON.parse(raw) as PersistedQueuePayload
+  } catch {
+    return null
+  }
+  if (parsed.version !== QUEUE_PERSIST_VERSION || !Array.isArray(parsed.jobs)) return null
+  return parsed.jobs.every(isRestorableJob) ? parsed.jobs.map((job) => ({ ...job })) : null
 }
 
 /* —— 文件选择与错误口径(WB-04.01/04.13) —— */
