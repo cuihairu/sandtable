@@ -30,6 +30,7 @@ import { ScenarioForm } from '../designer/ScenarioForm.tsx'
 import { KpiConstraintTable } from '../designer/KpiConstraintTable.tsx'
 import { RunPlanSidebar } from '../designer/RunPlanSidebar.tsx'
 import type { PlanState } from '../designer/RunPlanSidebar.tsx'
+import { SweepDesignPreview } from '../designer/SweepDesignPreview.tsx'
 import {
   designErrors, factorRowError, sweepModeOf,
   scenarioStats, kpiAvailability, createSubmitGuard, createPlanGate,
@@ -411,6 +412,9 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
 
   const submitBlocked = undefined
   const sweepMode = sweepModeOf(design.method, design.sampling)
+  // WB-12(L364)· 设计预演只认「与当前输入 YAML 对齐」的内核计划:
+  // stale/pending/error 一律不给候选表,预演侧如实显示等待,不拿旧计划充数
+  const currentPlan = planState !== null && planState.status === 'ok' ? planState.plan : null
 
   return (
     <>
@@ -508,6 +512,8 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
                 onFactorRemove={onFactorRemove}
                 onSamplesChange={(samples) => dispatch({ type: 'design/set', patch: { samples } })}
               />
+              {/* WB-12(L364)· 多因子边界/步长/离散水平/组合预算/重复候选的设计期预演 */}
+              <SweepDesignPreview design={design} plan={currentPlan} />
             </section>
           )}
 

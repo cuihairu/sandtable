@@ -22,3 +22,42 @@
 .wb-app .result-draft { border-top: 1px solid var(--wb-line); padding-block: var(--wb-pad-panel); }
 .wb-app .result-draft textarea { display: block; width: 100%; font-family: var(--wb-mono); background: var(--wb-canvas); border: 1px solid var(--wb-line); padding: var(--wb-pad-panel); }
 @media (max-width: 1100px) { .wb-app .real-result-grid { grid-template-columns: minmax(0, 1fr); } .wb-app .real-inspector { border-inline-start: 0; border-top: 1px solid var(--wb-line); padding-inline-start: 0; } }
+
+/* WB-12 · 专业图型(todo L365):四类图共用聚合模型输出,SVG 只用内核值。
+   缺失/未产出 = 不画(空格/缺点),故此处没有任何「0 值」兜底样式。 */
+.wb-app .pro-charts { border-top: 1px solid var(--wb-line); padding-block-start: var(--wb-pad-panel-lg); margin-block-start: var(--wb-pad-panel-lg); }
+.wb-app .pro-charts h2 { margin-block-start: 0; }
+.wb-app .pro-toolbar { border-bottom: 0; padding: 0; min-height: 0; margin-block: var(--wb-pad-panel); gap: var(--wb-space-1); flex-wrap: wrap; }
+.wb-app .pro-toolbar > label { display: inline-flex; align-items: center; gap: var(--wb-space-1); font-size: var(--wb-fs-caption); color: var(--wb-muted); }
+.wb-app .pro-toolbar select { min-width: 0; max-width: 100%; }
+/* 330 高的图自带 viewBox 比例,别被 .main-chart 的 870/287 裁形 */
+.wb-app .pro-chart { aspect-ratio: auto; max-height: none; height: auto; margin-block-start: var(--wb-space-1); }
+.wb-app .pro-heat-cell { cursor: pointer; outline: none; }
+.wb-app .pro-heat-cell rect { transition: fill-opacity .12s, stroke .12s; }
+.wb-app .pro-heat-cell:hover:not(.selected) rect { stroke: var(--wb-teal); stroke-width: 2; }
+.wb-app .pro-heat-cell:focus-visible rect { stroke: var(--wb-teal-dark); stroke-width: 2.5; }
+.wb-app .pro-heat-cell.selected rect { stroke: var(--wb-amber); }
+.wb-app .pro-heat-value { fill: #16383a; font: 10px var(--wb-mono); pointer-events: none; }
+.wb-app .pro-heat-cell.selected .pro-heat-value { font-weight: 700; }
+.wb-app .pro-heat-missing { fill: #f7fafa; }
+.wb-app .pro-scatter-point { cursor: pointer; outline: none; }
+.wb-app .pro-scatter-point circle { fill: var(--wb-teal); fill-opacity: .55; stroke: white; stroke-width: 1.2; transition: fill-opacity .12s; }
+.wb-app .pro-scatter-point:hover circle { fill-opacity: .9; }
+.wb-app .pro-scatter-point:focus-visible circle { stroke: var(--wb-teal-dark); stroke-width: 2.5; }
+.wb-app .pro-scatter-point.selected circle { fill: var(--wb-amber); fill-opacity: 1; stroke: white; stroke-width: 2; }
+.wb-app .pro-oat-param { fill: #55707a; font: 11px var(--wb-mono); }
+.wb-app .pro-oat-sig { fill: var(--wb-teal); fill-opacity: .78; }
+.wb-app .pro-oat-nsig { fill: var(--wb-teal); fill-opacity: .16; }
+.wb-app .pro-oat-blank { fill: #f7fafa; stroke: var(--wb-soft-line); stroke-dasharray: 4 3; }
+.wb-app .pro-oat-value { fill: white; font: 11px var(--wb-mono); pointer-events: none; }
+.wb-app .pro-oat-nsig + .pro-oat-value { fill: #2a5a5f; }
+.wb-app .pro-pareto-front { fill: none; stroke: var(--wb-amber); stroke-width: 1.5; stroke-dasharray: 5 3; }
+.wb-app .pro-pareto-point { cursor: pointer; outline: none; }
+.wb-app .pro-pareto-point circle { stroke: white; stroke-width: 1.2; }
+.wb-app .pro-pareto-point.frontier circle { fill: var(--wb-teal); }
+.wb-app .pro-pareto-point.dominated circle { fill: #b4c6cb; fill-opacity: .9; }
+.wb-app .pro-pareto-point:hover circle { fill-opacity: 1; stroke: var(--wb-teal-dark); }
+.wb-app .pro-pareto-point:focus-visible circle { stroke: var(--wb-teal-dark); stroke-width: 2.5; }
+.wb-app .pro-pareto-point.selected circle { fill: var(--wb-amber); stroke: white; stroke-width: 2; }
+.wb-app .pro-failures { margin-block-start: var(--wb-pad-panel-lg); padding-block-start: var(--wb-pad-panel); border-top: 1px solid var(--wb-soft-line); }
+@media (max-width: 760px) { .wb-app .pro-toolbar > label { flex: 1 1 45%; } .wb-app .pro-toolbar select { width: 100%; } }

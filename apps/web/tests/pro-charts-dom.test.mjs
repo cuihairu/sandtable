@@ -1,0 +1,195 @@
+// 专业图型浏览器级走查(WB-12 · todo L365,jsdom + 真内核):
+// 真 sweep_plan → 真 sweep_candidate → candidateViews(应用同一条 candidateIdFor)
+// → ProChartsSection 真渲染。锁的是渲染层的三条红线:
+// ① 缺失候选留空(虚线空格),不 0 填;
+// ② 每个可点元素携带内容寻址候选 ID,点击回调即候选表/运行记录同一条 select;
+// ③ Random/LHS 计划默认散点,热图只对 Grid 如实出图(否则给出原因,不造格)。
+// 跑法(仓库根,先构建 pkg-node):
+//   node --test apps/web/tests/pro-charts-dom.test.mjs
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { register } from 'node:module'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { dirname, join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { JSDOM } from 'jsdom'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const pkgNode = join(here, '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js')
+
+if (!existsSync(pkgNode)) {
+  test('skip: pkg-node 未构建(浏览器级走查在 CI 的构建后阶段跑)', () => {
+    assert.ok(true)
+  })
+} else {
+  register(new URL('./workspace-dom-loader.mjs', import.meta.url), pathToFileURL('./'))
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+    pretendToBeVisual: true,
+    url: 'https://sandtable.test/',
+  })
+  globalThis.window = dom.window
+  globalThis.document = dom.window.document
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  globalThis.import_meta_env = { DEV: false }
+  const storage = new Map()
+  Object.defineProperty(dom.window, 'localStorage', {
+    configurable: true,
+    value: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, String(v)) },
+  })
+  Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' })
+  Object.defineProperty(dom.window.navigator, 'languages', { configurable: true, value: ['zh-CN'] })
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
+  for (const key of ['Event', 'KeyboardEvent', 'MouseEvent', 'PointerEvent']) globalThis[key] = dom.window[key]
+
+  const { createElement, act } = await import('react')
+  const { createRoot } = await import('react-dom/client')
+  const { setLocale } = await import('../src/workbench/state/localeStore.ts')
+  const { ProChartsSection } = await import('../src/workbench/analysis/ProCharts.tsx')
+  const { candidateViews } = await import('../src/lib/sweepView.ts')
+  const { paretoFront, oatMatrix } = await import('../src/lib/proChartsModel.ts')
+  const { fmtNumber } = await import('../src/lib/i18n/format.ts')
+  const { METRIC_META } = await import('../src/lib/metricMeta.ts')
+  const { candidateIdFor, hashId, ID_PREFIXES } = await import('../src/workbench/ids.ts')
+  const wasm = await import(pkgNode)
+
+  const EXP2 = (mode = 'grid', samples = 0) => [
+    'schema_version: "1"',
+    'scenario: {population: 40, duration: "7d", seed: 7}',
+    'sweep:',
+    `  mode: ${mode}`,
+    ...(samples ? [`  samples: ${samples}`] : []),
+    '  replicates: 2',
+    '  parameters:',
+    '    model.warrior.attack: {min: 90, max: 110, step: 10}',
+    '    model.warrior.defense: {min: 70, max: 90, step: 10}',
+    '  targets:',
+    '    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}',
+    '',
+  ].join('\n')
+  const EXP1 = EXP2().replace('    model.warrior.defense: {min: 70, max: 90, step: 10}\n', '')
+
+  const baseline = hashId(ID_PREFIXES.baseline, 'pro-dom', EXP2())
+  const derive = (values) => String(candidateIdFor(baseline, values))
+  const paint = (yaml, plan) => candidateViews(
+    plan,
+    plan.candidates.map((c) => JSON.parse(wasm.sweep_candidate(yaml, plan.replicates, JSON.stringify(c)))),
+    derive,
+  )
+  const rowsOf = (plan, views) => {
+    const byIndex = new Map(views.map((v) => [v.index, v]))
+    return plan.candidates.map((values, index) => ({ id: derive(values), index, values, result: byIndex.get(index) ?? null }))
+  }
+
+  await act(async () => setLocale('zh-CN'))
+
+  const render = async (props) => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(createElement(ProChartsSection, props)) })
+    return host
+  }
+  const click = async (node) => {
+    await act(async () => { node.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
+  }
+  const tabs = (host) => Array.from(host.querySelectorAll('[role="tab"]'))
+
+  // —— Grid:9 计划槽只返回 7(后 2 槽未跑完)+ 真推荐(单因子另跑) ——
+  const plan = JSON.parse(wasm.sweep_plan(EXP2(), 0))
+  const results = plan.candidates.slice(0, 7).map((c) => JSON.parse(wasm.sweep_candidate(EXP2(), plan.replicates, JSON.stringify(c))))
+  const views = candidateViews(plan, results, derive)
+  const rows = rowsOf(plan, views)
+  const plan1 = JSON.parse(wasm.sweep_plan(EXP1, 0))
+  const rec = JSON.parse(wasm.sweep_recommend(EXP1, JSON.stringify(plan1.candidates.map((c) => JSON.parse(wasm.sweep_candidate(EXP1, plan1.replicates, JSON.stringify(c)))))))
+  const calls = []
+  const onSelect = (id) => calls.push(id)
+  const host = await render({
+    job: { exec: { runId: 'run-pro-dom', recommendation: rec, recommendationError: null } },
+    rows, views, plan, selectedId: views[0].id, onSelect,
+  })
+
+  test('Grid 热图:7 个已返回格 + 2 个缺失格留空,选中格指回内容寻址 ID', () => {
+    assert.equal(host.querySelectorAll('.pro-heat-cell').length, 7)
+    assert.equal(host.querySelectorAll('.pro-heat-missing').length, 2)
+    const selected = host.querySelectorAll('.pro-heat-cell.selected')
+    assert.equal(selected.length, 1)
+    assert.equal(selected[0].dataset.candidate, views[0].id)
+    // 缺失格不与任何候选 ID 绑定(留空,不是 0 值格)
+    assert.equal([...host.querySelectorAll('.pro-heat-missing')].every((n) => !n.dataset.candidate), true)
+    // 每格数值 = 内核该候选 win_rate 均值(显示层只做百分比换算)
+    const v = views.find((x) => `${x.values['model.warrior.attack']}|${x.values['model.warrior.defense']}` === '90|70')
+    const cell = [...host.querySelectorAll('.pro-heat-cell')].find((n) => n.dataset.candidate === v.id)
+    const shown = fmtNumber('zh-CN', v.stats.get('win_rate').mean * 100, { maxFractionDigits: METRIC_META.win_rate.decimals })
+    assert.ok(cell.textContent.includes(shown), `${cell.textContent} 应含内核均值显示 ${shown}`)
+  })
+
+  test('失败点追踪:ok 7 / 未返回 2 如实入表,不补 0', () => {
+    const text = host.querySelector('[data-testid="pro-failure-tracking"]').textContent
+    assert.match(text, /ok 7/)
+    assert.match(text, /未返回 2/)
+    assert.match(text, /槽位 7, 8/)
+  })
+
+  test('点选热图格 → onSelect 收到内核派生的内容寻址候选 ID', async () => {
+    calls.length = 0
+    const cell = [...host.querySelectorAll('.pro-heat-cell')].find((n) => n.dataset.candidate !== views[0].id)
+    await click(cell)
+    assert.deepEqual(calls, [cell.dataset.candidate])
+    assert.ok(views.some((v) => v.id === calls[0]))
+  })
+
+  test('散点视图:7 个可绘点(连续读同一批内核候选),点选同一 ID 域', async () => {
+    await click(tabs(host)[1])
+    const points = [...host.querySelectorAll('.pro-scatter-point')]
+    assert.equal(points.length, 7)
+    // 无失败/缺指标候选时 withheld 为空 → 图中不存在「0 值兜底点」
+    assert.equal(points.filter((n) => !n.dataset.candidate).length, 0)
+    calls.length = 0
+    await click(points[0])
+    assert.deepEqual(calls, [points[0].dataset.candidate])
+  })
+
+  test('OAT 矩阵:只画内核给出弹性系数的格,缺失/不可用指标留空', async () => {
+    await click(tabs(host)[2])
+    const model = oatMatrix(rec.elasticities)
+    const covered = model.rows.flatMap((r) => r.cells).filter((c) => c !== null && c.e !== null).length
+    const cells = host.querySelectorAll('[data-oat-cell]')
+    assert.equal(cells.length, covered)
+    // 内核 note=missing_metric(e=null)与未覆盖组合都留空,不明写 0
+    const blanks = host.querySelectorAll('[data-oat-blank]')
+    assert.equal(blanks.length, model.rows.length * model.metrics.length - covered)
+    assert.ok([...blanks].some((n) => n.dataset.oatBlank === 'model.warrior.attack|gacha_pulls_to_hit'))
+  })
+
+  test('Pareto:点集 = 可行候选,前沿折线只在 ≥2 点时出现,点选联动', async () => {
+    await click(tabs(host)[3])
+    const expected = paretoFront(views, 'win_rate', 'gold_per_player', 'max', 'max')
+    assert.equal(host.querySelectorAll('.pro-pareto-point').length, expected.feasible.length)
+    assert.equal(host.querySelectorAll('.pro-pareto-point.frontier').length, expected.frontier.length)
+    assert.equal(host.querySelectorAll('.pro-pareto-front').length, expected.frontier.length > 1 ? 1 : 0)
+    calls.length = 0
+    const node = host.querySelector('.pro-pareto-point.frontier')
+    await click(node)
+    assert.deepEqual(calls, [node.dataset.candidate])
+  })
+
+  test('Random 计划默认散点;热图如实说明不适用(不造空格)', async () => {
+    const rplan = JSON.parse(wasm.sweep_plan(EXP2('random', 6), 0))
+    assert.equal(rplan.mode, 'random')
+    const rviews = paint(EXP2('random', 6), rplan)
+    const rhost = await render({
+      job: { exec: { runId: 'run-pro-dom-random', recommendation: null, recommendationError: '内核只支持单参数轴' } },
+      rows: rowsOf(rplan, rviews), views: rviews, plan: rplan, selectedId: null, onSelect: () => {},
+    })
+    // 默认视图 = 散点(连续采样不在网格上)
+    assert.equal(rhost.querySelectorAll('.pro-scatter-point').length, rviews.length)
+    assert.equal(rhost.querySelectorAll('.pro-heat-cell').length, 0)
+    await click(tabs(rhost)[0])
+    assert.equal(rhost.querySelectorAll('.pro-heat-cell').length, 0)
+    assert.match(rhost.textContent, /离散热图只适用于 Grid/)
+    // 推荐不可用 → OAT 不造行
+    await click(tabs(rhost)[2])
+    assert.equal(rhost.querySelectorAll('[data-oat-cell]').length, 0)
+    assert.match(rhost.textContent, /OAT 敏感性矩阵不可用/)
+  })
+}

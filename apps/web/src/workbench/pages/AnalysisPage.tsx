@@ -12,6 +12,7 @@ import { fmtNumber } from '../../lib/i18n/format.ts'
 import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
 import { ResponseChart } from '../analysis/ResponseChart.tsx'
 import { AbEffectChart } from '../analysis/AbEffectChart.tsx'
+import { ProChartsSection } from '../analysis/ProCharts.tsx'
 import { CandidateTable } from '../analysis/CandidateTable.tsx'
 import type { CandidateColumn } from '../analysis/CandidateTable.tsx'
 import { DemoAnalysisPage } from '../analysis/DemoAnalysisPage.tsx'
@@ -74,6 +75,9 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
   // Requested metrics also remain visible when every candidate failed or produced no value.
   const metrics = METRIC_KEYS.filter((m) => m === metric || plan?.targets.some((t) => t.metric === m) || all.some((r) => r.result?.stats.has(m)))
   const views = rows.flatMap((r) => r.result ? [r.result] : [])
+  // WB-12(L365)· 图型吃「本 run 全部已返回候选」,不随表格筛选/排序变化
+  // (筛选是 UI 状态,图不能因筛选而伪造缺失格)
+  const allViews = all.flatMap((r) => r.result ? [r.result] : [])
   const baseline = ranBaseline(job, all)
   const patch = (p: Parameters<typeof patchResultUI>[1]): void => patchResultUI(job.id, p)
   const select = (id: string): void => {
@@ -178,6 +182,10 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
           </dl>
         </aside>
       </div>
+      {/* WB-12(L365)· 专业图型:双轴热图/散点/OAT 矩阵/Pareto + 失败点追踪;
+          点选走同一个 select(候选配置候选表 + selection.run 运行记录联动) */}
+      <ProChartsSection job={job} rows={all} views={allViews} plan={plan ?? null}
+        selectedId={selected?.id ?? null} onSelect={select} />
       <section className="result-recommendation"><h2>{t(locale, 'analysis.recTitle')}</h2>
         <p className="note">{t(locale, 'analysis.recNote')}</p>
         {rec ? <><p>{t(locale, 'analysis.recLine', { param: rec.param, baseline: rec.baseline ?? t(locale, 'analysis.unavailable'), interval: rec.interval ? `[${rec.interval.join(', ')}]` : t(locale, 'analysis.notRecommendable'), confidence: rec.confidence })}</p><p>{interpolationText(rec, locale)}</p><ul>{rec.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
