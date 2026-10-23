@@ -12,6 +12,7 @@
 //   days_csv 只代表 replicate 1,本层不构造日级 CI。
 import { METRIC_KEYS } from './types.ts'
 import type {
+  CohortStat,
   Comparison,
   Elasticity,
   MetricKey,
@@ -362,6 +363,76 @@ export function dailyRows(
   return {
     ok: true,
     rows: run.day_stats.map((d) => ({ day: d.day, win_rate: d.win_rate, inflation: d.inflation })),
+  }
+}
+
+/* —— WB-XX · 逐日趋势与 cohort 分面:同一 selected run 的内核原值 —— */
+
+export type DailyKpiKey = 'active' | 'win_rate' | 'gold_supply' | 'mean_power' | 'churn_rate'
+
+export type DailyTrendPoint = { day: number; value: number }
+
+export type DailyTrendSeries = {
+  id: DailyKpiKey
+  labelKey: TranslationKey
+  percent: boolean
+  points: readonly DailyTrendPoint[]
+}
+
+const COHORT_ORDER: readonly CohortStat['cohort'][] = ['casual', 'core', 'whale']
+
+export function selectedDailyRun(
+  sim: SimOutput | null,
+  replicate: number,
+  runId: string,
+): { runId: string; run: RunMetrics | null } {
+  return { runId, run: sim?.results.find((run) => run.replicate === replicate) ?? null }
+}
+
+export const DAILY_KPI = [
+  { id: 'active', labelKey: 'analysis.daily.active', percent: false },
+  { id: 'win_rate', labelKey: 'analysis.daily.winRate', percent: true },
+  { id: 'gold_supply', labelKey: 'analysis.daily.goldSupply', percent: false },
+  { id: 'mean_power', labelKey: 'analysis.daily.meanPower', percent: false },
+  { id: 'churn_rate', labelKey: 'analysis.daily.churnRate', percent: true },
+] as const satisfies readonly {
+  id: DailyKpiKey
+  labelKey: TranslationKey
+  percent: boolean
+}[]
+
+export function dailyTrendSeries(run: RunMetrics | null): readonly DailyTrendSeries[] {
+  return DAILY_KPI.map((metric) => ({
+    id: metric.id,
+    labelKey: metric.labelKey,
+    percent: metric.percent,
+    points: run?.day_stats.map((day) => ({ day: day.day, value: day[metric.id] })) ?? [],
+  }))
+}
+
+export type CohortFacetRow = {
+  cohort: CohortStat['cohort']
+  count: number | null
+  churned: number | null
+  meanPower: number | null
+  meanGold: number | null
+  meanLevel: number | null
+}
+
+export function cohortFacets(run: RunMetrics | null): { rows: readonly CohortFacetRow[] } {
+  const byCohort = new Map(run?.cohort_stats.map((row) => [row.cohort, row]))
+  return {
+    rows: COHORT_ORDER.map((cohort) => {
+      const row = byCohort.get(cohort)
+      return {
+        cohort,
+        count: row?.count ?? null,
+        churned: row?.churned ?? null,
+        meanPower: row?.mean_power ?? null,
+        meanGold: row?.mean_gold ?? null,
+        meanLevel: row?.mean_level ?? null,
+      }
+    }),
   }
 }
 

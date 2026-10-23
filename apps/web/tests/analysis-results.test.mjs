@@ -591,3 +591,16 @@ test('WB-09.10:配置版本三面对照——检查器来源、导出表列、�
   assert.equal(anonRow[header.indexOf('plan_config_hash')], String(context.plan.config_hash), '计划哈希来自运行自带规格,与登记无关')
   assert.equal(anonRow[header.indexOf('model_version')], String(context.modelVersion), '上下文版本列与登记无关')
 })
+
+test('WB-18: daily cohort section uses interactive kernel points with exact values and local errors', () => {
+  const section = readFileSync(new URL('../src/workbench/analysis/DailyCohortSection.tsx', import.meta.url), 'utf8')
+  assert.match(section, /role="button"\s+tabIndex=\{0\}/)
+  assert.match(section, /aria-pressed=\{p\.day === activeDay\}/)
+  assert.match(section, /ArrowRight.*ArrowDown.*ArrowLeft.*ArrowUp/s)
+  assert.match(section, /node\?\.focus\(\)/)
+  assert.match(section, /data-testid="daily-trend-table"/)
+  assert.match(section, /data-value=\{row\[metric\.id\]\}/)
+  assert.match(section, /analysis\.dailyMissingRun/)
+  assert.match(section, /analysis\.dailyMissingDays/)
+  assert.match(section, /role="alert" aria-live="assertive"/)
+})
