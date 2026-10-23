@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -104,7 +104,7 @@ jobs:
 
   web:
     name: Web 构建(wasm + 前端)
-    runs-on: ubuntu-24.04  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -162,7 +162,7 @@ jobs:
   # 采到的是空桌面,1 色被误判 webview 未绘制)。
   desktop-smoke:
     name: 桌面无头冒烟(启动链)
-    runs-on: ubuntu-24.04  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}  # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
     steps:
       - uses: actions/checkout@v7.0.1
 

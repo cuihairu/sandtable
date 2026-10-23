@@ -13,7 +13,7 @@ on:
 jobs:
   freshness:
     name: 活跃门(48h)
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     outputs:
       active: ${{ steps.check.outputs.active }}
     steps:
@@ -34,7 +34,7 @@ jobs:
     name: Web 产物(nightly)
     needs: freshness
     if: needs.freshness.outputs.active == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v7.0.1
 
