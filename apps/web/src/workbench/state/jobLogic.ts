@@ -3,7 +3,7 @@
 // 演示任务的"成功/取消"只推进进度沙漏,不执行内核、不产生新结果产物。
 // WB-07 · 真实执行接入同一状态机:进度只来自内核事件(无原型定时器),
 // 取消/错误分类与部分结果语义见 execFsm.ts,执行引擎见 executor.ts。
-import type { CandidateResult, Comparison, SimOutput, SweepRecOutput } from '../../lib/types.ts'
+import type { CandidateResult, Comparison, ComparisonFailure, SimOutput, SweepRecOutput } from '../../lib/types.ts'
 import type { JobId } from '../ids.ts'
 import type { AnalysisContext } from '../analysis/resultModel.ts'
 
@@ -47,6 +47,10 @@ export type JobExec = {
   /** WB-07.14 · 推荐调用失败时如实记录(不重算、不伪装成 null 区间) */
   recommendationError: string | null
   comparison: Comparison | null
+  /** A/B 分析视图:逐 KPI 内核配对比较(全部可用 KPI 各一份 Comparison,主指标必含;可选 = 旧任务/恢复载荷无此字段) */
+  comparisons?: readonly Comparison[] | null
+  /** A/B 分析视图:内核显式拒绝的 KPI 与原文原因(不可用指标如实记录) */
+  comparisonErrors?: readonly ComparisonFailure[] | null
   /** A/B 双臂输出(桥接未接入时保留为部分结果,不冒充统计判定);单臂完成也如实保留 */
   arms: { base: SimOutput | null; cand: SimOutput | null } | null
   sim: SimOutput | null

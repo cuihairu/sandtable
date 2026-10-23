@@ -7,8 +7,11 @@ import { METRIC_META, metricLabel, metricUnit } from '../../lib/metricMeta.ts'
 import { fmtPercent } from '../../lib/i18n/format.ts'
 import { abView, dailyRows, interpolationText, overallOutcome, recommendationView, responsePoints, sensitivityNoteLabel, stepSelection, yAutoDomain } from '../../lib/analysisView.ts'
 import type { ResultFilter } from '../../lib/analysisView.ts'
+import { abFacets, abUnavailable } from '../../lib/abEffect.ts'
+import { fmtNumber } from '../../lib/i18n/format.ts'
 import { WorkspaceHeading } from '../components/WorkspaceContainer.tsx'
 import { ResponseChart } from '../analysis/ResponseChart.tsx'
+import { AbEffectChart } from '../analysis/AbEffectChart.tsx'
 import { CandidateTable } from '../analysis/CandidateTable.tsx'
 import type { CandidateColumn } from '../analysis/CandidateTable.tsx'
 import { DemoAnalysisPage } from '../analysis/DemoAnalysisPage.tsx'
@@ -182,10 +185,44 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
         </> : <p>{exec.recommendationError ?? (completed < all.length ? t(locale, 'analysis.recIncomplete') : t(locale, 'analysis.recNone'))}</p>}
       </section>
     </> : <section><h2>{exec.kind === 'single' ? t(locale, 'analysis.singleTitle') : t(locale, 'analysis.abTitle')}</h2>
-      {exec.kind === 'single' ? <p>{t(locale, 'analysis.singleNote')}</p> : exec.comparison ? (() => { const v = abView(exec.comparison!); return <>
+      {exec.kind === 'single' ? <p>{t(locale, 'analysis.singleNote')}</p> : exec.comparison ? (() => {
+        const comparisons = exec.comparisons ?? [exec.comparison!]
+        const facets = abFacets(comparisons)
+        const unavailable = abUnavailable(comparisons, exec.comparisonErrors ?? [])
+        const v = abView(exec.comparison!)
+        return <>
         <p>{t(locale, 'analysis.abVerdict', { label: metricLabel(v.metric, locale), verdict: v.verdict })}</p><p>A: {statText(v.armA, v.metric, locale)}</p><p>B: {statText(v.armB, v.metric, locale)}</p>
         <p>{t(locale, 'analysis.abStats', { diff: formatMetric(v.diffMean, v.metric, true, locale), lo: formatMetric(v.diffCi95Lo, v.metric, true, locale), hi: formatMetric(v.diffCi95Hi, v.metric, true, locale), d: v.effectSizeD })}</p>
         <p className="note">{t(locale, 'analysis.abNote')}</p>
+        <h3>{t(locale, 'analysis.abFacetsTitle')}</h3>
+        <p className="note">{t(locale, 'analysis.abFacetsNote')}</p>
+        <AbEffectChart facets={facets} sourceTitle={`kernel · run ${exec.runId}`} format={(value, key) => formatMetric(value, key, true, locale)} />
+        <div className="candidate-table-wrap"><table className="candidate-table" data-testid="ab-facet-table">
+          <thead><tr>
+            <th>{t(locale, 'analysis.abColKpi')}</th>
+            <th>{t(locale, 'analysis.abColBase')}</th>
+            <th>{t(locale, 'analysis.abColCand')}</th>
+            <th>{t(locale, 'analysis.abColDiff')}</th>
+            <th>{t(locale, 'analysis.abColCi')}</th>
+            <th>{t(locale, 'analysis.abColRel')}</th>
+            <th>{t(locale, 'analysis.abColEffect')}</th>
+            <th>{t(locale, 'analysis.abColVerdict')}</th>
+          </tr></thead>
+          <tbody>{facets.map((f) => <tr key={f.metric} data-metric={f.metric}>
+            <td>{metricLabel(f.metric, locale)} / {metricUnit(f.metric, locale)}</td>
+            <td>{formatMetric(f.armA.mean, f.metric, false, locale)}</td>
+            <td>{formatMetric(f.armB.mean, f.metric, false, locale)}</td>
+            <td>{formatMetric(f.diffMean, f.metric, true, locale)}</td>
+            <td>{`[${formatMetric(f.diffCi95Lo, f.metric, true, locale)}, ${formatMetric(f.diffCi95Hi, f.metric, true, locale)}]`}</td>
+            <td>{f.relativeChangePct === null ? t(locale, 'analysis.unavailable') : `${fmtNumber(locale, f.relativeChangePct, { maxFractionDigits: 1 })}%`}</td>
+            <td>{f.effectSizeD}</td>
+            <td>{f.verdict}{f.significant ? '' : ` · ${t(locale, 'analysis.abOverlapTag')}`}</td>
+          </tr>)}</tbody>
+        </table></div>
+        {unavailable.length > 0 && <div>
+          <h3>{t(locale, 'analysis.abUnavailableTitle')}</h3>
+          <ul>{unavailable.map((u) => <li key={u.metric}>{metricLabel(u.metric, locale)}: {u.message}</li>)}</ul>
+        </div>}
       </> })() : <p>{t(locale, 'analysis.noComparison', { message: exec.errorMessage ?? t(locale, 'analysis.waitingComparison') })}</p>}
     </section>}
     {(exec.sim || exec.arms) && <section><h2>{t(locale, 'analysis.dailyTitle')}</h2>

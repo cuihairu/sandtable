@@ -14,6 +14,7 @@ import { canTransition, terminalOutcome, keptResultCount, activeJob, ERROR_CLASS
 import { WORKER_PROTOCOL_VERSION, isWorkerRequest, isWorkerResponse } from '../src/workbench/state/workerProtocol.ts'
 import { serveSweepWorker } from '../src/workbench/state/sweepWorker.ts'
 import { startExec, workerBackends, classifyKernelCancel, MAX_CANDIDATE_RESULTS_IN_MEMORY } from '../src/workbench/state/executor.ts'
+import { METRIC_KEYS } from '../src/lib/types.ts'
 import { resetForTest, listJobs, enqueueRun, cancelJob, retryJob } from '../src/workbench/state/runManager.ts'
 import { QUEUE_STORAGE_KEY, persistQueueState, restoreQueueState } from '../src/workbench/state/projectDoc.ts'
 
@@ -490,17 +491,39 @@ test('WB-07.03:A/B 双臂真跑 + 桥接调用点(compare = null 防御分支报
   )
   const out2 = await c2.promise
   assert.equal(out2.status, 'succeeded')
-  assert.equal(cmpCalls.length, 1, '比较桥接以真实双臂输出调用')
-  assert.deepEqual(cmpCalls[0], {
-    baseYaml: 'base-yaml',
-    candYaml: 'cand-yaml',
-    metric: 'win_rate',
-    base: 'hash-1',
-    cand: 'hash-2',
-  })
+  assert.equal(cmpCalls.length, METRIC_KEYS.length, '比较桥接逐 KPI 调用:主指标 + 其余全部 KPI(A/B 分析视图)')
+  assert.equal(cmpCalls[0].metric, 'win_rate', '首个调用是主指标')
+  assert.ok(cmpCalls.slice(1).every((c) => c.metric !== 'win_rate'), '主指标不重复比较')
+  assert.deepEqual(
+    [...new Set(cmpCalls.map((c) => `${c.base}:${c.cand}`))],
+    ['hash-1:hash-2'],
+    '逐 KPI 比较都用同一对真实双臂输出',
+  )
   assert.equal(out2.comparison.verdict, 'BHigher')
+  assert.equal(out2.comparisons?.length, METRIC_KEYS.length, '逐 KPI Comparison 全量保留')
+  assert.equal(out2.comparisonErrors, null, '注入后端无拒绝 → 无不可用记录')
   assert.equal(out2.arms.base.config_hash, 'hash-1')
   assert.equal(out2.arms.cand.config_hash, 'hash-2')
+
+  // 场景 3:部分 KPI 被内核显式拒绝 → 逐条原文记录为不可用,任务仍成功
+  const partialCompare = fakeBackends({
+    compare: async (_b, _c, metric) => {
+      if (metric === 'gold_per_player' || metric === 'power_p50') throw new Error(`配置错误: ${metric} 不可用`)
+      return { metric, diff_mean: 0.01, verdict: 'NoDifference' }
+    },
+  })
+  const { hooks: h3 } = jobPatchSink()
+  const c3 = startExec(
+    { kind: 'ab', baseYaml: 'base-yaml', candYaml: 'cand-yaml', replicates: 2, metric: 'win_rate' },
+    partialCompare.backends,
+    h3,
+    JOB,
+  )
+  const out3 = await c3.promise
+  assert.equal(out3.status, 'succeeded')
+  assert.equal(out3.comparisons?.length, METRIC_KEYS.length - 2, '被拒 KPI 不混入比较集')
+  assert.deepEqual(out3.comparisonErrors?.map((e) => e.metric), ['gold_per_player', 'power_p50'], '拒绝逐条记录')
+  assert.match(out3.comparisonErrors?.[0].message ?? '', /配置错误/, '原文错误保留')
 })
 
 // ————— WB-07.16 · 竞争条件 —————

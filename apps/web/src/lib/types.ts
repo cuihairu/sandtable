@@ -387,3 +387,9 @@ export interface Comparison {
   effect_size_d: number
   verdict: CompareVerdict
 }
+
+/** A/B 逐 KPI 比较中内核显式拒绝的指标(原文错误如实保留,不 0 填、不编原因) */
+export interface ComparisonFailure {
+  metric: MetricKey
+  message: string
+}

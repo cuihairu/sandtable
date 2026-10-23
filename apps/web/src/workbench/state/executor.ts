@@ -18,10 +18,12 @@
 import type {
   CandidateResult,
   Comparison,
+  ComparisonFailure,
   SimOutput,
   SimProgress,
   SweepRecOutput,
 } from '../../lib/types.ts'
+import { METRIC_KEYS } from '../../lib/types.ts'
 import type { JobId } from '../ids.ts'
 import type { ExecErrorClass, ExecSpec, JobExec, JobStatus, RetryResume } from './jobLogic.ts'
 import { isWorkerResponse } from './workerProtocol.ts'
@@ -78,6 +80,10 @@ export type ExecOutcome = {
   recommendation: SweepRecOutput | null
   recommendationError: string | null
   comparison: Comparison | null
+  /** A/B 分析视图:逐 KPI 内核配对比较(主指标 + 其余可用 KPI) */
+  comparisons: Comparison[] | null
+  /** A/B 分析视图:内核显式拒绝的 KPI(原文错误,不 0 填) */
+  comparisonErrors: ComparisonFailure[] | null
   arms: { base: SimOutput | null; cand: SimOutput | null } | null
   sim: SimOutput | null
   /** WB-07.06/07 · 真正停止的边界(null = 没有发生取消) */
@@ -110,6 +116,8 @@ const outcome = (
   recommendation: null,
   recommendationError: null,
   comparison: null,
+  comparisons: null,
+  comparisonErrors: null,
   arms: null,
   sim: null,
   boundary: null,
@@ -141,6 +149,8 @@ export function startExec(
     recommendation: null,
     recommendationError: null,
     comparison: null,
+    comparisons: null,
+    comparisonErrors: null,
     arms: null,
     sim: null,
     errorClass: null,
@@ -309,8 +319,23 @@ export function startExec(
       // 双臂输出保留,错误原样进错误通道(配置错误/参数错误前缀)
       return outcome('failed', 'run', String(e), { arms: armsOut() })
     }
-    update({ status: 'succeeded', done: doneBase, exec: { comparison, arms: armsOut() } })
-    return outcome('succeeded', null, null, { comparison, arms: armsOut() })
+    // A/B 分析视图(WB-08.12):主指标之外逐 KPI 再进内核 compare_arms,
+    // 每个可用 KPI 各得一份真实配对 Comparison;内核显式拒绝(如 gacha/loot
+    // 未配置、天数不足以算 D7)逐条原文记录为不可用,不 0 填、不前端重算。
+    // 统计判定仍全部出自内核同一桥接,本循环只是同一调用点的逐指标重复。
+    const comparisons: Comparison[] = [comparison]
+    const comparisonErrors: ComparisonFailure[] = []
+    for (const metric of METRIC_KEYS) {
+      if (metric === ab.metric) continue
+      try {
+        comparisons.push(await be.compare(ab.baseYaml, ab.candYaml, metric, outputs.base!, outputs.cand!))
+      } catch (e) {
+        comparisonErrors.push({ metric, message: String(e) })
+      }
+    }
+    const errorsOut = comparisonErrors.length > 0 ? comparisonErrors : null
+    update({ status: 'succeeded', done: doneBase, exec: { comparison, comparisons, comparisonErrors: errorsOut, arms: armsOut() } })
+    return outcome('succeeded', null, null, { comparison, comparisons, comparisonErrors: errorsOut, arms: armsOut() })
   }
 
   const promise = (async (): Promise<ExecOutcome> => {

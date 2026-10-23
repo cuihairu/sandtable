@@ -153,6 +153,8 @@ function applyOutcome(id: JobId, out: ExecOutcome): void {
       recommendation: out.recommendation,
       recommendationError: out.recommendationError,
       comparison: out.comparison,
+      comparisons: out.comparisons,
+      comparisonErrors: out.comparisonErrors,
       arms: out.arms,
       sim: out.sim,
       errorClass: out.errorClass,
