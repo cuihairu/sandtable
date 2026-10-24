@@ -89,6 +89,14 @@ export async function paramApply(
 // metricMeta 显示层(内核 ID 与本地化显示名分面)。
 export type KpiUnavailable = { metric: string; reason: string }
 
+export async function kpiAvailabilityForTest(yaml: string): Promise<KpiUnavailable[]> {
+  const override = (globalThis as {
+    __testKpiAvailabilityForReport?: (yaml: string) => Promise<KpiUnavailable[]>
+  }).__testKpiAvailabilityForReport
+  if (override) return override(yaml)
+  return kpiAvailability(yaml)
+}
+
 export async function kpiAvailability(yaml: string): Promise<KpiUnavailable[]> {
   if (isDesktop) return invoke('kpi_availability', { yaml })
   await ensureInit()

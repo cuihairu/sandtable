@@ -9,6 +9,7 @@ export async function resolve(specifier, context, next) {
 }
 
 export async function load(url, context, next) {
+  if (url.endsWith('.css')) return { format: 'module', shortCircuit: true, source: '' }
   if (url.endsWith('?tsx-hook')) {
     const filename = url.slice(0, -'?tsx-hook'.length)
     const source = await readFile(fileURLToPath(filename), 'utf8')

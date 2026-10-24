@@ -358,7 +358,8 @@
   - 2026-10-23 第二片：队列持久化恢复（版本/形状整体校验、执行中项回队、恢复后单执行槽）、sweep/A/B 失败点续算、queued/running 取消腾槽已入测；内核无真实停止断点，暂停按钮按约不提供。本轮最终提交哈希见 push 后 `origin/main`（同一提交无法自引对象哈希），node --test 335/335。
   - 2026-10-23 第三片：并发槽单趟 FIFO 扫描修复（while+jobs.find 重复命中同一队首→无限 startExec→OOM；改为单趟 for+activeControls.has 幂等跳过已启动项）、内存预算排队/拒收语义（队头超预算即停、waitReason 显式等待不伪装失败）、调度配置独立持久化（persistSchedulingState/restoreSchedulingState）、persistQueueState 规范化载荷（剔除 waitReason 运行时字段）、restorePersistedQueue 清 waitReason/resume 回 queued；commit `ea70a23`，node --test 380/380、tsc -b 0、oxlint --deny-warnings 0、vite build ✓。
   （2026-10-23 进度·第一片：基于 `c174e5e`；多真实任务 FIFO 队列与单执行槽已落地，所有终态路径——正常落地、终态先到竞争、queued 取消后腾槽——都触发 `startNextQueued`，未勾选因并发预算/失败点重跑/状态持久化/暂停恢复仍未交付。`apps/web/src/workbench/state/runManager.ts:124`、`:243`、`:309`；守卫 `apps/web/tests/execution.test.mjs:698`。门禁：`node --test apps/web/tests/*.test.mjs` 331/331，`tsc -b` ✓，`oxlint --quiet` ✓，`vite build` ✓；本轮最终提交哈希见 push 后 `origin/main`（同一提交无法自引对象哈希）。）
-- [ ] **策划结论与报告**：选取图表、参数差异、统计结果、运行条件、模型假设和结论，形成可追溯 HTML/PDF；复用现有报告产物并补齐面向策划的内容组织。
+- [x] **策划结论与报告**：选取图表、参数差异、统计结果、运行条件、模型假设和结论，形成可追溯 HTML/PDF；复用现有报告产物并补齐面向策划的内容组织。
+  - 2026-10-24 收口核对：`AnalysisPage` 只读 `results/<runId>.report.json` 与已登记 run 产物；结论摘要、条件、baseline 参数差异、mean/CI95/n、不可用指标来源与边界、模型版本和产物溯源均入 HTML。DOM 测试捕获真实 `Blob`，校验 `text/html;charset=utf-8`、关键统计、不可用原因和来源路径；缺字段/不可用统计不写 0。门禁 `node --test apps/web/tests/*.test.mjs` 398/398、`tsc -b` ✓、`oxlint` 0 警告 0 错误、`vite build` ✓；本轮最终提交哈希见 push 后 `origin/main`（同一提交无法自引对象哈希）。
 
 #### P2 · 专项数值分析
 

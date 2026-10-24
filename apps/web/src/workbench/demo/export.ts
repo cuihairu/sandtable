@@ -138,13 +138,28 @@ export function svgFromElement(
 
 export function download(name: string, data: string | Uint8Array, mime: string): void {
   // cast:Uint8Array<ArrayBufferLike> → BlobPart 收窄与 App.tsx 同口径(TS 5.7)
-  const blob = new Blob([data as BlobPart], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
+  const blobOwner: {
+    Blob: typeof Blob
+    URL: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>
+    document: Pick<typeof document, 'createElement'>
+  } = {
+    Blob: typeof window !== 'undefined' && typeof window.Blob === 'function'
+      ? window.Blob
+      : Blob,
+    URL: typeof window !== 'undefined' && typeof window.URL?.createObjectURL === 'function'
+      ? window.URL
+      : URL,
+    document: typeof window !== 'undefined' && window.document
+      ? window.document
+      : document,
+  }
+  const blob = new blobOwner.Blob([data as BlobPart], { type: mime })
+  const url = blobOwner.URL.createObjectURL(blob)
+  const link = blobOwner.document.createElement('a')
   link.href = url
   link.download = name
   link.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  setTimeout(() => blobOwner.URL.revokeObjectURL(url), 1000)
 }
 
 /** 命令搜索用的参数条目(WB-05:全量注册表,不再用 18 项原型)。 */

@@ -106,6 +106,18 @@ export function listJobs(): readonly Job[] {
   return jobs
 }
 
+/** Node-side DOM guard seam: injects a completed job without starting an executor. */
+export function __testInjectJobsForDomGuard(testJobs: readonly Job[]): void {
+  jobs = []
+  activeControls.clear()
+  queuedBackends.clear()
+  jobBackends.clear()
+  stopTimer()
+  scheduling.concurrency = 1
+  jobs = [...testJobs]
+  emit()
+}
+
 /** 当前执行策略快照;调用方不得直接改写内部调度状态。 */
 export function getSchedulingConfig(): SchedulingConfig {
   return { ...scheduling }

@@ -49,8 +49,8 @@ test('WB-11.03:中英文词典 key 集合完全一致,无空值无空串', () =>
   }
 })
 
-test('WB-11.04:词条按八领域前缀组织', () => {
-  const DOMAINS = ['common.', 'nav.', 'params.', 'experiment.', 'analysis.', 'tasks.', 'data.', 'errors.']
+test('WB-11.04:词条按工作台领域前缀组织', () => {
+  const DOMAINS = ['common.', 'nav.', 'params.', 'experiment.', 'analysis.', 'report.', 'tasks.', 'data.', 'errors.']
   for (const k of Object.keys(zh)) {
     assert.ok(
       DOMAINS.some((d) => k.startsWith(d)),

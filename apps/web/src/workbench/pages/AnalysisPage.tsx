@@ -29,11 +29,69 @@ import { notify } from '../state/notifications.ts'
 import { createId, ID_PREFIXES } from '../ids.ts'
 import type { CandidateId } from '../ids.ts'
 import { download } from '../demo/export.ts'
+import { designReport } from '../../lib/designReport.ts'
+import { designReportHtml } from '../../lib/designReportHtml.ts'
 import { CandidateComparePanel } from '../project/CandidateComparePanel.tsx'
-import { parseConfig } from '../params/configYaml.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
+import { parseConfig, readNumeric, readText } from '../params/configYaml.ts'
+import { kpiAvailabilityForTest } from '../../lib/wasm.ts'
 import '../analysis/analysis.css'
+
+async function generateDesignReport(job: Job, state: WorkbenchState, locale: ReturnType<typeof useLocale>): Promise<void> {
+  const readConditions = (yaml: string): { population: number | null; days: number | null } => {
+    const parsed = parseConfig(yaml)
+    const durationText = readText(parsed, 'scenario.duration')
+    return {
+      population: readNumeric(parsed, 'scenario.population') ?? null,
+      days: durationText ? Number(/^(\d+)\s*d$/i.exec(durationText.trim())?.[1] ?? Number.NaN) : null,
+    }
+  }
+  const scenarioYamlOf = (spec: Job['exec'] extends null ? never : NonNullable<Job['exec']>['spec']): string => {
+    if (spec.kind === 'ab') return spec.candYaml
+    const parsed = parseConfig(spec.yaml)
+    if (parsed.sections.some((section) => section.path === 'sweep')) {
+      const lines = spec.yaml.split('\n')
+      const sweep = parsed.sections.find((section) => section.path === 'sweep')!
+      return [...lines.slice(0, sweep.startLine - 1), ...lines.slice(sweep.endLine)].join('\n')
+    }
+    return spec.yaml
+  }
+  const exec = job.exec!
+  const artifactPath = `results/${exec.runId}.report.json`
+  const artifactText = state.runArtifacts[artifactPath]
+  if (typeof artifactText !== 'string') {
+    notify('error', t(locale, 'report.artifactInvalidJson', { path: artifactPath }))
+    return
+  }
+  const runIndex = state.runs.find((run) => run.run_id === exec.runId) ?? null
+  const runYaml = exec.spec.kind === 'ab' ? exec.spec.candYaml : scenarioYamlOf(exec.spec)
+  const runConditions = readConditions(runYaml)
+  const configAvailability = await kpiAvailabilityForTest(runYaml)
+  const baseHash = String(runIndex?.conditions.base_config_hash ?? '')
+  const baselineEntry = baseHash ? state.runs.find((run) => run.run_id !== exec.runId && run.config_hash === baseHash) ?? null : null
+  const baselinePath = baselineEntry ? `results/${baselineEntry.run_id}.report.json` : null
+  const baselineText = baselinePath ? state.runArtifacts[baselinePath] : undefined
+  const model = designReport({
+    runId: exec.runId,
+    runStatus: job.status,
+    artifactPath,
+    artifactText,
+    configAvailability,
+    index: runIndex ? {
+      experiment_id: runIndex.experiment_id,
+      config_hash: runIndex.config_hash,
+      seed: runIndex.seed,
+      created_at_unix: runIndex.created_at_unix,
+    } : null,
+    population: runConditions.population,
+    days: runConditions.days,
+  }, baselineEntry && baselinePath && typeof baselineText === 'string' ? {
+    runId: baselineEntry.run_id, artifactPath: baselinePath, artifactText: baselineText,
+  } : null, locale)
+  download(`${exec.runId}.design-report.html`, designReportHtml(model), 'text/html;charset=utf-8')
+  notify('success', t(locale, 'report.done', { runId: exec.runId }))
+}
 
 export type AnalysisPageProps = { state: WorkbenchState; onExport: () => void }
 export function AnalysisPage({ state, onExport }: AnalysisPageProps): JSX.Element {
@@ -135,6 +193,7 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
           <option value="all">{t(locale, 'analysis.filterAll')}</option><option value="pass">hard pass</option><option value="borderline">hard borderline</option><option value="fail">hard fail</option>
         </select>
         <button className="btn" onClick={() => download(`${exec.runId}.json`, scopedRunJson(job, ui, 'all', runEntry), 'application/json')}>{t(locale, 'analysis.downloadJson')}</button>
+        <button className="btn" data-testid="generate-design-report" onClick={async () => await generateDesignReport(job, state, locale)}>{t(locale, 'report.generate')}</button>
         {/* WB-09.01 · 导出对话框绑定当前 run:范围计数由这份 job 派生 */}
         <button className="btn" onClick={onExport}>{t(locale, 'analysis.exportRun')}</button>
       </div>
