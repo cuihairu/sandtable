@@ -10,6 +10,7 @@ import init, {
   param_apply as paramApplyBinding,
   kpi_availability as kpiAvailabilityBinding,
   ab_compare as abCompareBinding,
+  daily_aggregate as dailyAggregateBinding,
   sweep_plan as sweepPlanBinding,
   sweep_candidate as sweepCandidateBinding,
   sweep_recommend as sweepRecommendBinding,
@@ -18,6 +19,7 @@ import { Channel, invoke } from '@tauri-apps/api/core'
 import type {
   CandidateResult,
   Comparison,
+  DailyAggregation,
   LocalQueryResult,
   ParamDefinition,
   RunMetrics,
@@ -129,6 +131,18 @@ export async function abCompare(
   return JSON.parse(
     abCompareBinding(baseYaml, candYaml, metric, JSON.stringify(baseResults), JSON.stringify(candResults)) as unknown as string,
   ) as Comparison
+}
+
+// 逐日跨 replicate 聚合(P2 第一步):**已跑** results 数组进内核。
+// replicates <2 明确拒绝;天数不一致由内核取公共日并回传裁剪天数/警告;
+// 可选指标缺席保持缺席。CI 由内核 SampleStats 口径(t 或 df>30 normal)
+// 直出,禁止前端拿单次 days.csv 套置信带。
+export async function dailyAggregate(results: RunMetrics[]): Promise<DailyAggregation> {
+  if (isDesktop) {
+    return invoke('daily_aggregate', { resultsJson: JSON.stringify(results) })
+  }
+  await ensureInit()
+  return JSON.parse(dailyAggregateBinding(JSON.stringify(results)) as unknown as string) as DailyAggregation
 }
 
 // 长任务(桌面异步命令):onProgress 经 Channel 逐 replicate 收 {done,total};

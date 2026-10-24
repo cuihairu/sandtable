@@ -10,6 +10,8 @@
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use std::collections::BTreeSet;
+
 /// t(0.975, df),df = 1..=30;越界用 1.96。
 const T975: [f64; 30] = [
     12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160,
@@ -333,6 +335,239 @@ pub fn compare_arms(
     Ok(compare(name, &vals_a, &vals_b))
 }
 
+/// 逐日聚合的 CI 口径(P2):mean ± t(0.975, n−1) · sd / √n;
+/// df > 30 复用实验层的正态近似 1.96。
+pub const DAILY_CI_METHOD: &str = "mean ± t(0.975,n-1)*sample_sd/sqrt(n); df>30 uses 1.96";
+/// 逐日聚合的样本标准差口径:分母 n−1(贝塞尔校正),不是总体 sd 的 n。
+pub const DAILY_SD_METHOD: &str = "sample_sd: sqrt(sum((x-mean)^2)/(n-1))";
+
+/// 同一数值字段跨 replicate 的样本统计。`Option` 字段只装真实观测;
+/// 无定义 / 无观测时整键省略,禁 0 填空。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AggregateMetricStats {
+    pub n: usize,
+    pub mean: f64,
+    pub sd: f64,
+    pub ci95_lo: f64,
+    pub ci95_hi: f64,
+    pub min: f64,
+    pub max: f64,
+}
+
+/// 一个公共日跨 replicate 的逐字段聚合。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DailyAggregatedDay {
+    pub day: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alive_at_start: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_churned: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub churn_rate: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub battles: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wins: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub win_rate: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gold_earned: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gold_spent: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sink_ratio: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gold_supply: Option<AggregateMetricStats>,
+    /// 第 1 天无 G(d−1),inflation 无定义,整键缺席。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inflation: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub income_per_active: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spending_per_active: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mean_power: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub levelups: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upgrades: Option<AggregateMetricStats>,
+}
+
+/// 同一候选的多份已跑 `RunMetrics` 的逐日跨 replicate 聚合输出(P2 内核面)。
+///
+/// 置信带只跨 replicate 计算:输入 <2 份即显式拒绝,禁止给单次 `days.csv`
+/// 套置信带。天数不一致时只保留公共日集合并把裁掉的天数原样报出。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DailyAggregation {
+    pub replicates: usize,
+    pub common_days: usize,
+    pub trimmed_days: Vec<u32>,
+    pub trim_warning: String,
+    pub ci_method: &'static str,
+    pub sd_method: &'static str,
+    pub day_stats: Vec<DailyAggregatedDay>,
+    /// RunMetrics 层的可选指标跨 replicate 统计;整组均为 None 时不输出该键。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retention_d1: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retention_d3: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retention_d7: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retention_d14: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retention_d30: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gacha_pulls_to_hit: Option<AggregateMetricStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loot_gold_per_player: Option<AggregateMetricStats>,
+}
+
+fn metric_stats(values: &[f64]) -> Option<AggregateMetricStats> {
+    let n = values.len();
+    if n == 0 {
+        return None;
+    }
+    let mean = values.iter().sum::<f64>() / n as f64;
+    let sd = if n == 1 {
+        0.0
+    } else {
+        let ss: f64 = values.iter().map(|v| (v - mean).powi(2)).sum();
+        (ss / (n - 1) as f64).sqrt()
+    };
+    let half = if n == 1 {
+        0.0
+    } else {
+        t_critical_975(n - 1) * sd / (n as f64).sqrt()
+    };
+    Some(AggregateMetricStats {
+        n,
+        mean,
+        sd,
+        ci95_lo: mean - half,
+        ci95_hi: mean + half,
+        min: values.iter().cloned().fold(f64::INFINITY, f64::min),
+        max: values.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+    })
+}
+
+fn optional_metric_stats(values: &[Option<f64>]) -> Option<AggregateMetricStats> {
+    let values: Vec<f64> = values.iter().flatten().copied().collect();
+    (!values.is_empty()).then(|| metric_stats(&values)).flatten()
+}
+
+/// 逐日跨 replicate 聚合(P2 第一步的内核契约)。
+///
+/// `metrics` 必须是同一候选的多份已跑结果;replicates <2 返回可读错误,
+/// 单次运行的逐日序列不得由这里产生 CI。各 replicate 的日集取交集,
+/// 交外天数写入 `trimmed_days` 与 `trim_warning`,不静默对齐或补齐。
+/// DayStat 的数值字段逐字段输出 n / mean / 样本 sd / CI₉₅ / min / max;
+/// inflation 第 1 天无定义,该日字段缺席。
+/// retention / gacha / loot 等 RunMetrics 可选指标只聚合真实 Some 值,
+/// 全部缺失时整键缺席,不用 0 填空。
+pub fn daily_aggregate_metrics(
+    metrics: &[crate::metrics::RunMetrics],
+) -> crate::Result<DailyAggregation> {
+    if metrics.len() < 2 {
+        return Err(crate::Error::Config(format!(
+            "逐日跨 replicate 聚合至少需要 2 份结果(当前 {} 份);单次运行不得套置信带",
+            metrics.len()
+        )));
+    }
+
+    let day_sets = metrics
+        .iter()
+        .map(|m| m.day_stats.iter().map(|d| d.day).collect::<BTreeSet<_>>())
+        .collect::<Vec<_>>();
+    let all_days = day_sets
+        .iter()
+        .flat_map(BTreeSet::iter)
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let common_days = day_sets.iter().fold(None, |acc, set| {
+        match acc {
+            None => Some(set.clone()),
+            Some(mut common) => {
+                common.retain(|day| set.contains(day));
+                Some(common)
+            }
+        }
+    }).unwrap_or_default();
+    let trimmed_days = all_days
+        .difference(&common_days)
+        .copied()
+        .collect::<Vec<_>>();
+    let trim_warning = if trimmed_days.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "各 replicate 的 days 长度不一致:公共天数取交 {} 天,裁掉 days {:?}(未补齐、未静默对齐)",
+            common_days.len(),
+            trimmed_days
+        )
+    };
+
+    let day_stats = common_days
+        .iter()
+        .map(|day| {
+            let stats = metrics
+                .iter()
+                .map(|m| {
+                    m.day_stats.iter().find(|d| d.day == *day).ok_or_else(|| {
+                        crate::Error::Config(format!(
+                            "replicate {} 缺少公共 day {}",
+                            m.replicate, day
+                        ))
+                    })
+                })
+                .collect::<crate::Result<Vec<_>>>()?;
+            Ok::<_, crate::Error>(DailyAggregatedDay {
+                day: *day,
+                active: metric_stats(&stats.iter().map(|d| d.active as f64).collect::<Vec<_>>()),
+                alive_at_start: metric_stats(&stats.iter().map(|d| d.alive_at_start as f64).collect::<Vec<_>>()),
+                new_churned: metric_stats(&stats.iter().map(|d| d.new_churned as f64).collect::<Vec<_>>()),
+                churn_rate: metric_stats(&stats.iter().map(|d| d.churn_rate).collect::<Vec<_>>()),
+                battles: metric_stats(&stats.iter().map(|d| d.battles as f64).collect::<Vec<_>>()),
+                wins: metric_stats(&stats.iter().map(|d| d.wins as f64).collect::<Vec<_>>()),
+                win_rate: metric_stats(&stats.iter().map(|d| d.win_rate).collect::<Vec<_>>()),
+                gold_earned: metric_stats(&stats.iter().map(|d| d.gold_earned as f64).collect::<Vec<_>>()),
+                gold_spent: metric_stats(&stats.iter().map(|d| d.gold_spent as f64).collect::<Vec<_>>()),
+                sink_ratio: metric_stats(&stats.iter().map(|d| d.sink_ratio).collect::<Vec<_>>()),
+                gold_supply: metric_stats(&stats.iter().map(|d| d.gold_supply as f64).collect::<Vec<_>>()),
+                inflation: if *day == 1 {
+                    None
+                } else {
+                    metric_stats(&stats.iter().map(|d| d.inflation).collect::<Vec<_>>())
+                },
+                income_per_active: metric_stats(&stats.iter().map(|d| d.income_per_active).collect::<Vec<_>>()),
+                spending_per_active: metric_stats(&stats.iter().map(|d| d.spending_per_active).collect::<Vec<_>>()),
+                mean_power: metric_stats(&stats.iter().map(|d| d.mean_power).collect::<Vec<_>>()),
+                levelups: metric_stats(&stats.iter().map(|d| d.levelups as f64).collect::<Vec<_>>()),
+                upgrades: metric_stats(&stats.iter().map(|d| d.upgrades as f64).collect::<Vec<_>>()),
+            })
+        })
+        .collect::<crate::Result<_>>()?;
+
+    Ok(DailyAggregation {
+        replicates: metrics.len(),
+        common_days: common_days.len(),
+        trimmed_days,
+        trim_warning,
+        ci_method: DAILY_CI_METHOD,
+        sd_method: DAILY_SD_METHOD,
+        day_stats,
+        retention_d1: optional_metric_stats(&metrics.iter().map(|m| m.retention_d1).collect::<Vec<_>>()),
+        retention_d3: optional_metric_stats(&metrics.iter().map(|m| m.retention_d3).collect::<Vec<_>>()),
+        retention_d7: optional_metric_stats(&metrics.iter().map(|m| m.retention_d7).collect::<Vec<_>>()),
+        retention_d14: optional_metric_stats(&metrics.iter().map(|m| m.retention_d14).collect::<Vec<_>>()),
+        retention_d30: optional_metric_stats(&metrics.iter().map(|m| m.retention_d30).collect::<Vec<_>>()),
+        gacha_pulls_to_hit: optional_metric_stats(&metrics.iter().map(|m| m.gacha_pulls_to_hit).collect::<Vec<_>>()),
+        loot_gold_per_player: optional_metric_stats(&metrics.iter().map(|m| m.loot_gold_per_player).collect::<Vec<_>>()),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,5 +795,147 @@ mod tests {
             assert_eq!(orig.power_snapshots.len(), got.power_snapshots.len());
         }
         assert_eq!(serde_json::to_string(&back).unwrap(), json);
+    }
+
+    // —— 逐日跨 replicate 聚合(P2 内核契约)——
+
+    fn synthetic_run(
+        replicate: u32,
+        days: u32,
+        retention_d3: Option<f64>,
+    ) -> crate::metrics::RunMetrics {
+        crate::metrics::RunMetrics {
+            schema_version: crate::SCHEMA_VERSION.to_string(),
+            model_version: crate::MODEL_VERSION.to_string(),
+            config_hash: format!("rep-{replicate}"),
+            replicate,
+            seed: replicate as u64,
+            players: 40,
+            days,
+            day1_cohort: 40,
+            retention_d1: Some(1.0),
+            retention_d3,
+            retention_d7: None,
+            retention_d14: None,
+            retention_d30: None,
+            churn_total: 0,
+            churn_rate_total: 0.0,
+            win_rate: 1.0,
+            gold_earned_total: 0,
+            gold_spent_total: 0,
+            whale_gold_share: 0.0,
+            inflation_daily_mean: 0.0,
+            inflation_last: 0.0,
+            sink_ratio_mean: 0.0,
+            gacha_pulls_to_hit: None,
+            loot_gold_per_player: None,
+            power_snapshots: vec![],
+            cohort_stats: vec![],
+            day_stats: (1..=days)
+                .map(|day| crate::metrics::DayStat {
+                    day,
+                    active: (((day - 1 + replicate) % 4) * 2) as u64,
+                    alive_at_start: 40,
+                    new_churned: 0,
+                    churn_rate: 0.0,
+                    battles: 4,
+                    wins: 3,
+                    win_rate: 0.75,
+                    gold_earned: 100,
+                    gold_spent: 50,
+                    sink_ratio: 0.5,
+                    gold_supply: 50,
+                    inflation: if day == 1 { -1.0 } else { 0.25 },
+                    income_per_active: 2.5,
+                    spending_per_active: 1.25,
+                    mean_power: 10.0 + day as f64,
+                    levelups: 1,
+                    upgrades: 1,
+                })
+                .collect(),
+        }
+    }
+
+    /// replicates <2 明确拒绝:单次运行不得套置信带。
+    #[test]
+    fn daily_aggregate_rejects_single_replicate() {
+        let err = daily_aggregate_metrics(&[]).unwrap_err().to_string();
+        assert!(
+            err.contains("至少需要 2 份") && err.contains("单次运行不得套置信带"),
+            "{err}"
+        );
+        let err = daily_aggregate_metrics(&[synthetic_run(0, 4, Some(0.9))])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("当前 1 份"), "{err}");
+    }
+
+    /// 长度不一致按公共日集取交,交外天数显式报出且不补齐。
+    #[test]
+    fn daily_aggregate_uses_day_intersection_and_reports_trims() {
+        let runs = [
+            synthetic_run(0, 4, Some(0.9)),
+            synthetic_run(1, 3, Some(0.8)),
+            synthetic_run(2, 5, Some(0.7)),
+        ];
+        let out = daily_aggregate_metrics(&runs).unwrap();
+        assert_eq!(out.replicates, 3);
+        assert_eq!(out.common_days, 3);
+        assert_eq!(out.trimmed_days, vec![4, 5]);
+        assert!(out.trim_warning.contains("公共天数取交 3 天"), "{out:?}");
+        assert!(out.trim_warning.contains("[4, 5]"), "{out:?}");
+        assert_eq!(
+            out.day_stats.iter().map(|d| d.day).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert!(
+            out.day_stats.iter().all(|d| d.active.as_ref().unwrap().n == 3),
+            "每个公共日跨全部 replicate 聚合,不被天数长短影响"
+        );
+    }
+
+    /// 可选 RunMetrics 字段真实 Some 才聚合;整组 None 时整键缺席,禁 0 填。
+    #[test]
+    fn daily_aggregate_keeps_optional_metrics_absent_when_unavailable() {
+        let runs = [
+            synthetic_run(0, 3, Some(0.9)),
+            synthetic_run(1, 3, Some(0.7)),
+        ];
+        let json = serde_json::to_value(daily_aggregate_metrics(&runs).unwrap()).unwrap();
+        assert_eq!(json["retention_d3"]["n"], 2);
+        assert!(json.get("gacha_pulls_to_hit").is_none(), "{json}");
+        assert!(json.get("loot_gold_per_player").is_none(), "{json}");
+        assert!(json.get("retention_d30").is_none(), "{json}");
+    }
+
+    /// inflation 第 1 天无定义:该日整键缺席;其余字段 CI 与手算样本一致。
+    #[test]
+    fn daily_aggregate_matches_manual_sample_statistics() {
+        let runs = (0..4)
+            .map(|r| synthetic_run(r, 4, Some(0.5)))
+            .collect::<Vec<_>>();
+        let out = daily_aggregate_metrics(&runs).unwrap();
+        let day1 = &out.day_stats[0];
+        let day2 = &out.day_stats[1];
+        assert!(
+            day1.inflation.is_none(),
+            "day1 inflation 无定义,须缺席而非 0 填"
+        );
+        assert!(day2.inflation.is_some(), "day2 inflation 有定义,须进统计");
+
+        let active = day1.active.as_ref().unwrap();
+        // replicate 0..4、day 1 的 active = ((day-1+replicate)%4)*2 → 值集 {0,2,4,6}
+        // mean=3;Σ(x−mean)²=9+1+1+9=20;样本 sd = sqrt(20/(n-1=3)) ≈ 2.581988897471611
+        let expected_sd = (20.0_f64 / 3.0).sqrt();
+        let half = t_critical_975(3) * expected_sd / (4.0_f64.sqrt());
+        assert_eq!(active.n, 4);
+        assert_eq!(active.min, 0.0);
+        assert_eq!(active.max, 6.0);
+        assert!((active.mean - 3.0).abs() < 1e-12);
+        assert!((active.sd - expected_sd).abs() < 1e-12);
+        assert!((active.ci95_lo - (3.0 - half)).abs() < 1e-12);
+        assert!((active.ci95_hi - (3.0 + half)).abs() < 1e-12);
+        assert!(out.ci_method.contains("t(0.975,n-1)"), "{:?}", out.ci_method);
+        assert!(out.sd_method.contains("/(n-1)"), "{:?}", out.sd_method);
     }
 }

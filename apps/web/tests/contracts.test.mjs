@@ -694,3 +694,71 @@ test('WB-09.08 下载成功口径:真实产物名可追溯(run id),失败/取消
   assert.match(desktop, /download_destination/, '重名加序号落点')
   assert.match(desktop, /fn download_destination_uniquifies/, '桌面落点有独立测试(web 侧不重复验)')
 })
+
+test('P2 逐日聚合桥:daily_aggregate 内核直出,天数交集/可选缺席/<2 拒绝/双路径接线', () => {
+  // 真跑内核拿 results(不同 seed → 天数天然不齐的输入也取自真实产物)
+  const yamlA = 'schema_version: "1"\nscenario: {population: 40, duration: "4d", seed: 7}\n'
+  const yamlB = 'schema_version: "1"\nscenario: {population: 40, duration: "4d", seed: 11}\n'
+  const a = JSON.parse(wasm.run_simulation(yamlA, 2))
+  const b = JSON.parse(wasm.run_simulation(yamlB, 2))
+  // 等长:公共天数 = 全部天数,无裁剪
+  const agg = JSON.parse(wasm.daily_aggregate(JSON.stringify([...a.results, ...b.results])))
+  assert.equal(agg.replicates, 4)
+  assert.equal(agg.common_days, a.results[0].day_stats.length)
+  assert.deepEqual(agg.trimmed_days, [], '等长输入不裁天')
+  assert.equal(agg.trim_warning, '')
+  assert.match(agg.ci_method, /t\(0\.975,n-1\)/, 'CI 口径随结果回传,前端不自算')
+  assert.match(agg.sd_method, /n-1/, '样本标准差分母 n−1')
+  // 逐日段:天数与内核 day_stats 对齐;DayStat 数值字段逐字段带 n/mean/sd/ci95/min/max
+  assert.equal(agg.day_stats.length, agg.common_days)
+  const day1 = agg.day_stats[0]
+  const statsKeys = ['ci95_hi', 'ci95_lo', 'max', 'mean', 'min', 'n', 'sd']
+  for (const f of ['active', 'battles', 'gold_earned', 'mean_power']) {
+    assert.deepEqual(Object.keys(day1[f]).sort(), statsKeys, `${f} 七字段`)
+  }
+  // inflation 第 1 天无定义 → 整键缺席;第 2 天在场
+  assert.equal(day1.inflation, undefined, 'day1 inflation 缺席,禁 0 填')
+  assert.ok(agg.day_stats[1].inflation, 'day2 inflation 进统计')
+  // 可选指标:该配置无 gacha/loot → 整键缺席
+  assert.equal(agg.gacha_pulls_to_hit, undefined)
+  assert.equal(agg.loot_gold_per_player, undefined)
+  // 跨 replicate 手算对拍:day1 active 的 mean/sd 与直接从 results 算的一致
+  const vals = a.results.map((m) => m.day_stats[0].active).concat(b.results.map((m) => m.day_stats[0].active))
+  const mean = vals.reduce((s, v) => s + v, 0) / vals.length
+  const sd = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / (vals.length - 1))
+  assert.ok(Math.abs(day1.active.mean - mean) < 1e-9, 'mean 与手算一致')
+  assert.ok(Math.abs(day1.active.sd - sd) < 1e-9, '样本 sd 与手算一致(分母 n−1)')
+  // days 长度不一致 → 取公共天数交集并显式报裁剪
+  const short = JSON.parse(wasm.run_simulation('schema_version: "1"\nscenario: {population: 40, duration: "2d", seed: 7}\n', 2))
+  const uneven = JSON.parse(wasm.daily_aggregate(JSON.stringify([...a.results, ...short.results])))
+  assert.equal(uneven.common_days, 2)
+  assert.ok(uneven.trimmed_days.length > 0, '交外天数如实列出')
+  assert.match(uneven.trim_warning, /不一致/, '裁剪必带警告')
+  // <2 份 replicate 明确拒绝(单次运行不得套置信带)
+  assert.throws(
+    () => wasm.daily_aggregate(JSON.stringify(a.results.slice(0, 1))),
+    (e) => String(e).includes('至少需要 2 份') && classifyWasmError(String(e)).kind === 'config',
+  )
+  assert.throws(
+    () => wasm.daily_aggregate('[]'),
+    (e) => String(e).includes('至少需要 2 份'),
+  )
+  // 非法 JSON → 参数错误
+  assert.throws(
+    () => wasm.daily_aggregate('[{'),
+    (e) => String(e).includes('参数错误') && String(e).includes('解析失败'),
+  )
+  // TS 桥接双路径 + 类型镜像接线守卫
+  const svc = read('src/lib/wasm.ts')
+  assert.match(svc, /invoke\('daily_aggregate', \{/, '桌面路径走 daily_aggregate 命令')
+  assert.match(svc, /dailyAggregateBinding\(/, '浏览器路径走 wasm 绑定')
+  const types = typesSrc
+  assert.match(types, /export interface DailyAggregation/, 'TS 镜像类型在场')
+  assert.match(types, /export interface AggregateMetricStats/)
+  // wasm 与 Tauri 命令注册在场(防只接一端)
+  const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')
+  assert.match(wasmRs, /pub fn daily_aggregate\(/, 'wasm 导出在场')
+  const tauri = read('../../apps/desktop/src-tauri/src/lib.rs')
+  assert.match(tauri, /fn daily_aggregate\(/, 'Tauri 命令在场')
+  assert.match(tauri, /daily_aggregate,/, '命令已注册到 generate_handler 列表')
+})

@@ -70,6 +70,7 @@ pub fn run() {
             param_apply,
             kpi_availability,
             ab_compare,
+            daily_aggregate,
             run_simulation,
             cancel_run,
             sweep_plan,
@@ -267,6 +268,19 @@ fn ab_compare(
     let comparison = sandtable_core::experiment::compare_arms(&cfg_a, &cfg_b, key, &arm_a, &arm_b)
         .map_err(|e| format!("配置错误: {e}"))?;
     serde_json::to_value(&comparison).map_err(|e| format!("配置错误: {e}"))
+}
+
+/// 逐日跨 replicate 聚合(P2 内核导出面):同一候选多份已跑 results JSON
+/// 进内核,天数交集、可选字段缺席与 CI 口径均由
+/// `core::experiment::daily_aggregate_metrics` 直出,与 wasm 同构。
+/// 桥接层不改写统计值;前端不基于单次 days.csv 自算置信带。
+#[tauri::command]
+fn daily_aggregate(results_json: String) -> Result<serde_json::Value, String> {
+    let results: Vec<sandtable_core::metrics::RunMetrics> = serde_json::from_str(&results_json)
+        .map_err(|e| format!("参数错误: 逐日聚合结果解析失败: {e}"))?;
+    let aggregation = sandtable_core::experiment::daily_aggregate_metrics(&results)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(aggregation).map_err(|e| format!("配置错误: {e}"))
 }
 
 /// 逐 replicate 执行:每个 replicate 开跑前检查取消令牌,完成后上报一次进度。

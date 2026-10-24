@@ -124,6 +124,58 @@ export interface SampleStats {
   ci95_hi: number
 }
 
+/** AggregateMetricStats 对应 sandtable_core::experiment::AggregateMetricStats */
+export interface AggregateMetricStats {
+  n: number
+  mean: number
+  sd: number
+  ci95_lo: number
+  ci95_hi: number
+  min: number
+  max: number
+}
+
+/** DailyAggregatedDay 对应 core::experiment::DailyAggregatedDay;Option 键省略 ≠ 0 */
+export interface DailyAggregatedDay {
+  day: number
+  active?: AggregateMetricStats
+  alive_at_start?: AggregateMetricStats
+  new_churned?: AggregateMetricStats
+  churn_rate?: AggregateMetricStats
+  battles?: AggregateMetricStats
+  wins?: AggregateMetricStats
+  win_rate?: AggregateMetricStats
+  gold_earned?: AggregateMetricStats
+  gold_spent?: AggregateMetricStats
+  sink_ratio?: AggregateMetricStats
+  gold_supply?: AggregateMetricStats
+  /** day 1 无 G(d−1),无定义值整键缺席 */
+  inflation?: AggregateMetricStats
+  income_per_active?: AggregateMetricStats
+  spending_per_active?: AggregateMetricStats
+  mean_power?: AggregateMetricStats
+  levelups?: AggregateMetricStats
+  upgrades?: AggregateMetricStats
+}
+
+/** DailyAggregation = core::experiment::DailyAggregation,跨 replicate 单位 */
+export interface DailyAggregation {
+  replicates: number
+  common_days: number
+  trimmed_days: number[]
+  trim_warning: string
+  ci_method: string
+  sd_method: string
+  day_stats: DailyAggregatedDay[]
+  retention_d1?: AggregateMetricStats
+  retention_d3?: AggregateMetricStats
+  retention_d7?: AggregateMetricStats
+  retention_d14?: AggregateMetricStats
+  retention_d30?: AggregateMetricStats
+  gacha_pulls_to_hit?: AggregateMetricStats
+  loot_gold_per_player?: AggregateMetricStats
+}
+
 export interface SweepAxis {
   path: string
   min: number

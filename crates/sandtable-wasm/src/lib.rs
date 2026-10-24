@@ -385,6 +385,29 @@ pub fn ab_compare(
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+/// 逐日跨 replicate 聚合(native 纯函数,P2 内核导出面)。
+///
+/// 输入是同一候选多份**已跑** results JSON(与 `run_simulation.results` 同构)。
+/// replicates <2、天数交集裁剪、可选字段缺席、inflation day1 排除与
+/// CI 口径全由 `core::experiment::daily_aggregate_metrics` 判定/计算,
+/// 浏览器前端不得基于单次 days.csv 自算置信带。
+pub fn daily_aggregate_native(results_json: &str) -> Result<serde_json::Value, String> {
+    let results: Vec<core::metrics::RunMetrics> = serde_json::from_str(results_json)
+        .map_err(|e| format!("参数错误: 逐日聚合结果解析失败: {e}"))?;
+    let aggregation = core::experiment::daily_aggregate_metrics(&results)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(aggregation).map_err(|e| format!("配置错误: {e}"))
+}
+
+/// 逐日跨 replicate 聚合(wasm 入口):JSON 字符串,形状同 [`daily_aggregate_native`]。
+#[wasm_bindgen]
+pub fn daily_aggregate(results_json: &str) -> Result<JsValue, JsValue> {
+    let v = daily_aggregate_native(results_json).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
