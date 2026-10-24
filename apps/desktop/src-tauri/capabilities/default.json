@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default capabilities for the main window",
   "windows": ["main"],
-  "permissions": ["dialog:default"]
+  "permissions": ["dialog:default", "core:webview:allow-set-webview-zoom"]
 }

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 use tauri::path::BaseDirectory;
 use tauri::webview::DownloadEvent;
-use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, Runtime, State, WebviewUrl, WebviewWindowBuilder};
 
 /// 长任务进度事件:`done` / `total` 为 replicate 计数(与 CLI `--replicates`
 /// 同口径),前端据此画进度条。
@@ -79,41 +79,49 @@ pub fn run() {
             query,
         ])
         .setup(|app| {
-            // 主窗在此构建而非由 tauri.conf.json 自动建:download 拦截必须挂在
-            // WebviewBuilder 上,配置窗口建完无法补挂——无 decide-destination
-            // 应答时 WebKitGTK 直接取消下载,前端 blob 锚点下载在桌面静默失效
-            // (docs 18 Phase 7 清单第 6 步)。
-            let window = WebviewWindowBuilder::new(app.handle(), "main", WebviewUrl::default())
-                .title("sandtable")
-                .inner_size(1280.0, 840.0)
-                .on_download(|webview, event| match event {
-                    DownloadEvent::Requested { destination, .. } => {
-                        let name = destination
-                            .file_name()
-                            .map(|n| n.to_string_lossy().into_owned())
-                            .filter(|n| !n.is_empty())
-                            .unwrap_or_else(|| "download".to_owned());
-                        *destination =
-                            download_destination(&download_dir(webview.app_handle()), &name);
-                        true
-                    }
-                    DownloadEvent::Finished { success, .. } => {
-                        // 无头走查(桌面冒烟脚本)靠这行判定下载是否真的落盘
-                        eprintln!("下载{success}");
-                        false
-                    }
-                    _ => false,
-                });
-            window.build()?;
+            main_window(app.handle())?;
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
+/// 主窗在此构建而非由 tauri.conf.json 自动建:download 拦截必须挂在
+/// WebviewBuilder 上,配置窗口建完无法补挂——无 decide-destination 应答时
+/// WebKitGTK 直接取消下载,前端 blob 锚点下载在桌面静默失效(docs 18 Phase 7
+/// 清单第 6 步)。放大/缩小交给 WebView 自身:Windows 走 WebView2 的
+/// IsZoomControlEnabled,macOS/Linux 注入 Ctrl/Cmd + - = + / 0 与 Ctrl+滚轮
+/// 多面缩放(20% 步进,0.2–10),polyfill 回调的
+/// plugin:webview|set_webview_zoom 需主窗 capabilities 放行
+/// core:webview:allow-set-webview-zoom,缺权限时缩放按键在 Linux/macOS 静默失效。
+fn main_window<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri::WebviewWindow<R>> {
+    let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+        .title("sandtable")
+        .inner_size(1280.0, 840.0)
+        .zoom_hotkeys_enabled(true)
+        .on_download(|webview, event| match event {
+            DownloadEvent::Requested { destination, .. } => {
+                let name = destination
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| "download".to_owned());
+                *destination = download_destination(&download_dir(webview.app_handle()), &name);
+                true
+            }
+            DownloadEvent::Finished { success, .. } => {
+                // 无头走查(桌面冒烟脚本)靠这行判定下载是否真的落盘
+                eprintln!("下载{success}");
+                false
+            }
+            _ => false,
+        });
+    window.build()
+}
+
 /// 下载目录:Download 定位失败(无 XDG 下载目录)回退到 家目录/Downloads;
 /// 目录不存在时补建——WebKit 写入不存在的目录会直接失败。
-fn download_dir(app: &tauri::AppHandle) -> PathBuf {
+fn download_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
     let dir = app
         .path()
         .resolve("", BaseDirectory::Download)
@@ -561,6 +569,30 @@ mod tests {
         "  targets:\n",
         "    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n",
     );
+
+    /// 主窗经 mock 运行时可构建,下载拦截与放大开关挂在同一个「main」窗口上
+    /// (mock 运行时不记窗口属性,缩放开关本身由
+    /// desktop_capabilities_allow_webview_zoom 守)。
+    #[test]
+    fn main_window_builds_with_zoom_hotkeys() {
+        let app = tauri::test::mock_app();
+        let w = main_window(app.handle()).unwrap();
+        assert_eq!(w.label(), "main");
+    }
+
+    /// macOS/Linux 的多面缩放是初始化脚本,回调 plugin:webview|set_webview_zoom
+    /// 要主窗 capabilities 放行;权限丢了缩放按键静默失效——这里拦住。
+    #[test]
+    fn desktop_capabilities_allow_webview_zoom() {
+        let v: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        assert_eq!(v["windows"], serde_json::json!(["main"]));
+        let perms = v["permissions"].as_array().unwrap();
+        assert!(
+            perms.contains(&serde_json::json!("core:webview:allow-set-webview-zoom")),
+            "主窗未放行 webview 缩放权限"
+        );
+    }
 
     #[test]
     fn validate_valid_and_invalid() {
