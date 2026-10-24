@@ -455,7 +455,9 @@ fn metric_stats(values: &[f64]) -> Option<AggregateMetricStats> {
 
 fn optional_metric_stats(values: &[Option<f64>]) -> Option<AggregateMetricStats> {
     let values: Vec<f64> = values.iter().flatten().copied().collect();
-    (!values.is_empty()).then(|| metric_stats(&values)).flatten()
+    (!values.is_empty())
+        .then(|| metric_stats(&values))
+        .flatten()
 }
 
 /// 逐日跨 replicate 聚合(P2 第一步的内核契约)。
@@ -486,15 +488,16 @@ pub fn daily_aggregate_metrics(
         .flat_map(BTreeSet::iter)
         .copied()
         .collect::<BTreeSet<_>>();
-    let common_days = day_sets.iter().fold(None, |acc, set| {
-        match acc {
+    let common_days = day_sets
+        .iter()
+        .fold(None, |acc, set| match acc {
             None => Some(set.clone()),
             Some(mut common) => {
                 common.retain(|day| set.contains(day));
                 Some(common)
             }
-        }
-    }).unwrap_or_default();
+        })
+        .unwrap_or_default();
     let trimmed_days = all_days
         .difference(&common_days)
         .copied()
@@ -526,26 +529,65 @@ pub fn daily_aggregate_metrics(
             Ok::<_, crate::Error>(DailyAggregatedDay {
                 day: *day,
                 active: metric_stats(&stats.iter().map(|d| d.active as f64).collect::<Vec<_>>()),
-                alive_at_start: metric_stats(&stats.iter().map(|d| d.alive_at_start as f64).collect::<Vec<_>>()),
-                new_churned: metric_stats(&stats.iter().map(|d| d.new_churned as f64).collect::<Vec<_>>()),
+                alive_at_start: metric_stats(
+                    &stats
+                        .iter()
+                        .map(|d| d.alive_at_start as f64)
+                        .collect::<Vec<_>>(),
+                ),
+                new_churned: metric_stats(
+                    &stats
+                        .iter()
+                        .map(|d| d.new_churned as f64)
+                        .collect::<Vec<_>>(),
+                ),
                 churn_rate: metric_stats(&stats.iter().map(|d| d.churn_rate).collect::<Vec<_>>()),
                 battles: metric_stats(&stats.iter().map(|d| d.battles as f64).collect::<Vec<_>>()),
                 wins: metric_stats(&stats.iter().map(|d| d.wins as f64).collect::<Vec<_>>()),
                 win_rate: metric_stats(&stats.iter().map(|d| d.win_rate).collect::<Vec<_>>()),
-                gold_earned: metric_stats(&stats.iter().map(|d| d.gold_earned as f64).collect::<Vec<_>>()),
-                gold_spent: metric_stats(&stats.iter().map(|d| d.gold_spent as f64).collect::<Vec<_>>()),
+                gold_earned: metric_stats(
+                    &stats
+                        .iter()
+                        .map(|d| d.gold_earned as f64)
+                        .collect::<Vec<_>>(),
+                ),
+                gold_spent: metric_stats(
+                    &stats
+                        .iter()
+                        .map(|d| d.gold_spent as f64)
+                        .collect::<Vec<_>>(),
+                ),
                 sink_ratio: metric_stats(&stats.iter().map(|d| d.sink_ratio).collect::<Vec<_>>()),
-                gold_supply: metric_stats(&stats.iter().map(|d| d.gold_supply as f64).collect::<Vec<_>>()),
+                gold_supply: metric_stats(
+                    &stats
+                        .iter()
+                        .map(|d| d.gold_supply as f64)
+                        .collect::<Vec<_>>(),
+                ),
                 inflation: if *day == 1 {
                     None
                 } else {
                     metric_stats(&stats.iter().map(|d| d.inflation).collect::<Vec<_>>())
                 },
-                income_per_active: metric_stats(&stats.iter().map(|d| d.income_per_active).collect::<Vec<_>>()),
-                spending_per_active: metric_stats(&stats.iter().map(|d| d.spending_per_active).collect::<Vec<_>>()),
+                income_per_active: metric_stats(
+                    &stats
+                        .iter()
+                        .map(|d| d.income_per_active)
+                        .collect::<Vec<_>>(),
+                ),
+                spending_per_active: metric_stats(
+                    &stats
+                        .iter()
+                        .map(|d| d.spending_per_active)
+                        .collect::<Vec<_>>(),
+                ),
                 mean_power: metric_stats(&stats.iter().map(|d| d.mean_power).collect::<Vec<_>>()),
-                levelups: metric_stats(&stats.iter().map(|d| d.levelups as f64).collect::<Vec<_>>()),
-                upgrades: metric_stats(&stats.iter().map(|d| d.upgrades as f64).collect::<Vec<_>>()),
+                levelups: metric_stats(
+                    &stats.iter().map(|d| d.levelups as f64).collect::<Vec<_>>(),
+                ),
+                upgrades: metric_stats(
+                    &stats.iter().map(|d| d.upgrades as f64).collect::<Vec<_>>(),
+                ),
             })
         })
         .collect::<crate::Result<_>>()?;
@@ -558,13 +600,33 @@ pub fn daily_aggregate_metrics(
         ci_method: DAILY_CI_METHOD,
         sd_method: DAILY_SD_METHOD,
         day_stats,
-        retention_d1: optional_metric_stats(&metrics.iter().map(|m| m.retention_d1).collect::<Vec<_>>()),
-        retention_d3: optional_metric_stats(&metrics.iter().map(|m| m.retention_d3).collect::<Vec<_>>()),
-        retention_d7: optional_metric_stats(&metrics.iter().map(|m| m.retention_d7).collect::<Vec<_>>()),
-        retention_d14: optional_metric_stats(&metrics.iter().map(|m| m.retention_d14).collect::<Vec<_>>()),
-        retention_d30: optional_metric_stats(&metrics.iter().map(|m| m.retention_d30).collect::<Vec<_>>()),
-        gacha_pulls_to_hit: optional_metric_stats(&metrics.iter().map(|m| m.gacha_pulls_to_hit).collect::<Vec<_>>()),
-        loot_gold_per_player: optional_metric_stats(&metrics.iter().map(|m| m.loot_gold_per_player).collect::<Vec<_>>()),
+        retention_d1: optional_metric_stats(
+            &metrics.iter().map(|m| m.retention_d1).collect::<Vec<_>>(),
+        ),
+        retention_d3: optional_metric_stats(
+            &metrics.iter().map(|m| m.retention_d3).collect::<Vec<_>>(),
+        ),
+        retention_d7: optional_metric_stats(
+            &metrics.iter().map(|m| m.retention_d7).collect::<Vec<_>>(),
+        ),
+        retention_d14: optional_metric_stats(
+            &metrics.iter().map(|m| m.retention_d14).collect::<Vec<_>>(),
+        ),
+        retention_d30: optional_metric_stats(
+            &metrics.iter().map(|m| m.retention_d30).collect::<Vec<_>>(),
+        ),
+        gacha_pulls_to_hit: optional_metric_stats(
+            &metrics
+                .iter()
+                .map(|m| m.gacha_pulls_to_hit)
+                .collect::<Vec<_>>(),
+        ),
+        loot_gold_per_player: optional_metric_stats(
+            &metrics
+                .iter()
+                .map(|m| m.loot_gold_per_player)
+                .collect::<Vec<_>>(),
+        ),
     })
 }
 
@@ -889,7 +951,9 @@ mod tests {
             vec![1, 2, 3]
         );
         assert!(
-            out.day_stats.iter().all(|d| d.active.as_ref().unwrap().n == 3),
+            out.day_stats
+                .iter()
+                .all(|d| d.active.as_ref().unwrap().n == 3),
             "每个公共日跨全部 replicate 聚合,不被天数长短影响"
         );
     }
@@ -935,7 +999,11 @@ mod tests {
         assert!((active.sd - expected_sd).abs() < 1e-12);
         assert!((active.ci95_lo - (3.0 - half)).abs() < 1e-12);
         assert!((active.ci95_hi - (3.0 + half)).abs() < 1e-12);
-        assert!(out.ci_method.contains("t(0.975,n-1)"), "{:?}", out.ci_method);
+        assert!(
+            out.ci_method.contains("t(0.975,n-1)"),
+            "{:?}",
+            out.ci_method
+        );
         assert!(out.sd_method.contains("/(n-1)"), "{:?}", out.sd_method);
     }
 }
