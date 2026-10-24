@@ -36,6 +36,20 @@ footer:
   copyright: Apache-2.0
 ---
 
+## 架构总览
+
+一个纯 Rust 内核，各消费面并列在旁边 —— CLI、Web 工作台（WASM）、桌面壳（Tauri 2）、Python 绑定与游戏引擎契约。仿真、分析与产物都留在用户本机，链路里没有服务器。实线是业务 / 数据流，虚线是注册表查找：
+
+<figure style="margin:0">
+  <picture>
+    <source media="(max-width: 720px)" type="image/svg+xml" srcset="/architecture/system-zh-mobile.svg"/>
+    <img src="/architecture/system-zh.svg" alt="sandtable 架构：单内核与各消费面" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+  </picture>
+  <figcaption>内核与其配置 / KPI 注册表、各壳之间的数据流；窄屏下为同一内容的竖排改版。</figcaption>
+</figure>
+
+图里的 crate 与目录对应关系见[项目结构](/zh/guide/17-project-structure)。
+
 ## 界面预览
 
 数值实验工作台 V2（`apps/web` 交互原型，内置合成样例数据）的五个工作区，也是桌面（Tauri）端实现的设计基准（见[桌面对齐基准](../专业工作台桌面对齐基准.md)）：

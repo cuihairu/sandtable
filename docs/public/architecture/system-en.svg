@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="840" viewBox="0 0 1280 840" role="img" aria-labelledby="title desc" lang="en">
+<title id="title">Sandtable: one kernel and its consumers</title>
+<desc id="desc">Color-block diagram of the sandtable crate layout and data flow. Solid lines carry business and data flow; dashed lines carry registry lookups. One pure-Rust kernel serves the CLI, the Web workbench, the desktop shell, the Python bindings and the engine contract; every artifact stays on the user's machine.</desc>
+<defs>
+  <marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse">
+    <path d="M1 1 L7 4 L1 7" fill="none" stroke="#245bb2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="teal" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse">
+    <path d="M1 1 L7 4 L1 7" fill="none" stroke="#147565" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<style>text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#172b45}.sub{fill:#4c5d73}.blue{fill:#245bb2}.teal{fill:#147565}</style>
+
+<rect width="1280" height="840" fill="#fff"/>
+
+<text x="28" y="40" font-size="27" font-weight="600">One kernel and its consumers</text>
+<path d="M820 31 L866 31" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="878" y="37" font-size="16" class="sub">Business / data</text>
+<path d="M1054 31 L1100 31" fill="none" stroke="#147565" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 6" marker-end="url(#teal)"/>
+<text x="1112" y="37" font-size="16" class="sub">Registry lookups</text>
+<text x="28" y="75" font-size="17" class="sub">Local-first: simulation, analytics and artifacts stay on the user's machine — no server in the loop.</text>
+
+<rect x="28" y="106" width="1224" height="170" rx="10" fill="#f4f9f8" stroke="#ced8e5" stroke-width="1.3"/>
+<text x="48" y="134" font-size="17" font-weight="600" class="teal">Configuration and registries</text>
+
+<g data-node="files">
+  <rect x="48" y="154" width="280" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="66" y="182" font-size="23" font-weight="600">experiment files</text>
+  <text x="66" y="206" font-size="17" class="sub">scenario · model</text>
+  <text x="66" y="228" font-size="14" font-weight="500" class="sub">sweep · optimize sections</text>
+  <text x="66" y="246" font-size="14" font-weight="500" class="sub">YAML in · config_hash out</text>
+</g>
+<g data-node="param-registry">
+  <rect x="420" y="154" width="300" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="438" y="187" font-size="23" font-weight="600">param registry</text>
+  <text x="438" y="214" font-size="17" class="sub">path · kind · default</text>
+  <text x="438" y="236" font-size="14" font-weight="500" class="sub">56 numeric channels · CSV in/out</text>
+</g>
+<g data-node="kpi-registry">
+  <rect x="830" y="154" width="280" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="848" y="187" font-size="23" font-weight="600">KPI registry</text>
+  <text x="848" y="214" font-size="17" class="sub">8 metrics · availability</text>
+  <text x="848" y="236" font-size="14" font-weight="500" class="sub">CI-based constraint verdicts</text>
+</g>
+
+<rect x="28" y="300" width="1224" height="170" rx="10" fill="#f8fafc" stroke="#ced8e5" stroke-width="1.3"/>
+<text x="48" y="328" font-size="17" font-weight="600">Kernel — sandtable-core (pure Rust · wasm32 build is a CI gate)</text>
+
+<g data-node="kernel-sim">
+  <rect x="48" y="346" width="360" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="66" y="374" font-size="23" font-weight="600">kernel · sim</text>
+  <text x="66" y="398" font-size="17" class="sub">clock · event queue · event loop</text>
+  <text x="66" y="419" font-size="14" font-weight="500" class="sub">behavior · combat · progression · churn · gacha</text>
+  <text x="66" y="437" font-size="14" font-weight="500" class="sub">online stats · formulas · keyed RNG</text>
+</g>
+<g data-node="pipeline">
+  <rect x="500" y="346" width="340" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="518" y="374" font-size="23" font-weight="600">experiment pipeline</text>
+  <text x="518" y="398" font-size="17" class="sub">replicates · CRN pairs</text>
+  <text x="518" y="419" font-size="14" font-weight="500" class="sub">grid / random sweep · OAT sensitivity</text>
+  <text x="518" y="437" font-size="14" font-weight="500" class="sub">single-axis recommendation</text>
+</g>
+<g data-node="search-surrogate">
+  <rect x="932" y="346" width="300" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="950" y="374" font-size="23" font-weight="600">search &amp; surrogate</text>
+  <text x="950" y="398" font-size="17" class="sub">evolutionary + Pareto</text>
+  <text x="950" y="419" font-size="14" font-weight="500" class="sub">random-forest surrogate (read-only)</text>
+  <text x="950" y="437" font-size="14" font-weight="500" class="sub">χ² disttest data plane</text>
+</g>
+
+<rect x="28" y="494" width="1224" height="318" rx="10" fill="#f4f9f8" stroke="#ced8e5" stroke-width="1.3"/>
+<text x="48" y="522" font-size="17" font-weight="600" class="teal">Shells, applications and analytics</text>
+
+<g data-node="cli">
+  <rect x="48" y="544" width="210" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="66" y="572" font-size="20" font-weight="600">sandtable-cli</text>
+  <text x="66" y="596" font-size="17" class="sub">12 subcommands</text>
+  <text x="66" y="617" font-size="14" font-weight="500" class="sub">report.html · .sandtable</text>
+  <text x="66" y="635" font-size="14" font-weight="500" class="sub">params CSV · duckdb query</text>
+</g>
+<g data-node="wasm">
+  <rect x="278" y="544" width="210" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="296" y="577" font-size="20" font-weight="600">sandtable-wasm</text>
+  <text x="296" y="604" font-size="17" class="sub">wasm-bindgen</text>
+  <text x="296" y="626" font-size="14" font-weight="500" class="sub">thin JSON-shaped bindings</text>
+</g>
+<g data-node="python">
+  <rect x="508" y="544" width="210" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="526" y="577" font-size="20" font-weight="600">sandtable-python</text>
+  <text x="526" y="604" font-size="17" class="sub">pyo3 · maturin</text>
+  <text x="526" y="626" font-size="14" font-weight="500" class="sub">run · sweep · day hook</text>
+</g>
+<g data-node="engine">
+  <rect x="738" y="544" width="210" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="756" y="577" font-size="20" font-weight="600">sandtable-engine</text>
+  <text x="756" y="604" font-size="17" class="sub">.engine.json</text>
+  <text x="756" y="626" font-size="14" font-weight="500" class="sub">export · import · backflow</text>
+</g>
+<g data-node="desktop">
+  <rect x="968" y="544" width="262" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="986" y="572" font-size="22" font-weight="600">sandtable-desktop</text>
+  <text x="986" y="596" font-size="17" class="sub">Tauri 2 · 13 commands</text>
+  <text x="986" y="617" font-size="14" font-weight="500" class="sub">same workbench UI · no wasm</text>
+  <text x="986" y="635" font-size="14" font-weight="500" class="sub">native DuckDB query</text>
+</g>
+
+<g data-node="artifacts">
+  <path d="M48 692 A104.0 13 0 0 1 256 692 V753 A104.0 13 0 0 1 48 753 Z" fill="#f5f7fa" stroke="#ced8e5" stroke-width="1.3"/>
+  <ellipse cx="152.0" cy="692" rx="104.0" ry="13" fill="#eef2f7" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="152" y="721" text-anchor="middle" font-size="20" font-weight="600">Local artifacts</text>
+  <text x="152" y="745" text-anchor="middle" font-size="14" class="sub">CSV · JSON · Parquet · HTML</text>
+</g>
+<g data-node="web">
+  <rect x="288" y="680" width="300" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="306" y="708" font-size="21" font-weight="600">apps/web workbench</text>
+  <text x="306" y="732" font-size="17" class="sub">5 workspaces</text>
+  <text x="306" y="753" font-size="14" font-weight="500" class="sub">sweep candidates in a Web Worker</text>
+  <text x="306" y="771" font-size="14" font-weight="500" class="sub">DuckDB-Wasm (local)</text>
+</g>
+<g data-node="templates">
+  <rect x="636" y="680" width="240" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="654" y="713" font-size="21" font-weight="600">scripts/templates</text>
+  <text x="654" y="740" font-size="17" class="sub">Python orchestration</text>
+  <text x="654" y="762" font-size="14" font-weight="500" class="sub">batch_sweep · ab_summary</text>
+</g>
+<g data-node="external-engine">
+  <rect x="924" y="680" width="252" height="100" rx="10" fill="#f0f5fe" stroke="#9bb5dc" stroke-width="1.3"/>
+  <text x="942" y="713" font-size="22" font-weight="600">game engine</text>
+  <text x="942" y="740" font-size="17" class="sub">external consumer</text>
+  <text x="942" y="762" font-size="14" font-weight="500" class="sub">backflow · config_hash A/B</text>
+</g>
+
+<path d="M188 258 L188 346" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="168" y="277" width="140" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="238" y="293" text-anchor="middle" font-size="15" font-weight="500" class="blue">load · validate · hash</text>
+
+<path d="M408 396 L500 396" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="410" y="404" width="92" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="456" y="419" text-anchor="middle" font-size="15" font-weight="500" class="blue">run results</text>
+
+<path d="M840 396 L932 396" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-start="url(#blue)" marker-end="url(#blue)"/>
+<rect x="841" y="404" width="90" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="886" y="419" text-anchor="middle" font-size="15" font-weight="500" class="blue">candidates</text>
+
+<path d="M600 258 L600 346" fill="none" stroke="#147565" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 6" marker-end="url(#teal)"/>
+<rect x="530" y="277" width="140" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="600" y="293" text-anchor="middle" font-size="15" font-weight="500" class="teal">sweep numeric axes</text>
+
+<path d="M880 258 L880 320 L820 320 L820 346" fill="none" stroke="#147565" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 6" marker-end="url(#teal)"/>
+<rect x="805" y="307" width="150" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="880" y="323" text-anchor="middle" font-size="15" font-weight="500" class="teal">targets · CI verdicts</text>
+
+<path d="M438 780 L438 800 L1264 800 L1264 232 L1110 232" fill="none" stroke="#147565" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 6" marker-end="url(#teal)"/>
+<rect x="600" y="788" width="140" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="670" y="804" text-anchor="middle" font-size="15" font-weight="500" class="teal">param grid · apply</text>
+
+<path d="M153 544 L153 450" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="160" y="471" width="150" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="235" y="487" text-anchor="middle" font-size="15" font-weight="500" class="blue">run · sweep · compare</text>
+
+<path d="M383 544 L383 450" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+
+<path d="M800 470 L800 544" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="808" y="471" width="120" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="868" y="487" text-anchor="middle" font-size="15" font-weight="500" class="blue">contract export</text>
+
+<path d="M1099 544 L1099 470" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="1107" y="471" width="120" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="1167" y="487" text-anchor="middle" font-size="15" font-weight="500" class="blue">native · no wasm</text>
+
+<path d="M164 648 L164 692" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="172" y="650" width="72" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="208" y="666" text-anchor="middle" font-size="15" font-weight="500" class="blue">artifacts</text>
+
+<path d="M402 680 L402 648" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="410" y="650" width="84" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="452" y="666" text-anchor="middle" font-size="15" font-weight="500" class="blue">Web Worker</text>
+
+<path d="M680 680 L680 648" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="688" y="650" width="70" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="723" y="666" text-anchor="middle" font-size="15" font-weight="500" class="blue">via pyo3</text>
+
+<path d="M936 648 L936 680" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-start="url(#blue)" marker-end="url(#blue)"/>
+<rect x="944" y="650" width="100" height="23" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="994" y="666" text-anchor="middle" font-size="15" font-weight="500" class="blue">.engine.json</text>
+
+</svg>

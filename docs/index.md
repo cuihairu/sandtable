@@ -36,6 +36,20 @@ footer:
   copyright: Apache-2.0
 ---
 
+## Architecture
+
+One pure-Rust kernel, every consumer beside it — CLI, Web workbench (WASM), desktop shell (Tauri 2), Python bindings, and the game-engine contract. Simulation, analytics, and artifacts stay on the user's machine; there is no server anywhere in the loop. Solid lines are business / data flow, dashed lines are registry lookups:
+
+<figure style="margin:0">
+  <picture>
+    <source media="(max-width: 720px)" type="image/svg+xml" srcset="/architecture/system-en-mobile.svg"/>
+    <img src="/architecture/system-en.svg" alt="Sandtable architecture: one kernel and its consumers" loading="lazy" style="max-width:100%;border:1px solid #d8e0e3;border-radius:6px"/>
+  </picture>
+  <figcaption>Data flow of the kernel with its configuration / KPI registries and the shells around it; narrow screens get a vertical relayout of the same content.</figcaption>
+</figure>
+
+How the diagram maps onto crates and directories: [project structure](/guide/17-project-structure).
+
 ## Workbench preview
 
 The five workspaces of the V2 numerical-experiment workbench (`apps/web` interactive prototype, built-in synthetic sample data). The same design is the baseline for the desktop (Tauri) implementation (see the [desktop alignment baseline](./专业工作台桌面对齐基准.md), Chinese):

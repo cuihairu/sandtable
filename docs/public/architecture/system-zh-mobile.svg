@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="2320" viewBox="0 0 480 2320" role="img" aria-labelledby="title desc" lang="zh-CN">
+<title id="title">sandtable:单内核与各消费面</title>
+<desc id="desc">sandtable 架构总览的竖排版。实线为业务/数据流,虚线为注册表查找。一个纯 Rust 内核同时服务 CLI、Web 工作台、桌面壳、Python 绑定与引擎契约;所有产物都留在用户本机。</desc>
+<defs>
+  <marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse">
+    <path d="M1 1 L7 4 L1 7" fill="none" stroke="#245bb2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="teal" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse">
+    <path d="M1 1 L7 4 L1 7" fill="none" stroke="#147565" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<style>text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#172b45}.sub{fill:#4c5d73}.blue{fill:#245bb2}.teal{fill:#147565}</style>
+
+<rect width="480" height="2320" fill="#fff"/>
+
+<text x="24" y="40" font-size="24" font-weight="600">单内核与各消费面</text>
+<text x="24" y="68" font-size="17" class="sub">local-first:仿真、分析与产物都在本机</text>
+
+<text x="30" y="108" font-size="18" font-weight="600" class="teal">配置与注册表</text>
+
+<g data-node="files">
+  <rect x="30" y="126" width="420" height="112" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="156" font-size="23" font-weight="600">实验文件</text>
+  <text x="48" y="182" font-size="18" class="sub">scenario · model</text>
+  <text x="48" y="206" font-size="18" font-weight="500" class="sub">sweep · optimize 配置段</text>
+  <text x="48" y="230" font-size="18" font-weight="500" class="sub">YAML 进 · config_hash 出</text>
+</g>
+<g data-node="param-registry">
+  <rect x="30" y="266" width="420" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="296" font-size="23" font-weight="600">参数注册表</text>
+  <text x="48" y="322" font-size="18" class="sub">path · kind · default</text>
+  <text x="48" y="346" font-size="18" font-weight="500" class="sub">56 个数值通道 · CSV 进出</text>
+</g>
+<g data-node="kpi-registry">
+  <rect x="30" y="386" width="420" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="416" font-size="23" font-weight="600">KPI 注册表</text>
+  <text x="48" y="442" font-size="18" class="sub">8 项指标 · 可用性</text>
+  <text x="48" y="466" font-size="18" font-weight="500" class="sub">基于 CI 的约束判定</text>
+</g>
+
+<text x="30" y="522" font-size="18" font-weight="600" class="teal">内核 —— sandtable-core(纯 Rust)</text>
+
+<g data-node="kernel-sim">
+  <rect x="30" y="540" width="420" height="146" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="570" font-size="23" font-weight="600">内核 · 仿真</text>
+  <text x="48" y="596" font-size="18" class="sub">时钟 · 事件队列 · 事件循环</text>
+  <text x="48" y="620" font-size="18" font-weight="500" class="sub">行为 · 战斗 · 成长 · 流失</text>
+  <text x="48" y="644" font-size="18" font-weight="500" class="sub">抽卡 · 掉落 · 在线统计</text>
+  <text x="48" y="668" font-size="18" font-weight="500" class="sub">公式求值 · 带键随机数</text>
+</g>
+<g data-node="pipeline">
+  <rect x="30" y="742" width="420" height="146" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="772" font-size="23" font-weight="600">实验管线</text>
+  <text x="48" y="798" font-size="18" class="sub">replicates · CRN 配对</text>
+  <text x="48" y="822" font-size="18" font-weight="500" class="sub">grid / random 扫描 · OAT 敏感性</text>
+  <text x="48" y="846" font-size="18" font-weight="500" class="sub">单轴推荐 · CI 判定</text>
+  <text x="48" y="870" font-size="18" font-weight="500" class="sub">读取:数值轴 · KPI 目标</text>
+</g>
+<g data-node="search-surrogate">
+  <rect x="30" y="932" width="420" height="124" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="962" font-size="23" font-weight="600">寻优与代理</text>
+  <text x="48" y="988" font-size="18" class="sub">进化 + Pareto</text>
+  <text x="48" y="1012" font-size="18" font-weight="500" class="sub">随机森林代理(只读)</text>
+  <text x="48" y="1036" font-size="18" font-weight="500" class="sub">χ² 分布检验数据面</text>
+</g>
+
+<text x="30" y="1092" font-size="18" font-weight="600" class="teal">壳 —— 都连同一个内核</text>
+
+<g data-node="cli">
+  <rect x="30" y="1110" width="420" height="124" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="1140" font-size="22" font-weight="600">sandtable-cli</text>
+  <text x="48" y="1166" font-size="18" class="sub">12 个子命令</text>
+  <text x="48" y="1190" font-size="18" font-weight="500" class="sub">report.html · .sandtable 归档</text>
+  <text x="48" y="1214" font-size="18" font-weight="500" class="sub">params CSV · duckdb query</text>
+</g>
+<g data-node="wasm">
+  <rect x="30" y="1258" width="420" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="1288" font-size="22" font-weight="600">sandtable-wasm</text>
+  <text x="48" y="1314" font-size="18" class="sub">wasm-bindgen</text>
+  <text x="48" y="1338" font-size="18" font-weight="500" class="sub">薄绑定 · JSON 同构</text>
+</g>
+<g data-node="python">
+  <rect x="30" y="1382" width="420" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="1412" font-size="22" font-weight="600">sandtable-python</text>
+  <text x="48" y="1438" font-size="18" class="sub">pyo3 · maturin</text>
+  <text x="48" y="1462" font-size="18" font-weight="500" class="sub">run · sweep · day hook</text>
+</g>
+<g data-node="engine">
+  <rect x="30" y="1506" width="420" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="1536" font-size="22" font-weight="600">sandtable-engine</text>
+  <text x="48" y="1562" font-size="18" class="sub">.engine.json 契约</text>
+  <text x="48" y="1586" font-size="18" font-weight="500" class="sub">导出 · 导入 · 回流</text>
+</g>
+<g data-node="desktop">
+  <rect x="30" y="1630" width="420" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="1660" font-size="22" font-weight="600">sandtable-desktop</text>
+  <text x="48" y="1686" font-size="18" class="sub">Tauri 2 · 13 条原生命令</text>
+  <text x="48" y="1710" font-size="18" font-weight="500" class="sub">同一工作台 · 原生 DuckDB</text>
+</g>
+
+<text x="30" y="1766" font-size="18" font-weight="600" class="teal">应用与分析</text>
+
+<g data-node="web">
+  <rect x="30" y="1784" width="420" height="142" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="1814" font-size="22" font-weight="600">apps/web 工作台</text>
+  <text x="48" y="1840" font-size="18" class="sub">5 个工作区</text>
+  <text x="48" y="1864" font-size="18" font-weight="500" class="sub">扫描候选跑在 Web Worker</text>
+  <text x="48" y="1888" font-size="18" font-weight="500" class="sub">参数表 · 应用走注册表</text>
+  <text x="48" y="1912" font-size="18" font-weight="500" class="sub">DuckDB-Wasm(本地)</text>
+</g>
+<g data-node="templates">
+  <rect x="30" y="1950" width="420" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="48" y="1980" font-size="22" font-weight="600">scripts/templates</text>
+  <text x="48" y="2006" font-size="18" class="sub">batch_sweep · ab_summary · sweep_curves</text>
+  <text x="48" y="2030" font-size="18" font-weight="500" class="sub">经 pyo3 绑定调用</text>
+</g>
+<g data-node="external-engine">
+  <rect x="30" y="2074" width="420" height="100" rx="10" fill="#f0f5fe" stroke="#9bb5dc" stroke-width="1.3"/>
+  <text x="48" y="2104" font-size="22" font-weight="600">游戏引擎</text>
+  <text x="48" y="2130" font-size="18" class="sub">外部消费方 · .engine.json</text>
+  <text x="48" y="2154" font-size="18" font-weight="500" class="sub">回流 · config_hash A/B</text>
+</g>
+
+<g data-node="artifacts">
+  <path d="M30 2222 A95.0 13 0 0 1 220 2222 V2283 A95.0 13 0 0 1 30 2283 Z" fill="#f5f7fa" stroke="#ced8e5" stroke-width="1.3"/>
+  <ellipse cx="125.0" cy="2222" rx="95.0" ry="13" fill="#eef2f7" stroke="#ced8e5" stroke-width="1.3"/>
+  <text x="125" y="2240" text-anchor="middle" font-size="20" font-weight="600">本地产物</text>
+  <text x="125" y="2264" text-anchor="middle" font-size="16" class="sub">CSV · JSON · Parquet</text>
+  <text x="125" y="2286" text-anchor="middle" font-size="16" class="sub">HTML</text>
+</g>
+<text x="232" y="2251" font-size="18" class="sub">实线:业务 / 数据</text>
+<text x="232" y="2278" font-size="18" class="sub">虚线:注册表查找</text>
+
+<path d="M30 180 L10 180 L10 610 L30 610" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="14" y="239" width="200" height="24" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="114" y="257" text-anchor="middle" font-size="18" font-weight="500" class="blue">加载 · 校验 · hash</text>
+
+<path d="M240 686 L240 742" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="250" y="698" width="150" height="24" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="325" y="716" text-anchor="middle" font-size="18" font-weight="500" class="blue">运行结果</text>
+
+<path d="M240 888 L240 932" fill="none" stroke="#245bb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-start="url(#blue)" marker-end="url(#blue)"/>
+<rect x="250" y="896" width="130" height="24" rx="3" fill="#fff" stroke="none" stroke-width="1.3"/>
+<text x="315" y="914" text-anchor="middle" font-size="18" font-weight="500" class="blue">候选解</text>
+
+<path d="M450 316 L470 316 L470 810 L450 810" fill="none" stroke="#147565" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 6" marker-end="url(#teal)"/>
+
+</svg>
