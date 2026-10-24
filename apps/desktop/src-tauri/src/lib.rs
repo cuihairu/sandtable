@@ -594,6 +594,60 @@ mod tests {
         );
     }
 
+    /// Windows 图标链回归守卫:exe 资源、ARPPRODUCTICON 与开始菜单快捷方式的
+    /// 图标都来自 bundle.icon 里的 icons/icon.ico(上游 WiX 模板经 {{icon_path}}
+    /// 织入),NSIS 与 Linux 各取自己的 png/icns。配置引用必须在盘上——缺文件
+    /// 要到 Windows 打包腿才炸,本机不可验;ico 必须含 256×256,缺大尺寸时
+    /// Win10/11 的大图标位直接糊掉。
+    #[test]
+    fn windows_bundle_icon_chain_is_complete() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let conf: serde_json::Value =
+            serde_json::from_reader(std::fs::File::open(dir.join("tauri.conf.json")).unwrap())
+                .unwrap();
+        let icons = conf["bundle"]["icon"].as_array().unwrap();
+        let names: Vec<String> = icons
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect();
+        assert!(
+            names.iter().any(|n| n.ends_with("icon.ico")),
+            "Windows 面必须引用 icon.ico"
+        );
+        for n in &names {
+            assert!(dir.join(n).is_file(), "bundle.icon 引用的 {n} 不在盘上");
+        }
+
+        let b = std::fs::read(dir.join("icons/icon.ico")).unwrap();
+        assert_eq!(u16::from_le_bytes([b[0], b[1]]), 0, "ICO 保留位");
+        assert_eq!(u16::from_le_bytes([b[2], b[3]]), 1, "必须是图标类型");
+        let count = u16::from_le_bytes([b[4], b[5]]) as usize;
+        assert!(count >= 4, "多尺寸 ICO");
+        let mut dims = std::collections::BTreeSet::new();
+        for i in 0..count {
+            let e = &b[6 + i * 16..6 + (i + 1) * 16];
+            let dim = |v: u8| -> u32 {
+                if v == 0 {
+                    256
+                } else {
+                    v as u32
+                }
+            };
+            assert_eq!(dim(e[0]), dim(e[1]), "各尺寸必须方形");
+            assert_eq!(u16::from_le_bytes([e[6], e[7]]), 32, "各尺寸 32bpp");
+            let size = u32::from_le_bytes([e[8], e[9], e[10], e[11]]) as usize;
+            let off = u32::from_le_bytes([e[12], e[13], e[14], e[15]]) as usize;
+            assert!(
+                off + size <= b.len(),
+                "ICO 目录项越界(off={off} size={size})"
+            );
+            dims.insert(dim(e[0]));
+        }
+        for need in [16u32, 32, 48, 256] {
+            assert!(dims.contains(&need), "ICO 缺 {need}×{need} 尺寸");
+        }
+    }
+
     #[test]
     fn validate_valid_and_invalid() {
         let v = validate_config(YAML.into()).unwrap();
