@@ -436,6 +436,65 @@ export function cohortFacets(run: RunMetrics | null): { rows: readonly CohortFac
   }
 }
 
+/* —— 逐日分布/分位数:power_snapshots 的 p50/p90/p99 快照曲线 —— */
+
+export type DistributionQuantileKey = 'p50' | 'p90' | 'p99'
+
+export type DistributionPoint = {
+  day: number
+  n: number
+  p50: number
+  p90: number
+  p99: number
+  /** 展示层派生读数,不是置信区间:p90/p50 */
+  tailP90OverP50: number
+  /** 展示层派生读数,不是置信区间:p99/p90 */
+  tailP99OverP90: number
+}
+
+export type DistributionSeries = {
+  id: DistributionQuantileKey
+  labelKey: TranslationKey
+  points: readonly DailyTrendPoint[]
+}
+
+const DISTRIBUTION_QUANTILES: readonly {
+  id: DistributionQuantileKey
+  labelKey: 'analysis.distribution.p50' | 'analysis.distribution.p90' | 'analysis.distribution.p99'
+}[] = [
+  { id: 'p50', labelKey: 'analysis.distribution.p50' },
+  { id: 'p90', labelKey: 'analysis.distribution.p90' },
+  { id: 'p99', labelKey: 'analysis.distribution.p99' },
+]
+
+function tailRatio(numerator: number, denominator: number): number {
+  return denominator === 0 ? NaN : numerator / denominator
+}
+
+export function distributionRows(run: RunMetrics | null): readonly DistributionPoint[] {
+  return (run?.power_snapshots ?? [])
+    .filter((snapshot) => [snapshot.day, snapshot.p50, snapshot.p90, snapshot.p99]
+      .every(Number.isFinite))
+    .map((snapshot) => ({
+      day: snapshot.day,
+      n: snapshot.n,
+      p50: snapshot.p50,
+      p90: snapshot.p90,
+      p99: snapshot.p99,
+      tailP90OverP50: tailRatio(snapshot.p90, snapshot.p50),
+      tailP99OverP90: tailRatio(snapshot.p99, snapshot.p90),
+    }))
+}
+
+export function distributionSeries(run: RunMetrics | null): readonly DistributionSeries[] {
+  const rows = distributionRows(run)
+  return DISTRIBUTION_QUANTILES.map((quantile) => ({
+    id: quantile.id,
+    labelKey: quantile.labelKey,
+    points: rows.map((row) => ({ day: row.day, value: row[quantile.id] })),
+  }))
+}
+
 /* —— WB-08.14 · 推荐:敏感性/单轴推荐 + 插值与观测区分 —— */
 
 const SENS_NOTE_KEY: Record<SensNote, 'analysis.sens.ok' | 'analysis.sens.no_bracket' | 'analysis.sens.not_isolated' | 'analysis.sens.missing_metric' | 'analysis.sens.zero_baseline'> = {

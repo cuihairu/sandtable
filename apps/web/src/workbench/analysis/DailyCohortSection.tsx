@@ -4,13 +4,16 @@ import {
   DAILY_KPI,
   cohortFacets,
   dailyTrendSeries,
+  distributionRows,
+  distributionSeries,
   selectedDailyRun,
 } from '../../lib/analysisView.ts'
-import type { DailyKpiKey, DailyTrendSeries } from '../../lib/analysisView.ts'
+import type { DailyKpiKey, DailyTrendSeries, DistributionSeries } from '../../lib/analysisView.ts'
 import { KERNEL_SOURCE } from '../../lib/dataSource.ts'
 import { fmtNumber, fmtPercent } from '../../lib/i18n/format.ts'
 import { t } from '../../lib/i18n/index.ts'
 import type { TranslationKey } from '../../lib/i18n/index.ts'
+import { useState } from 'react'
 import { useLocale } from '../state/localeStore.ts'
 
 const COHORT_LABEL: Record<'casual' | 'core' | 'whale', TranslationKey> = {
@@ -98,6 +101,64 @@ function TrendChart({ locale, series, metric, label, sourceTitle }: {
   </svg>
 }
 
+function DistributionChart({ locale, series, label, sourceTitle }: {
+  locale: 'zh-CN' | 'en-US'
+  series: DistributionSeries
+  label: string
+  sourceTitle: string
+}): JSX.Element {
+  const [selectedDay, setSelectedDay] = useState<number | undefined>()
+  const activeDay = selectedDay ?? series.points.at(-1)?.day
+  const width = 520
+  const height = 168
+  const left = 58
+  const right = 12
+  const top = 24
+  const bottom = 30
+  const dayMin = Math.min(...series.points.map((point) => point.day))
+  const dayMax = Math.max(...series.points.map((point) => point.day))
+  const x0 = series.points.length === 1 ? dayMin - 0.5 : dayMin
+  const x1 = series.points.length === 1 ? dayMin + 0.5 : dayMax
+  const domain = chartDomain(series.points.map((point) => point.value))
+  const x = (day: number): number => left + ((day - x0) / (x1 - x0 || 1)) * (width - left - right)
+  const y = (value: number): number => top + ((domain.max - value) / (domain.max - domain.min || 1)) * (height - top - bottom)
+
+  return <svg data-testid="daily-distribution-chart" data-quantile={series.id} viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`${label}: ${series.points.length} days`}>
+    <title>{sourceTitle}</title>
+    {[0, 1, 2, 3].map((index) => {
+      const value = domain.min + (domain.max - domain.min) * index / 3
+      return <g key={index}>
+        <line x1={left} x2={width - right} y1={y(value)} y2={y(value)} className="chart-grid" />
+        <text x={left - 8} y={y(value) + 4} textAnchor="end" className="chart-text">{fmtNumber(locale, value, { maxFractionDigits: 2 })}</text>
+      </g>
+    })}
+    {series.points.length > 1 && <polyline fill="none" className="trend-line" points={series.points.map((point) => `${x(point.day)},${y(point.value)}`).join(' ')} />}
+    {series.points.map((point) => {
+      const pointLabel = `${label} · day ${point.day}: ${fmtNumber(locale, point.value, { maxFractionDigits: 6 })}`
+      const selected = point.day === activeDay
+      return <g key={point.day} className={`daily-trend-point${selected ? ' selected' : ''}`}
+        data-testid="daily-distribution-point" data-quantile={series.id} data-day={point.day} data-value={point.value}
+        role="button" tabIndex={0} aria-label={pointLabel} aria-pressed={selected}
+        onClick={() => setSelectedDay(point.day)}
+        onFocus={() => setSelectedDay(point.day)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedDay(point.day); return }
+          if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return
+          event.preventDefault()
+          const index = series.points.findIndex((candidate) => candidate.day === point.day)
+          const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1
+          const next = series.points[(index + step + series.points.length) % series.points.length]
+          event.currentTarget.parentElement?.querySelector<SVGGElement>(
+            `[data-testid="daily-distribution-point"][data-quantile="${series.id}"][data-day="${next.day}"]`,
+          )?.focus()
+        }}
+      ><title>{pointLabel}</title><circle cx={x(point.day)} cy={y(point.value)} r="3" /></g>
+    })}
+    <text x={left} y={14} className="chart-label">{label}</text>
+    <text x={(width + left - right) / 2} y={height - 6} textAnchor="middle" className="chart-text">day</text>
+  </svg>
+}
+
 export interface DailyCohortSectionProps {
   sim: SimOutput | null
   runId: string
@@ -109,6 +170,8 @@ export function DailyCohortSection({ sim, runId, replicate }: DailyCohortSection
   const run = selectedDailyRun(sim, replicate, runId).run
   const trends = run ? dailyTrendSeries(run) : []
   const cohorts = cohortFacets(run)
+  const distribution = distributionRows(run)
+  const distributionCharts = distributionSeries(run)
   const unavailable = t(locale, 'analysis.unavailable')
   const source = `KERNEL_SOURCE:${KERNEL_SOURCE}`
   const sourceTitle = t(locale, 'analysis.dailySourceTitle', { source, run: runId, replicate })
@@ -135,6 +198,37 @@ export function DailyCohortSection({ sim, runId, replicate }: DailyCohortSection
         </tr>)}</tbody>
       </table></div>
     </>}
+
+    <h2>{t(locale, 'analysis.distributionTitle')}</h2>
+    <p className="note" data-testid="daily-distribution-source">{t(locale, 'analysis.distributionSourceTitle', { source, run: runId, replicate })}</p>
+    <p className="note">{t(locale, 'analysis.distributionNote')}</p>
+    {distribution.length > 0 ? <>
+      <div className="mini-figures">{distributionCharts.map((series) => <div key={series.id} className="mini-figure">
+        <DistributionChart locale={locale} series={series} label={t(locale, series.labelKey)} sourceTitle={sourceTitle} />
+      </div>)}</div>
+      <h3>{t(locale, 'analysis.distributionTableTitle')}</h3>
+      <p className="note">{t(locale, 'analysis.distributionTableNote')}</p>
+      <div className="candidate-table-wrap"><table className="candidate-table" data-testid="daily-distribution-table">
+        <thead><tr>
+          <th>{t(locale, 'analysis.distribution.day')}</th>
+          <th>{t(locale, 'analysis.distribution.n')}</th>
+          <th>{t(locale, 'analysis.distribution.p50')}</th>
+          <th>{t(locale, 'analysis.distribution.p90')}</th>
+          <th>{t(locale, 'analysis.distribution.p99')}</th>
+          <th>{t(locale, 'analysis.distribution.tailP90P50')}</th>
+          <th>{t(locale, 'analysis.distribution.tailP99P90')}</th>
+        </tr></thead>
+        <tbody>{distribution.map((row) => <tr key={row.day}>
+          <td data-field="day" data-value={row.day}>{formatExact(row.day)}</td>
+          <td data-field="n" data-value={row.n}>{formatExact(row.n)}</td>
+          <td data-field="p50" data-value={row.p50}>{formatExact(row.p50)}</td>
+          <td data-field="p90" data-value={row.p90}>{formatExact(row.p90)}</td>
+          <td data-field="p99" data-value={row.p99}>{formatExact(row.p99)}</td>
+          <td data-field="tailP90OverP50" data-value={row.tailP90OverP50}>{formatExact(row.tailP90OverP50)}</td>
+          <td data-field="tailP99OverP90" data-value={row.tailP99OverP90}>{formatExact(row.tailP99OverP90)}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </> : <p className="note" role="alert" aria-live="assertive" data-testid="daily-distribution-unavailable">{t(locale, 'analysis.distributionMissing')}</p>}
 
     <h2>{t(locale, 'analysis.cohortTitle')}</h2>
     <p className="note">{t(locale, 'analysis.cohortNote', { run: runId, replicate, source })}</p>
