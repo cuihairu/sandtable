@@ -822,6 +822,26 @@ test('队列持久化:版本/形状损坏整体丢弃;载荷按序恢复且执�
   fresh.resetForTest()
 })
 
+test('队列持久化:执行规格形状损坏时整体拒收', () => {
+  resetForTest()
+  const storage = memoryStorage()
+  const validJobs = [persistedRealJob('job_spec0001', 'queued', { kind: 'single', yaml: 'valid', replicates: 1 })]
+  assert.equal(persistQueueState({ storage, jobs: validJobs }), true)
+  assert.notEqual(restoreQueueState(storage), null)
+
+  const invalidPayload = (spec) => {
+    const payload = { version: '1', savedAt: 1, jobs: [persistedRealJob('job_spec0002', 'queued', spec)] }
+    storage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(payload))
+    return restoreQueueState(storage)
+  }
+  assert.equal(invalidPayload({ kind: 'sweep', yaml: 'bad', plan: { candidates: [{}], replicates: 1, sims: 1 } }), null, 'sweep 缺候选值拒收')
+  assert.equal(invalidPayload({ kind: 'sweep', yaml: 'bad', plan: { candidates: [{ a: 1 }], replicates: 2, sims: 1 } }), null, 'sims 与计划不一致拒收')
+  assert.equal(invalidPayload({ kind: 'ab', baseYaml: 'a', candYaml: 'b', replicates: -1, metric: 'x' }), null, '负 replicate 拒收')
+  assert.equal(invalidPayload({ kind: 'single', yaml: 's' }), null, 'single 缺 replicate 拒收')
+  assert.equal(invalidPayload({ kind: 'unknown' }), null, '未知 kind 拒收')
+  resetForTest()
+})
+
 test('批量调度:并发 2 同时执行且结果保持 FIFO 一致', async () => {
   resetForTest()
   setSchedulingConfig({ concurrency: 2 })

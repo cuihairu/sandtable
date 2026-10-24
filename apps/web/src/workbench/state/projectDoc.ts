@@ -19,7 +19,7 @@ import { candidateIdFor, hashId, ID_PREFIXES, runIdFor } from '../ids.ts'
 import type { BaselineId, CandidateId, ProjectId, RunId } from '../ids.ts'
 import { DEMO_SOURCE, KERNEL_SOURCE, isDataSource } from '../../lib/dataSource.ts'
 import type { DataSource } from '../../lib/dataSource.ts'
-import type { Job, JobStatus } from './jobLogic.ts'
+import type { ExecSpec, Job, JobStatus } from './jobLogic.ts'
 
 /* —— 打开项目(WB-04.02/03/04) —— */
 
@@ -787,6 +787,44 @@ export function persistQueueState(input: { storage: StorageLike; jobs: readonly 
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isRestorableExecSpec(value: unknown): value is ExecSpec {
+  if (!isPlainObject(value)) return false
+  if (value.kind === 'sweep') {
+    const plan = value.plan
+    return typeof value.yaml === 'string'
+      && isPlainObject(plan)
+      && Array.isArray(plan.candidates)
+      && plan.candidates.length > 0
+      && plan.candidates.every((candidate) =>
+        isPlainObject(candidate)
+        && Object.keys(candidate).length > 0
+        && Object.values(candidate).every((cell) => typeof cell === 'number' && Number.isFinite(cell))
+      )
+      && typeof plan.replicates === 'number'
+      && Number.isInteger(plan.replicates) && plan.replicates >= 0
+      && typeof plan.sims === 'number'
+      && Number.isInteger(plan.sims) && plan.sims >= 0
+      && plan.sims === plan.candidates.length * plan.replicates
+  }
+  if (value.kind === 'ab') {
+    return typeof value.baseYaml === 'string'
+      && typeof value.candYaml === 'string'
+      && typeof value.metric === 'string'
+      && typeof value.replicates === 'number'
+      && Number.isInteger(value.replicates) && value.replicates >= 0
+  }
+  if (value.kind === 'single') {
+    return typeof value.yaml === 'string'
+      && typeof value.replicates === 'number'
+      && Number.isInteger(value.replicates) && value.replicates >= 0
+  }
+  return false
+}
+
 function isRestorableJob(value: unknown): value is Job {
   if (typeof value !== 'object' || value === null) return false
   const job = value as Record<string, unknown>
@@ -803,8 +841,8 @@ function isRestorableJob(value: unknown): value is Job {
     && (exec === null || (
       typeof exec.runId === 'string'
       && typeof exec.kind === 'string'
-      && typeof exec.spec === 'object' && exec.spec !== null
-      && (exec.spec as Record<string, unknown>).kind === exec.kind
+      && isRestorableExecSpec(exec.spec)
+      && exec.spec.kind === exec.kind
     ))
 }
 
