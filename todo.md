@@ -415,6 +415,7 @@
 - [ ] 脚手架：新建场景/实验的骨架生成〔2026-10-20 用户问起，现状=无；**推荐方案**：CLI 子命令 `sandtable scaffold <name>` 生成 场景 yaml+基线+实验草稿+README 四件套（模板集中在一处），web「新建场景」向导复用同一模板，不写两套｜解锁=拍板即开工〕
 
 - [x] Windows 打包嵌入应用图标：用官方 `docs/public/logo.svg` 生成（2026-10-21 用户拍板「用 svg 生成 png」解除原缺源图阻塞）——magick 1024 源图 → `tauri icon` 全套再生（icons/32..1024+icns+ico+Android mipmap，assets/icon.png 同源），证据: b0e9be5+49bcdae、桌面链 run 39607686014 success（四产物含 sandtable-Windows-17）、图标文件 apps/desktop/src-tauri/icons/*。
+- [x] 桌面缩放（2026-10-24,ce5b7e9）：主窗 builder 提为 `main_window<R: Runtime>` 并开 `zoom_hotkeys_enabled(true)`——Windows 走 WebView2 IsZoomControlEnabled，macOS/Linux 注入 Ctrl/Cmd + -/=/0 与 Ctrl+滚轮（20% 步进 0.2–10）；polyfill 回调 `plugin:webview|set_webview_zoom` 需 capabilities 放行，主窗补 `core:webview:allow-set-webview-zoom`（缺权限则 Linux/macOS 按键静默失效）。测试：`cargo test -p sandtable-desktop --lib` 17 passed（新增 2：mock 运行时主窗构建 + capabilities 放行守卫）、clippy `--all-targets` 零告警。
 
 
 - [ ] **BLOCKED** 真实案例二期 + 模型校准。缺:用户提供的真实运营数据与外部对标基准;公开数值案例不能替代二期输入(2026-10-19 核查:仓内无该数据,open PR/issue=0)。已代决(2026-10-19 巡检授权):校准路径设计落 `docs/calibration-design.md`(数值通道自由变量 + 既有 sweep/optimize/RF 链 + ±10% 带与 retention 0.9 底线 + 尾段 hold-out 防过拟合;缺件即锚点 unmapped 不代数据)——设计解锁方法不解锁数据,仍 BLOCKED 于 §2 三个必需交付件
