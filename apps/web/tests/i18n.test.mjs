@@ -532,7 +532,9 @@ test('WB-11.18:format 层 maxFractionDigits(封顶不补零)与有效数字封�
 test('WB-11.18:展示层不直接构造 Intl 数字/日期格式化器(统一走 lib/i18n/format)', async () => {
   const { readdirSync, readFileSync } = await import('node:fs')
   const path = await import('node:path')
-  const root = new URL('../src/', import.meta.url).pathname
+  // Windows:file: URL 的 pathname 会产出 /C:/... 双前缀,必须 fileURLToPath
+  const { fileURLToPath } = await import('node:url')
+  const root = fileURLToPath(new URL('../src/', import.meta.url))
   const bad = []
   const walk = (d) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {

@@ -16,6 +16,9 @@ const storage = {
   },
 }
 globalThis.window = { location: { hash: '' }, history: { replaceState() {} }, localStorage: storage }
+// localeStore 引导还读 navigator(系统语言);Node 的 navigator 随宿主机而变
+// (本机 zh-CN 会破坏「无浏览器语言 → 默认 en-US」基线),与 locale-inert 同款桩。
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { language: '', languages: [] } })
 
 const { localeSession, setLocale } = await import('../src/workbench/state/localeStore.ts')
 const { dispatch, getState, deriveDocuments, DEMO_BASE_YAML } = await import(

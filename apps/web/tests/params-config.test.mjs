@@ -16,6 +16,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 import { PARAM_REGISTRY, registryParam, displayParamName, paramGroups } from '../src/workbench/params/paramRegistry.ts'
 import {
@@ -27,7 +28,8 @@ import {
   buildRowModels, validateParam, parseCellInput, kernelCheck, visibilityFilter, bulkPreview,
 } from '../src/workbench/params/paramsLogic.ts'
 
-const REPO_ROOT = new URL('../../../', import.meta.url).pathname
+// Windows:file: URL 的 pathname 会产出 /C:/... 双前缀,必须 fileURLToPath
+const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 
 /* ————— 05.01 注册表全量(与 registry.rs 锁漂移) ————— */
 
