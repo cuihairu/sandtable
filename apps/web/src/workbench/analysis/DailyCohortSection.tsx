@@ -182,7 +182,6 @@ export function DailyCohortSection({ sim, runId, replicate }: DailyCohortSection
       run: runId, replicate, seed: run.seed, players: run.players, days: run.days, source,
     })}</p> : <p className="note" role="alert" aria-live="assertive">{t(locale, 'analysis.dailyMissingRun', { run: runId, replicate })}</p>}
     <p className="note">{t(locale, 'analysis.dailyTrendNote')}</p>
-    <p className="note" role="status">{t(locale, 'analysis.crossReplicateUnavailable')}</p>
     {run && run.day_stats.length > 0 ? <div className="mini-figures">{trends.map((series) => <div key={series.id} className="mini-figure">
       <TrendChart locale={locale} series={series} metric={series.id} label={t(locale, series.labelKey)} sourceTitle={sourceTitle} />
     </div>)}</div> : <p role="alert" aria-live="assertive" data-testid="daily-trend-unavailable">{t(locale, 'analysis.dailyMissingDays')}</p>}

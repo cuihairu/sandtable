@@ -138,6 +138,12 @@ export async function abCompare(
 // 可选指标缺席保持缺席。CI 由内核 SampleStats 口径(t 或 df>30 normal)
 // 直出,禁止前端拿单次 days.csv 套置信带。
 export async function dailyAggregate(results: RunMetrics[]): Promise<DailyAggregation> {
+  // 测试注入点(同 __testKpiAvailabilityForReport 先例):节点 DOM 测试无法
+  // fetch 浏览器 wasm,注入同源内核聚合(pkg-node binding)保持真数据源。
+  const override = (globalThis as {
+    __testDailyAggregate?: (results: RunMetrics[]) => Promise<DailyAggregation>
+  }).__testDailyAggregate
+  if (override) return override(results)
   if (isDesktop) {
     return invoke('daily_aggregate', { resultsJson: JSON.stringify(results) })
   }

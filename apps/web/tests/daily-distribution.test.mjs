@@ -172,6 +172,5 @@ if (!existsSync(pkgNode)) {
     assert.match(alert.textContent, /不虚构/)
     assert.equal(host.querySelector('[data-testid="daily-distribution-chart"]'), null)
     assert.equal(host.querySelector('[data-testid="daily-distribution-table"]'), null)
-    assert.match(host.textContent, /缺内核聚合/)
   })
 }

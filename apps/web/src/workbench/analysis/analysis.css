@@ -19,6 +19,9 @@
 .wb-app .ab-facet { border: 1px solid var(--wb-soft-line); padding: var(--wb-pad-panel); margin: 0; min-width: 0; }
 .wb-app .ab-facet svg { width: 100%; height: auto; display: block; }
 .wb-app .ab-facet figcaption { margin-block-start: var(--wb-space-1); }
+/* —— 跨 replicate 逐日聚合:CI 带 = 内核 SampleStats 95% CI,前端只画不重算 —— */
+.wb-app .agg-ci-band { fill: var(--wb-teal); fill-opacity: .13; }
+.wb-app .agg-mean-line { fill: none; stroke: var(--wb-teal); stroke-width: 1.6; }
 .wb-app .result-draft { border-top: 1px solid var(--wb-line); padding-block: var(--wb-pad-panel); }
 .wb-app .result-draft textarea { display: block; width: 100%; font-family: var(--wb-mono); background: var(--wb-canvas); border: 1px solid var(--wb-line); padding: var(--wb-pad-panel); }
 @media (max-width: 1100px) { .wb-app .real-result-grid { grid-template-columns: minmax(0, 1fr); } .wb-app .real-inspector { border-inline-start: 0; border-top: 1px solid var(--wb-line); padding-inline-start: 0; } }

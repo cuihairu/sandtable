@@ -14,6 +14,7 @@ import { METRIC_KEYS } from './types.ts'
 import type {
   CohortStat,
   Comparison,
+  DailyAggregation,
   Elasticity,
   MetricKey,
   RunMetrics,
@@ -407,6 +408,34 @@ export function dailyTrendSeries(run: RunMetrics | null): readonly DailyTrendSer
     labelKey: metric.labelKey,
     percent: metric.percent,
     points: run?.day_stats.map((day) => ({ day: day.day, value: day[metric.id] })) ?? [],
+  }))
+}
+
+/* —— 跨 replicate 逐日聚合(P2):内核 daily_aggregate 直出,CI 不在前端重算 —— */
+
+export type AggregateDailyPoint = { day: number; mean: number; ci95_lo: number; ci95_hi: number }
+
+export type AggregateDailySeries = {
+  id: DailyKpiKey
+  labelKey: TranslationKey
+  percent: boolean
+  points: readonly AggregateDailyPoint[]
+}
+
+/**
+ * 内核聚合 → 图形序列:某日整键缺席(如 day1 inflation、可选指标整组缺席)
+ * 不入点列,不补 0;CI 带是内核 SampleStats 口径,本层只搬运不重算。
+ */
+export function aggregateDailySeries(agg: DailyAggregation | null): readonly AggregateDailySeries[] {
+  if (agg === null) return []
+  return DAILY_KPI.map((metric) => ({
+    id: metric.id,
+    labelKey: metric.labelKey,
+    percent: metric.percent,
+    points: agg.day_stats.flatMap((day) => {
+      const stat = day[metric.id]
+      return stat === undefined ? [] : [{ day: day.day, mean: stat.mean, ci95_lo: stat.ci95_lo, ci95_hi: stat.ci95_hi }]
+    }),
   }))
 }
 

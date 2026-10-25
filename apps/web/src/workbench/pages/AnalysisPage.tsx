@@ -14,6 +14,7 @@ import { ResponseChart } from '../analysis/ResponseChart.tsx'
 import { AbEffectChart } from '../analysis/AbEffectChart.tsx'
 import { ProChartsSection } from '../analysis/ProCharts.tsx'
 import { DailyCohortSection } from '../analysis/DailyCohortSection.tsx'
+import { CrossReplicateSection } from '../analysis/CrossReplicateSection.tsx'
 import { CandidateTable } from '../analysis/CandidateTable.tsx'
 import type { CandidateColumn } from '../analysis/CandidateTable.tsx'
 import { DemoAnalysisPage } from '../analysis/DemoAnalysisPage.tsx'
@@ -299,6 +300,8 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
       <p className="note">{t(locale, 'analysis.dailyNote', { run: exec.runId })}</p>
       {daily.ok ? <table className="candidate-table"><thead><tr><th>day</th><th>win_rate</th><th>inflation</th></tr></thead><tbody>{daily.rows.map((r) => <tr key={r.day}><td>{r.day}</td><td>{formatMetric(r.win_rate, 'win_rate', false, locale)}</td><td>{r.inflation === null ? t(locale, 'analysis.unavailable') : fmtPercent(locale, r.inflation)}</td></tr>)}</tbody></table> : <p>{daily.reason}</p>}
       <DailyCohortSection sim={sim} runId={exec.runId} replicate={ui.replicate} />
+      {/* 跨 replicate 逐日聚合:CI 走内核 daily_aggregate,单次 days.csv 不套置信带 */}
+      <CrossReplicateSection results={sim?.results ?? null} runId={exec.runId} />
     </section>}
     {a.drafts.length > 0 && <section><h2>{t(locale, 'analysis.draftsTitle')}</h2><button className="btn" onClick={() => { download(`${exec.runId}-drafts.json`, draftsJson(a.drafts, exec.runId), 'application/json'); notify('success', t(locale, 'analysis.draftsJsonDone', { count: a.drafts.length })) }}>{t(locale, 'analysis.downloadDraftsJson')}</button>{a.drafts.map((d) => <div key={d.id} className="result-draft">
       <p>{t(locale, 'analysis.draftLine', { id: d.id, run: d.sourceRunId, cand: d.sourceCandidateId, base: d.baselineId })}</p>
