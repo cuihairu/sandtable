@@ -111,7 +111,7 @@ if (!existsSync(pkgNode)) {
   const { createRoot } = await import('react-dom/client')
   const { setLocale } = await import('../src/workbench/state/localeStore.ts')
   const { DailyCohortSection } = await import('../src/workbench/analysis/DailyCohortSection.tsx')
-  const wasm = await import(pkgNode)
+  const wasm = await import(pathToFileURL(pkgNode).href)
 
   await act(async () => setLocale('zh-CN'))
   const render = async (props) => {

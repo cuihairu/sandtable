@@ -19,3 +19,5 @@ __pycache__/
 .pytest_cache/
 .coverage
 *.egg-info/
+build.log
+cargo-test.log

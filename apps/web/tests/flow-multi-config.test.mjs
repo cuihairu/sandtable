@@ -16,7 +16,7 @@ import {
 let assertions = 0
 const assert = new Proxy(strictAssert, { get(target, key) { const value = target[key]; return typeof value === 'function' ? (...args) => { assertions++; return value(...args) } : value } })
 
-const read = (rel) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', rel), 'utf8')
+const read = (rel) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', rel), 'utf8').replaceAll('\r\n', '\n')
 
 // 三份真实 YAML(带注释,用于验证字节保真不是只保了字段)
 const BASE = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\nmodel:\n  warrior:\n    attack: 100 # 基线档\n'

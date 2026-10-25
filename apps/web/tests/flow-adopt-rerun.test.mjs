@@ -12,7 +12,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -36,7 +36,7 @@ if (!existsSync(pkgNode)) {
   }
   globalThis.window = { location: { hash: '' }, history: { replaceState() {} }, localStorage: storage }
 
-  const wasm = await import(pkgNode)
+  const wasm = await import(pathToFileURL(pkgNode).href)
   const { dispatch, getState } = await import('../src/workbench/state/workbenchStore.ts')
   const { snapshotRun, runIndexEntryOf } = await import('../src/workbench/state/projectDoc.ts')
   const { resultRows, copyCandidate } = await import('../src/workbench/analysis/resultModel.ts')

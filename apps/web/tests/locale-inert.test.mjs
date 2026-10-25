@@ -10,7 +10,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -35,8 +35,11 @@ if (!existsSync(pkgNode)) {
   globalThis.window = { location: { hash: '' }, history: { replaceState() {} }, localStorage: storage }
   // localeStore 引导直接读全局 localStorage(非 window.localStorage),一并给桩
   globalThis.localStorage = storage
+  // localeStore 引导还读 navigator(系统语言);Node 的 navigator 随宿主机而变
+  // (CI 无语言环境 vs 本机 zh-CN),桩成无系统语言让基线确定性落在 en-US
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { language: '', languages: [] } })
 
-  const wasm = await import(pkgNode)
+  const wasm = await import(pathToFileURL(pkgNode).href)
   const runManager = await import('../src/workbench/state/runManager.ts')
   const { dispatch, getState } = await import('../src/workbench/state/workbenchStore.ts')
   const { setLocale, localeSession } = await import('../src/workbench/state/localeStore.ts')

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 import { applyLootConfig, applyStageRules, buildDefaultYaml, parseConfig, readStageRules, readText } from '../src/workbench/params/configYaml.ts'
@@ -12,7 +12,7 @@ import { reviewStageRules, stageRuleDiff, stageRuleImpact } from '../src/workben
 
 const here = dirname(fileURLToPath(import.meta.url))
 const pkgNode = join(here, '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js')
-const wasm = existsSync(pkgNode) ? await import(pkgNode) : null
+const wasm = existsSync(pkgNode) ? await import(pathToFileURL(pkgNode).href) : null
 
 const withComments = `schema_version: '1'\nscenario: {population: 40, duration: '3d'} # keep\nmodel:\n  dungeon:\n    tiers: 2 # keep dungeon\n  formulas:\n    xp_needed: 'xp_base * level ^ xp_pow' # keep formula\n`
 const rules = [

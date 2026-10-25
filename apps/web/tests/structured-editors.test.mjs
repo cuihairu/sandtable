@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 import { applyLootConfig, buildDefaultYaml, parseConfig, readText } from '../src/workbench/params/configYaml.ts'
@@ -13,7 +13,7 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const pkgNode = join(here, '../../../crates/sandtable-wasm/pkg-node/sandtable_wasm.js')
-const wasm = existsSync(pkgNode) ? await import(pkgNode) : null
+const wasm = existsSync(pkgNode) ? await import(pathToFileURL(pkgNode).href) : null
 
 test('formula syntax, references and preview match kernel semantics', () => {
   const report = reviewFormula('xp_base * level ^ xp_pow')

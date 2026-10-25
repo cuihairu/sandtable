@@ -1,0 +1,3 @@
+# 黄金快照按字节参与断言（tests/golden.rs golden_snapshot_byte_identical），
+# 必须跨平台保持 LF，禁止 git 行尾转换。
+crates/sandtable-core/tests/fixtures/golden_report.json -text

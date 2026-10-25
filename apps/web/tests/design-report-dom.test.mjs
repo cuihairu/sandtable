@@ -33,7 +33,7 @@ if (!existsSync(pkgNode)) {
   const { createRoot } = await import('react-dom/client')
   const { setLocale } = await import('../src/workbench/state/localeStore.ts')
   const runManager = await import('../src/workbench/state/runManager.ts')
-  const wasm = await import(pkgNode)
+  const wasm = await import(pathToFileURL(pkgNode).href)
   const kpiAvailability = (yaml) => JSON.parse(wasm.kpi_availability(yaml))
   await act(async () => setLocale('zh-CN'))
 

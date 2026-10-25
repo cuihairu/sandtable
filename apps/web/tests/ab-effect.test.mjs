@@ -6,7 +6,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 import { abFacets, abUnavailable, effectDomain, facetsByDimension } from '../src/lib/abEffect.ts'
@@ -88,7 +88,7 @@ if (!existsSync(pkgNode)) {
     assert.ok(true)
   })
 } else {
-  const wasm = await import(pkgNode)
+  const wasm = await import(pathToFileURL(pkgNode).href)
   const R = 6
   const BASE = 'schema_version: "1"\nscenario: {population: 200, duration: "14d", seed: 42}\n'
   const armYaml = (m) => `${BASE}model:\n  dungeon:\n    m_attack: ${m}\n`

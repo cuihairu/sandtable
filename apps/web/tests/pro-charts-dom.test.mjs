@@ -50,7 +50,7 @@ if (!existsSync(pkgNode)) {
   const { fmtNumber } = await import('../src/lib/i18n/format.ts')
   const { METRIC_META } = await import('../src/lib/metricMeta.ts')
   const { candidateIdFor, hashId, ID_PREFIXES } = await import('../src/workbench/ids.ts')
-  const wasm = await import(pkgNode)
+  const wasm = await import(pathToFileURL(pkgNode).href)
 
   const EXP2 = (mode = 'grid', samples = 0) => [
     'schema_version: "1"',

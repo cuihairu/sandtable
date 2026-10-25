@@ -4,7 +4,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -13,7 +13,7 @@ const pkgNode = join(here, '../../../crates/sandtable-wasm/pkg-node/sandtable_wa
 if (!existsSync(pkgNode)) {
   test('skip: pkg-node 未构建(报告守卫在 CI 的构建后阶段跑)', () => { assert.ok(true) })
 } else {
-  const wasm = await import(pkgNode)
+  const wasm = await import(pathToFileURL(pkgNode).href)
   const { designReport } = await import('../src/lib/designReport.ts')
   const { designReportHtml } = await import('../src/lib/designReportHtml.ts')
 

@@ -9,7 +9,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -20,7 +20,7 @@ if (!existsSync(pkgNode)) {
     assert.ok(true)
   })
 } else {
-  const wasm = await import(pkgNode)
+  const wasm = await import(pathToFileURL(pkgNode).href)
   const { candidateViews } = await import('../src/lib/sweepView.ts')
   const { heatmapGrid, scatterPoints, oatMatrix, paretoFront } = await import('../src/lib/proChartsModel.ts')
   const { trackFailedPoints } = await import('../src/lib/sweepDesign.ts')
