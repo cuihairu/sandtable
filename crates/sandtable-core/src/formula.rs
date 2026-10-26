@@ -44,6 +44,52 @@ impl Formula {
         );
         eval_expr(&self.root, env)
     }
+
+    /// 表达式实际引用的变量下标(升序去重)。口径/可复现用途:自定义 KPI
+    /// 要说清自己依赖哪几个指标,而不是笼统报整个白名单。
+    pub fn var_indices(&self) -> Vec<u32> {
+        let mut out = Vec::new();
+        collect_vars(&self.root, &mut out);
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+}
+
+/// 递归收集 AST 里出现的变量下标(不求值,不短路,子树全覆盖)。
+fn collect_vars(expr: &Expr, out: &mut Vec<u32>) {
+    match expr {
+        Expr::Var(i) => out.push(*i),
+        Expr::Neg(a) | Expr::Not(a) => collect_vars(a, out),
+        Expr::Add(a, b)
+        | Expr::Sub(a, b)
+        | Expr::Mul(a, b)
+        | Expr::Div(a, b)
+        | Expr::Rem(a, b)
+        | Expr::Pow(a, b)
+        | Expr::Lt(a, b)
+        | Expr::Le(a, b)
+        | Expr::Gt(a, b)
+        | Expr::Ge(a, b)
+        | Expr::Eq(a, b)
+        | Expr::Ne(a, b)
+        | Expr::And(a, b)
+        | Expr::Or(a, b) => {
+            collect_vars(a, out);
+            collect_vars(b, out);
+        }
+        Expr::Ternary(a, b, c) => {
+            collect_vars(a, out);
+            collect_vars(b, out);
+            collect_vars(c, out);
+        }
+        Expr::Call(_, args) => {
+            for arg in args {
+                collect_vars(arg, out);
+            }
+        }
+        Expr::Const(_) => {}
+    }
 }
 
 /// 加载期编译:字符串 → [`Formula`]。失败返回带位置的错误说明。

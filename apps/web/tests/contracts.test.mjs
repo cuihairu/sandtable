@@ -763,6 +763,104 @@ test('P2 逐日聚合桥:daily_aggregate 内核直出,天数交集/可选缺席/
   assert.match(tauri, /daily_aggregate,/, '命令已注册到 generate_handler 列表')
 })
 
+test('P2 自定义 KPI 桥:kpi_validate / kpi_eval 内核直出,白名单同口径 / 缺席不填 0 / <2 不给区间 / 双路径接线', () => {
+  // 校验只编译:vars = 内置指标名全集(8 项),used_vars 是表达式实际引用(声明序去重)
+  const shape = JSON.parse(wasm.kpi_validate('max(win_rate, win_rate) * retention_d7'))
+  assert.deepEqual(shape.used_vars, ['retention_d7', 'win_rate'])
+  assert.equal(shape.vars.length, 8, '白名单 = 内置指标全集')
+  assert.ok(
+    shape.vars.every((v) => typeof v === 'string' && /^[a-z][a-z0-9_]*$/.test(v)),
+    '变量名是内核 ID(snake_case),与 CSV 列名同口径',
+  )
+  // 未知变量点名 / 常量表达式拒绝 / 空表达式拒绝,全部走配置错误通道
+  assert.throws(
+    () => wasm.kpi_validate('win_rates * 2'),
+    (e) => String(e).includes('win_rates') && classifyWasmError(String(e)).kind === 'config',
+  )
+  assert.throws(() => wasm.kpi_validate('0.5'), (e) => String(e).includes('常量表达式'))
+  assert.throws(() => wasm.kpi_validate(''), (e) => String(e).includes('公式为空'))
+
+  // 求值:7 天配置上 d7 有值,同名表达式逐值 = RunMetrics 内置字段
+  const week = JSON.parse(
+    wasm.run_simulation('schema_version: "1"\nscenario: {population: 40, duration: "7d", seed: 7}\n', 3),
+  )
+  const out = JSON.parse(wasm.kpi_eval('retention_d7', JSON.stringify(week.results)))
+  assert.deepEqual(out.per_replicate, week.results.map((r) => r.retention_d7), '逐 replicate 与内置字段逐值一致')
+  assert.deepEqual(out.used_vars, ['retention_d7'])
+  assert.equal(out.n_used, 3)
+  assert.equal(out.expression, 'retention_d7', '表达式原文随结果回传(复算入口)')
+  assert.equal(out.schema_version, '1', 'KPI 定义版本随结果回传')
+  assert.match(out.ci_method, /t\(0\.975,n-1\)/, 'CI 口径随结果回传,前端不自算')
+  assert.match(out.sd_method, /n-1/, '样本标准差分母 n−1')
+  assert.ok(out.stats, 'n ≥ 2 有跨 replicate 统计')
+  // 跨 replicate 手算对拍:mean / sd 与直接从 results 算的一致
+  const vals = week.results.map((r) => r.retention_d7)
+  const mean = vals.reduce((s, v) => s + v, 0) / vals.length
+  const sd = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / (vals.length - 1))
+  assert.ok(Math.abs(out.stats.mean - mean) < 1e-12, 'mean 与手算一致')
+  assert.ok(Math.abs(out.stats.sd - sd) < 1e-12, 'sd 与手算一致(分母 n−1)')
+  // 表达式可组合内建函数(不只是裸指标名)
+  const combo = JSON.parse(wasm.kpi_eval('clamp(win_rate, 0, 1) * 2', JSON.stringify(week.results)))
+  assert.deepEqual(
+    combo.per_replicate,
+    week.results.map((r) => r.win_rate * 2),
+    '内建函数 + 算术组合逐值一致',
+  )
+
+  // 红线一:单次运行不给统计区间(stats 整键缺席,缺席 ≠ 0)
+  const one = JSON.parse(wasm.kpi_eval('retention_d7', JSON.stringify(week.results.slice(0, 1))))
+  assert.equal(one.n_used, 1)
+  assert.equal(one.stats, undefined, 'n < 2 不套置信带')
+  assert.equal(one.per_replicate[0], week.results[0].retention_d7)
+  // 红线二:指标缺席记 null 不填 0(3 天配置 d7 未定义)
+  const short = JSON.parse(
+    wasm.run_simulation('schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\n', 2),
+  )
+  const s2 = JSON.parse(wasm.kpi_eval('retention_d7', JSON.stringify(short.results)))
+  assert.deepEqual(s2.per_replicate, [null, null], '缺席不填 0')
+  assert.equal(s2.n_used, 0)
+  assert.equal(s2.stats, undefined)
+  // 非法 JSON → 参数错误;求值通道同样走编译校验(配置错误)
+  assert.throws(
+    () => wasm.kpi_eval('win_rate', '[{'),
+    (e) => String(e).includes('参数错误') && String(e).includes('解析失败'),
+  )
+  assert.throws(
+    () => wasm.kpi_eval('win_rates', JSON.stringify(short.results)),
+    (e) => String(e).includes('配置错误') && String(e).includes('win_rates'),
+  )
+
+  // TS 桥接双路径 + 类型镜像接线守卫(防只接一端)
+  const svc = read('src/lib/wasm.ts')
+  assert.match(svc, /invoke\('kpi_validate', \{ expression \}\)/, '桌面路径走 kpi_validate 命令')
+  assert.match(svc, /kpiValidateBinding\(expression\)/, '浏览器路径走 wasm 绑定')
+  assert.match(svc, /invoke\('kpi_eval', \{ expression, resultsJson: /, '桌面路径走 kpi_eval 命令')
+  assert.match(svc, /kpiEvalBinding\(expression, /, '浏览器路径走 wasm 绑定')
+  const types = typesSrc
+  assert.match(types, /export interface CustomKpiShape/, 'CustomKpiShape 镜像在场')
+  assert.match(types, /export interface CustomKpiOutput/, 'CustomKpiOutput 镜像在场')
+  const outBlock = types.slice(types.indexOf('export interface CustomKpiOutput'))
+  const outBody = outBlock.slice(0, outBlock.indexOf('\n}') + 2)
+  assert.match(outBody, /stats\?: SampleStats/, 'stats 可选键:n < 2 整键缺席')
+  assert.match(outBody, /per_replicate: \(number \| null\)\[\]/, '逐 replicate 缺席记 null')
+  const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')
+  const tauri = read('../../apps/desktop/src-tauri/src/lib.rs')
+  for (const cmd of ['kpi_validate', 'kpi_eval']) {
+    assert.match(wasmRs, new RegExp(`pub fn ${cmd}\\(`), `${cmd}: wasm 导出在场`)
+    assert.match(tauri, new RegExp(`fn ${cmd}\\(`), `${cmd}: Tauri 命令在场`)
+    assert.match(tauri, new RegExp(`${cmd},`), `${cmd}: 命令已注册到 generate_handler 列表`)
+  }
+  // 桌面命令 core 直连(与 sweep_plan / daily_aggregate 同口径),不引 wasm 依赖
+  assert.match(tauri, /sandtable_core::kpi_custom::validate_expression/, '桌面校验命令直连 core')
+  assert.match(tauri, /sandtable_core::kpi_custom::evaluate/, '桌面求值命令直连 core')
+  // 与逐日聚合同一条红线:内核注释里写明 n < 2 不给区间
+  assert.match(
+    read('../../crates/sandtable-core/src/kpi_custom.rs'),
+    /n < 2 不给统计区间/,
+    '内核红线注释在场(与 daily_aggregate 同源)',
+  )
+})
+
 test('P2 优化与代理桥:optimize / surrogate_train / surrogate_predict 三命令双路径接线(行为断言在 optimize-surrogate.test.mjs)', () => {
   const svc = read('src/lib/wasm.ts')
   const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')

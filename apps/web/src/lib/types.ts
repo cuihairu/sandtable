@@ -124,6 +124,31 @@ export interface SampleStats {
   ci95_hi: number
 }
 
+/** CustomKpiShape 对应 core::kpi_custom::CustomKpiShape(校验只编译,不碰运行期数据) */
+export interface CustomKpiShape {
+  /** 可引用变量全集 = 内置指标名(MetricKey::ALL 声明序,与 CSV 列名同口径) */
+  vars: string[]
+  /** 表达式实际引用的变量(声明序去重) */
+  used_vars: string[]
+}
+
+/** CustomKpiOutput 对应 core::kpi_custom::CustomKpiOutput;定义版本与方法口径随结果回传 */
+export interface CustomKpiOutput {
+  /** 表达式原文:同 expression + vars + 版本 ⇒ 同结果(复算入口) */
+  expression: string
+  vars: string[]
+  used_vars: string[]
+  /** 逐 replicate 值;指标缺席或求值产生 NaN 记 null,不填 0 */
+  per_replicate: (number | null)[]
+  /** 参与聚合的 replicate 数 */
+  n_used: number
+  /** 跨 replicate 聚合;n_used < 2 时整键缺席(单次运行不套置信带,缺席 ≠ 0) */
+  stats?: SampleStats
+  schema_version: string
+  sd_method: string
+  ci_method: string
+}
+
 /** AggregateMetricStats 对应 sandtable_core::experiment::AggregateMetricStats */
 export interface AggregateMetricStats {
   n: number

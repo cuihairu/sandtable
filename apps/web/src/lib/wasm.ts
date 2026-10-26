@@ -9,6 +9,8 @@ import init, {
   param_values as paramValuesBinding,
   param_apply as paramApplyBinding,
   kpi_availability as kpiAvailabilityBinding,
+  kpi_validate as kpiValidateBinding,
+  kpi_eval as kpiEvalBinding,
   ab_compare as abCompareBinding,
   daily_aggregate as dailyAggregateBinding,
   optimize as optimizeBinding,
@@ -22,6 +24,8 @@ import { Channel, invoke } from '@tauri-apps/api/core'
 import type {
   CandidateResult,
   Comparison,
+  CustomKpiOutput,
+  CustomKpiShape,
   DailyAggregation,
   LocalQueryResult,
   OptimResult,
@@ -156,6 +160,46 @@ export async function dailyAggregate(results: RunMetrics[]): Promise<DailyAggreg
   }
   await ensureInit()
   return JSON.parse(dailyAggregateBinding(JSON.stringify(results)) as unknown as string) as DailyAggregation
+}
+
+// 自定义 KPI 校验(内核 core::kpi_custom):表达式过公式白名单(函数 /
+// 变量 / 长度 / 嵌套)并拒绝常量表达式,**只编译,不碰运行期数据**。
+// 回传 vars(可引用指标全集,与 CSV 列名同口径)与 used_vars(实际引用,
+// 声明序去重)。校验失败抛 配置错误: 前缀字符串(经 classifyWasmError
+// 分类),内核原文点名具体变量。
+export async function kpiValidate(expression: string): Promise<CustomKpiShape> {
+  // 测试注入点(同 __testDailyAggregate 先例):节点 DOM 测试无法 fetch
+  // 浏览器 wasm,注入同源内核(pkg-node binding)保持真数据源。
+  const override = (globalThis as {
+    __testKpiValidate?: (expression: string) => Promise<CustomKpiShape>
+  }).__testKpiValidate
+  if (override) return override(expression)
+  if (isDesktop) return invoke('kpi_validate', { expression })
+  await ensureInit()
+  return JSON.parse(kpiValidateBinding(expression) as unknown as string) as CustomKpiShape
+}
+
+// 自定义 KPI 求值(内核 core::kpi_custom::evaluate):表达式逐 replicate
+// 求值 + 跨 replicate 聚合,统计与内置指标同口径(变量白名单 =
+// MetricKey::ALL,同一批 RunMetrics)。缺席指标与 NaN 记 null 不填 0;
+// n_used < 2 不给统计区间(stats 整键缺席)。表达式原文 + 变量白名单 +
+// 定义版本随结果回传,复算入口与口径可核对(前端不重算任何统计)。
+export async function kpiEval(
+  expression: string,
+  results: RunMetrics[],
+): Promise<CustomKpiOutput> {
+  // 测试注入点:同 __testDailyAggregate(节点 DOM 测试用 pkg-node 同源内核)。
+  const override = (globalThis as {
+    __testKpiEval?: (expression: string, results: RunMetrics[]) => Promise<CustomKpiOutput>
+  }).__testKpiEval
+  if (override) return override(expression, results)
+  if (isDesktop) {
+    return invoke('kpi_eval', { expression, resultsJson: JSON.stringify(results) })
+  }
+  await ensureInit()
+  return JSON.parse(
+    kpiEvalBinding(expression, JSON.stringify(results)) as unknown as string,
+  ) as CustomKpiOutput
 }
 
 // 进化寻优(优化与代理视图):**寻优实验 YAML**(scenario + model + optimize

@@ -69,6 +69,8 @@ pub fn run() {
             param_values,
             param_apply,
             kpi_availability,
+            kpi_validate,
+            kpi_eval,
             ab_compare,
             daily_aggregate,
             run_simulation,
@@ -296,6 +298,26 @@ fn daily_aggregate(results_json: String) -> Result<serde_json::Value, String> {
     let aggregation = sandtable_core::experiment::daily_aggregate_metrics(&results)
         .map_err(|e| format!("配置错误: {e}"))?;
     serde_json::to_value(aggregation).map_err(|e| format!("配置错误: {e}"))
+}
+
+/// 自定义 KPI 校验(桌面命令):表达式过内核公式白名单并拒绝常量表达式,
+/// 只编译不碰运行期数据;core 直连,与 wasm `kpi_validate` 同构。
+#[tauri::command]
+fn kpi_validate(expression: String) -> Result<serde_json::Value, String> {
+    let shape = sandtable_core::kpi_custom::validate_expression(&expression)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(shape).map_err(|e| format!("序列化失败: {e}"))
+}
+
+/// 自定义 KPI 求值(桌面命令):表达式逐 replicate 求值 + 跨 replicate 聚合,
+/// core 直连,与 wasm `kpi_eval` 同构(n < 2 不给统计区间,缺席指标不填 0)。
+#[tauri::command]
+fn kpi_eval(expression: String, results_json: String) -> Result<serde_json::Value, String> {
+    let results: Vec<sandtable_core::metrics::RunMetrics> = serde_json::from_str(&results_json)
+        .map_err(|e| format!("参数错误: 逐 replicate 结果解析失败: {e}"))?;
+    let out = sandtable_core::kpi_custom::evaluate(&expression, &results)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(out).map_err(|e| format!("序列化失败: {e}"))
 }
 
 /// 进化寻优(桌面命令):内核单次调用跑完整体 种群 × 代 寻优,与 CLI
@@ -1065,6 +1087,49 @@ mod tests {
             sandtable_wasm::kpi_availability_native(&yaml).unwrap(),
             "KPI 可用性同表",
         );
+    }
+
+    #[test]
+    fn kpi_custom_parity_wasm_native() {
+        // 自定义 KPI:桌面命令与 wasm native 同源,校验 / 求值两条通道逐值
+        // 一致,校验错误文案逐字一致。
+        let week = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 40, duration: '7d', seed: 7}\n",
+        );
+        let sim = run_simulation_impl(week, 3, &fresh_flag(), &mut |_| {}).unwrap();
+        let results = sim["results"].to_string();
+
+        let expr = "max(win_rate, retention_d7) + churn_rate";
+        assert_eq!(
+            kpi_validate(expr.into()).unwrap(),
+            sandtable_wasm::kpi_validate_native(expr).unwrap(),
+            "校验形状一致"
+        );
+        assert_eq!(
+            kpi_eval("retention_d7".into(), results.clone()).unwrap(),
+            sandtable_wasm::kpi_eval_native("retention_d7", &results).unwrap(),
+            "求值与跨 replicate 聚合一致"
+        );
+        // 校验错误文案逐字一致(配置错误通道,不前端改写)
+        for bad_expr in ["not_a_metric * 2", "0.5", ""] {
+            let err_d = kpi_validate(bad_expr.into()).unwrap_err();
+            let err_w = sandtable_wasm::kpi_validate_native(bad_expr).unwrap_err();
+            assert_eq!(err_d, err_w, "{bad_expr} 错误文案逐字一致");
+        }
+        // 红线一:单次运行不给统计区间
+        let one = serde_json::json!([sim["results"][0].clone()]);
+        let r = kpi_eval("retention_d7".into(), one.to_string()).unwrap();
+        assert_eq!(r["n_used"], 1);
+        assert!(r["stats"].is_null(), "n < 2 不给置信带");
+        // 红线二:缺席指标不填 0(3 天配置下 d7 未定义)
+        let short = run_simulation_impl(YAML, 2, &fresh_flag(), &mut |_| {}).unwrap();
+        let s = kpi_eval("retention_d7".into(), short["results"].to_string()).unwrap();
+        assert_eq!(s["n_used"], 0);
+        assert!(s["per_replicate"][0].is_null(), "缺席不填 0");
+        // 求值通道同样走编译校验
+        let err = kpi_eval("win_rates".into(), results).unwrap_err();
+        assert!(err.contains("配置错误"), "{err}");
     }
 
     #[test]

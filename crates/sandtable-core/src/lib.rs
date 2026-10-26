@@ -13,6 +13,7 @@ pub mod experiment;
 pub mod export;
 pub mod formula;
 pub mod kernel;
+pub mod kpi_custom;
 pub mod metrics;
 pub mod optimize;
 pub mod recommend;

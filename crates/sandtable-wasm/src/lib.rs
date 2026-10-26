@@ -301,6 +301,44 @@ pub fn kpi_availability(yaml: &str) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+/// 自定义 KPI 校验(native):只编译,不碰运行期数据。返回
+/// [`core::kpi_custom::CustomKpiShape`](vars = 可引用指标全集,
+/// used_vars = 表达式实际引用的)。
+pub fn kpi_validate_native(expression: &str) -> Result<serde_json::Value, String> {
+    let shape =
+        core::kpi_custom::validate_expression(expression).map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(shape).map_err(|e| format!("序列化失败: {e}"))
+}
+
+/// 自定义 KPI 校验(wasm 入口):JSON 字符串,形状同 [`kpi_validate_native`]。
+#[wasm_bindgen]
+pub fn kpi_validate(expression: &str) -> Result<JsValue, JsValue> {
+    let v = kpi_validate_native(expression).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// 自定义 KPI 求值(native):表达式逐 replicate 求值 + 跨 replicate 聚合。
+/// results 是 [`core::metrics::RunMetrics`] 数组 JSON(daily_aggregate 同通道,
+/// replicate 粒度,不是候选聚合)。
+pub fn kpi_eval_native(expression: &str, results_json: &str) -> Result<serde_json::Value, String> {
+    let results: Vec<core::metrics::RunMetrics> = serde_json::from_str(results_json)
+        .map_err(|e| format!("参数错误: 逐 replicate 结果解析失败: {e}"))?;
+    let out =
+        core::kpi_custom::evaluate(expression, &results).map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(out).map_err(|e| format!("序列化失败: {e}"))
+}
+
+/// 自定义 KPI 求值(wasm 入口):JSON 字符串,形状同 [`kpi_eval_native`]。
+#[wasm_bindgen]
+pub fn kpi_eval(expression: &str, results_json: &str) -> Result<JsValue, JsValue> {
+    let v = kpi_eval_native(expression, results_json).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 /// 运行仿真(wasm 入口):返回 JSON 字符串(形状同 [`run_simulation_native`])。
 #[wasm_bindgen]
 pub fn run_simulation(yaml: &str, replicates: u32) -> Result<JsValue, JsValue> {
@@ -804,6 +842,70 @@ mod tests {
             .as_array()
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn kpi_validate_and_eval_bridge_shape_and_red_lines() {
+        // 校验只编译:回传白名单全集 + 表达式实际引用的变量(声明序去重)
+        let v = kpi_validate_native("max(win_rate, win_rate) * retention_d7").unwrap();
+        assert_eq!(v["used_vars"], json!(["retention_d7", "win_rate"]));
+        assert_eq!(
+            v["vars"],
+            json!(core::kpi_custom::kpi_var_names()),
+            "白名单 = 内置指标名全集(与 CSV 列名同口径)"
+        );
+        // 校验失败走配置错误通道并点名具体变量;常量表达式没有运行口径
+        let e = kpi_validate_native("win_rates * 2").unwrap_err();
+        assert!(e.contains("配置错误") && e.contains("win_rates"), "{e}");
+        assert!(
+            kpi_validate_native("0.5")
+                .unwrap_err()
+                .contains("常量表达式"),
+            "常量表达式必须拒绝"
+        );
+
+        // 求值:7 天配置上 d7 有值,同名表达式与内置指标逐值一致
+        let week = "schema_version: '1'\nscenario: {population: 40, duration: '7d', seed: 7}\n";
+        let sim = run_simulation_native(week, 3).unwrap();
+        let out = kpi_eval_native("retention_d7", &sim["results"].to_string()).unwrap();
+        let got: Vec<Option<f64>> = serde_json::from_value(out["per_replicate"].clone()).unwrap();
+        let want: Vec<Option<f64>> = sim["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                let m: core::metrics::RunMetrics = serde_json::from_value(r.clone()).unwrap();
+                core::experiment::MetricKey::RetentionD7.extract(&m)
+            })
+            .collect();
+        assert_eq!(got, want, "同名表达式必须与内置指标逐值一致");
+        assert_eq!(out["n_used"], 3);
+        assert_eq!(out["stats"]["n"], 3);
+        assert!(
+            out["stats"]["ci95_lo"].as_f64().unwrap() <= out["stats"]["mean"].as_f64().unwrap(),
+            "聚合走 n−1 口径,区间包住均值"
+        );
+        assert_eq!(out["schema_version"], core::kpi_custom::KPI_SCHEMA_VERSION);
+        assert_eq!(out["sd_method"], core::experiment::DAILY_SD_METHOD);
+
+        // 红线一:单次运行不得套统计区间
+        let single = serde_json::to_string(&[sim["results"][0].clone()]).unwrap();
+        let one = kpi_eval_native("retention_d7", &single).unwrap();
+        assert_eq!(one["n_used"], 1);
+        assert!(one["stats"].is_null(), "n < 2 不给置信带");
+        assert!(
+            one.as_object().unwrap().get("stats").is_none(),
+            "整组统计缺席时不输出该键(缺席 ≠ 0)"
+        );
+        assert_eq!(one["per_replicate"][0].as_f64(), got[0]);
+
+        // 红线二:指标缺席记 None,不填 0(3 天配置下 d7 未定义)
+        let short = run_simulation_native(YAML, 2).unwrap();
+        let s2 = kpi_eval_native("retention_d7", &short["results"].to_string()).unwrap();
+        assert_eq!(s2["n_used"], 0);
+        assert!(s2["stats"].is_null());
+        assert!(s2.as_object().unwrap().get("stats").is_none());
+        assert!(s2["per_replicate"][0].is_null());
     }
 
     #[test]
