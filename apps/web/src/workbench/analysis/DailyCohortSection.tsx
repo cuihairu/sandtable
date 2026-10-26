@@ -3,12 +3,18 @@ import type { SimOutput } from '../../lib/types.ts'
 import {
   DAILY_KPI,
   cohortFacets,
+  cohortFacetFigures,
   dailyTrendSeries,
   distributionRows,
   distributionSeries,
   selectedDailyRun,
 } from '../../lib/analysisView.ts'
-import type { DailyKpiKey, DailyTrendSeries, DistributionSeries } from '../../lib/analysisView.ts'
+import type {
+  CohortFacetFigure,
+  DailyKpiKey,
+  DailyTrendSeries,
+  DistributionSeries,
+} from '../../lib/analysisView.ts'
 import { KERNEL_SOURCE } from '../../lib/dataSource.ts'
 import { fmtNumber, fmtPercent } from '../../lib/i18n/format.ts'
 import { t } from '../../lib/i18n/index.ts'
@@ -62,7 +68,8 @@ function TrendChart({ locale, series, metric, label, sourceTitle }: {
   const format = (value: number): string => formatValue(locale, metric, value)
   const activeDay = series.points[0]?.day ?? -1
 
-  return <svg data-testid="daily-trend-chart" data-metric={metric} viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`${label}: ${series.points.length} days`}>
+  // mini-chart 必须挂:workbench.css 把 .wb-app svg 收成 17×17 图标,不挂会被裁成不可见(同 CrossReplicateSection 教训)。
+  return <svg className="mini-chart" data-testid="daily-trend-chart" data-metric={metric} viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`${label}: ${series.points.length} days`}>
     <title>{sourceTitle}</title>
     {Array.from({ length: 4 }, (_, i) => {
       const value = domain.min + (domain.max - domain.min) * i / 3
@@ -123,7 +130,8 @@ function DistributionChart({ locale, series, label, sourceTitle }: {
   const x = (day: number): number => left + ((day - x0) / (x1 - x0 || 1)) * (width - left - right)
   const y = (value: number): number => top + ((domain.max - value) / (domain.max - domain.min || 1)) * (height - top - bottom)
 
-  return <svg data-testid="daily-distribution-chart" data-quantile={series.id} viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`${label}: ${series.points.length} days`}>
+  // 同上:mini-chart 缺挂会被 17×17 图标规则裁掉,分位曲线整体不可见。
+  return <svg className="mini-chart" data-testid="daily-distribution-chart" data-quantile={series.id} viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`${label}: ${series.points.length} days`}>
     <title>{sourceTitle}</title>
     {[0, 1, 2, 3].map((index) => {
       const value = domain.min + (domain.max - domain.min) * index / 3
@@ -159,6 +167,64 @@ function DistributionChart({ locale, series, label, sourceTitle }: {
   </svg>
 }
 
+function CohortFacetChart({ locale, figure, sourceTitle }: {
+  locale: 'zh-CN' | 'en-US'
+  figure: CohortFacetFigure
+  sourceTitle: string
+}): JSX.Element {
+  const width = 520
+  const height = 168
+  const left = 58
+  const right = 12
+  const top = 24
+  const bottom = 30
+  const maxValue = Math.max(...figure.bars.map((bar) => bar.value ?? 0))
+  // 同一物理量内的 cohort 共轴;不同指标分面轴域独立计算,不与其他单位混轴
+  const domain: { min: number; max: number } = maxValue === 0
+    ? { min: 0, max: 1 }
+    : { min: 0, max: maxValue * 1.05 }
+  const y = (value: number): number => top + ((domain.max - value) / domain.max) * (height - top - bottom)
+  const label = t(locale, figure.labelKey)
+  const format = (value: number): string => fmtNumber(locale, value, { maxFractionDigits: 2 })
+  const barWidth = (width - left - right) / figure.bars.length * 0.48
+  const centers = figure.bars.map((_, index) => {
+    const slot = (width - left - right) / figure.bars.length
+    return left + slot * (index + 0.5)
+  })
+
+  // 分面卡片内同靠 .cohort-facet svg 撑满;再挂 mini-chart 与趋势/分布图同一纪律,防 17×17 裁剪。
+  return <svg className="mini-chart" data-testid="cohort-facet-chart" data-metric={figure.id} viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`${label}: ${figure.bars.length} cohorts`}>
+    <title>{sourceTitle}</title>
+    {[0, 1, 2, 3].map((index) => {
+      const value = domain.max * index / 3
+      return <g key={index}>
+        <line x1={left} x2={width - right} y1={y(value)} y2={y(value)} className="chart-grid" />
+        <text x={left - 8} y={y(value) + 4} textAnchor="end" className="chart-text">{format(value)}</text>
+      </g>
+    })}
+    {figure.bars.map((bar, index) => {
+      const barLabel = t(locale, bar.labelKey)
+      const pointLabel = `${label} · ${barLabel}: ${bar.value === null ? t(locale, 'analysis.unavailable') : format(bar.value)}`
+      return <g key={bar.cohort} data-cohort={bar.cohort}>
+        <rect
+          data-testid="cohort-facet-bar"
+          data-metric={figure.id}
+          data-cohort={bar.cohort}
+          data-value={bar.value ?? undefined}
+          x={centers[index] - barWidth / 2}
+          y={bar.value === null ? y(0) : y(bar.value)}
+          width={barWidth}
+          height={bar.value === null ? 0 : y(0) - y(bar.value)}
+        >
+          <title>{pointLabel}</title>
+        </rect>
+        <text x={centers[index]} y={height - 10} textAnchor="middle" className="chart-text">{barLabel}</text>
+      </g>
+    })}
+    <text x={left} y={14} className="chart-label">{label}</text>
+  </svg>
+}
+
 export interface DailyCohortSectionProps {
   sim: SimOutput | null
   runId: string
@@ -170,6 +236,7 @@ export function DailyCohortSection({ sim, runId, replicate }: DailyCohortSection
   const run = selectedDailyRun(sim, replicate, runId).run
   const trends = run ? dailyTrendSeries(run) : []
   const cohorts = cohortFacets(run)
+  const cohortFigures = cohortFacetFigures(run)
   const distribution = distributionRows(run)
   const distributionCharts = distributionSeries(run)
   const unavailable = t(locale, 'analysis.unavailable')
@@ -231,6 +298,13 @@ export function DailyCohortSection({ sim, runId, replicate }: DailyCohortSection
 
     <h2>{t(locale, 'analysis.cohortTitle')}</h2>
     <p className="note">{t(locale, 'analysis.cohortNote', { run: runId, replicate, source })}</p>
+    <p className="note" data-testid="cohort-facet-note">{t(locale, 'analysis.cohortFacetNote')}</p>
+    <p className="note" data-testid="cohort-facet-scope">{t(locale, 'analysis.cohortFacetScope')}</p>
+    {cohortFigures.length > 0 ? <div className="cohort-facet-grid" role="group" aria-label={t(locale, 'analysis.cohortFacetAria', { count: cohortFigures.length })}>
+      {cohortFigures.map((figure) => <figure key={figure.id} className="cohort-facet" data-metric={figure.id}>
+        <CohortFacetChart locale={locale} figure={figure} sourceTitle={sourceTitle} />
+      </figure>)}
+    </div> : <p className="note" role="alert" aria-live="assertive" data-testid="cohort-facet-unavailable">{t(locale, 'analysis.cohortFacetMissing', { run: runId, replicate })}</p>}
     <div className="candidate-table-wrap"><table data-testid="daily-cohort-table"><thead><tr>
       <th>{t(locale, 'analysis.cohort.group')}</th>
       <th>{t(locale, 'analysis.cohort.count')}</th>

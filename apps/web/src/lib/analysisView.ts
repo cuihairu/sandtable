@@ -465,6 +465,69 @@ export function cohortFacets(run: RunMetrics | null): { rows: readonly CohortFac
   }
 }
 
+/* —— 群体分面(cohort facet figures):单次 run/replicate 的 cohort_stats 原值,一指标一分面 —— */
+
+export type CohortMetricKey = 'count' | 'churned' | 'mean_power' | 'mean_gold' | 'mean_level'
+
+/**
+ * 分面条:内核 cohort_stats 原值。null = 该 cohort 在内核结果里缺席或值
+ * 非有限 → 分面留空,不画 0 值条(与 distributionRows 的非有限过滤同口径)。
+ */
+export type CohortFacetBar = {
+  cohort: CohortStat['cohort']
+  labelKey: TranslationKey
+  value: number | null
+}
+
+export type CohortFacetFigure = {
+  id: CohortMetricKey
+  labelKey: TranslationKey
+  bars: readonly CohortFacetBar[]
+}
+
+const COHORT_NAME_KEY: Record<CohortStat['cohort'], TranslationKey> = {
+  casual: 'analysis.cohortName.casual',
+  core: 'analysis.cohortName.core',
+  whale: 'analysis.cohortName.whale',
+}
+
+const COHORT_FACET_FIGURES: readonly {
+  id: CohortMetricKey
+  labelKey: TranslationKey
+  field: CohortMetricKey
+}[] = [
+  { id: 'count', labelKey: 'analysis.cohort.count', field: 'count' },
+  { id: 'churned', labelKey: 'analysis.cohort.churned', field: 'churned' },
+  { id: 'mean_power', labelKey: 'analysis.cohort.meanPower', field: 'mean_power' },
+  { id: 'mean_gold', labelKey: 'analysis.cohort.meanGold', field: 'mean_gold' },
+  { id: 'mean_level', labelKey: 'analysis.cohort.meanLevel', field: 'mean_level' },
+]
+
+/**
+ * cohort 分面数据:每指标一个分面、每个分面自己的轴(不同单位不共轴),
+ * 条形只取内核 cohort_stats 原值,无插值、无合成。cohort_stats 为空 = 返
+ * 回 [],UI 如实留空并给不可用原因,不虚构群体数值。跨 replicate 的
+ * cohort 聚合内核无导出(daily_aggregate 只聚合逐日 KPI 与运行级指标),
+ * 所以这里只做单次 run/replicate 原值,不套置信带。
+ */
+export function cohortFacetFigures(run: RunMetrics | null): readonly CohortFacetFigure[] {
+  const stats = run?.cohort_stats ?? []
+  if (stats.length === 0) return []
+  const byCohort = new Map(stats.map((row) => [row.cohort, row]))
+  return COHORT_FACET_FIGURES.map((figure) => ({
+    id: figure.id,
+    labelKey: figure.labelKey,
+    bars: COHORT_ORDER.map((cohort) => {
+      const value = byCohort.get(cohort)?.[figure.field] ?? null
+      return {
+        cohort,
+        labelKey: COHORT_NAME_KEY[cohort],
+        value: value !== null && Number.isFinite(value) ? value : null,
+      }
+    }),
+  }))
+}
+
 /* —— 逐日分布/分位数:power_snapshots 的 p50/p90/p99 快照曲线 —— */
 
 export type DistributionQuantileKey = 'p50' | 'p90' | 'p99'

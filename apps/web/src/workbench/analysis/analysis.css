@@ -19,6 +19,11 @@
 .wb-app .ab-facet { border: 1px solid var(--wb-soft-line); padding: var(--wb-pad-panel); margin: 0; min-width: 0; }
 .wb-app .ab-facet svg { width: 100%; height: auto; display: block; }
 .wb-app .ab-facet figcaption { margin-block-start: var(--wb-space-1); }
+/* —— cohort 指标分面(todo L373 群体分面):一指标一分面、各自轴域,条形只画内核
+   cohort_stats 原值;内核无跨 replicate cohort 聚合导出,故此处不出现均值/CI 带。 —— */
+.wb-app .cohort-facet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: var(--wb-pad-panel); }
+.wb-app .cohort-facet { border: 1px solid var(--wb-soft-line); padding: var(--wb-pad-panel); margin: 0; min-width: 0; }
+.wb-app .cohort-facet svg { width: 100%; height: auto; display: block; }
 /* —— 跨 replicate 逐日聚合:CI 带 = 内核 SampleStats 95% CI,前端只画不重算 —— */
 .wb-app .agg-ci-band { fill: var(--wb-teal); fill-opacity: .13; }
 .wb-app .agg-mean-line { fill: none; stroke: var(--wb-teal); stroke-width: 1.6; }
