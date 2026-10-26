@@ -1,0 +1,27 @@
+[package]
+name = "sandtable-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Sandtable MCP 服务器(Rust 原生直调内核,stdio 传输)"
+
+[[bin]]
+name = "sandtable-mcp"
+path = "src/main.rs"
+
+[dependencies]
+sandtable-core = { path = "../sandtable-core" }
+# 官方 Rust MCP SDK(2026-07-28 规范);server + stdio(io)传输,宏三件套在 default
+rmcp = { version = "3.7", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+serde = { version = "1", features = ["derive"] }
+# 候选间并行(与 CLI sweep 同纪律);core 保持无 rayon,并行只在壳层
+rayon = "1"
+# float_roundtrip:写盘再读回的 f64 逐位一致(与 CLI / wasm 同纪律)
+serde_json = { version = "1", features = ["float_roundtrip"] }
+anyhow = "1"
+
+[dev-dependencies]
+# e2e:官方客户端 + 子进程传输,真 spawn 本 crate 二进制走 stdio 握手
+rmcp = { version = "3.7", features = ["client", "transport-child-process"] }
+tokio = { version = "1", features = ["process"] }

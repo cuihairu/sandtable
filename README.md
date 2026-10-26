@@ -35,6 +35,7 @@
 - Testing: closed-form cross-checks, byte-for-byte determinism under the same seed, golden snapshots, and equivalence tests locking CLI ↔ Web (WASM) ↔ Desktop to one kernel
 - Python bindings: a pyo3 + maturin extension module (`sandtable-sim` wheel; load / run / sweep / recommend / params, plus the stage-3 day-level read-only hook `run_with_day_hook`), with parity tests locking Python ↔ CLI to one kernel — [crate README](crates/sandtable-python/README.md)
 - Engine adapter: an engine-agnostic JSON contract (`sandtable-engine` crate; exports the semantic-layer numbers with a reference importer and backflow convention, contract files `.engine.json`), with roundtrip regression locking the contract to the same core — [crate README](crates/sandtable-engine/README.md)
+- MCP server: an official-rmcp stdio server in Rust (`sandtable-mcp` crate; calls the kernel natively — no wasm/Node hop, single binary; tools `sandtable_validate` / `sandtable_run` / `sandtable_plan_sweep` / `sandtable_analyze`; kernel errors pass through as tool-level errors, interaction budgets reject oversized runs) — [crate README](crates/sandtable-mcp/README.md)
 
 ```bash
 cargo install --path crates/sandtable-cli
