@@ -157,6 +157,10 @@ if (!existsSync(pkgNode)) {
       assert.ok(host.querySelector('.agg-ci-band'), '3 天序列画内核 95% CI 带')
       for (const chart of charts) {
         const metric = chart.dataset.metric
+        // workbench.css 把 .wb-app svg 收成 17×17 图标;图表 svg 必须挂
+        // mini-chart 才能按 viewBox 宽度渲染,否则折线与 CI 带整体不可见。
+        assert.match(chart.getAttribute('class'), /mini-chart/,
+          `${metric} 图表 svg 缺 mini-chart,会被 17×17 图标规则裁掉`)
         const kernelDays = agg.day_stats.filter((d) => d[metric] !== undefined)
         const points = [...chart.querySelectorAll('[data-testid="daily-agg-point"]')]
         assert.equal(points.length, kernelDays.length, `${metric} 缺席日不出点`)

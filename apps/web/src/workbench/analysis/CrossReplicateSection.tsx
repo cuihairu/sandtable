@@ -55,7 +55,9 @@ function AggChart({ locale, series, label, sourceTitle }: {
       ].join(' ')
     : null
 
-  return <svg data-testid="daily-agg-chart" data-metric={series.id} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label}: ${points.length} days`}>
+  // mini-chart 必须挂:workbench.css 把 .wb-app svg 收成 17×17 图标,
+  // 不挂类的图表 SVG 会被裁成 17×17 折线与 CI 带全看不见。
+  return <svg className="mini-chart" data-testid="daily-agg-chart" data-metric={series.id} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label}: ${points.length} days`}>
     <title>{sourceTitle}</title>
     {[0, 1, 2, 3].map((i) => {
       const value = domain.min + (domain.max - domain.min) * i / 3
