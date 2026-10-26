@@ -238,6 +238,110 @@ export interface SweepRecOutput {
   recommendation: Recommendation
 }
 
+// —— 进化寻优(core::optimize,= CLI `optimize` 的 opt.json 同构)——
+
+/** 寻优模式:evolutionary = 字典序适应度;pareto = 约束感知非支配排序 */
+export type OptimMode = 'evolutionary' | 'pareto'
+
+export interface OptimObjective {
+  metric: MetricKey
+  direction: 'maximize' | 'minimize'
+}
+
+export interface OptimSpec {
+  mode: OptimMode
+  parameters: SweepAxis[]
+  targets: SweepTarget[]
+  replicates: number
+  population: number
+  generations: number
+  elite: number
+  mutation_rate: number
+  mutation_scale: number
+  /** evolutionary 模式的单一排序目标(pareto 模式为 null) */
+  objective: OptimObjective | null
+  /** pareto 模式的多目标(evolutionary 模式为空数组) */
+  objectives: OptimObjective[]
+}
+
+/** 字典序适应度:先比 hard 约束通过数,再比目标分数 */
+export interface OptimFitness {
+  hard_pass: number
+  score: number
+}
+
+/** 逐代统计:generation 0 = 初始种群 */
+export interface OptimGenerationStats {
+  generation: number
+  /** 本代实际新评的候选数(初始 = population,之后 = population − elite) */
+  evaluated: number
+  /** 当前种群 hard 约束全部通过的个体数 */
+  feasible: number
+  best: OptimFitness
+  /** 最优层前沿 0 规模;evolutionary 模式恒 0 */
+  front0: number
+}
+
+/** 寻优结果:全历史最优 + 逐代统计 + 全候选历史 + 末代前沿 0 */
+export interface OptimResult {
+  spec: OptimSpec
+  best: CandidateResult | null
+  best_fitness: OptimFitness | null
+  history: OptimGenerationStats[]
+  /** 全历史评估候选(评估序;精英不重评不重复) */
+  all: CandidateResult[]
+  /** 实际评估的候选数 */
+  evaluated: number
+  /** 总仿真数 = evaluated × replicates(成本账回显) */
+  total_sims: number
+  /** 末代最优层前沿 0(全部非支配解);evolutionary 模式为空数组 */
+  front0: CandidateResult[]
+}
+
+// —— 随机森林代理(core::surrogate,= CLI `surrogate train/predict`)——
+
+export interface SurrogateSpec {
+  trees: number
+  max_depth: number
+  min_samples_leaf: number
+  seed: number
+}
+
+/** 内核 RandomForest 全量 JSON;前端只原样回传预测,不改写树。 */
+export interface SurrogateModel {
+  metric: MetricKey
+  features: string[]
+  spec: SurrogateSpec
+  forest: unknown[]
+  importance: number[]
+}
+
+/** 代理训练账 + 模型:trained/excluded 由内核过滤口径给出 */
+export interface SurrogateTrainOutput {
+  metric: MetricKey
+  features: string[]
+  importance: number[]
+  spec: SurrogateSpec
+  /** 入训练样本数 */
+  trained: number
+  /** 被内核过滤的候选数(配置错误/缺指标) */
+  excluded: number
+  model: SurrogateModel
+}
+
+/**
+ * 代理预测:森林均值 + 树间分歧包络。
+ * spread_min/spread_max 是**树间分歧**(全部树各自预测的 min/max,描述性散布),
+ * **不是统计置信区间**——UI 不得画成置信带或标注 CI。
+ */
+export interface SurrogatePrediction {
+  metric: MetricKey
+  mean: number
+  spread_min: number
+  spread_max: number
+  trees: number
+}
+
 // 敏感性备注(= core::sensitivity::SensNote snake_case 序列化)
 export type SensNote =
   | 'ok'

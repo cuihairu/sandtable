@@ -106,6 +106,28 @@ pub fn load_str(yaml: &str) -> Result<SimConfig, Error> {
     file.into_config()
 }
 
+/// 校验通道加载:普通场景 YAML 与实验 YAML(sweep / optimize 节)同入口。
+///
+/// 实验节有自己的 schema,由 [`load_experiment_str`] / [`load_optimize_str`]
+/// 逐字段校验(注册表路径 + 目标可用性),本通道只做配置完整校验:摘出
+/// 实验节后走与 [`load_str`] 同一套纪律(注册表树 → schema_version →
+/// 反序列化)。校验入口接受实验 YAML 的原因:前端提交纪律要求送达的
+/// 输入快照(含 sweep 节)被内核完整校验,而不是只校验候选场景部分。
+pub fn load_config_str(yaml: &str) -> Result<SimConfig, Error> {
+    let root: Value =
+        serde_yaml_ng::from_str(yaml).map_err(|e| Error::Config(format!("YAML 解析失败: {e}")))?;
+    let mut cfg_root = root;
+    if let Some(m) = cfg_root.as_mapping_mut() {
+        m.swap_remove(Value::from("sweep"));
+        m.swap_remove(Value::from("optimize"));
+    }
+    crate::registry::check_tree(&cfg_root)?;
+    check_schema_version(&cfg_root)?;
+    let file: ScenarioFile = serde_yaml_ng::from_value(cfg_root)
+        .map_err(|e| Error::Config(format!("配置类型不符: {e}")))?;
+    file.into_config()
+}
+
 fn check_schema_version(root: &Value) -> Result<(), Error> {
     let sv = root
         .get("schema_version")
@@ -681,6 +703,70 @@ model:
     fn missing_schema_version_rejected() {
         let err = load_str("scenario:\n  population: 10\n").unwrap_err();
         assert!(err.to_string().contains("schema_version"));
+    }
+
+    #[test]
+    fn load_config_accepts_experiment_sections() {
+        // 校验通道接受实验 YAML:sweep / optimize 节摘出后基础配置同口径校验
+        let cfg = load_config_str(
+            r#"schema_version: "1"
+scenario: {population: 40, duration: "3d", seed: 7}
+model:
+  warrior:
+    attack: 100
+sweep:
+  mode: grid
+  replicates: 2
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+  targets:
+    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.players, 40);
+        assert_eq!(cfg.days, 3);
+        // 与直载同一份基础配置逐字段等价(config_hash 同源)
+        let base = load_str(
+            r#"schema_version: "1"
+scenario: {population: 40, duration: "3d", seed: 7}
+model:
+  warrior:
+    attack: 100
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            crate::config::config_hash(&cfg),
+            crate::config::config_hash(&base),
+            "实验节不进配置身份"
+        );
+    }
+
+    #[test]
+    fn load_config_still_rejects_unknown_params() {
+        // sweep 节已整体摘出,节内非法路径由 load_experiment_str 报,本通道放行
+        load_config_str(
+            r#"schema_version: "1"
+scenario: {population: 40, duration: "3d", seed: 7}
+model:
+  warrior:
+    attack: 100
+sweep:
+  parameters:
+    model.warrior.atk: {min: 1, max: 2, step: 1}
+"#,
+        )
+        .unwrap();
+        // 基础树里的未知顶层键仍然拦截(校验通道不是随便什么都放行)
+        let err = load_config_str(
+            r#"schema_version: "1"
+scenario: {population: 40, duration: "3d", seed: 7}
+extra: {a: 1}
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("extra"), "{}", err);
     }
 
     #[test]

@@ -11,6 +11,9 @@ import init, {
   kpi_availability as kpiAvailabilityBinding,
   ab_compare as abCompareBinding,
   daily_aggregate as dailyAggregateBinding,
+  optimize as optimizeBinding,
+  surrogate_train as surrogateTrainBinding,
+  surrogate_predict as surrogatePredictBinding,
   sweep_plan as sweepPlanBinding,
   sweep_candidate as sweepCandidateBinding,
   sweep_recommend as sweepRecommendBinding,
@@ -21,12 +24,16 @@ import type {
   Comparison,
   DailyAggregation,
   LocalQueryResult,
+  OptimResult,
   ParamDefinition,
   RunMetrics,
   SimOutput,
   SimProgress,
   SweepPlan,
   SweepRecOutput,
+  SurrogateModel,
+  SurrogatePrediction,
+  SurrogateTrainOutput,
   ValidateInfo,
 } from './types'
 
@@ -149,6 +156,89 @@ export async function dailyAggregate(results: RunMetrics[]): Promise<DailyAggreg
   }
   await ensureInit()
   return JSON.parse(dailyAggregateBinding(JSON.stringify(results)) as unknown as string) as DailyAggregation
+}
+
+// 进化寻优(优化与代理视图):**寻优实验 YAML**(scenario + model + optimize
+// 三节)进内核,单次调用跑完整个 种群 × (代数+1) × replicates 寻优
+// (evolutionary = 字典序适应度;pareto = 约束感知非支配排序)。Web 预算红线
+// 与扫描同账(≤200 次仿真),超限内核直接拒绝;内核单次调用无候选级中断
+// 边界,不提供取消。
+export async function optimizeRun(yaml: string): Promise<OptimResult> {
+  // 测试注入点(同 __testDailyAggregate 先例):节点 DOM 测试无法 fetch 浏览器
+  // wasm,注入同源内核寻优(pkg-node binding)保持真数据源。
+  const override = (globalThis as {
+    __testOptimizeRun?: (yaml: string) => Promise<OptimResult>
+  }).__testOptimizeRun
+  if (override) return override(yaml)
+  if (isDesktop) return invoke('optimize', { yaml })
+  await ensureInit()
+  return JSON.parse(optimizeBinding(yaml) as unknown as string) as OptimResult
+}
+
+// 代理训练(P2 自动寻优增量):**已跑**候选结果 → 随机森林。零额外仿真;
+// 代理只读 sweep 产物、不进仿真路径(文档 09 红线)。训练账(trained/excluded,
+// 内核过滤口径)与特征重要性由内核给出,模型全量 JSON 原样回传预测用。
+export interface SurrogateTrainParams {
+  trees: number
+  max_depth: number
+  min_samples_leaf: number
+  seed: number
+}
+
+export async function surrogateTrain(
+  results: readonly CandidateResult[],
+  metric: string,
+  params: SurrogateTrainParams,
+): Promise<SurrogateTrainOutput> {
+  const { trees, max_depth, min_samples_leaf, seed } = params
+  // 测试注入点:同 __testDailyAggregate(节点 DOM 测试用 pkg-node 同源内核)。
+  const override = (globalThis as {
+    __testSurrogateTrain?: (
+      results: readonly CandidateResult[],
+      metric: string,
+      params: SurrogateTrainParams,
+    ) => Promise<SurrogateTrainOutput>
+  }).__testSurrogateTrain
+  if (override) return override(results, metric, params)
+  if (isDesktop) {
+    return invoke('surrogate_train', {
+      resultsJson: JSON.stringify(results),
+      metric,
+      trees,
+      maxDepth: max_depth,
+      minSamplesLeaf: min_samples_leaf,
+      seed,
+    })
+  }
+  await ensureInit()
+  return JSON.parse(
+    // wasm u64 → JS bigint(wasm-bindgen ABI),超参上限由内核 SurrogateSpec::validate 拦
+    surrogateTrainBinding(JSON.stringify(results), metric, trees, max_depth, min_samples_leaf, BigInt(seed)) as unknown as string,
+  ) as SurrogateTrainOutput
+}
+
+// 代理预测:模型 + 参数点 → 森林均值 + 树间分歧包络(spread_min/spread_max
+// 是全部树各自预测的 min/max,描述性散布,**不是统计置信区间**——UI 不得
+// 画成置信带;置信带只在内核逐日聚合输出上呈现)。
+export async function surrogatePredict(
+  model: SurrogateModel,
+  params: Record<string, number>,
+): Promise<SurrogatePrediction> {
+  const modelJson = JSON.stringify(model)
+  const paramsJson = JSON.stringify(params)
+  // 测试注入点:同 __testDailyAggregate(节点 DOM 测试用 pkg-node 同源内核)。
+  const override = (globalThis as {
+    __testSurrogatePredict?: (
+      model: SurrogateModel,
+      params: Record<string, number>,
+    ) => Promise<SurrogatePrediction>
+  }).__testSurrogatePredict
+  if (override) return override(model, params)
+  if (isDesktop) {
+    return invoke('surrogate_predict', { modelJson, paramsJson })
+  }
+  await ensureInit()
+  return JSON.parse(surrogatePredictBinding(modelJson, paramsJson) as unknown as string) as SurrogatePrediction
 }
 
 // 长任务(桌面异步命令):onProgress 经 Channel 逐 replicate 收 {done,total};

@@ -99,6 +99,24 @@ pub struct RandomForest {
     pub importance: Vec<f64>,
 }
 
+/// 单点代理预测:森林均值 + 树间分歧包络。
+///
+/// 树间分歧是**描述性散布**——同一组参数下全部树各自预测的最小值与最大值,
+/// 回答"这 N 棵树彼此分歧多大",不回答"真值以某概率落在区间内"。因此字段名
+/// 与文档措辞一律不使用 ci / confidence / interval / band,防止下游把它画成
+/// 统计置信带;要置信带只能走内核聚合(`experiment::daily_aggregate_metrics`)。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SurrogatePrediction {
+    /// 森林预测(全树均值,与 [`RandomForest::predict`] 同值)
+    pub mean: f64,
+    /// 树间分歧下界(全树最小预测)
+    pub spread_min: f64,
+    /// 树间分歧上界(全树最大预测)
+    pub spread_max: f64,
+    /// 参与预测的树数
+    pub trees: usize,
+}
+
 impl RandomForest {
     /// 从 sweep 产物拟合:过滤配置错误候选 → 训练矩阵 → 森林。
     pub fn fit(
@@ -109,6 +127,15 @@ impl RandomForest {
         spec.validate()?;
         let (feature_names, rows) = training_rows(results, metric)?;
         Self::train(metric.name(), feature_names, rows, spec)
+    }
+
+    /// 训练样本数(与 [`Self::fit`] 同一过滤口径)。供绑定层如实标注
+    /// 「N 个候选入训练,其余配置错误/缺指标被内核过滤」,不重算矩阵。
+    pub fn trained_row_count(
+        results: &[CandidateResult],
+        metric: MetricKey,
+    ) -> Result<usize, Error> {
+        Ok(training_rows(results, metric)?.1.len())
     }
 
     /// 纯矩阵训练入口(测试与复用;`fit` 是 sweep 产物的便捷封装)。
@@ -168,6 +195,27 @@ impl RandomForest {
     pub fn predict(&self, params: &BTreeMap<String, f64>) -> Result<f64, Error> {
         let row = self.resolve(params)?;
         Ok(self.predict_row(&row))
+    }
+
+    /// 预测 + 树间分歧包络(内核算好 min/max,前端只展示不重算)。
+    pub fn predict_envelope(
+        &self,
+        params: &BTreeMap<String, f64>,
+    ) -> Result<SurrogatePrediction, Error> {
+        let row = self.resolve(params)?;
+        let values = self.tree_values(&row);
+        let mut spread_min = f64::INFINITY;
+        let mut spread_max = f64::NEG_INFINITY;
+        for &v in &values {
+            spread_min = spread_min.min(v);
+            spread_max = spread_max.max(v);
+        }
+        Ok(SurrogatePrediction {
+            mean: self.predict_row(&row),
+            spread_min,
+            spread_max,
+            trees: values.len(),
+        })
     }
 
     /// 单行预测(row 与 [`Self::features`] 同序;先验 API,快于逐候选查表)。
@@ -469,6 +517,61 @@ mod tests {
         }
         assert_eq!(model.predict_row(&[3.0]), 7.0);
         assert!(model.importance.iter().all(|v| *v == 0.0));
+    }
+
+    #[test]
+    fn predict_envelope_brackets_mean_and_matches_predict() {
+        let rows = synth_rows();
+        let spec = SurrogateSpec::new(7);
+        let model = RandomForest::train(
+            "win_rate",
+            vec!["a".into(), "b".into()],
+            rows.clone(),
+            spec.clone(),
+        )
+        .unwrap();
+        let params = std::collections::BTreeMap::from([
+            ("a".to_string(), 55.0_f64),
+            ("b".to_string(), 5.0_f64),
+        ]);
+        let env = model.predict_envelope(&params).unwrap();
+        assert!(env.spread_min <= env.mean, "下界应不高于均值");
+        assert!(env.mean <= env.spread_max, "上界应不低于均值");
+        assert!(
+            (model.predict(&params).unwrap() - env.mean).abs() < 1e-12,
+            "包络均值应与 predict 同值"
+        );
+        assert_eq!(env.trees, model.forest.len(), "树数 = 森林规模");
+
+        // 常数森林:全部树同一叶值,分歧包络退化为单点(min == max == mean)
+        let const_rows: Vec<(Vec<f64>, f64)> = (0..8).map(|i| (vec![i as f64], 7.0)).collect();
+        let constant = RandomForest::train(
+            "win_rate",
+            vec!["x".into()],
+            const_rows,
+            SurrogateSpec::new(3),
+        )
+        .unwrap();
+        let const_params = std::collections::BTreeMap::from([("x".to_string(), 4.0_f64)]);
+        let cenv = constant.predict_envelope(&const_params).unwrap();
+        assert_eq!(cenv.spread_min, cenv.spread_max, "常数森林无分歧");
+        assert_eq!(cenv.spread_min, cenv.mean, "无分歧时包络 = 均值");
+
+        // 字段名锁定:树间分歧不得被序列化成置信区间语义(下游会据此画置信带)
+        let text = serde_json::to_string(&env).unwrap();
+        assert!(
+            !text.contains("ci")
+                && !text.contains("confidence")
+                && !text.contains("interval")
+                && !text.contains("band"),
+            "树间分歧字段不得携带置信区间语义:{text}"
+        );
+        assert!(text.contains("spread_min") && text.contains("spread_max"));
+
+        // 缺特征:与 predict 同一错误通道(不静默补 0)
+        assert!(model.predict_envelope(&BTreeMap::new()).is_err());
+        // 训练行原数据不被包络调用改动
+        assert_eq!(rows.len(), 18);
     }
 
     #[test]

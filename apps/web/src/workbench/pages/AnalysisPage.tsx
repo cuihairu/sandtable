@@ -16,6 +16,7 @@ import { ProChartsSection } from '../analysis/ProCharts.tsx'
 import { DailyCohortSection } from '../analysis/DailyCohortSection.tsx'
 import { CrossReplicateSection } from '../analysis/CrossReplicateSection.tsx'
 import { EconomySection } from '../analysis/EconomySection.tsx'
+import { OptimizeSurrogateSection } from '../analysis/OptimizeSurrogateSection.tsx'
 import { CandidateTable } from '../analysis/CandidateTable.tsx'
 import type { CandidateColumn } from '../analysis/CandidateTable.tsx'
 import { DemoAnalysisPage } from '../analysis/DemoAnalysisPage.tsx'
@@ -126,6 +127,8 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
   const ui = a.byJob[job.id] ?? defaultResultUI
   const exec = job.exec!
   const context = exec.spec.analysis
+  // 扫描实验完整 YAML(含 sweep 节);优化与代理小节据此合成寻优实验
+  const sweepYaml = exec.spec.kind === 'sweep' ? exec.spec.yaml : ''
   const plan = context?.plan
   const all = resultRows(job)
   const rows = orderedRows(all, ui.order)
@@ -254,6 +257,9 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
           <div className="candidate-table-wrap"><table className="candidate-table"><thead><tr><th>{t(locale, 'analysis.recColParam')}</th><th>{t(locale, 'analysis.recColMetric')}</th><th>{t(locale, 'analysis.recColElasticity')}</th><th>{t(locale, 'analysis.recColSignificant')}</th><th>{t(locale, 'analysis.recColNote')}</th></tr></thead><tbody>{rec.elasticities.map((e, i) => <tr key={i}><td>{e.param}</td><td>{e.metric}</td><td>{e.e ?? t(locale, 'analysis.unavailable')} / [{e.e_lo ?? t(locale, 'analysis.unavailable')}, {e.e_hi ?? t(locale, 'analysis.unavailable')}]</td><td>{String(e.significant)}</td><td>{e.note}: {sensitivityNoteLabel(e.note, locale)}</td></tr>)}</tbody></table></div>
         </> : <p>{exec.recommendationError ?? (completed < all.length ? t(locale, 'analysis.recIncomplete') : t(locale, 'analysis.recNone'))}</p>}
       </section>
+      {/* WB-08.17(L380)· 优化与代理:进化寻优/代理训练/扫描 Pareto 独立标识,
+          真实观测·插值·代理估计三层分行,RF 树间分歧不作置信区间 */}
+      <OptimizeSurrogateSection exec={exec} yaml={sweepYaml} />
     </> : <section><h2>{exec.kind === 'single' ? t(locale, 'analysis.singleTitle') : t(locale, 'analysis.abTitle')}</h2>
       {exec.kind === 'single' ? <p>{t(locale, 'analysis.singleNote')}</p> : exec.comparison ? (() => {
         const comparisons = exec.comparisons ?? [exec.comparison!]

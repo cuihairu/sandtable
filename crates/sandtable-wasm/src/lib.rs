@@ -34,7 +34,11 @@ fn load(yaml: &str) -> Result<core::config::SimConfig, String> {
 /// 返回 `{config_hash, players, days, schema_version, model_version}`;
 /// 配置非法时 Err,消息与 CLI 退出码 2 的 stderr 同源。
 pub fn validate_config_native(yaml: &str) -> Result<serde_json::Value, String> {
-    let cfg = load(yaml)?;
+    // 校验通道接受实验 YAML(sweep / optimize 节摘出):前端提交纪律要求
+    // 送达的输入快照(含 sweep 节)被内核完整校验,run_simulation 等执行
+    // 入口仍走 load_str 只收场景 YAML。
+    let cfg = core::scenario::load_config_str(yaml).map_err(|e| format!("配置错误: {e}"))?;
+    core::config::validate(&cfg).map_err(|e| format!("配置错误: {e}"))?;
     Ok(json!({
         "config_hash": core::config::config_hash(&cfg),
         "players": cfg.players,
@@ -408,6 +412,140 @@ pub fn daily_aggregate(results_json: &str) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+/// Web 寻优预算:种群 × (代数 + 1) × replicates ≤ 200 次仿真(与扫描同账)。
+/// 寻优是内核单次调用、无候选级中断边界,超预算直接拒绝,不冻住浏览器。
+pub const MAX_OPTIMIZE_SIMS: u64 = MAX_SWEEP_SIMS;
+
+/// 进化寻优(native 纯函数):读 scenario + model + optimize 三节实验文件,
+/// [`core::optimize::optimize`] 单次调用跑完整个 种群 × 代 寻优(与 CLI
+/// `optimize` 同源),返回 spec / evaluated / total_sims / best / best_fitness /
+/// history / all / front0(CLI opt.json 同构)。evolutionary = 字典序适应度,
+/// pareto = 约束感知非支配排序;超出 Web 预算时 Err。
+pub fn optimize_native(yaml: &str) -> Result<serde_json::Value, String> {
+    let (cfg, spec) =
+        core::scenario::load_optimize_str(yaml).map_err(|e| format!("配置错误: {e}"))?;
+    spec.validate().map_err(|e| format!("配置错误: {e}"))?;
+    let sims = spec.population as u64 * (spec.generations as u64 + 1) * spec.replicates as u64;
+    if sims > MAX_OPTIMIZE_SIMS {
+        return Err(format!(
+            "参数错误: 种群 × (代数+1) × replicates = {sims} 超出 Web 预算 {MAX_OPTIMIZE_SIMS}(调小 population / generations / replicates,更大实验走 CLI)"
+        ));
+    }
+    let scale = cfg.players as u64 * cfg.days as u64;
+    if scale > MAX_SWEEP_SIM_SCALE {
+        return Err(format!(
+            "参数错误: players × days = {scale} 超出 Web 预算 {MAX_SWEEP_SIM_SCALE}(Web 定位小中型仿真,更大实验走 CLI)"
+        ));
+    }
+    let result = core::optimize::optimize(&cfg, &spec).map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(result).map_err(|e| format!("配置错误: {e}"))
+}
+
+/// 进化寻优(wasm 入口):JSON 字符串,形状同 [`optimize_native`]。
+#[wasm_bindgen]
+pub fn optimize(yaml: &str) -> Result<JsValue, JsValue> {
+    let v = optimize_native(yaml).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// 代理训练(native 纯函数):已跑候选结果 → 随机森林(与 CLI `surrogate
+/// train` 同源)。零额外仿真;代理只读 sweep 产物,不进仿真路径(文档 09 章
+/// 红线)。返回训练账(trained / excluded,内核过滤口径)+ 特征重要性 +
+/// 模型全量 JSON(`model` 原样,预测时回传)。
+pub fn surrogate_train_native(
+    results_json: &str,
+    metric: &str,
+    trees: u32,
+    max_depth: u32,
+    min_samples_leaf: u32,
+    seed: u64,
+) -> Result<serde_json::Value, String> {
+    let results: Vec<core::sweep::CandidateResult> = serde_json::from_str(results_json)
+        .map_err(|e| format!("参数错误: 候选结果解析失败: {e}"))?;
+    let key = core::experiment::MetricKey::parse(metric)
+        .ok_or_else(|| format!("参数错误: 未知指标 {metric}"))?;
+    let spec = core::surrogate::SurrogateSpec {
+        trees,
+        max_depth,
+        min_samples_leaf: min_samples_leaf as usize,
+        seed,
+    };
+    spec.validate().map_err(|e| format!("配置错误: {e}"))?;
+    let trained = core::surrogate::RandomForest::trained_row_count(&results, key)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    let model = core::surrogate::RandomForest::fit(&results, key, spec)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    let model_value = serde_json::to_value(&model).map_err(|e| format!("配置错误: {e}"))?;
+    Ok(json!({
+        "metric": model.metric,
+        "features": model.features,
+        "importance": model.importance,
+        "spec": model.spec,
+        "trained": trained,
+        "excluded": results.len() - trained,
+        "model": model_value,
+    }))
+}
+
+/// 代理训练(wasm 入口):JSON 字符串,形状同 [`surrogate_train_native`]。
+#[wasm_bindgen]
+pub fn surrogate_train(
+    results_json: &str,
+    metric: &str,
+    trees: u32,
+    max_depth: u32,
+    min_samples_leaf: u32,
+    seed: u64,
+) -> Result<JsValue, JsValue> {
+    let v = surrogate_train_native(
+        results_json,
+        metric,
+        trees,
+        max_depth,
+        min_samples_leaf,
+        seed,
+    )
+    .map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// 代理预测(native 纯函数):模型 JSON + 参数点 → 森林均值 + 树间分歧
+/// 包络(内核 [`core::surrogate::SurrogatePrediction`])。**树间分歧是描述性
+/// 散布(全部树各自预测的 min/max),不是统计置信区间**——字段名不带
+/// ci/confidence/interval,前端不得画成置信带;置信带只在内核逐日聚合输出上。
+pub fn surrogate_predict_native(
+    model_json: &str,
+    params_json: &str,
+) -> Result<serde_json::Value, String> {
+    let model: core::surrogate::RandomForest =
+        serde_json::from_str(model_json).map_err(|e| format!("参数错误: 代理模型解析失败: {e}"))?;
+    let params: std::collections::BTreeMap<String, f64> =
+        serde_json::from_str(params_json).map_err(|e| format!("参数错误: 参数点解析失败: {e}"))?;
+    let envelope = model
+        .predict_envelope(&params)
+        .map_err(|e| format!("参数错误: {e}"))?;
+    Ok(json!({
+        "metric": model.metric,
+        "mean": envelope.mean,
+        "spread_min": envelope.spread_min,
+        "spread_max": envelope.spread_max,
+        "trees": envelope.trees,
+    }))
+}
+
+/// 代理预测(wasm 入口):JSON 字符串,形状同 [`surrogate_predict_native`]。
+#[wasm_bindgen]
+pub fn surrogate_predict(model_json: &str, params_json: &str) -> Result<JsValue, JsValue> {
+    let v = surrogate_predict_native(model_json, params_json).map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,6 +570,27 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.starts_with("配置错误"), "{err}");
+    }
+
+    #[test]
+    fn validate_accepts_experiment_yaml_executors_do_not() {
+        // 前端提交纪律:送达的输入快照(含 sweep 节)整份过校验通道。
+        // sweep 节摘出后 config_hash 与只写基础配置的版本同源。
+        let base = validate_config_native(YAML).unwrap();
+        let experiment = YAML.to_string()
+            + "sweep:\n  mode: grid\n  replicates: 2\n  parameters:\n"
+            + "    model.warrior.attack: {min: 90, max: 110, step: 10}\n"
+            + "  targets:\n    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n";
+        let v = validate_config_native(&experiment).unwrap();
+        assert_eq!(v["players"], 40);
+        assert_eq!(v["days"], 3);
+        assert_eq!(
+            v["config_hash"], base["config_hash"],
+            "sweep 节不进配置身份"
+        );
+        // 执行入口不变:run_simulation 只收场景 YAML,实验节照旧拦截
+        let err = run_simulation_native(&experiment, 2).unwrap_err();
+        assert!(err.contains("未知参数"), "执行入口不吞实验节:{err}");
     }
 
     #[test]
@@ -890,5 +1049,162 @@ mod tests {
         );
         let e = sweep_recommend_native(&two_axis, &results_json).unwrap_err();
         assert!(e.contains("单参数轴"), "{e}");
+    }
+
+    // —— 进化寻优 + 代理(文档 12 章自动寻优增量)——
+    // 微型预算:population 4 × (generations 2 + 1) × replicates 1 ≤ 200。
+    const OPT_YAML: &str = concat!(
+        "schema_version: '1'\n",
+        "scenario: {population: 20, duration: '3d', seed: 42}\n",
+        "optimize:\n",
+        "  mode: evolutionary\n",
+        "  population: 4\n",
+        "  generations: 2\n",
+        "  elite: 1\n",
+        "  mutation_rate: 0.3\n",
+        "  mutation_scale: 0.2\n",
+        "  replicates: 1\n",
+        "  parameters:\n",
+        "    model.warrior.attack: {min: 20, max: 200}\n",
+        "  targets:\n",
+        "    - {metric: churn_rate, min: 0.0, max: 1.0, kind: hard}\n",
+        "  objective:\n",
+        "    metric: win_rate\n",
+        "    direction: maximize\n",
+    );
+
+    #[test]
+    fn optimize_evolutionary_shape_and_budget() {
+        let v = optimize_native(OPT_YAML).unwrap();
+        assert_eq!(v["spec"]["mode"], "evolutionary");
+        // 评估账:population + generations × (population − elite) = 4 + 2×3
+        assert_eq!(v["evaluated"], 10);
+        assert_eq!(v["total_sims"], 10);
+        assert_eq!(v["all"].as_array().unwrap().len(), 10);
+        // 逐代统计:初始种群 + 每代一条(共 generations + 1 = 3)
+        assert_eq!(v["history"].as_array().unwrap().len(), 3);
+        assert!(v["best"]["values"].is_object());
+        assert!(v["best_fitness"]["hard_pass"].is_u64());
+        // evolutionary 模式不产出前沿(front0 恒空),与 pareto 模式互斥
+        assert!(v["front0"].as_array().unwrap().is_empty());
+
+        // 预算超限拒绝:种群 × (代数+1) × replicates 远超 Web 预算
+        let big = OPT_YAML.replace(
+            "  population: 4\n  generations: 2\n",
+            "  population: 200\n  generations: 10\n",
+        );
+        let e = optimize_native(&big).unwrap_err();
+        assert!(e.contains("Web 预算"), "{e}");
+
+        // 与扫描互斥:两种实验形态不能同文件
+        let dual = concat!(
+            "schema_version: '1'\n",
+            "scenario: {population: 20, duration: '3d', seed: 42}\n",
+            "sweep:\n  replicates: 1\n  parameters:\n    model.warrior.attack: {min: 90, max: 110, step: 10}\n  targets:\n    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n",
+            "optimize:\n  mode: evolutionary\n  population: 4\n  generations: 2\n  replicates: 1\n",
+        );
+        assert!(
+            optimize_native(dual).is_err(),
+            "sweep 与 optimize 同文件必须拒绝"
+        );
+
+        // 扫描实验文件传给寻优:内核按互斥规则如实拒绝(不静默当寻优跑)
+        let e = optimize_native(EXP_YAML).unwrap_err();
+        assert!(e.contains("不能同时含"), "{e}");
+        // 纯场景文件(无 sweep 也无 optimize 节):点名缺 optimize 节
+        let e = optimize_native(YAML).unwrap_err();
+        assert!(e.contains("缺少 optimize 节"), "{e}");
+    }
+
+    #[test]
+    fn optimize_pareto_front_distinct_from_best() {
+        let yaml = OPT_YAML.replace("mode: evolutionary", "mode: pareto");
+        let yaml = yaml.replace(
+            "  objective:\n    metric: win_rate\n    direction: maximize\n",
+            "  objectives:\n    - {metric: win_rate, direction: maximize}\n    - {metric: gold_per_player, direction: minimize}\n",
+        );
+        let v = optimize_native(&yaml).unwrap();
+        assert_eq!(v["spec"]["mode"], "pareto");
+        let front = v["front0"].as_array().unwrap();
+        assert!(!front.is_empty(), "pareto 模式前沿 0 非空");
+        // 前沿成员必须同时产出两个目标(否则不进比较)
+        for point in front {
+            let stats = point["metric_stats"].as_array().unwrap();
+            let names: Vec<&str> = stats.iter().map(|s| s[0].as_str().unwrap()).collect();
+            assert!(
+                names.contains(&"win_rate") && names.contains(&"gold_per_player"),
+                "{names:?}"
+            );
+        }
+        // best = 前沿 0 中拥挤距离最大者(代表点),必须落在前沿内
+        assert!(v["best"].is_object());
+    }
+
+    #[test]
+    fn surrogate_train_and_predict_report_tree_disagreement_not_ci() {
+        // 训练集 = 扫描真跑产物(代理只读 sweep 产物,零额外仿真)
+        let (cfg, spec) = core::scenario::load_experiment_str(EXP_YAML).unwrap();
+        let results: Vec<_> = spec
+            .plan(cfg.base_seed)
+            .unwrap()
+            .iter()
+            .map(|values| core::sweep::run_candidate(&cfg, &spec, values))
+            .collect();
+        let results_json = serde_json::to_string(&results).unwrap();
+
+        let v = surrogate_train_native(&results_json, "win_rate", 20, 6, 2, 7).unwrap();
+        assert_eq!(v["metric"], "win_rate");
+        assert_eq!(v["features"][0], "model.warrior.attack");
+        assert_eq!(v["trained"], 3, "3 个可行候选全入训练");
+        assert_eq!(v["excluded"], 0);
+        assert!(v["importance"].as_array().unwrap().len() == 1);
+        assert!(v["spec"]["trees"] == 20 && v["spec"]["seed"] == 7);
+        assert!(v["model"]["forest"].as_array().unwrap().len() == 20);
+
+        let model_json = serde_json::to_string(&v["model"]).unwrap();
+        let p =
+            surrogate_predict_native(&model_json, r#"{"model.warrior.attack": 100.0}"#).unwrap();
+        let mean = p["mean"].as_f64().unwrap();
+        let lo = p["spread_min"].as_f64().unwrap();
+        let hi = p["spread_max"].as_f64().unwrap();
+        assert!(
+            lo <= mean && mean <= hi,
+            "树间分歧包络必须包住均值:{lo} {mean} {hi}"
+        );
+        assert_eq!(p["trees"], 20);
+        assert_eq!(p["metric"], "win_rate");
+        // 红线:代理预测输出不得携带置信区间语义字段(下游会据此画置信带)
+        let text = serde_json::to_string(&p).unwrap();
+        for bad in ["\"ci", "ci95", "confidence", "interval", "band"] {
+            assert!(!text.contains(bad), "树间分歧不得标成置信区间:{text}");
+        }
+
+        // 缺特征:内核报错,不静默补 0
+        let e = surrogate_predict_native(&model_json, "{}").unwrap_err();
+        assert!(e.contains("缺少特征"), "{e}");
+        // 未知指标 / 超参非法 / 空训练集:配置与参数错误通道如实回传
+        assert!(
+            surrogate_train_native(&results_json, "not_a_metric", 20, 6, 2, 7)
+                .unwrap_err()
+                .contains("未知指标")
+        );
+        assert!(surrogate_train_native(&results_json, "win_rate", 0, 6, 2, 7).is_err());
+        let empty = serde_json::to_string(&Vec::<core::sweep::CandidateResult>::new()).unwrap();
+        assert!(surrogate_train_native(&empty, "win_rate", 20, 6, 2, 7).is_err());
+
+        // 配置错误候选不入训练,排除账如实回传
+        let with_bad = {
+            let mut rows = results.clone();
+            rows.push(core::sweep::CandidateResult {
+                values: std::collections::BTreeMap::from([("model.warrior.attack".into(), 1.0)]),
+                status: core::sweep::CandidateStatus::ConfigError("测试配置错误".into()),
+                metric_stats: Vec::new(),
+                target_outcomes: Vec::new(),
+            });
+            serde_json::to_string(&rows).unwrap()
+        };
+        let v2 = surrogate_train_native(&with_bad, "win_rate", 20, 6, 2, 7).unwrap();
+        assert_eq!(v2["trained"], 3);
+        assert_eq!(v2["excluded"], 1, "配置错误候选被内核过滤并计入排除账");
     }
 }

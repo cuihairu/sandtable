@@ -76,6 +76,9 @@ pub fn run() {
             sweep_plan,
             sweep_candidate,
             sweep_recommend,
+            optimize,
+            surrogate_train,
+            surrogate_predict,
             query,
         ])
         .setup(|app| {
@@ -169,7 +172,11 @@ fn load(yaml: &str) -> Result<sandtable_core::config::SimConfig, String> {
 /// 与 wasm validate_config 逐字段同构。
 #[tauri::command]
 fn validate_config(yaml: String) -> Result<serde_json::Value, String> {
-    let cfg = load(&yaml)?;
+    // 校验通道接受实验 YAML(sweep / optimize 节摘出),与 wasm
+    // validate_config 同口径;执行入口(run 等)仍走 load 只收场景 YAML。
+    let cfg =
+        sandtable_core::scenario::load_config_str(&yaml).map_err(|e| format!("配置错误: {e}"))?;
+    sandtable_core::config::validate(&cfg).map_err(|e| format!("配置错误: {e}"))?;
     Ok(serde_json::json!({
         "config_hash": sandtable_core::config::config_hash(&cfg),
         "players": cfg.players,
@@ -289,6 +296,81 @@ fn daily_aggregate(results_json: String) -> Result<serde_json::Value, String> {
     let aggregation = sandtable_core::experiment::daily_aggregate_metrics(&results)
         .map_err(|e| format!("配置错误: {e}"))?;
     serde_json::to_value(aggregation).map_err(|e| format!("配置错误: {e}"))
+}
+
+/// 进化寻优(桌面命令):内核单次调用跑完整体 种群 × 代 寻优,与 CLI
+/// `optimize` 同源,返回 spec / evaluated / total_sims / best / best_fitness /
+/// history / all / front0(CLI opt.json 同构)。桌面 native 无 Web 预算门
+/// (与 sweep_plan 同口径,更大寻优本就是桌面定位);浏览器路径的预算红线
+/// 在 wasm `optimize_native` 单点拦截。
+#[tauri::command]
+fn optimize(yaml: String) -> Result<serde_json::Value, String> {
+    let (cfg, spec) =
+        sandtable_core::scenario::load_optimize_str(&yaml).map_err(|e| format!("配置错误: {e}"))?;
+    spec.validate().map_err(|e| format!("配置错误: {e}"))?;
+    let result =
+        sandtable_core::optimize::optimize(&cfg, &spec).map_err(|e| format!("配置错误: {e}"))?;
+    serde_json::to_value(result).map_err(|e| format!("配置错误: {e}"))
+}
+
+/// 代理训练(桌面命令):已跑候选结果 → 随机森林;训练账(入训/排除,
+/// 内核过滤口径)与特征重要性由内核算出,模型全量 JSON 原样回传预测用。
+/// 与 wasm surrogate_train 同构(零额外仿真;代理只读 sweep 产物,不进仿真路径)。
+#[tauri::command]
+fn surrogate_train(
+    results_json: String,
+    metric: String,
+    trees: u32,
+    max_depth: u32,
+    min_samples_leaf: u32,
+    seed: u64,
+) -> Result<serde_json::Value, String> {
+    let results: Vec<sandtable_core::sweep::CandidateResult> = serde_json::from_str(&results_json)
+        .map_err(|e| format!("参数错误: 候选结果解析失败: {e}"))?;
+    let key = sandtable_core::experiment::MetricKey::parse(&metric)
+        .ok_or_else(|| format!("参数错误: 未知指标 {metric}"))?;
+    let spec = sandtable_core::surrogate::SurrogateSpec {
+        trees,
+        max_depth,
+        min_samples_leaf: min_samples_leaf as usize,
+        seed,
+    };
+    spec.validate().map_err(|e| format!("配置错误: {e}"))?;
+    let trained = sandtable_core::surrogate::RandomForest::trained_row_count(&results, key)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    let model = sandtable_core::surrogate::RandomForest::fit(&results, key, spec)
+        .map_err(|e| format!("配置错误: {e}"))?;
+    let model_value = serde_json::to_value(&model).map_err(|e| format!("配置错误: {e}"))?;
+    Ok(serde_json::json!({
+        "metric": model.metric,
+        "features": model.features,
+        "importance": model.importance,
+        "spec": model.spec,
+        "trained": trained,
+        "excluded": results.len() - trained,
+        "model": model_value,
+    }))
+}
+
+/// 代理预测(桌面命令):模型 + 参数点 → 森林均值 + 树间分歧包络。
+/// 树间分歧是描述性散布(全部树各自预测的 min/max),不是统计置信区间
+/// (字段名不带 ci/confidence/interval),前端不得画成置信带。
+#[tauri::command]
+fn surrogate_predict(model_json: String, params_json: String) -> Result<serde_json::Value, String> {
+    let model: sandtable_core::surrogate::RandomForest = serde_json::from_str(&model_json)
+        .map_err(|e| format!("参数错误: 代理模型解析失败: {e}"))?;
+    let params: std::collections::BTreeMap<String, f64> =
+        serde_json::from_str(&params_json).map_err(|e| format!("参数错误: 参数点解析失败: {e}"))?;
+    let envelope = model
+        .predict_envelope(&params)
+        .map_err(|e| format!("参数错误: {e}"))?;
+    Ok(serde_json::json!({
+        "metric": model.metric,
+        "mean": envelope.mean,
+        "spread_min": envelope.spread_min,
+        "spread_max": envelope.spread_max,
+        "trees": envelope.trees,
+    }))
 }
 
 /// 逐 replicate 执行:每个 replicate 开跑前检查取消令牌,完成后上报一次进度。
@@ -569,6 +651,25 @@ mod tests {
         "  targets:\n",
         "    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n",
     );
+    const OPT_YAML: &str = concat!(
+        "schema_version: '1'\n",
+        "scenario: {population: 20, duration: '3d', seed: 42}\n",
+        "optimize:\n",
+        "  mode: evolutionary\n",
+        "  population: 4\n",
+        "  generations: 2\n",
+        "  elite: 1\n",
+        "  mutation_rate: 0.3\n",
+        "  mutation_scale: 0.2\n",
+        "  replicates: 2\n",
+        "  parameters:\n",
+        "    model.warrior.attack: {min: 20, max: 200}\n",
+        "  targets:\n",
+        "    - {metric: churn_rate, min: 0.0, max: 1.0, kind: hard}\n",
+        "  objective:\n",
+        "    metric: win_rate\n",
+        "    direction: maximize\n",
+    );
 
     /// 主窗经 mock 运行时可构建,下载拦截与放大开关挂在同一个「main」窗口上
     /// (mock 运行时不记窗口属性,缩放开关本身由
@@ -838,6 +939,85 @@ mod tests {
         );
         assert!(sweep_candidate_impl(EXP_YAML, 0, values).is_err());
         assert!(sweep_recommend("no sweep".into(), "[]".into()).is_err());
+    }
+
+    /// 校验通道:桌面与 wasm 接受同一份实验 YAML(sweep 节摘出)且逐字段
+    /// 一致;执行入口不变(只收场景 YAML)。前端提交纪律要求送达的输入
+    /// 快照(含 sweep 节)整份被内核校验,否则 sweep 节被当作未知顶层键。
+    #[test]
+    fn validate_config_accepts_experiment_yaml() {
+        let d = validate_config(EXP_YAML.into()).unwrap();
+        let w = sandtable_wasm::validate_config_native(EXP_YAML).unwrap();
+        assert_eq!(d, w, "桌面与 wasm 校验通道逐字段一致");
+        assert!(
+            d["config_hash"].as_str().unwrap().len() == 64,
+            "SHA-256 hex"
+        );
+        // 执行入口只收场景 YAML:load_str 对顶层 sweep 节照旧拒绝
+        assert!(
+            sandtable_core::scenario::load_str(EXP_YAML).is_err(),
+            "执行入口不吞实验节"
+        );
+    }
+
+    /// 寻优/代理三命令:桌面 core 直连与 wasm 绑定逐字段一致;桌面 native
+    /// 无 Web 预算门是刻意定位(同 sweep_plan 口径),Web 红线仍在 wasm 层。
+    #[test]
+    fn optimize_and_surrogate_match_wasm() {
+        // 代理训练/预测:同一内核森林,训练账 + 重要性 + 模型 JSON 同构
+        let (cfg, spec) = sandtable_core::scenario::load_experiment_str(EXP_YAML).unwrap();
+        let mut results = Vec::new();
+        for values in spec.plan(cfg.base_seed).unwrap() {
+            results.push(sandtable_core::sweep::run_candidate(&cfg, &spec, &values));
+        }
+        let results_json = serde_json::to_string(&results).unwrap();
+        let d = surrogate_train(results_json.clone(), "win_rate".into(), 16, 5, 2, 7).unwrap();
+        let w =
+            sandtable_wasm::surrogate_train_native(&results_json, "win_rate", 16, 5, 2, 7).unwrap();
+        assert_eq!(d, w, "代理训练输出与 wasm 同构");
+        assert_eq!(d["trained"], 3);
+        assert_eq!(d["excluded"], 0);
+
+        let point = r#"{"model.warrior.attack": 100.0}"#;
+        let pd = surrogate_predict(d["model"].to_string(), point.into()).unwrap();
+        let pw = sandtable_wasm::surrogate_predict_native(&d["model"].to_string(), point).unwrap();
+        assert_eq!(pd, pw, "预测与树间分歧包络与 wasm 同构");
+        let mean = pd["mean"].as_f64().unwrap();
+        assert!(
+            pd["spread_min"].as_f64().unwrap() <= mean
+                && mean <= pd["spread_max"].as_f64().unwrap(),
+            "树间分歧两端夹住森林均值"
+        );
+        // 红线:分歧字段名不带 ci/confidence/interval/band 语义(内核面已锁,桥接面复验)
+        let pd_json = pd.to_string().to_lowercase();
+        for forbidden in ["ci", "confidence", "interval", "band"] {
+            assert!(
+                !pd_json.contains(forbidden),
+                "预测 JSON 不得出现 {forbidden}"
+            );
+        }
+
+        // 寻优:小预算下桌面与 wasm 逐字段一致
+        let od = optimize(OPT_YAML.into()).unwrap();
+        let ow = sandtable_wasm::optimize_native(OPT_YAML).unwrap();
+        assert_eq!(od, ow, "寻优输出与 wasm 同构");
+        assert_eq!(od["spec"]["mode"], "evolutionary");
+
+        // 预算门分野:同一份超 Web 预算(800 > 200)实验,桌面放行、wasm 拒绝
+        let big = OPT_YAML
+            .replace(
+                "  population: 4\n  generations: 2\n",
+                "  population: 20\n  generations: 1\n",
+            )
+            .replace("  replicates: 2\n", "  replicates: 20\n");
+        assert!(
+            optimize(big.clone()).is_ok(),
+            "桌面无 Web 预算门:更大寻优是桌面定位"
+        );
+        assert!(
+            sandtable_wasm::optimize_native(&big).is_err(),
+            "Web 路径预算红线仍在 wasm 层拦截"
+        );
     }
 
     #[test]

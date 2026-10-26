@@ -31,6 +31,15 @@
 .wb-app .result-draft textarea { display: block; width: 100%; font-family: var(--wb-mono); background: var(--wb-canvas); border: 1px solid var(--wb-line); padding: var(--wb-pad-panel); }
 @media (max-width: 1100px) { .wb-app .real-result-grid { grid-template-columns: minmax(0, 1fr); } .wb-app .real-inspector { border-inline-start: 0; border-top: 1px solid var(--wb-line); padding-inline-start: 0; } }
 
+/* —— 优化与代理(todo L380):进化寻优 / 代理训练 / 扫描 Pareto 独立标识;
+   三层来源分行;树间分歧是描述性散布,任何 .ci-/.band 语义都不进本小节。 —— */
+.wb-app .optimize-surrogate { border-top: 1px solid var(--wb-line); padding-block-start: var(--wb-pad-panel-lg); margin-block-start: var(--wb-pad-panel-lg); }
+.wb-app .optimize-surrogate h3 { margin-block-start: var(--wb-pad-panel-lg); }
+.wb-app .optimize-surrogate pre { max-height: 240px; overflow: auto; background: var(--wb-canvas); border: 1px solid var(--wb-line); padding: var(--wb-pad-panel); font-family: var(--wb-mono); font-size: var(--wb-fs-caption); margin: 0; }
+.wb-app .optimize-surrogate .pro-toolbar { flex-wrap: wrap; gap: var(--wb-space-1); }
+.wb-app .optimize-surrogate .pro-toolbar > label { display: inline-flex; align-items: center; gap: var(--wb-space-1); font-size: var(--wb-fs-caption); color: var(--wb-muted); }
+.wb-app .optimize-surrogate .pro-toolbar input[type="number"] { min-width: 64px; }
+
 /* WB-12 · 专业图型(todo L365):四类图共用聚合模型输出,SVG 只用内核值。
    缺失/未产出 = 不画(空格/缺点),故此处没有任何「0 值」兜底样式。 */
 .wb-app .pro-charts { border-top: 1px solid var(--wb-line); padding-block-start: var(--wb-pad-panel-lg); margin-block-start: var(--wb-pad-panel-lg); }

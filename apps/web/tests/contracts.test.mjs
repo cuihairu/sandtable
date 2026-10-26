@@ -762,3 +762,31 @@ test('P2 逐日聚合桥:daily_aggregate 内核直出,天数交集/可选缺席/
   assert.match(tauri, /fn daily_aggregate\(/, 'Tauri 命令在场')
   assert.match(tauri, /daily_aggregate,/, '命令已注册到 generate_handler 列表')
 })
+
+test('P2 优化与代理桥:optimize / surrogate_train / surrogate_predict 三命令双路径接线(行为断言在 optimize-surrogate.test.mjs)', () => {
+  const svc = read('src/lib/wasm.ts')
+  const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')
+  const tauri = read('../../apps/desktop/src-tauri/src/lib.rs')
+  const types = typesSrc
+  for (const cmd of ['optimize', 'surrogate_train', 'surrogate_predict']) {
+    assert.match(svc, new RegExp(`invoke\\('${cmd}', \\{`), `${cmd}: 桌面路径走 native 命令`)
+    assert.match(wasmRs, new RegExp(`pub fn ${cmd}\\(`), `${cmd}: wasm 导出在场`)
+    assert.match(tauri, new RegExp(`fn ${cmd}\\(`), `${cmd}: Tauri 命令在场`)
+    assert.match(tauri, new RegExp(`${cmd},`), `${cmd}: 命令已注册到 generate_handler 列表`)
+  }
+  // 桌面壳 core 直连(与 sweep_plan / daily_aggregate 同口径),不引 wasm 依赖
+  assert.match(tauri, /sandtable_core::optimize::optimize/, '桌面寻优命令直连 core::optimize')
+  assert.match(tauri, /sandtable_core::surrogate::RandomForest::fit/, '桌面代理训练直连 core 森林')
+  assert.match(tauri, /predict_envelope/, '桌面代理预测走内核分歧包络')
+  // Web 预算红线单点在 wasm 层;桌面 native 无 200 预算门是刻意定位(更大寻优走桌面)
+  assert.match(wasmRs, /pub const MAX_OPTIMIZE_SIMS: u64 = MAX_SWEEP_SIMS;/, '寻优预算上限与扫描同账(200)')
+  assert.doesNotMatch(tauri, /MAX_OPTIMIZE_SIMS|MAX_SWEEP_SIMS/, '桌面命令不复刻 Web 预算门')
+  // TS 镜像类型在场
+  assert.match(types, /export interface OptimResult/, 'OptimResult 镜像在场')
+  assert.match(types, /export interface SurrogateTrainOutput/, 'SurrogateTrainOutput 镜像在场')
+  assert.match(types, /export interface SurrogatePrediction/, 'SurrogatePrediction 镜像在场')
+  // 红线:代理预测类型字段不带 ci/confidence/interval/band 语义
+  const predBlock = types.slice(types.indexOf('export interface SurrogatePrediction'))
+  const predBody = predBlock.slice(0, predBlock.indexOf('\n}') + 2)
+  assert.doesNotMatch(predBody, /ci|confidence|interval|band/i, 'SurrogatePrediction 字段名不得携带 CI/区间语义')
+})
