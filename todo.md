@@ -405,11 +405,16 @@
 
 #### 各阶段验收纪律
 
-- [ ] 数据可追溯：每个真实结果可定位输入快照和运行条件；原型演示、未运行草稿、观测、插值和代理预测均有明确来源。
-- [ ] 统计正确：`win_rate` 为全程胜率；CI 与样本量按 replicate；不同单位分图；unavailable 指标不被当作 0；没有性能基准时不编造耗时。
-- [ ] 编辑安全：基线只读、候选变更可撤销、导入先预览校验、保存失败可恢复；历史结果不被编辑覆盖。
-- [ ] 操作完整：主要控件必须有实际行为或明确禁用原因；键盘、焦点、错误定位、忙碌/失败/取消状态可用，长任务不阻塞 UI。
-- [ ] 每批实现附运行证据：关键真实流程检查、类型/lint/build、相关逻辑/集成检查与实际截图；更新设计稿和 TODO，不把“界面已画出”标成“正式能力已完成”。
+- [x] 数据可追溯：每个真实结果可定位输入快照和运行条件；原型演示、未运行草稿、观测、插值和代理预测均有明确来源。
+  - 2026-10-27 收口（本轮提交哈希见 push 后 `origin/main`）：输入快照 = `report.json` 的 `config_hash`（配置 SHA-256）+ `seed` + `players`/`days` + `model_version`/`schema_version`，场景 YAML 即输入、hash 锚定；运行条件 = `meta.generated_at` 与版本对；观测/插值/代理来源 = `SourceKind`（'observed'|'interpolated'|'surrogate'，optimizeSurrogateModel.ts:18）与 `observedPoints`/`interpolatedPoints`/`surrogatePoints`（测试：config-error 候选留内核注记、绝不 0 填充）；原型演示 = 内置演示项目 `data_source` 一律 `synthetic_demo`、统计区间标 `illustrative_symmetric_interval`（sampleProject.ts:2，红线「非真实运行产物」）；未运行草稿 = 等待/失败/指标不可用候选标「见表」不进图不补 0（optimize-surrogate DOM 断言）。门禁：tsc 0 / oxlint 0 / node 481/481。
+- [x] 统计正确：`win_rate` 为全程胜率；CI 与样本量按 replicate；不同单位分图；unavailable 指标不被当作 0；没有性能基准时不编造耗时。
+  - 2026-10-27 收口（本轮提交哈希见 push 后 `origin/main`）：win_rate = `wins_total / battles_total.max(1)`（metrics.rs:370，全程胜率）；CI = `t_critical_975(df)·sd/√n`、df = n−1、n = replicate（experiment.rs:71，t 分布非正态近似）；不同单位分图 = report.html 每数值列一张小折线图「各列自持 y 范围，量纲不互扰」（report.rs:929）+ `daily_analysis.m` 分轴；unavailable 不作为 0 = `batch_sweep` 窗口不足记 `-`、error-surface「缺指标不补零——短窗口只列可用指标」；不编造耗时 = 性能为实测（scripting-perf-report.md），无基准不虚报。门禁：tsc 0 / oxlint 0 / node 481/481。
+- [x] 编辑安全：基线只读、候选变更可撤销、导入先预览校验、保存失败可恢复；历史结果不被编辑覆盖。
+  - 2026-10-27 收口（本轮提交哈希见 push 后 `origin/main`）：基线只读 = WB-05.14 保存/运行时冻结已校验配置版本（单元格后续编辑不影响它）+ WB-04.05「基线冻结，候选存基线引用/当前值/修改状态」；候选变更可撤销 = `param/undo`/`param/redo` + history/future 栈（上限 50，workbenchStore.ts:52；WB-04.06 与 WB-05.12「同一撤销/重做历史」）；导入先预览校验 = `previewParamImport`（paramImport.ts:280，解析 + `validateParam` 校验，ok 才应用）+ WB-05.06/05.11「批量预演整批校验；任一失败不产生写入表」+ paramsImport.test；保存失败可恢复 = `project/mark-saved`「写盘成功后标记，失败路径绝不触发」（workbenchStore.ts:243，WB-04.10）+ 演示数据过运行索引写闸被拒文案双语（error-surface.test.mjs:262）；历史结果不被编辑覆盖 = runs 独立存储、编辑不改旧运行（08.15 copy 保留基线建独立草稿；WB-10.05 旧任务产物保留不被覆盖）。门禁：tsc 0 / oxlint 0 / node 481/481。
+- [x] 操作完整：主要控件必须有实际行为或明确禁用原因；键盘、焦点、错误定位、忙碌/失败/取消状态可用，长任务不阻塞 UI。
+  - 2026-10-27 收口（本轮提交哈希见 push 后 `origin/main`）：实际行为或禁用原因 = 候选提交超 Web 预算被禁用且 title 点名（「候选数 × replicates = 296 超出 Web 预算 200（调小网格或 replicates 粗筛，更大实验走 CLI）」）+ ActivityRail `isBlocked`；键盘 = WB-02.14 快捷键测试（Ctrl+S/K/Z/Shift+Z/Y 非输入焦点接管、输入框保留原生撤销、命令面板 Esc 关闭）+ 分布点键盘可达 Enter 选择 aria-pressed（daily-distribution.test.mjs:152）；焦点 = 内核错误卡跳转定位参数行（workspace-dom.test.mjs:139）+ 图表点 role/tabindex/title 精确值键盘可读；错误定位 = WB-10.07 内核原文带定位/可行动指引/预算超限拒绝（error-surface.test.mjs）；忙碌/失败/取消 = WB-07.01 六态守卫、WB-07.16 取消幂等、WB-10.05 取消边界（已完成候选保留、取消非错误）；长任务不阻塞 = Web 预算门（200）+ WB-10.05 运行中切页/开抽屉（任务在模块级 runManager 不丢）。门禁：tsc 0 / oxlint 0 / node 481/481。
+- [x] 每批实现附运行证据：关键真实流程检查、类型/lint/build、相关逻辑/集成检查与实际截图；更新设计稿和 TODO，不把“界面已画出”标成“正式能力已完成”。
+  - 2026-10-27 收口（本轮提交哈希见 push 后 `origin/main`）：本纪律是逐批标准，已由每条交付注记持续体现——每批记录关键真实流程（真 Chromium / 真内核 / 真产物）、类型/lint/build（tsc / oxlint / vite / cargo fmt+clippy）、逻辑/集成检查（对应测试）与实际截图（perf388/chart.png 等）；TODO 每批勾行带提交哈希，设计稿（scripting-design.md 等）随拍板更新；红线「不能因原型可操作而视为完成」在 todo 头与演示项目 `synthetic_demo` 标记贯彻——演示/合成数据一律显式标注，不冒充真实结果。本纪律在后续批次持续生效，不因本条勾选而免除。
 
 ### 近期其他已完成事项
 
