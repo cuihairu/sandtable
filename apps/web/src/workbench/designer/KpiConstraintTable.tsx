@@ -4,18 +4,25 @@
 //   仿真天数不足 7 天时 D7 明示「不可用」并阻止相关任务提交(WB-06.07);
 // - kind hard/soft 与 min/max 直接对应内核 sweep.targets;比例类指标
 //   (retention/win_rate/churn_rate)UI 以百分数输入,写入 YAML 时 ÷100
-//   成比例口径(就地标注,不静默混算);绝对值类指标不换算(WB-06.08)。
+//   成比例口径(就地标注,不静默混算);绝对值类指标不换算(WB-06.08);
+// - L381 指标字典:口径事实源在内核(core::kpi_dict),表下折叠面板只读
+//   呈现量纲/小数位/可用性门槛/版本——写阈值时看得见口径,字典与内核
+//   漂移由 tests/metric-dictionary-ui.test.mjs 锁死不靠人眼。
 import type { JSX } from 'react'
 import { METRIC_KEYS } from '../../lib/types.ts'
+import type { MetricDefinition, MetricDictionary } from '../../lib/types.ts'
 import { kpiInfo, kpiDisplayName, kpiUnitText, isRatioMetric, kernelToUiPercent } from './designerLogic.ts'
 import type { ConstraintDraft } from './designerLogic.ts'
 import { t } from '../../lib/i18n/index.ts'
+import type { Locale } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 
 export type KpiConstraintTableProps = {
   targets: readonly ConstraintDraft[]
   /** 每 KPI 可用性(缺 days / 缺 gacha/loot 节;WB-06.07) */
   availability: Readonly<Record<string, { ok: boolean; reason: string | null }>>
+  /** 内核指标字典(core::kpi_dict);加载期间为空 → 面板不渲染,不占位 */
+  dictionary?: MetricDictionary | null
   onToggle: (metric: string, on: boolean) => void
   onKindChange: (metric: string, kind: 'hard' | 'soft') => void
   /** UI 文本提交(百分数或绝对值);页面负责 parse + 换算内核口径,空串 = 清除 */
@@ -68,9 +75,56 @@ function ThresholdField({
   )
 }
 
+/** 字典门槛文本(内核字段原样 → 显示串;无门槛 = 「无」,不造默认) */
+function gateText(def: MetricDefinition, locale: Locale): string {
+  const parts: string[] = []
+  if (def.days_required > 0) parts.push(t(locale, 'experiment.dictGateDays', { n: def.days_required }))
+  if (def.requires_gacha) parts.push(t(locale, 'experiment.dictGateGacha'))
+  if (def.requires_loot) parts.push(t(locale, 'experiment.dictGateLoot'))
+  return parts.length > 0 ? parts.join(' + ') : t(locale, 'experiment.dictGateNone')
+}
+
+/** L381 · 内核指标字典只读面板(折叠;内容仍在 DOM,可读屏/可断言) */
+export function MetricDictPanel({ dictionary }: { dictionary: MetricDictionary }): JSX.Element {
+  const locale = useLocale()
+  return (
+    <details className="dict-panel" style={{ marginTop: 8 }}>
+      <summary className="note" style={{ cursor: 'pointer' }}>
+        {t(locale, 'experiment.dictSummary', { version: dictionary.dict_version })}
+      </summary>
+      <table className="constraint-table" aria-label={t(locale, 'experiment.dictAria')}>
+        <thead>
+          <tr>
+            <th>{t(locale, 'experiment.colMetric')}</th>
+            <th>{t(locale, 'experiment.dictColKind')}</th>
+            <th>{t(locale, 'experiment.dictColDecimals')}</th>
+            <th>{t(locale, 'experiment.dictColGate')}</th>
+            <th>{t(locale, 'experiment.dictColOptional')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {dictionary.metrics.map((def) => (
+            <tr key={def.id}>
+              <td className="mono" style={{ fontSize: 11 }}>{def.id}</td>
+              <td>{def.kind === 'ratio'
+                ? t(locale, 'experiment.dictKindRatio')
+                : t(locale, 'experiment.dictKindValue')}</td>
+              <td className="numeric">{def.decimals}</td>
+              <td className="mono" style={{ fontSize: 11 }}>{gateText(def, locale)}</td>
+              <td>{def.optional ? t(locale, 'experiment.dictOptionalYes') : t(locale, 'experiment.dictOptionalNo')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="note">{t(locale, 'experiment.dictNote', { version: dictionary.dict_version })}</p>
+    </details>
+  )
+}
+
 export function KpiConstraintTable({
   targets,
   availability,
+  dictionary,
   onToggle,
   onKindChange,
   onThresholdChange,
@@ -180,6 +234,7 @@ export function KpiConstraintTable({
         </tbody>
       </table>
       <p className="note">{t(locale, 'experiment.kpiNote')}</p>
+      {dictionary && <MetricDictPanel dictionary={dictionary} />}
     </section>
   )
 }

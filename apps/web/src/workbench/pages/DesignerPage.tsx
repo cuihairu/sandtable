@@ -46,7 +46,7 @@ import { notify } from '../state/notifications.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { classifyWasmError } from '../../lib/errors.ts'
-import { planSweep } from '../../lib/wasm.ts'
+import { planSweep, metricDictionary } from '../../lib/wasm.ts'
 import { parseConfig, numericValuesOf } from '../params/configYaml.ts'
 import { kernelCheck, buildRowModels, diffRows } from '../params/paramsLogic.ts'
 import { candidateIdFor, hashId, ID_PREFIXES } from '../ids.ts'
@@ -56,7 +56,7 @@ import { DEMO_BASELINE_ID } from '../demo/sampleProject.ts'
 import { ProjectConfigEditors } from '../project/ProjectPanels.tsx'
 import { baseContentOf, draftOf, runIndexEntryOf, snapshotRun } from '../state/projectDoc.ts'
 import * as runManager from '../state/runManager.ts'
-import type { SweepPlan } from '../../lib/types.ts'
+import type { MetricDictionary, SweepPlan } from '../../lib/types.ts'
 import { baselineOfProject } from '../state/projectDoc.ts'
 
 /** Cache for sweepableParams()—imports/exports map */
@@ -151,6 +151,16 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
     // 对象选择切换是本合并的全部触发(草稿编辑/方法切换不重复读入;
     // locale 入依赖只为 lint 完整性,同路径重跑被 lastLoaded 挡回,不会重放提示)
   }, [experimentPath, design.method, doc, state.objectDrafts, locale])
+
+  /* —— L381 · 内核指标字典(静态全量表,加载一次;口径事实源不在前端) —— */
+  const [dictionary, setDictionary] = useState<MetricDictionary | null>(null)
+  useEffect(() => {
+    let alive = true
+    metricDictionary()
+      .then((dict) => { if (alive) setDictionary(dict) })
+      .catch(() => { if (alive) setDictionary(null) })
+    return () => { alive = false }
+  }, [])
 
   /* —— 校验与派生 —— */
   const stats = scenarioStats(view.cand, locale)
@@ -531,6 +541,7 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
           <KpiConstraintTable
             targets={design.targets}
             availability={availability}
+            dictionary={dictionary}
             onToggle={onToggleKpi}
             onKindChange={onKpiKind}
             onThresholdChange={onThreshold}
