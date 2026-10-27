@@ -193,4 +193,5 @@ sandtable workbook experiment-out/ --out workflow.xlsx
 ## 分析侧接口
 
 - 保证 CSV / Parquet(feature 启用时)输出质量,使 notebook 分析顺畅;
+- **MATLAB 消费侧:** 产物(`days.csv` + `report.json`,以及 `compare` 运行的 `comparison.json`)可被 base MATLAB 直接读取。自助模板 [`scripts/templates/daily_analysis.m`](https://github.com/cuihairu/sandtable/blob/main/scripts/templates/daily_analysis.m) 打印 KPI 摘要、A/B 判定,并逐日曲线分轴绘图(不同单位不共轴)。只用 `readtable` / `jsondecode` / `plot`——不需要任何 Toolbox,也不需要 MATLAB Engine,核心仿真与默认图表不依赖商业授权。MATLAB Engine 评估(从 MATLAB 调内核、任务状态 / 日志 / 输出目录 / 结果回收)仍挂在有真实本机调用需求之后;
 - Python 绑定已定载体与分期(2026-10-08 拍板:Python 载体,扩展模块为主路径,见设计文档 [scripts/scripting-design.md](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md))——注意 PyPI 上的 `sandtable` 名称已被占用,届时 Python 包需另行命名([命名核查](./17-project-structure))。

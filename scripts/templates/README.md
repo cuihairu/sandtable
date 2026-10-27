@@ -10,6 +10,7 @@ A/B 与既有产物分析走外挂通道(读 comparison.json / sweep.json)。
 | [batch_sweep.py](batch_sweep.py) | 绑定(B) | 场景 YAML ×N | 全场景 KPI 汇总表(CSV) |
 | [ab_summary.py](ab_summary.py) | 外挂(A) | comparison.json ×N(`sandtable compare` 产物) | 配对差汇总表 + 可选 PNG |
 | [sweep_curves.py](sweep_curves.py) | 外挂(A) | sweep.json(`sandtable sweep` 产物) | 指标-参数曲线表 + 可选 PNG(约束带) |
+| [daily_analysis.m](daily_analysis.m) | 外挂(A) | 产物目录(days.csv + report.json,compare 目录另读 comparison.json) | KPI 摘要 + A/B 判定打印 + 逐日曲线图窗(base MATLAB) |
 
 ## 依赖与运行
 
@@ -30,4 +31,5 @@ python3 scripts/templates/sweep_curves.py sweep-out/sweep.json --metric win_rate
   CI 判定)在 CLI `compare` / `sweep` / `recommend`(同阶段 0 纪律);
 - 模板是**起步样板**而非库:按需改写,不追求参数面齐全;
 - `ab_summary.py` 表格尾带**模型边界注记**(CI 与判定仅在仿真模型内有效,口径同 `sandtable report` 页首,2026-10-11 拍板);PNG 不带该注记——图内标签维持英文、不依赖 CJK 字形的纪律不变;
+- `daily_analysis.m` 只依赖 **base MATLAB**(readtable / jsondecode / plot),不需要任何 Toolbox,也不需要 MATLAB Engine——核心仿真与默认图表不依赖商业授权;MATLAB Engine 评估(从 MATLAB 调内核、任务状态 / 日志 / 输出目录 / 结果回收)仍挂在有真实本机调用需求之后,见 docs/guide/09;图内标签与终端输出维持英文(CJK 字形不依赖,同 PNG 纪律);
 - 脚本不被信任时的执行策略(永不自动执行、显式执行前审查)见设计文档 §5。
