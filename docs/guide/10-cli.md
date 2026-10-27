@@ -15,6 +15,7 @@ In phase 1 the CLI is the first-priority UI.
 | `sandtable compare` | Compare two / more run results | **MVP** |
 | `sandtable validate` | Validate configuration (registry, schema, formulas) | **MVP** |
 | `sandtable init` | Generate a sample configuration skeleton | MVP, incidental |
+| `sandtable scaffold` | Generate a new scenario / experiment skeleton (scenario + params + sweep draft + README, self-checked) | 2026-10 |
 | `sandtable sweep` | Parameter sweep experiments | Phase 3 |
 | `sandtable query` | After-the-fact SQL exploration of result datasets (DuckDB) | Phase 3 |
 | `sandtable recommend` | Generate the sensitivity matrix and recommendation interval from sweep artifacts | Phase 4 |
@@ -32,6 +33,7 @@ The scope of optimization and the surrogate is covered in the automated-optimiza
 
 ```bash
 sandtable simulate scenario.yaml
+sandtable scaffold demo --out .
 sandtable sweep experiment.yaml
 sandtable compare --attack-a 100 --attack-b 105 --replicates 12
 sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate = 'PASS'"
@@ -44,6 +46,14 @@ sandtable optimize opt-exp.yaml --out opt-out/
 sandtable surrogate train sweep-out/ --metric retention_d7
 sandtable disttest normal --samples 100000 --buckets 20
 ```
+
+### scaffold (new scenario skeleton)
+
+```bash
+sandtable scaffold demo --out .    # creates ./demo/
+```
+
+Generates a four-piece skeleton under `<out>/<name>/`: `scenario.yaml` (minimal runnable, `model:` guide in comments), `params.csv` (baseline exported from the same scenario), `experiment.yaml` (single-axis sweep draft), and `README.md`. Generation is self-checked: the scenario template must pass core load + validate, and the params table is produced by the real `params export` path, so a broken template fails at generation time instead of shipping a skeleton that cannot run. The name whitelist is `^[A-Za-z][A-Za-z0-9_-]*$` (length ≤ 64); an existing target directory is never overwritten. Templates live in `crates/sandtable-cli/src/scaffold/templates/` as the single source of truth (the web new-scenario wizard consumes the same set via the wasm binding later).
 
 ### query (Phase 3, feature `duckdb`)
 

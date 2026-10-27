@@ -14,6 +14,7 @@ use sandtable_core as core;
 mod params;
 mod project;
 mod report;
+mod scaffold;
 mod workbook;
 
 #[derive(Parser)]
@@ -102,6 +103,15 @@ enum Cmd {
     Disttest {
         #[command(subcommand)]
         action: DisttestAction,
+    },
+    /// 生成新场景/实验脚手架:场景 yaml + 基线参数表 + 实验草稿 + README
+    /// (模板集中在 cli `scaffold/templates/`,web 向导复用同一模板)
+    Scaffold {
+        /// 场景名(字母开头,字母/数字/`-`/`_`,长度 ≤ 64)
+        name: String,
+        /// 输出目录(在其下建 `<name>/` 四件套,缺省当前目录)
+        #[arg(long, default_value = ".")]
+        out: PathBuf,
     },
     /// 校验场景文件 / 参数组合是否合法
     Validate {
@@ -625,6 +635,17 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                 Ok(std::process::ExitCode::from(2))
             }
         },
+        Cmd::Scaffold { name, out } => {
+            let paths = scaffold::generate(&out, &name)?;
+            for p in &paths {
+                println!("已生成 {}", p.display());
+            }
+            println!(
+                "完成:{}(场景/基线/实验/README 四件套)",
+                out.join(&name).display()
+            );
+            Ok(std::process::ExitCode::SUCCESS)
+        }
         Cmd::Validate { scenario, over } => match load_config(scenario.as_deref(), &over) {
             Ok(cfg) => {
                 println!(

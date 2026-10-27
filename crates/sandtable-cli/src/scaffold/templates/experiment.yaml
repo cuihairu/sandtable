@@ -1,0 +1,21 @@
+# __NAME__ 扫描实验草稿(`sandtable scaffold` 生成)。
+# 单轴示例:model.warrior.attack 在 [90, 110] 步长 10 → 3 候选;
+# parameters 增行即多轴(笛卡尔积,文档 12 章);模型节须完整给出,
+# 只写 attack 会让 defense / hp 静默回退 WarriorConfig 默认(非零)。
+schema_version: '1'
+
+scenario:
+  population: 1000
+  duration: 30d
+  seed: 12345
+  population_mix: { casual: 0.6, core: 0.3, whale: 0.1 }
+
+model:
+  warrior: { attack: 100, defense: 80, hp: 1000 }
+
+sweep:
+  replicates: 4
+  parameters:
+    model.warrior.attack: { min: 90, max: 110, step: 10 }
+  targets:
+    - { metric: win_rate, min: 0.0, max: 1.0, kind: hard }

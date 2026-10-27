@@ -16,6 +16,7 @@ title: 10 · CLI
 | `sandtable compare` | 比较两个 / 多个运行结果 | **MVP** |
 | `sandtable validate` | 校验配置(注册表、schema、公式) | **MVP** |
 | `sandtable init` | 生成示例配置骨架 | MVP 顺带 |
+| `sandtable scaffold` | 生成新场景 / 实验骨架(场景 + 参数表 + 扫描草稿 + README,生成即自检) | 2026-10 |
 | `sandtable sweep` | 参数扫描实验 | Phase 3 |
 | `sandtable query` | SQL 事后探索结果数据集(DuckDB) | Phase 3 |
 | `sandtable recommend` | 从扫描产物生成敏感性矩阵与推荐区间 | Phase 4 |
@@ -33,6 +34,7 @@ title: 10 · CLI
 
 ```bash
 sandtable simulate scenario.yaml
+sandtable scaffold demo --out .
 sandtable sweep experiment.yaml
 sandtable compare --attack-a 100 --attack-b 105 --replicates 12
 sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate = 'PASS'"
@@ -45,6 +47,14 @@ sandtable optimize opt-exp.yaml --out opt-out/
 sandtable surrogate train sweep-out/ --metric retention_d7
 sandtable disttest normal --samples 100000 --buckets 20
 ```
+
+### scaffold(新场景骨架)
+
+```bash
+sandtable scaffold demo --out .    # 生成 ./demo/
+```
+
+在 `<out>/<name>/` 下生成四件套:`scenario.yaml`(最小可运行,`model:` 注释指南)、`params.csv`(由同一场景导出的基线参数表)、`experiment.yaml`(单轴扫描草稿)、`README.md`。生成即自检:场景模板必须通过内核 load + validate,参数表走真实 `params export` 路径——模板失效会在生成时立即暴露,不会产出跑不起来的骨架。场景名白名单 `^[A-Za-z][A-Za-z0-9_-]*$`(长度 ≤ 64);目标目录已存在绝不覆盖。模板集中在 `crates/sandtable-cli/src/scaffold/templates/` 作单一事实源(web「新建场景」向导未来经 wasm 绑定消费同一套)。
 
 ### query(Phase 3,feature `duckdb`)
 

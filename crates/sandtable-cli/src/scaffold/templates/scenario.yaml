@@ -1,0 +1,18 @@
+# __NAME__:sandtable 场景骨架(`sandtable scaffold` 生成)。
+# 最小可运行配置:model 节缺省走内核默认值,取消注释下方分节即可覆盖。
+# 字段与语义速查:docs/guide/03(核心概念)、docs/guide/07(配置与公式引擎)。
+schema_version: '1'
+
+scenario:
+  population: 1000
+  duration: 30d
+  seed: 12345
+  population_mix:        # 分群占比(casual/core/whale 依次)
+    casual: 0.6
+    core: 0.3
+    whale: 0.1
+
+# model:                 # 可选分节;省略时全部走内核默认值(数值见各行注释)
+#   warrior: {attack: 100, defense: 80, hp: 1000}   # 默认
+#   combat:  {p_hit: 0.85, p_hit_monster: 0.85, dmg_var: 10}  # 默认;伤害口径缺省 difference,比值口径另设 damage_model: ratio 与 ratio_k
+#   churn:   {p_base: 0.003, p_stall: 0.05, stall_days: 2}    # 默认
