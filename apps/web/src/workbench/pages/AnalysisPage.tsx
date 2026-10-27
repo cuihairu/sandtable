@@ -17,6 +17,7 @@ import { DailyCohortSection } from '../analysis/DailyCohortSection.tsx'
 import { CrossReplicateSection } from '../analysis/CrossReplicateSection.tsx'
 import { EconomySection } from '../analysis/EconomySection.tsx'
 import { CustomKpiSection } from '../analysis/CustomKpiSection.tsx'
+import { ConstraintLedgerSection } from '../analysis/ConstraintLedgerSection.tsx'
 import { OptimizeSurrogateSection } from '../analysis/OptimizeSurrogateSection.tsx'
 import { CandidateTable } from '../analysis/CandidateTable.tsx'
 import type { CandidateColumn } from '../analysis/CandidateTable.tsx'
@@ -258,6 +259,8 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
           <div className="candidate-table-wrap"><table className="candidate-table"><thead><tr><th>{t(locale, 'analysis.recColParam')}</th><th>{t(locale, 'analysis.recColMetric')}</th><th>{t(locale, 'analysis.recColElasticity')}</th><th>{t(locale, 'analysis.recColSignificant')}</th><th>{t(locale, 'analysis.recColNote')}</th></tr></thead><tbody>{rec.elasticities.map((e, i) => <tr key={i}><td>{e.param}</td><td>{e.metric}</td><td>{e.e ?? t(locale, 'analysis.unavailable')} / [{e.e_lo ?? t(locale, 'analysis.unavailable')}, {e.e_hi ?? t(locale, 'analysis.unavailable')}]</td><td>{String(e.significant)}</td><td>{e.note}: {sensitivityNoteLabel(e.note, locale)}</td></tr>)}</tbody></table></div>
         </> : <p>{exec.recommendationError ?? (completed < all.length ? t(locale, 'analysis.recIncomplete') : t(locale, 'analysis.recNone'))}</p>}
       </section>
+      {/* todo L381 批五:目标/约束整批对账——判定分布、通过占比、最紧候选余量 */}
+      <ConstraintLedgerSection views={allViews} targets={plan?.targets ?? []} runId={exec.runId} />
       {/* WB-08.17(L380)· 优化与代理:进化寻优/代理训练/扫描 Pareto 独立标识,
           真实观测·插值·代理估计三层分行,RF 树间分歧不作置信区间 */}
       <OptimizeSurrogateSection exec={exec} yaml={sweepYaml} />
