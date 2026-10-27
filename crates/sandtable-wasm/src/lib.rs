@@ -339,6 +339,27 @@ pub fn kpi_eval(expression: &str, results_json: &str) -> Result<JsValue, JsValue
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+/// 指标字典(native):core::kpi_dict::metric_definitions 全量表 +
+/// `dict_version`。机器可判定口径的事实源(量纲 / 小数位 / 可空 /
+/// 可用性门槛),显示名在前端 locale 层;可用性原因原文仍走
+/// `kpi_availability`(同一套门槛,一致性由 core 测试锁定)。
+pub fn metric_dictionary_native() -> Result<serde_json::Value, String> {
+    serde_json::to_value(serde_json::json!({
+        "dict_version": core::kpi_dict::METRIC_DICT_VERSION,
+        "metrics": core::kpi_dict::metric_definitions(),
+    }))
+    .map_err(|e| format!("序列化失败: {e}"))
+}
+
+/// 指标字典(wasm 入口):JSON 字符串,形状同 [`metric_dictionary_native`]。
+#[wasm_bindgen]
+pub fn metric_dictionary() -> Result<JsValue, JsValue> {
+    let v = metric_dictionary_native().map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&v)
+        .map(|s| JsValue::from_str(&s))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 /// 运行仿真(wasm 入口):返回 JSON 字符串(形状同 [`run_simulation_native`])。
 #[wasm_bindgen]
 pub fn run_simulation(yaml: &str, replicates: u32) -> Result<JsValue, JsValue> {
@@ -906,6 +927,38 @@ mod tests {
         assert!(s2["stats"].is_null());
         assert!(s2.as_object().unwrap().get("stats").is_none());
         assert!(s2["per_replicate"][0].is_null());
+    }
+
+    #[test]
+    fn metric_dictionary_native_shape_and_thresholds() {
+        let v = metric_dictionary_native().unwrap();
+        assert_eq!(v["dict_version"], core::kpi_dict::METRIC_DICT_VERSION);
+        let metrics = v["metrics"].as_array().unwrap();
+        assert_eq!(metrics.len(), core::experiment::MetricKey::ALL.len());
+        let ids: Vec<&str> = metrics.iter().map(|m| m["id"].as_str().unwrap()).collect();
+        let want: Vec<&str> = core::experiment::MetricKey::ALL
+            .iter()
+            .map(|k| k.name())
+            .collect();
+        assert_eq!(
+            ids, want,
+            "字典顺序 = MetricKey::ALL 声明序(与 CSV 列序同序)"
+        );
+        let get = |id: &str| metrics.iter().find(|m| m["id"] == id).unwrap();
+        // 可用性门槛与内核 unavailable_reason 的分支逐条对应
+        assert_eq!(get("retention_d7")["days_required"], 7);
+        assert_eq!(get("retention_d3")["days_required"], 3);
+        assert_eq!(get("win_rate")["days_required"], 0);
+        assert_eq!(get("gacha_pulls_to_hit")["requires_gacha"], true);
+        assert_eq!(get("loot_gold_per_player")["requires_loot"], true);
+        // 量纲与可空口径(显示层换算的唯一依据)
+        assert_eq!(get("win_rate")["kind"].as_str(), Some("ratio"));
+        assert_eq!(get("churn_rate")["kind"].as_str(), Some("ratio"));
+        assert_eq!(get("gold_per_player")["kind"].as_str(), Some("value"));
+        assert_eq!(get("gacha_pulls_to_hit")["kind"].as_str(), Some("value"));
+        assert_eq!(get("retention_d7")["optional"], true);
+        assert_eq!(get("power_p50")["optional"], false);
+        assert_eq!(get("win_rate")["decimals"], 1);
     }
 
     #[test]

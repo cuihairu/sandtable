@@ -861,6 +861,66 @@ test('P2 自定义 KPI 桥:kpi_validate / kpi_eval 内核直出,白名单同口�
   )
 })
 
+test('P2 指标字典桥:metric_dictionary 三端接线,前端显示元数据表与内核字典同源对拍', () => {
+  // 内核字典真值(pkg-node 真跑):声明序 + 门槛 + 量纲 + 可空
+  const dict = JSON.parse(wasm.metric_dictionary())
+  assert.equal(dict.dict_version, '1', '字典契约版本在场')
+  assert.equal(dict.metrics.length, 8, '内置指标全集')
+  assert.deepEqual(
+    dict.metrics.map((m) => m.id),
+    METRIC_KEYS,
+    '字典顺序 = METRIC_KEYS 声明序(与 CSV 列序、KPI 白名单同序)',
+  )
+  const byId = new Map(dict.metrics.map((m) => [m.id, m]))
+  assert.equal(byId.get('retention_d7').days_required, 7, '天数门槛随字典给出')
+  assert.equal(byId.get('retention_d3').days_required, 3)
+  assert.equal(byId.get('win_rate').days_required, 0, '无门槛指标记 0')
+  assert.equal(byId.get('gacha_pulls_to_hit').requires_gacha, true)
+  assert.equal(byId.get('loot_gold_per_player').requires_loot, true)
+  // 与内核可用性规则一致性:门槛成立 ⇔ unavailable_reason 非空
+  const twoDay = 'schema_version: "1"\nscenario: {population: 40, duration: "2d", seed: 7}\n'
+  const gated = new Set(JSON.parse(wasm.kpi_availability(twoDay)).map((r) => r.metric))
+  assert.equal(gated.has('retention_d3'), true, '2 天 → d3 不可用(天数门槛)')
+  assert.equal(gated.has('retention_d7'), true)
+  assert.equal(gated.has('gacha_pulls_to_hit'), true, '未配 gacha → 不可用')
+  assert.equal(gated.has('loot_gold_per_player'), true, '未配 loot → 不可用')
+  assert.equal(gated.has('win_rate'), false, '无门槛指标恒可用')
+
+  // metricMeta 显示表 = 内核字典的机器字段镜像(id 全集 / 量纲 / 小数位 / 可空)
+  // —— 前端不许各表各说各话,漂移即红。
+  assert.deepEqual(
+    Object.keys(METRIC_META).sort(),
+    dict.metrics.map((m) => m.id).sort(),
+    'metricMeta 与字典 id 全集一致',
+  )
+  for (const m of dict.metrics) {
+    const row = METRIC_META[m.id]
+    assert.equal(
+      row.dimension,
+      m.kind === 'ratio' ? 'percent' : 'amount',
+      `${m.id} 量纲映射一致(percent↔ratio,amount↔value)`,
+    )
+    assert.equal(row.decimals, m.decimals, `${m.id} 显示小数位与内核一致`)
+    assert.equal(row.nullable, m.optional, `${m.id} 可空口径与内核一致`)
+  }
+
+  // TS 桥接双路径 + 类型镜像接线守卫(防只接一端)
+  const svc = read('src/lib/wasm.ts')
+  assert.match(svc, /invoke\('metric_dictionary'\)/, '桌面路径走 metric_dictionary 命令')
+  assert.match(svc, /metricDictionaryBinding\(\)/, '浏览器路径走 wasm 绑定')
+  const types = typesSrc
+  assert.match(types, /export interface MetricDictionary/, 'MetricDictionary 镜像在场')
+  assert.match(types, /export interface MetricDefinition/, 'MetricDefinition 镜像在场')
+  assert.match(types, /export type MetricKind = 'ratio' \| 'value'/, '量纲口径镜像在场')
+  const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')
+  const tauri = read('../../apps/desktop/src-tauri/src/lib.rs')
+  assert.match(wasmRs, /pub fn metric_dictionary\(/, 'wasm 导出在场')
+  assert.match(tauri, /fn metric_dictionary\(/, 'Tauri 命令在场')
+  assert.match(tauri, /metric_dictionary,/, '命令已注册到 generate_handler 列表')
+  // 桌面命令 core 直连(与 sweep_plan / daily_aggregate 同口径),不引 wasm 依赖
+  assert.match(tauri, /sandtable_core::kpi_dict::metric_definitions/, '桌面字典命令直连 core')
+})
+
 test('P2 优化与代理桥:optimize / surrogate_train / surrogate_predict 三命令双路径接线(行为断言在 optimize-surrogate.test.mjs)', () => {
   const svc = read('src/lib/wasm.ts')
   const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')

@@ -11,6 +11,7 @@ import init, {
   kpi_availability as kpiAvailabilityBinding,
   kpi_validate as kpiValidateBinding,
   kpi_eval as kpiEvalBinding,
+  metric_dictionary as metricDictionaryBinding,
   ab_compare as abCompareBinding,
   daily_aggregate as dailyAggregateBinding,
   optimize as optimizeBinding,
@@ -28,6 +29,7 @@ import type {
   CustomKpiShape,
   DailyAggregation,
   LocalQueryResult,
+  MetricDictionary,
   OptimResult,
   ParamDefinition,
   RunMetrics,
@@ -200,6 +202,24 @@ export async function kpiEval(
   return JSON.parse(
     kpiEvalBinding(expression, JSON.stringify(results)) as unknown as string,
   ) as CustomKpiOutput
+}
+
+// 指标字典(内核 core::kpi_dict):**内置指标机器可判定口径的事实源** ——
+// 量纲(ratio / value)、显示收口小数位、是否有不可用情形、可用性门槛
+// (天数 / model.gacha / model.loot)。静态全量表,与 `paramDefinitions`
+// 同为只读注册表面。显示名与译词留在 locale 显示层(中文不出内核),
+// 可用性原因原文仍走 kpiAvailability(同一套门槛,内核测试锁一致性)。
+// `dict_version` 是字典契约版本,与报告 meta 的 schema_version /
+// model_version 并列记录。
+export async function metricDictionary(): Promise<MetricDictionary> {
+  // 测试注入点:同 __testDailyAggregate(节点 DOM 测试用 pkg-node 同源内核)。
+  const override = (globalThis as {
+    __testMetricDictionary?: () => Promise<MetricDictionary>
+  }).__testMetricDictionary
+  if (override) return override()
+  if (isDesktop) return invoke('metric_dictionary')
+  await ensureInit()
+  return JSON.parse(metricDictionaryBinding() as unknown as string) as MetricDictionary
 }
 
 // 进化寻优(优化与代理视图):**寻优实验 YAML**(scenario + model + optimize

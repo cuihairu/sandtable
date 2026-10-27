@@ -71,6 +71,7 @@ pub fn run() {
             kpi_availability,
             kpi_validate,
             kpi_eval,
+            metric_dictionary,
             ab_compare,
             daily_aggregate,
             run_simulation,
@@ -318,6 +319,18 @@ fn kpi_eval(expression: String, results_json: String) -> Result<serde_json::Valu
     let out = sandtable_core::kpi_custom::evaluate(&expression, &results)
         .map_err(|e| format!("配置错误: {e}"))?;
     serde_json::to_value(out).map_err(|e| format!("序列化失败: {e}"))
+}
+
+/// 指标字典(桌面命令):core 直连,与 wasm `metric_dictionary` 同构。
+/// 机器可判定口径事实源(量纲 / 小数位 / 可空 / 可用性门槛),
+/// 显示名在前端 locale 层。
+#[tauri::command]
+fn metric_dictionary() -> Result<serde_json::Value, String> {
+    serde_json::to_value(serde_json::json!({
+        "dict_version": sandtable_core::kpi_dict::METRIC_DICT_VERSION,
+        "metrics": sandtable_core::kpi_dict::metric_definitions(),
+    }))
+    .map_err(|e| format!("序列化失败: {e}"))
 }
 
 /// 进化寻优(桌面命令):内核单次调用跑完整体 种群 × 代 寻优,与 CLI
@@ -1130,6 +1143,19 @@ mod tests {
         // 求值通道同样走编译校验
         let err = kpi_eval("win_rates".into(), results).unwrap_err();
         assert!(err.contains("配置错误"), "{err}");
+    }
+
+    #[test]
+    fn metric_dictionary_parity_wasm_native() {
+        // 指标字典:桌面命令与 wasm native 逐值一致(机器口径事实源单点)
+        assert_eq!(
+            metric_dictionary().unwrap(),
+            sandtable_wasm::metric_dictionary_native().unwrap(),
+            "字典逐字段一致"
+        );
+        let v = metric_dictionary().unwrap();
+        assert_eq!(v["dict_version"], "1", "字典契约版本在场");
+        assert_eq!(v["metrics"].as_array().unwrap().len(), 8, "内置指标全集");
     }
 
     #[test]

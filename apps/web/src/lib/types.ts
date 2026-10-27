@@ -149,6 +149,32 @@ export interface CustomKpiOutput {
   ci_method: string
 }
 
+/** 量纲口径:ratio = 内核 0–1 比例(×100 只发生在显示层);value = 绝对量 */
+export type MetricKind = 'ratio' | 'value'
+
+/** MetricDefinition 对应 core::kpi_dict::MetricDefinition(机器可判定口径) */
+export interface MetricDefinition {
+  /** 内核 ID(= MetricKey::name,与 CSV 列名、约束指标名同口径) */
+  id: MetricKey
+  kind: MetricKind
+  /** 显示收口小数位(不改底层值) */
+  decimals: number
+  /** 存在不可用的运行情形(缺席不填 0,显示「不可用」) */
+  optional: boolean
+  /** 可用性门槛:需要的最少运行天数(0 = 无门槛) */
+  days_required: number
+  /** 可用性门槛:需要 model.gacha 配置 */
+  requires_gacha: boolean
+  /** 可用性门槛:需要 model.loot 配置 */
+  requires_loot: boolean
+}
+
+/** 指标字典 = core::kpi_dict::metric_definitions + dict_version(条目语义版本) */
+export interface MetricDictionary {
+  dict_version: string
+  metrics: MetricDefinition[]
+}
+
 /** AggregateMetricStats 对应 sandtable_core::experiment::AggregateMetricStats */
 export interface AggregateMetricStats {
   n: number
