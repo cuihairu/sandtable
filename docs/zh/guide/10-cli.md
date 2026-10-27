@@ -22,6 +22,7 @@ title: 10 · CLI
 | `sandtable params` | 数值参数表导出 / 导入(扁平 CSV) | Phase 5 |
 | `sandtable report` | 生成 HTML 报告 | Phase 5 |
 | `sandtable project` | 项目打包 pack / unpack / check(`.sandtable`) | 2026-10 |
+| `sandtable workbook` | 结果产物 → 多工作表 `.xlsx`(只读交付) | Excel 工作流 |
 | `sandtable optimize` | 自动寻优实验(进化 / Pareto 多目标) | Phase 8 |
 | `sandtable surrogate` | 随机森林代理模型 train / predict / importance | Phase 8 |
 | `sandtable disttest` | 分布检验(均匀 / 加权 / 正态 χ²,测试台不进仿真路径) | 随机函数(24 章) |
@@ -38,6 +39,7 @@ sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate
 sandtable recommend experiment.yaml sweep-out/
 sandtable params export scenario.yaml --out params.csv
 sandtable project pack myproj --out myproj.sandtable
+sandtable workbook experiment-out/ --out workflow.xlsx
 sandtable report experiment/
 sandtable optimize opt-exp.yaml --out opt-out/
 sandtable surrogate train sweep-out/ --metric retention_d7
@@ -123,6 +125,24 @@ sandtable report experiment/                 # 缺省写 ./report.html
 - 只读已落盘产物(`report.json` / `comparison.json` / `sweep.json` / `rec.json` / `days.csv`),发现什么渲染什么;
 - 输出自包含:内联 CSS + 内联 SVG,无 CDN、无 JS,离线可开;
 - 一个源文件都找不到 → 退出码 2。
+
+### workbook(Excel / JMP / Origin 交付)
+
+读结果目录中已落盘的产物,已知产物一表一张,外加 `manifest`(自描述)与 `metric_dictionary`(内核 `kpi_dict`)——[数据输出](./09-data-output)契约的**交付侧**:
+
+```bash
+sandtable workbook experiment-out/                    # 写 experiment-out/sandbox.xlsx
+sandtable workbook experiment-out/ --out workflow.xlsx
+```
+
+- 已知产物:`params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv`;缺席者在 manifest 里记 `absent` 行,**不出表**(缺席 ≠ 空表);
+- 表契约:一表一张、单行表头在第 1 行、无合并单元格、无尾随空行;数值字段进真数值单元格(透视无「文本型数字」告警);
+- 字段映射复用:列名与列序直接取自产物——工作簿不重算任何数值、不改列名;`metric_dictionary` 与 CSV、`sweep.json` 约束名共用内核 `kpi_dict` 列名;
+- 确定性:归档时间戳固定(1980-01-01),同输入 → 字节一致;
+- 目录里没有任何已知产物或不是目录 → 退出码 2;
+- 它是**只读交付**——配置通路仍是双向 CSV 入口(`params export / import`),不做多表 → 配置树映射。
+
+零依赖读回端:`scripts/templates/workbook_sheets.py`(`list` / `dump <表>` / `check`),纯标准库。
 
 ## 输出约定
 

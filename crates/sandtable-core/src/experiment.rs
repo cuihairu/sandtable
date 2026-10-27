@@ -76,7 +76,8 @@ pub fn summarize(values: &[f64]) -> SampleStats {
 }
 
 /// 比较结论(文档 13 章:基于置信区间,不是点估计)。
-#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+/// Deserialize:comparison.json 是两向契约,壳层按同结构读回。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum Verdict {
     /// B 的配对差 CI 完全在 0 以上
     BHigher,
@@ -97,7 +98,8 @@ impl Verdict {
 }
 
 /// 一对臂在某指标上的比较结果。
-#[derive(Debug, Clone, Serialize, PartialEq)]
+/// Deserialize:comparison.json 是两向契约,壳层(workbook 导出)按同结构读回。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Comparison {
     pub metric: String,
     pub arm_a: SampleStats,

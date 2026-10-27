@@ -171,6 +171,25 @@ sandtable params import params.csv         # 逐行 apply_numeric 覆写 → val
 
 **结论:** 值得做,通道小(模板导出 + 逐行导入 + 校验复用)。已按此实施(Phase 5,`sandtable params export / import`,用法见 [CLI](./10-cli))。
 
+## 导出侧:多工作表工作簿
+
+上面的双向 CSV 通道覆盖的是**配置接入**;镜像侧——把**结果数据**交付给 Excel / JMP / Origin / Power Query——是多工作表 `.xlsx` 工作簿,直接读已落盘产物:
+
+```bash
+sandtable workbook experiment-out/                    # 读已知产物 → 写 experiment-out/sandbox.xlsx
+sandtable workbook experiment-out/ --out workflow.xlsx
+```
+
+工作簿是**只读数据交付**,不是配置入口:它读 `params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv`(`params export` / `sweep` / `compare` / `simulate` 的产物),已知产物一表一张,外加 `manifest`(自描述)与 `metric_dictionary`(内核 `kpi_dict`,列名与语义同 CSV / sweep.json 约束名)。不重算任何数值、不改列名、不补空列——字段映射复用就是读同一份产物。
+
+- **透视 / Power Query 友好:** 一表一张、单行表头在第 1 行、无合并单元格、无尾随空行——不做多行表头推断;
+- **数值走真数值单元格,不是文本数字:** 透视 / 排序 / 求和不会出现「文本型数字」告警;精度上限是 XLSX 的 15 位有效数字(格式上限,不是计算选择);
+- **缺席 ≠ 空表:** 缺席产物只记进 `manifest` 的 `absent` 行,**不出表**——从不填空占位;
+- **manifest 自描述:** model_version 与 metric_dict_version 两行、全表清单(含 manifest 自己)、缺席产物清单;
+- **确定性:** 归档时间戳固定 1980-01-01(与 `.sandtable` 项目包同一条纪律)——同目录两次打包字节一致,工作簿可做产物对账。
+
+工作簿保持接入侧评估红线不变:把分表结构映射回 YAML 嵌套配置树依旧**不推荐**,扁平 `params.csv` 通道仍是唯一配置路径。读回端以零依赖模板提供——`scripts/templates/workbook_sheets.py`(`list` / `dump <表>` / `check`)纯 Python 标准库即可读,依赖上文的单行表头 / 真数值单元格契约,不需要 pandas 或 openpyxl。
+
 ## 分析侧接口
 
 - 保证 CSV / Parquet(feature 启用时)输出质量,使 notebook 分析顺畅;

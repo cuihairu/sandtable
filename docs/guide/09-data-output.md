@@ -170,6 +170,25 @@ sandtable params import params.csv         # per-line apply_numeric overrides �
 
 **Conclusion:** worth doing; the channel is small (template export + line-by-line import + reused validation). Implemented accordingly (Phase 5, `sandtable params export / import`; usage in [CLI](./10-cli.md)).
 
+## Export side: multi-sheet workbook
+
+The two-way CSV channel above covers **configuration intake**. The mirror side — delivering **result data** to Excel / JMP / Origin / Power Query — is a multi-sheet `.xlsx` workbook, produced from the artifacts already on disk:
+
+```bash
+sandtable workbook experiment-out/                    # reads known artifacts → writes experiment-out/sandbox.xlsx
+sandtable workbook experiment-out/ --out workflow.xlsx
+```
+
+The workbook is **read-only data delivery**, not a configuration entrance: it reads `params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv` (the artifacts of `params export`, `sweep`, `compare`, `simulate`) and writes one sheet per known artifact, plus `manifest` (self-description) and `metric_dictionary` (the kernel `kpi_dict`, same column names and semantics as the CSV / sweep.json constraint names). It recomputes nothing, renames no column, and pads no blank column — the field-mapping reuse is reading the same artifacts.
+
+- **Pivot / Power Query friendly:** one sheet = one table, a single header row on the first row, no merged cells, no trailing blank rows — no multi-row-header inference;
+- **Real numeric cells, not text numbers:** values go into `xlsx` numeric cells so pivot / sort / SUM carry no "text-form number" warning; precision is bounded by XLSX's 15 significant digits (a format limit, not a computation choice);
+- **Absent ≠ empty:** a missing artifact is recorded in the `manifest` `absent` rows and **gets no sheet** — never an empty placeholder;
+- **Manifest is self-describing:** model_version and metric_dict_version rows, the sheet list (including `manifest` itself), and the absent-artifact list;
+- **Deterministic:** archive timestamps are fixed at 1980-01-01 (the same discipline as the `.sandtable` project archive) — the same directory packs to byte-identical output, so the workbook is diffable and auditable.
+
+The workbook keeps the evaluation red line on the intake side unchanged: mapping sheet structures back onto the nested YAML config tree remains **not recommended**, and the flat `params.csv` channel stays the only configuration path. The reader is provided as a zero-dependency template — `scripts/templates/workbook_sheets.py` (`list` / `dump <sheet>` / `check`) reads the workbook with the Python standard library alone, relying on the single-header-row / real-numeric-cell contract above; it needs no pandas or openpyxl.
+
 ## Analysis-side interfaces
 
 - Keep the quality of CSV / Parquet output (when the feature is enabled) so notebook analysis flows smoothly;

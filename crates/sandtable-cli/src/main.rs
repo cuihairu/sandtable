@@ -14,6 +14,7 @@ use sandtable_core as core;
 mod params;
 mod project;
 mod report;
+mod workbook;
 
 #[derive(Parser)]
 #[command(
@@ -150,6 +151,15 @@ enum Cmd {
     Project {
         #[command(subcommand)]
         cmd: ProjectCmd,
+    },
+    /// Excel 工作流数据包:产物目录 → 多工作表 .xlsx(只读交付,文档 9 章)
+    Workbook {
+        /// 产物目录(simulate / sweep / compare 的 --out)
+        #[arg(required = true)]
+        dir: PathBuf,
+        /// 输出 .xlsx 路径(缺省 <产物目录>/sandbox.xlsx)
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     /// 生成示例场景骨架(默认值 + 注释,可直接编辑运行)
     Init {
@@ -760,6 +770,39 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                 eprintln!("项目错误: {e:#}");
                 return Ok(std::process::ExitCode::from(2));
             }
+            Ok(std::process::ExitCode::SUCCESS)
+        }
+        Cmd::Workbook { dir, out } => {
+            let package = match workbook::build(&dir) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("产物错误: {e:#}");
+                    return Ok(std::process::ExitCode::from(2));
+                }
+            };
+            let dst = out.unwrap_or_else(|| dir.join("sandbox.xlsx"));
+            if let Some(parent) = dst.parent() {
+                if !parent.as_os_str().is_empty() {
+                    fs::create_dir_all(parent).context("创建输出目录失败")?;
+                }
+            }
+            package.workbook.write(&dst).context("写工作簿失败")?;
+            let names = package
+                .present
+                .iter()
+                .map(|(n, _, _)| *n)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let absent = if package.absent.is_empty() {
+                "无".to_string()
+            } else {
+                package.absent.join(", ")
+            };
+            println!(
+                "已写出 {}:共 {} 张表({names});缺席产物 {absent} 只记入 manifest,不出表",
+                dst.display(),
+                package.workbook.sheet_count()
+            );
             Ok(std::process::ExitCode::SUCCESS)
         }
         Cmd::Init { path, force } => {

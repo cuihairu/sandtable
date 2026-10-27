@@ -21,6 +21,7 @@ In phase 1 the CLI is the first-priority UI.
 | `sandtable params` | Numeric parameter table export / import (flat CSV) | Phase 5 |
 | `sandtable report` | Generate an HTML report | Phase 5 |
 | `sandtable project` | Project packaging pack / unpack / check (`.sandtable`) | 2026-10 |
+| `sandtable workbook` | Multi-sheet `.xlsx` from result artifacts (read-only delivery) | Excel workflow |
 | `sandtable optimize` | Automated optimization experiments (evolutionary / Pareto multi-objective) | Phase 8 |
 | `sandtable surrogate` | Random-forest surrogate model train / predict / importance | Phase 8 |
 | `sandtable disttest` | Distribution tests (uniform / weighted / normal χ²; test bench, not in the simulation path) | Random functions (chapter 24) |
@@ -37,6 +38,7 @@ sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate
 sandtable recommend experiment.yaml sweep-out/
 sandtable params export scenario.yaml --out params.csv
 sandtable project pack myproj --out myproj.sandtable
+sandtable workbook experiment-out/ --out workflow.xlsx
 sandtable report experiment/
 sandtable optimize opt-exp.yaml --out opt-out/
 sandtable surrogate train sweep-out/ --metric retention_d7
@@ -123,6 +125,24 @@ sandtable report experiment/                 # writes ./report.html by default
 - Reads only artifacts already on disk (`report.json` / `comparison.json` / `sweep.json` / `rec.json` / `days.csv`) and renders whatever it finds;
 - The output is self-contained: inline CSS + inline SVG, no CDN, no JS, opens offline;
 - Not a single source file found → exit code 2.
+
+### workbook (Excel / JMP / Origin delivery)
+
+Reads the artifacts already on disk in a result directory and writes one sheet per known artifact plus `manifest` (self-description) and `metric_dictionary` (kernel `kpi_dict`) — the data-delivery side of the [Data output](./09-data-output.md) contract:
+
+```bash
+sandtable workbook experiment-out/                    # writes experiment-out/sandbox.xlsx
+sandtable workbook experiment-out/ --out workflow.xlsx
+```
+
+- Known artifacts: `params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv`; missing ones are recorded in `manifest` as `absent` and **get no sheet** (absent ≠ empty table);
+- Sheet contract: one sheet = one table, single header row on row 1, no merged cells, no trailing blank rows; numeric fields become real numeric cells (no "text-form number" pivot warnings);
+- Field-mapping reuse: field names and order come straight from the artifacts — the workbook recomputes nothing and renames no column; `metric_dictionary` shares the kernel `kpi_dict` column names with the CSV and `sweep.json` constraint names;
+- Deterministic: fixed archive timestamps (1980-01-01), same input → byte-identical output;
+- Exit code `2` when the directory holds no known artifact or is not a directory;
+- It is **read-only delivery** — the two-way CSV entrance (`params export / import`) remains the only configuration path; no multi-sheet → config-tree mapping.
+
+The zero-dependency reader is `scripts/templates/workbook_sheets.py` (`list` / `dump <sheet>` / `check`), standard library only.
 
 ## Output conventions
 
