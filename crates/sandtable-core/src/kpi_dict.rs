@@ -9,7 +9,6 @@
 use serde::Serialize;
 
 use crate::experiment::MetricKey;
-use crate::metrics::SNAPSHOT_DAYS;
 
 /// 指标字典契约版本。条目语义(量纲 / 小数位 / 门槛)变化时递增,
 /// 随报告与导出记录(与 [`crate::MODEL_VERSION`] 并列)。
@@ -145,6 +144,7 @@ pub fn is_gated(def: &MetricDefinition, cfg: &crate::config::SimConfig) -> bool 
 mod tests {
     use super::*;
     use crate::config::SimConfig;
+    use crate::metrics::SNAPSHOT_DAYS;
 
     /// 构造一个最小配置(days / gacha / loot 三轴),其余字段走内核缺省。
     fn cfg(days: u32, gacha: bool, loot: bool) -> SimConfig {
