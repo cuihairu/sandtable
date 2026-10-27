@@ -503,3 +503,8 @@
       damage_model 为 Some 时写回 model.combat.damage_model（params.rs:129-133）。
       测试：cargo test -p sandtable-cli --test params 5 绿 / clippy --all-targets
       零告警 / cargo fmt --check 过。
+- [x] README 顶部徽章块未闭合与说明文字重叠（2026-10-27 用户令）：README.md / README.zh.md
+      第 9 行 `<p align="center">` 从未闭合，第 11 行说明文字直接嵌在徽章块内部，GitHub
+      渲染时说明与徽章行重叠串行。修法（docs-only，不改文案、不加徽章）：徽章行自成
+      `<p align="center">…</p>`，说明文字移到 `</p>` 之后、`</div>` 之内。验收：
+      `grep -n '</p>' README.md README.zh.md` 均为 11 行紧跟徽章行。
