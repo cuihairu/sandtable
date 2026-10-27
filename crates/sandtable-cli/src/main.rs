@@ -11,6 +11,7 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
 use sandtable_core as core;
 
+mod analyze;
 mod params;
 mod project;
 mod report;
@@ -178,6 +179,30 @@ enum Cmd {
         /// 已存在时覆盖
         #[arg(long)]
         force: bool,
+    },
+    /// 分析脚本执行面:显式运行 Python 脚本(scripts/scripting-design.md §5
+    /// 执行策略——打印脚本路径与内容哈希,进程隔离 + 超时;`--data` 路径按
+    /// 只读输入对待,执行后校验未变。本机 CPython 无真沙箱,安全靠进程
+    /// 隔离与执行策略,不靠语言层;本子命令是作者本机自跑自己的脚本,
+    /// 不做「运行他人脚本」托管服务)。注意区分:MCP `sandtable_analyze`
+    /// 是内置四种分析(ab_compare / daily_aggregate / kpi_summary /
+    /// recommend),本子命令是执行用户脚本
+    Analyze {
+        /// Python 脚本路径
+        script: PathBuf,
+        /// 只读输入数据路径(文件或目录,可重复;执行前后内容清单一致,
+        /// 被改动即失败退出)
+        #[arg(long = "data")]
+        data: Vec<PathBuf>,
+        /// 超时秒数(缺省 600;超时杀进程组,退出码 124)
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
+        /// 解释器(缺省 python3,回退 python)
+        #[arg(long)]
+        python: Option<PathBuf>,
+        /// 传给脚本的其余参数(`--` 之后,原样转发)
+        #[arg(last = true)]
+        script_args: Vec<String>,
     },
 }
 
@@ -635,6 +660,16 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                 Ok(std::process::ExitCode::from(2))
             }
         },
+        Cmd::Analyze {
+            script,
+            data,
+            timeout,
+            python,
+            script_args,
+        } => {
+            let code = analyze::run(&script, &data, timeout, python.as_deref(), &script_args)?;
+            Ok(std::process::ExitCode::from(code.clamp(0, 255) as u8))
+        }
         Cmd::Scaffold { name, out } => {
             let paths = scaffold::generate(&out, &name)?;
             for p in &paths {

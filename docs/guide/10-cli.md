@@ -16,6 +16,7 @@ In phase 1 the CLI is the first-priority UI.
 | `sandtable validate` | Validate configuration (registry, schema, formulas) | **MVP** |
 | `sandtable init` | Generate a sample configuration skeleton | MVP, incidental |
 | `sandtable scaffold` | Generate a new scenario / experiment skeleton (scenario + params + sweep draft + README, self-checked) | 2026-10 |
+| `sandtable analyze` | Run a user analysis script explicitly (process isolation + timeout + read-only data paths, path/hash printed first) | 2026-10 |
 | `sandtable sweep` | Parameter sweep experiments | Phase 3 |
 | `sandtable query` | After-the-fact SQL exploration of result datasets (DuckDB) | Phase 3 |
 | `sandtable recommend` | Generate the sensitivity matrix and recommendation interval from sweep artifacts | Phase 4 |
@@ -34,6 +35,7 @@ The scope of optimization and the surrogate is covered in the automated-optimiza
 ```bash
 sandtable simulate scenario.yaml
 sandtable scaffold demo --out .
+sandtable analyze analysis.py --data out/sim --timeout 300
 sandtable sweep experiment.yaml
 sandtable compare --attack-a 100 --attack-b 105 --replicates 12
 sandtable query sweep/summary.csv --sql "SELECT * FROM summary WHERE t1_win_rate = 'PASS'"
@@ -54,6 +56,16 @@ sandtable scaffold demo --out .    # creates ./demo/
 ```
 
 Generates a four-piece skeleton under `<out>/<name>/`: `scenario.yaml` (minimal runnable, `model:` guide in comments), `params.csv` (baseline exported from the same scenario), `experiment.yaml` (single-axis sweep draft), and `README.md`. Generation is self-checked: the scenario template must pass core load + validate, and the params table is produced by the real `params export` path, so a broken template fails at generation time instead of shipping a skeleton that cannot run. The name whitelist is `^[A-Za-z][A-Za-z0-9_-]*$` (length ≤ 64); an existing target directory is never overwritten. Templates live in `crates/sandtable-cli/src/scaffold/templates/` as the single source of truth (the web new-scenario wizard consumes the same set via the wasm binding later).
+
+### analyze (run an analysis script)
+
+```bash
+sandtable analyze analysis.py --data out/sim --timeout 300 -- out/sim/report.json
+```
+
+Explicit script-execution face ([scripting design](https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md) §5): CPython has no real sandbox, so the security boundary is process isolation + an execution policy, not the language. Before running, the CLI prints the script path and its SHA-256 content hash, then runs the interpreter (default `python3`, fallback `python`, overridable with `--python`) as an external process — the CLI binary does not embed CPython. `--data` paths are treated as read-only inputs: their content manifest is hashed before and after, and any modification (changed / added / removed file) fails the run — this is a detect-and-fail contract, not a language-level write guard. `--timeout` (default 600 s) kills the whole process group and exits with code 124 (GNU timeout convention). Arguments after `--` are forwarded verbatim. The script also receives `SANDTABLE_ANALYZE_SCRIPT`, `SANDTABLE_ANALYZE_DATA`, `SANDTABLE_ANALYZE_TIMEOUT` in its environment.
+
+Scope note: this is the author running their own script on their own machine (trusted default, no extra restrictions). It is not a service for running other people's scripts — the design red line stays: sandtable does not host untrusted-script execution (use container isolation yourself if you need it). Also distinct from the MCP `sandtable_analyze` tool, which exposes the four built-in analyses (ab_compare / daily_aggregate / kpi_summary / recommend) rather than running a user script.
 
 ### query (Phase 3, feature `duckdb`)
 

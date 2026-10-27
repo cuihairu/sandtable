@@ -55,7 +55,7 @@ struct Manifest {
     entries: Vec<Entry>,
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut hex = String::with_capacity(64);
     for b in digest {

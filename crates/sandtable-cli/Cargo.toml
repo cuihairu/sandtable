@@ -29,6 +29,10 @@ duckdb = { version = "1", default-features = false, features = ["bundled", "parq
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
 
+# 分析脚本执行面:超时杀进程组(analyze.rs,仅 unix)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [features]
 parquet = ["dep:parquet", "dep:arrow", "sandtable-core/arrow"]
 duckdb = ["dep:duckdb"]

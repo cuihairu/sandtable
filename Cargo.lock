@@ -3780,6 +3780,7 @@ dependencies = [
  "arrow 59.3.0",
  "clap",
  "duckdb",
+ "libc",
  "parquet",
  "rayon",
  "sandtable-core",
