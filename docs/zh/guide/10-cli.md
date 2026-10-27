@@ -135,7 +135,7 @@ sandtable workbook experiment-out/                    # 写 experiment-out/sandb
 sandtable workbook experiment-out/ --out workflow.xlsx
 ```
 
-- 已知产物:`params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv`;缺席者在 manifest 里记 `absent` 行,**不出表**(缺席 ≠ 空表);
+- 已知产物:`params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv`,启用 `parquet` feature 时另有 `cohort.parquet`;缺席者在 manifest 里记 `absent` 行,**不出表**(缺席 ≠ 空表);
 - 表契约:一表一张、单行表头在第 1 行、无合并单元格、无尾随空行;数值字段进真数值单元格(透视无「文本型数字」告警);
 - 字段映射复用:列名与列序直接取自产物——工作簿不重算任何数值、不改列名;`metric_dictionary` 与 CSV、`sweep.json` 约束名共用内核 `kpi_dict` 列名;
 - 确定性:归档时间戳固定(1980-01-01),同输入 → 字节一致;

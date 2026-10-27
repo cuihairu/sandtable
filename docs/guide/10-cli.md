@@ -135,7 +135,7 @@ sandtable workbook experiment-out/                    # writes experiment-out/sa
 sandtable workbook experiment-out/ --out workflow.xlsx
 ```
 
-- Known artifacts: `params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv`; missing ones are recorded in `manifest` as `absent` and **get no sheet** (absent ≠ empty table);
+- Known artifacts: `params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv`, plus `cohort.parquet` when built with the `parquet` feature; missing ones are recorded in `manifest` as `absent` and **get no sheet** (absent ≠ empty table);
 - Sheet contract: one sheet = one table, single header row on row 1, no merged cells, no trailing blank rows; numeric fields become real numeric cells (no "text-form number" pivot warnings);
 - Field-mapping reuse: field names and order come straight from the artifacts — the workbook recomputes nothing and renames no column; `metric_dictionary` shares the kernel `kpi_dict` column names with the CSV and `sweep.json` constraint names;
 - Deterministic: fixed archive timestamps (1980-01-01), same input → byte-identical output;

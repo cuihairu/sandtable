@@ -2,6 +2,9 @@
 //!
 //! 产物是唯一数据源:同一份字段、同一顺序、同一转义直接进多工作表工作簿,
 //! 本模块不重算数值、不改列名、不补空列(字段映射复用 = 读同一份产物)。
+//! CSV / JSON 通道无条件可用;Parquet 批次输入通道(feature `parquet`,文档 09 章
+//! 的 `cohort.parquet`)与 CSV 通道同构——同一单元格语义(数值推断 / 空串留空),
+//! 只是载体从 RFC 4180 换成 Arrow 契约。
 //! 字段字典来自内核 [`kpi_dict`](sandtable_core::kpi_dict),与 CSV 列名、
 //! sweep.json 约束名同口径,壳层不复制指标清单。
 //!
@@ -426,6 +429,82 @@ fn manifest_sheet(
     sheet
 }
 
+/// 读 `cohort.parquet`(feature `parquet` 的 Arrow 批次;文档 09 章)为
+/// 一张工作表:字段 / 列序 / 数值语义与 CSV 通道同构(空值 → 空单元格,
+/// 数值走 Display → 回 `from_field` 的真数值,文本按原文,其余类型显式
+/// 报错)。空批次(只有 schema)仍出表(有表头、零数据行),不伪造行。
+#[cfg(feature = "parquet")]
+fn read_parquet_csv(path: &Path) -> anyhow::Result<(Vec<String>, Vec<Vec<String>>)> {
+    use anyhow::Context as _;
+    use arrow::array::{
+        Array as _, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
+        Int8Array, LargeStringArray, StringArray, StringViewArray, UInt16Array, UInt32Array,
+        UInt64Array, UInt8Array,
+    };
+    use arrow::datatypes::DataType;
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+    let file = fs::File::open(path).with_context(|| format!("打开 {} 失败", path.display()))?;
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file)
+        .with_context(|| format!("打开 {} 失败", path.display()))?;
+    let header: Vec<String> = builder
+        .schema()
+        .fields()
+        .iter()
+        .map(|field| field.name().clone())
+        .collect();
+
+    if builder.metadata().num_row_groups() == 0 {
+        return Ok((header, Vec::new()));
+    }
+
+    let reader = builder
+        .with_batch_size(1024)
+        .build()
+        .with_context(|| format!("读取 {} 失败", path.display()))?;
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    for batch in reader {
+        let batch = batch.with_context(|| format!("读取 {} 失败", path.display()))?;
+        for row_index in 0..batch.num_rows() {
+            let mut row = Vec::with_capacity(batch.num_columns());
+            for column in batch.columns() {
+                if column.is_null(row_index) {
+                    row.push(String::new());
+                    continue;
+                }
+                macro_rules! push_value {
+                    ($ty:ty) => {{
+                        let array = column.as_any().downcast_ref::<$ty>().unwrap();
+                        row.push(array.value(row_index).to_string());
+                    }};
+                }
+                match column.data_type() {
+                    DataType::Boolean => push_value!(BooleanArray),
+                    DataType::Int8 => push_value!(Int8Array),
+                    DataType::Int16 => push_value!(Int16Array),
+                    DataType::Int32 => push_value!(Int32Array),
+                    DataType::Int64 => push_value!(Int64Array),
+                    DataType::UInt8 => push_value!(UInt8Array),
+                    DataType::UInt16 => push_value!(UInt16Array),
+                    DataType::UInt32 => push_value!(UInt32Array),
+                    DataType::UInt64 => push_value!(UInt64Array),
+                    DataType::Float32 => push_value!(Float32Array),
+                    DataType::Float64 => push_value!(Float64Array),
+                    DataType::Utf8 => push_value!(StringArray),
+                    DataType::LargeUtf8 => push_value!(LargeStringArray),
+                    DataType::Utf8View => push_value!(StringViewArray),
+                    other => bail!(
+                        "{} 含暂不支持的 Arrow 类型 {other:?}(cohort.parquet 输入通道)",
+                        path.display()
+                    ),
+                }
+            }
+            rows.push(row);
+        }
+    }
+    Ok((header, rows))
+}
+
 /// 工作表名 → 数据来源(产物文件或内核来源);全函数,不做兜底猜测。
 fn source_of(sheet_name: &str) -> &'static str {
     match sheet_name {
@@ -436,6 +515,7 @@ fn source_of(sheet_name: &str) -> &'static str {
         "summary" => "summary.csv",
         "comparison" => "comparison.json",
         "daily" => "days.csv",
+        "cohort" => "cohort.parquet",
         _ => "unknown",
     }
 }
@@ -525,6 +605,13 @@ pub struct Package {
     pub absent: Vec<&'static str>,
 }
 
+#[cfg(feature = "parquet")]
+const KNOWN_ARTIFACTS: &str =
+    "params.csv / candidates.csv / summary.csv / comparison.json / days.csv / cohort.parquet";
+#[cfg(not(feature = "parquet"))]
+const KNOWN_ARTIFACTS: &str =
+    "params.csv / candidates.csv / summary.csv / comparison.json / days.csv";
+
 /// 装配工作流数据包:读 dir 下已有产物,缺席记 manifest,不出空表。
 pub fn build(dir: &Path) -> anyhow::Result<Package> {
     if !dir.is_dir() {
@@ -588,10 +675,19 @@ pub fn build(dir: &Path) -> anyhow::Result<Package> {
         &mut data_present,
         &mut absent,
     )?;
+    #[cfg(feature = "parquet")]
+    push_parquet(
+        dir,
+        "cohort",
+        "cohort.parquet",
+        &mut sheets,
+        &mut data_present,
+        &mut absent,
+    )?;
 
     if data_present.is_empty() {
         bail!(
-            "{} 里没有任何已知产物(期待 params.csv / candidates.csv / summary.csv / comparison.json / days.csv 之一,文档 09 章)",
+            "{} 里没有任何已知产物(期待 {KNOWN_ARTIFACTS} 之一,文档 09 章)",
             dir.display()
         );
     }
@@ -643,6 +739,36 @@ fn push_csv(
         return Ok(());
     }
     match read_csv(&path) {
+        Ok((header, rows)) => {
+            let mut sheet = Sheet::new(sheet_name, header);
+            let row_count = rows.len();
+            let col_count = sheet.col_count();
+            sheet.push_rows(rows);
+            sheets.push(sheet);
+            data_present.push((sheet_name, row_count, col_count));
+            Ok(())
+        }
+        Err(e) => bail!("读 {} 失败: {e:#}", artifact),
+    }
+}
+
+#[cfg(feature = "parquet")]
+/// 读一个产物 Parquet 入表(边界①:cohort.parquet 的 Arrow 批次通道):
+/// 缺席记 absent,不生成空表;存在即按 Arrow 契约转单元格。
+fn push_parquet(
+    dir: &Path,
+    sheet_name: &'static str,
+    artifact: &'static str,
+    sheets: &mut Vec<Sheet>,
+    data_present: &mut Vec<(&'static str, usize, usize)>,
+    absent: &mut Vec<&'static str>,
+) -> anyhow::Result<()> {
+    let path = dir.join(artifact);
+    if !path.exists() {
+        absent.push(artifact);
+        return Ok(());
+    }
+    match read_parquet_csv(&path) {
         Ok((header, rows)) => {
             let mut sheet = Sheet::new(sheet_name, header);
             let row_count = rows.len();
@@ -720,5 +846,54 @@ mod tests {
         );
         let long = "很长的表名".repeat(10);
         assert_eq!(sanitize_sheet_name(&long, &[]).chars().count(), 31);
+    }
+
+    #[cfg(feature = "parquet")]
+    #[test]
+    fn parquet_reader_matches_cohort_batch() {
+        use parquet::arrow::ArrowWriter;
+
+        let cfg = sandtable_core::config::SimConfig {
+            players: 20,
+            days: 4,
+            ..sandtable_core::config::SimConfig::default()
+        };
+        let metrics = sandtable_core::sim::run(&cfg, 0);
+        let batch = sandtable_core::export::arrow::cohort_batch(&metrics).unwrap();
+
+        let dir = std::env::temp_dir().join(format!(
+            "st-workbook-parquet-reader-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cohort.parquet");
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = ArrowWriter::try_new(file, batch.schema(), None).unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+
+        let (header, rows) = read_parquet_csv(&path).unwrap();
+        assert_eq!(
+            header,
+            vec![
+                "cohort",
+                "count",
+                "churned",
+                "mean_power",
+                "mean_gold",
+                "mean_level"
+            ]
+        );
+        assert_eq!(rows.len(), metrics.cohort_stats.len());
+        for (row, stat) in rows.iter().zip(&metrics.cohort_stats) {
+            assert_eq!(row[0], stat.cohort);
+            assert_eq!(row[1], stat.count.to_string());
+            assert_eq!(row[2], stat.churned.to_string());
+            assert_eq!(row[3], stat.mean_power.to_string());
+            assert_eq!(row[4], stat.mean_gold.to_string());
+            assert_eq!(row[5], stat.mean_level.to_string());
+        }
+        fs::remove_dir_all(&dir).ok();
     }
 }

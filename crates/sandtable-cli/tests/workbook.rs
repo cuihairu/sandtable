@@ -281,3 +281,90 @@ fn workbook_rejects_missing_dir() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[cfg(feature = "parquet")]
+#[test]
+fn workbook_packages_cohort_parquet() {
+    let dir = temp_dir("cohort-parquet");
+    fs::create_dir_all(&dir).unwrap();
+
+    // 最小真实 fixture:内核 cohort 批次写为标准的 cohort.parquet。
+    let cfg = sandtable_core::config::SimConfig {
+        players: 20,
+        days: 4,
+        ..sandtable_core::config::SimConfig::default()
+    };
+    let metrics = sandtable_core::sim::run(&cfg, 0);
+    let batch = sandtable_core::export::arrow::cohort_batch(&metrics).unwrap();
+    let parquet_path = dir.join("cohort.parquet");
+    let file = fs::File::create(&parquet_path).unwrap();
+    let mut writer = parquet::arrow::ArrowWriter::try_new(file, batch.schema(), None).unwrap();
+    writer.write(&batch).unwrap();
+    writer.close().unwrap();
+
+    let dst = dir.join("pkg.xlsx");
+    must_run(bin(&[
+        "workbook",
+        dir.to_str().unwrap(),
+        "--out",
+        dst.to_str().unwrap(),
+    ]));
+
+    // 部件顺序:包层 + manifest / cohort / metric_dictionary 三张表。
+    let parts = part_names(&dst);
+    let mut expected = vec![
+        String::from("[Content_Types].xml"),
+        String::from("_rels/.rels"),
+        String::from("xl/workbook.xml"),
+        String::from("xl/_rels/workbook.xml.rels"),
+    ];
+    expected.extend((1..=3).map(|i| format!("xl/worksheets/sheet{i}.xml")));
+    assert_eq!(parts, expected);
+
+    let wb = part_text(&dst, "xl/workbook.xml");
+    for (i, name) in ["manifest", "cohort", "metric_dictionary"]
+        .iter()
+        .enumerate()
+    {
+        let frag = format!(
+            "<sheet name=\"{name}\" sheetId=\"{}\" r:id=\"rId{}\"/>",
+            i + 1,
+            i + 1
+        );
+        assert!(wb.contains(&frag), "缺 {frag};workbook.xml = {wb}");
+    }
+
+    let manifest = part_text(&dst, "xl/worksheets/sheet1.xml");
+    assert!(
+        manifest.contains("<t xml:space=\"preserve\">cohort.parquet</t>"),
+        "manifest 应记录 cohort.parquet 来源\n{manifest}"
+    );
+
+    // Cohort 工作表:表头取 Arrow schema 列名,cohort 文本、计数/均值真数值。
+    let cohort = part_text(&dst, "xl/worksheets/sheet2.xml");
+    for field in [
+        "cohort",
+        "count",
+        "churned",
+        "mean_power",
+        "mean_gold",
+        "mean_level",
+    ] {
+        assert!(
+            cohort.contains(&format!("<t xml:space=\"preserve\">{field}</t>")),
+            "cohort 表头缺 {field}\n{cohort}"
+        );
+    }
+    assert!(
+        cohort.contains("<row r=\"2\"><c r=\"A2\" t=\"inlineStr\">"),
+        "首列 cohort 应是文本单元格\n{cohort}"
+    );
+    assert!(
+        cohort.contains("<c r=\"B2\"><v>"),
+        "count 列应是真数值单元格(无 t 属性)\n{cohort}"
+    );
+
+    let dict_sheet = part_text(&dst, "xl/worksheets/sheet3.xml");
+    let expected = sandtable_core::kpi_dict::metric_definitions().len();
+    assert_eq!(dict_sheet.matches("<row r=").count() - 1, expected);
+}

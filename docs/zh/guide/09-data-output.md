@@ -180,7 +180,7 @@ sandtable workbook experiment-out/                    # 读已知产物 → 写 
 sandtable workbook experiment-out/ --out workflow.xlsx
 ```
 
-工作簿是**只读数据交付**,不是配置入口:它读 `params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv`(`params export` / `sweep` / `compare` / `simulate` 的产物),已知产物一表一张,外加 `manifest`(自描述)与 `metric_dictionary`(内核 `kpi_dict`,列名与语义同 CSV / sweep.json 约束名)。不重算任何数值、不改列名、不补空列——字段映射复用就是读同一份产物。
+工作簿是**只读数据交付**,不是配置入口:它读 `params.csv` / `candidates.csv` / `summary.csv` / `comparison.json` / `days.csv`(`params export` / `sweep` / `compare` / `simulate` 的产物),启用 `parquet` feature 时还读 `cohort.parquet`;已知产物一表一张,外加 `manifest`(自描述)与 `metric_dictionary`(内核 `kpi_dict`,列名与语义同 CSV / sweep.json 约束名)。不重算任何数值、不改列名、不补空列——字段映射复用就是读同一份产物。Parquet 通道与 CSV 通道同细胞语义:空值 → 空单元格、数值 Arrow 类型 → 真数值单元格、不支持的 Arrow 类型显式报错。
 
 - **透视 / Power Query 友好:** 一表一张、单行表头在第 1 行、无合并单元格、无尾随空行——不做多行表头推断;
 - **数值走真数值单元格,不是文本数字:** 透视 / 排序 / 求和不会出现「文本型数字」告警;精度上限是 XLSX 的 15 位有效数字(格式上限,不是计算选择);

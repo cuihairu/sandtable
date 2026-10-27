@@ -21,6 +21,8 @@ serde_yaml_ng = "0.10"
 rayon = "1"
 # Parquet 载体(文档 09 章):以 feature 提供,默认构建不含
 parquet = { version = "59.3", default-features = false, features = ["arrow"], optional = true }
+# Arrow 数组读回(Parquet 输入通道的单元格转换;与 parquet 同 feature 门)
+arrow = { version = "59.3", default-features = false, optional = true }
 # DuckDB 分析层(文档 09 章:只读结果数据集,不进仿真路径),feature 提供
 duckdb = { version = "1", default-features = false, features = ["bundled", "parquet"], optional = true }
 # 项目打包(文档 09 章):.sandtable 归档,只开 deflate,不背多余编码
@@ -28,7 +30,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
 
 [features]
-parquet = ["dep:parquet", "sandtable-core/arrow"]
+parquet = ["dep:parquet", "dep:arrow", "sandtable-core/arrow"]
 duckdb = ["dep:duckdb"]
 
 [dev-dependencies]
