@@ -23,6 +23,8 @@ Real-side data arrives as three CSV/YAML artifacts plus one optional. Column nam
 
 A missing required artifact ⇒ its anchors are marked unmapped. Missing anchors narrow the fit; they never get substituted.
 
+**Self-service contract readers landed (2026-10-27, todo「数据分析面」step ③)**: `scripts/templates/calibrate_win_rate.py` and `calibrate_economy.py` consume the `cohort_day.csv` / `economy_day.csv` / `meta.yaml` columns above to produce a per-anchor sim-vs-obs residual table (same ±10% + retention-floor-0.9 acceptance band as §3.4), for quick pre-fit checks. These are **not** the production loader — the MCP `sandtable_calibrate` loader (step ①) stays gated on real data and remains the authority once data arrives; the templates are a self-service start, verified only on synthetic self-consistent data (their residual mechanics, not any calibration claim).
+
 ## 3. Fit method (uses only what exists)
 
 1. **Freeze structure** — hand-author structural params; free set = selected numeric channels recorded in the fit config (with bounds), so every step is reproducible by `sweep` / `optimize` alone.

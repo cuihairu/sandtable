@@ -23,6 +23,8 @@
 
 缺任一必需交付件 ⇒ 其锚点标 unmapped。缺件收窄拟合面;绝不被替代。
 
+**自助契约读取器已落地(2026-10-27,todo「数据分析面」step ③)**:`scripts/templates/calibrate_win_rate.py` 与 `calibrate_economy.py` 消费上表 `cohort_day.csv` / `economy_day.csv` / `meta.yaml` 列,出逐锚点仿真-观测残差表(验收带同 §3.4:±10% + retention 地板 0.9),供拟合前快速对账。它们**不是**生产装载器——MCP `sandtable_calibrate` 装载器(step ①)仍挂闸真实数据,数据到位后为权威;模板是自助起步,只在合成自洽数据上验证过(残差机制,不作校准声明)。
+
 ## 3. 拟合方法(只用既有件)
 
 1. **冻结结构**——结构参数手写;自由集 = 拟合配置中记录的数值通道子集(带边界),使每一步都可仅凭 `sweep` / `optimize` 复现。
