@@ -16,6 +16,7 @@ import { ProChartsSection } from '../analysis/ProCharts.tsx'
 import { DailyCohortSection } from '../analysis/DailyCohortSection.tsx'
 import { CrossReplicateSection } from '../analysis/CrossReplicateSection.tsx'
 import { EconomySection } from '../analysis/EconomySection.tsx'
+import { CustomKpiSection } from '../analysis/CustomKpiSection.tsx'
 import { OptimizeSurrogateSection } from '../analysis/OptimizeSurrogateSection.tsx'
 import { CandidateTable } from '../analysis/CandidateTable.tsx'
 import type { CandidateColumn } from '../analysis/CandidateTable.tsx'
@@ -311,6 +312,8 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
       <CrossReplicateSection results={sim?.results ?? null} runId={exec.runId} />
       {/* 经济/掉落/抽卡:同一内核聚合,口径各图单轴;未配置的键只报原因 */}
       <EconomySection results={sim?.results ?? null} runId={exec.runId} />
+      {/* todo L381 批四:自定义 KPI,校验与求值都进内核,口径行记录可复现要素 */}
+      <CustomKpiSection results={sim?.results ?? null} runId={exec.runId} />
     </section>}
     {a.drafts.length > 0 && <section><h2>{t(locale, 'analysis.draftsTitle')}</h2><button className="btn" onClick={() => { download(`${exec.runId}-drafts.json`, draftsJson(a.drafts, exec.runId), 'application/json'); notify('success', t(locale, 'analysis.draftsJsonDone', { count: a.drafts.length })) }}>{t(locale, 'analysis.downloadDraftsJson')}</button>{a.drafts.map((d) => <div key={d.id} className="result-draft">
       <p>{t(locale, 'analysis.draftLine', { id: d.id, run: d.sourceRunId, cand: d.sourceCandidateId, base: d.baselineId })}</p>
