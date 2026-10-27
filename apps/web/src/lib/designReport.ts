@@ -7,6 +7,8 @@ import type { Comparison, MetricKey, SampleStats } from './types.ts'
 import { abFacets } from './abEffect.ts'
 import type { AbFacet } from './abEffect.ts'
 import { METRIC_META, metricLabel } from './metricMeta.ts'
+import { buildCaliberRows, REPORT_TEMPLATE_ID, REPORT_TEMPLATE_VERSION } from './reportTemplate.ts'
+import type { CaliberRow } from './reportTemplate.ts'
 import { t } from './i18n/index.ts'
 import type { Locale } from './i18n/locales.ts'
 
@@ -83,6 +85,10 @@ export type DesignReportModel = {
   unavailableMetrics: readonly UnavailableMetric[]
   assumptions: readonly string[]
   sources: readonly { runId: string; path: string; schemaVersion: string | null; modelVersion: string | null }[]
+  /** 报告模板身份(前端组版契约;模板演进可引用版本号) */
+  template: { id: string; version: string }
+  /** 模板与口径版本行(模板版本前端常量;其余内核回传,缺失 null) */
+  caliber: readonly CaliberRow[]
 }
 
 type ComparisonError = { metric: MetricKey; message: string }
@@ -209,7 +215,12 @@ function statRows(parsed: RunEnvelope | null, runId: string): ReportTableRow[] {
   })
 }
 
-function unavailableReportLocale(source: ReportSource, reason: string, locale: Locale): DesignReportModel {
+function unavailableReportLocale(
+  source: ReportSource,
+  reason: string,
+  locale: Locale,
+  dictVersion: string | null = null,
+): DesignReportModel {
   return {
     language: locale,
     summary: [reason],
@@ -225,6 +236,8 @@ function unavailableReportLocale(source: ReportSource, reason: string, locale: L
     unavailableMetrics: METRIC_KEYS.map((metric) => ({ metric, label: metricLabel(metric, locale), reason, source: 'kernel-result' })),
     assumptions: [t(locale, 'report.assumptionScope')],
     sources: [],
+    template: { id: REPORT_TEMPLATE_ID, version: REPORT_TEMPLATE_VERSION },
+    caliber: buildCaliberRows([], dictVersion),
   }
 }
 
@@ -232,11 +245,12 @@ export function designReport(
   source: ReportSource,
   baseline: ReportBaseline,
   locale: Locale = 'zh-CN',
+  dictVersion: string | null = null,
 ): DesignReportModel {
   const parsed = parseReport(source.artifactText)
-  if (!parsed) return unavailableReportLocale(source, t(locale, 'report.artifactInvalidJson', { path: source.artifactPath }), locale)
+  if (!parsed) return unavailableReportLocale(source, t(locale, 'report.artifactInvalidJson', { path: source.artifactPath }), locale, dictVersion)
   if (text(parsed.run_id) !== source.runId) {
-    return unavailableReportLocale(source, t(locale, 'report.artifactRunMismatch', { path: source.artifactPath, runId: source.runId }), locale)
+    return unavailableReportLocale(source, t(locale, 'report.artifactRunMismatch', { path: source.artifactPath, runId: source.runId }), locale, dictVersion)
   }
 
   const indexedSeed = source.index?.seed
@@ -311,6 +325,7 @@ export function designReport(
     })
   }
 
+  const sources = reportSources(source, baseline, parsed, baselineParsed)
   return {
     language: locale,
     summary: buildSummary(source.runId, source.runStatus, locale, conditions, parameterDiff, parameterDiffReason, facets),
@@ -332,7 +347,9 @@ export function designReport(
       t(locale, 'report.assumptionDailyNoCi'),
       t(locale, 'report.assumptionScope'),
     ],
-    sources: reportSources(source, baseline, parsed, baselineParsed),
+    sources,
+    template: { id: REPORT_TEMPLATE_ID, version: REPORT_TEMPLATE_VERSION },
+    caliber: buildCaliberRows(sources, dictVersion),
   }
 }
 

@@ -40,10 +40,23 @@ import { CandidateComparePanel } from '../project/CandidateComparePanel.tsx'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { parseConfig, readNumeric, readText } from '../params/configYaml.ts'
-import { kpiAvailabilityForTest } from '../../lib/wasm.ts'
+import { kpiAvailabilityForTest, metricDictionary } from '../../lib/wasm.ts'
 import '../analysis/analysis.css'
 
+// 指标字典版本(内核 kpi_dict 桥,静态注册表):导出报告前取一次并缓存,
+// 失败按未知处理(口径行不出字典条目),不阻塞报告导出。
+let metricDictionaryVersionCache: Promise<string | null> | null = null
+
+function metricDictionaryVersion(): Promise<string | null> {
+  metricDictionaryVersionCache ??= metricDictionary()
+    .then((dict) => dict.dict_version)
+    .catch(() => null)
+  return metricDictionaryVersionCache
+}
+
 async function generateDesignReport(job: Job, state: WorkbenchState, locale: ReturnType<typeof useLocale>): Promise<void> {
+  const dictVersion = await metricDictionaryVersion()
+
   const readConditions = (yaml: string): { population: number | null; days: number | null } => {
     const parsed = parseConfig(yaml)
     const durationText = readText(parsed, 'scenario.duration')
@@ -93,7 +106,7 @@ async function generateDesignReport(job: Job, state: WorkbenchState, locale: Ret
     days: runConditions.days,
   }, baselineEntry && baselinePath && typeof baselineText === 'string' ? {
     runId: baselineEntry.run_id, artifactPath: baselinePath, artifactText: baselineText,
-  } : null, locale)
+  } : null, locale, dictVersion)
   download(`${exec.runId}.design-report.html`, designReportHtml(model), 'text/html;charset=utf-8')
   notify('success', t(locale, 'report.done', { runId: exec.runId }))
 }

@@ -3,6 +3,19 @@
 // 正文词条沿用现有 i18n 词典,精确值直接文本化,比例不做显示换算。
 import type { DesignReportModel, ReportChart, ReportTableRow } from './designReport.ts'
 import { t } from './i18n/index.ts'
+import type { Locale } from './i18n/locales.ts'
+
+const CALIBER_KEY: Record<'template' | 'schema' | 'model' | 'dict',
+  'report.caliberTemplate' | 'report.caliberSchema' | 'report.caliberModel' | 'report.caliberDict'> = {
+  template: 'report.caliberTemplate',
+  schema: 'report.caliberSchema',
+  model: 'report.caliberModel',
+  dict: 'report.caliberDict',
+}
+
+function caliberItem(locale: Locale, key: 'template' | 'schema' | 'model' | 'dict'): string {
+  return t(locale, CALIBER_KEY[key])
+}
 
 function escapeHtml(value: unknown): string {
   return String(value)
@@ -62,6 +75,7 @@ export function designReportHtml(model: DesignReportModel): string {
 <html lang="${escapeHtml(model.language)}">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="sandtable-report-template" content="${escapeHtml(`${model.template.id}/${model.template.version}`)}">
 <title>${escapeHtml(t(locale, 'report.title'))}</title>
 <style>
 :root{color-scheme:light;font:14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17202a;background:#fff}body{margin:0}main{max-width:1180px;margin:auto;padding:32px 24px 64px}h1{font-size:28px;margin:0}h2{font-size:20px;margin:28px 0 8px;padding-bottom:5px;border-bottom:1px solid #cbd5e0}h3{margin:18px 0 6px}.note{color:#4a5560;margin:6px 0}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;margin:10px 0 16px;font-size:12px}th,td{border:1px solid #cbd5e0;padding:6px;text-align:left;vertical-align:top}th{background:#edf2f7}svg{width:100%;height:auto;border:1px solid #cbd5e0;background:#fff}.report-ci{stroke:#2b6cb0;stroke-width:2}circle{fill:#2b6cb0}ul{margin:6px 0 16px;padding-left:22px}@media print{main{max-width:none;padding:12mm}}
@@ -77,6 +91,7 @@ export function designReportHtml(model: DesignReportModel): string {
 <h2>${escapeHtml(t(locale, 'report.sectionUnavailable'))}</h2>${unavailable}
 <h2>${escapeHtml(t(locale, 'report.sectionAssumptions'))}</h2>${assumptions}
 <p class="note" role="status">${escapeHtml(t(locale, 'report.pdfUnavailable'))}</p>
+<h2>${escapeHtml(t(locale, 'report.templateSection'))}</h2><table data-testid="report-caliber"><thead><tr><th>${escapeHtml(t(locale, 'report.colCaliberItem'))}</th><th>${escapeHtml(t(locale, 'report.colCaliberValue'))}</th><th>${escapeHtml(t(locale, 'report.colCaliberOrigin'))}</th></tr></thead><tbody>${model.caliber.map((row) => `<tr><td>${escapeHtml(caliberItem(locale, row.key))}</td><td>${escapeHtml(row.value ?? t(locale, 'common.unavailable'))}</td><td class="mono">${escapeHtml(row.origin)}</td></tr>`).join('')}</tbody></table><p class="note">${escapeHtml(t(locale, 'report.caliberNote'))}</p>
 <h2>${escapeHtml(t(locale, 'report.sectionSources'))}</h2>${sources}
 </main>`
 }
