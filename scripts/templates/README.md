@@ -1,6 +1,6 @@
 # 官方编排模板(脚本层阶段 2)
 
-消费阶段 1 绑定(`sandtable_sim`)与 CLI 产物的三个编排模板。设计口径见
+消费阶段 1 绑定(`sandtable_sim`)与 CLI 产物的编排模板(Python 三模板 + MATLAB 一模板)。设计口径见
 [scripting-design.md](../scripting-design.md) §7 阶段 2 拍板记录(2026-10-11):
 纯 Python、零 Rust 改动;绑定承载同进程编排(run / sweep / recommend),
 A/B 与既有产物分析走外挂通道(读 comparison.json / sweep.json)。
@@ -32,4 +32,5 @@ python3 scripts/templates/sweep_curves.py sweep-out/sweep.json --metric win_rate
 - 模板是**起步样板**而非库:按需改写,不追求参数面齐全;
 - `ab_summary.py` 表格尾带**模型边界注记**(CI 与判定仅在仿真模型内有效,口径同 `sandtable report` 页首,2026-10-11 拍板);PNG 不带该注记——图内标签维持英文、不依赖 CJK 字形的纪律不变;
 - `daily_analysis.m` 只依赖 **base MATLAB**(readtable / jsondecode / plot),不需要任何 Toolbox,也不需要 MATLAB Engine——核心仿真与默认图表不依赖商业授权;MATLAB Engine 评估(从 MATLAB 调内核、任务状态 / 日志 / 输出目录 / 结果回收)仍挂在有真实本机调用需求之后,见 docs/guide/09;图内标签与终端输出维持英文(CJK 字形不依赖,同 PNG 纪律);
+- `batch_sweep.py` 记录**脚本与依赖版本**:启动时向 stderr 打一行 `batch_sweep.py <脚本版本> · sandtable_sim <wheel 版本> · python <解释器版本>`(不进 CSV 表体,表体保持单行表头);**失败不影响核心仿真**:单个场景解析或运行失败记入该行 `error` 列并继续其余场景,核心(同进程 pyo3 纯函数)不受影响,末尾汇总 `失败 n/m`,任一失败退出码 1(消费方按 `error` 列过滤可用行);
 - 脚本不被信任时的执行策略(永不自动执行、显式执行前审查)见设计文档 §5。

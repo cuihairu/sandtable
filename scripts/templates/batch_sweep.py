@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.metadata
 import math
+import platform
 import sys
 from pathlib import Path
 
@@ -23,6 +25,21 @@ try:
 except ImportError:
     sys.exit(
         "缺 sandtable_sim:先构建并安装阶段 1 wheel(见 scripts/templates/README.md)"
+    )
+
+# 脚本自身版本(Python 自动化条目「记录脚本/依赖版本」)。
+SCRIPT_VERSION = "1.0"
+
+
+def version_line() -> str:
+    """脚本 + 依赖 + 解释器版本一行(输出到 stderr,不进 CSV 表体)。"""
+    try:
+        wheel = importlib.metadata.version("sandtable-sim")
+    except importlib.metadata.PackageNotFoundError:
+        wheel = "unknown"
+    return (
+        f"batch_sweep.py {SCRIPT_VERSION}  "
+        f"sandtable_sim {wheel}  python {platform.python_version()}"
     )
 
 # RunMetrics 标量字段(docs 09 数据契约);gold_per_player 为派生列
@@ -74,9 +91,24 @@ def main() -> int:
     if args.replicates < 1:
         ap.error("--replicates 至少为 1")
 
+    print(version_line(), file=sys.stderr)
     rows: list[dict[str, str]] = []
+    failures = 0
     for name in args.scenarios:
-        out = st.run(st.load(str(name)), args.replicates)
+        row: dict[str, str] = {
+            "scenario": name,
+            "replicates": str(args.replicates),
+            "config_hash": "",
+            "error": "",
+        }
+        try:
+            out = st.run(st.load(str(name)), args.replicates)
+        except Exception as exc:  # noqa: BLE001 - 一个场景失败不影响其余场景与核心
+            failures += 1
+            row["error"] = f"{type(exc).__name__}: {exc}"
+            print(f"警告: {name} 失败({row['error']}),跳过", file=sys.stderr)
+            rows.append(row)
+            continue
         per_kpi = {f: [] for f in KPI_FIELDS}
         gold_per_player: list[float] = []
         for r in out["results"]:
@@ -85,18 +117,14 @@ def main() -> int:
                     per_kpi[f].append(float(r[f]))
             gold_per_player.append(r["gold_earned_total"] / r["players"])
 
-        row = {
-            "scenario": name,
-            "replicates": str(args.replicates),
-            "config_hash": out["config_hash"][:12],
-        }
+        row["config_hash"] = out["config_hash"][:12]
         for f in KPI_FIELDS:
             row[f] = fmt(mean_ci(per_kpi[f]))
         gpp = mean_ci(gold_per_player)
         row["gold_per_player"] = f"{gpp[0]:.2f}" if gpp else "-"
         rows.append(row)
 
-    cols = ["scenario", "replicates", "config_hash", *KPI_FIELDS, "gold_per_player"]
+    cols = ["scenario", "replicates", "config_hash", *KPI_FIELDS, "gold_per_player", "error"]
     if args.out:
         with open(args.out, "w", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(fh, fieldnames=cols)
@@ -110,6 +138,9 @@ def main() -> int:
         writer = csv.DictWriter(sys.stdout, fieldnames=cols)
         writer.writeheader()
         writer.writerows(rows)
+    if failures:
+        print(f"失败 {failures}/{len(args.scenarios)} 场景(其余照常)", file=sys.stderr)
+        return 1
     return 0
 
 
