@@ -19,6 +19,8 @@ serde = { version = "1", features = ["derive"] }
 rayon = "1"
 # float_roundtrip:写盘再读回的 f64 逐位一致(与 CLI / wasm 同纪律)
 serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_yaml_ng = "0.10"
+csv = "1.4"
 anyhow = "1"
 
 [dev-dependencies]

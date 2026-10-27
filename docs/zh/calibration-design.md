@@ -25,6 +25,8 @@
 
 **自助契约读取器已落地(2026-10-27,todo「数据分析面」step ③)**:`scripts/templates/calibrate_win_rate.py` 与 `calibrate_economy.py` 消费上表 `cohort_day.csv` / `economy_day.csv` / `meta.yaml` 列,出逐锚点仿真-观测残差表(验收带同 §3.4:±10% + retention 地板 0.9),供拟合前快速对账。它们**不是**生产装载器——MCP `sandtable_calibrate` 装载器(step ①)仍挂闸真实数据,数据到位后为权威;模板是自助起步,只在合成自洽数据上验证过(残差机制,不作校准声明)。
 
+**MCP `sandtable_calibrate` 装载器已落地(2026-10-28,todo「数据分析面」step ①)**:`crates/sandtable-mcp` 第五枚工具——`yaml` + `data_dir` + `mapping`(+ 可选 `replicates`)→ 只读本地 CSV(路径须留在 `data_dir` 内,只读;原始行绝不离开进程)→ 真跑场景 → 返回逐锚点 `{anchor, sim_mean, sim_ci95, observed, relative_residual, band, verdict}`。`mapping.anchors` 绑定运行级内核指标;`mapping.series` 绑定 CSV `day_column` + `value_column`(+ 可选 `denominator_column`),聚合口径 `sum`/`ratio`。内核不可用指标(gacha/loot 未配置)与未映射观测锚点带老实原因报 `UNMAPPED`——不用公开案例或 0 替代。验收带同一 §3.4 规则(±10% 相对 + retention 地板 0.9)。预算:`replicates ≤ 128`、锚点 ≤ 10 000(超限拒绝而非静默截断)。实现复用 `core::experiment::MetricKey` / `summarize`(壳层零重算)。在合成 fixtures 上验证(聚合/UNMAPPED/路径逃逸/零分母/预算)——这些只验证工具链机制,不作校准声明,§6 触发条件仍成立:装载器是垫步,真实数据仍是阻塞项。
+
 ## 3. 拟合方法(只用既有件)
 
 1. **冻结结构**——结构参数手写;自由集 = 拟合配置中记录的数值通道子集(带边界),使每一步都可仅凭 `sweep` / `optimize` 复现。

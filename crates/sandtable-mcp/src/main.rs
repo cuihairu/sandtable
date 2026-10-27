@@ -1,7 +1,7 @@
 //! Sandtable MCP 服务器(todo 计划 2026-10-20:Rust 实现,官方 rmcp SDK + stdio)。
 //!
 //! 纪律:**原生直调 sandtable-core**——不经 wasm / Node 边界,单二进制零
-//! Node 依赖;工具面四枚(用户拍板,不与先前 Node 草稿留两套):
+//! Node 依赖;工具面五枚(用户拍板,不与先前 Node 草稿留两套):
 //!
 //! - `sandtable_validate`:校验场景 YAML → config_hash / 规模元数据
 //! - `sandtable_run`:跑 R 个 replicate;`results` 与 CLI `simulate`
@@ -11,6 +11,8 @@
 //!   并行,内核 keyed RNG 保证与串行逐值一致)
 //! - `sandtable_analyze`:纯统计工作台(ab_compare / daily_aggregate /
 //!   kpi_summary / recommend),零额外仿真,只从已有 results 计算
+//! - `sandtable_calibrate`:本地只读观测数据聚合 → 与本地仿真 KPI 对账;
+//!   数据只传回残差表,原始观测不外发
 //!
 //! stdio 传输:stdout 只承载 MCP 帧,任何诊断走 stderr(本实现默认静默)。
 //! 错误通道:内核/配置错误原文透传(与 wasm 绑定同纪律,壳层不改写),
@@ -28,6 +30,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+mod calibrate;
 
 use sandtable_core as core;
 
@@ -36,6 +39,10 @@ pub const MAX_RUN_REPLICATES: u32 = 4096;
 
 /// `sandtable_plan_sweep` 的仿真预算:候选数 × replicates ≤ 1000。
 pub const MAX_SWEEP_SIMS: u64 = 1000;
+
+pub use calibrate::{
+    calibrate_native, CalibrationInput, MAX_CALIBRATION_ANCHORS, MAX_CALIBRATION_REPLICATES,
+};
 
 fn load(yaml: &str) -> Result<core::config::SimConfig, String> {
     let cfg = core::scenario::load_str(yaml).map_err(|e| format!("配置错误: {e}"))?;
@@ -280,6 +287,24 @@ pub struct AnalyzeParams {
     pub results_b_json: Option<Value>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CalibrateParams {
+    /// 场景 YAML 全文;校准只读取本地 `data_dir`,不外发观测数据。
+    pub yaml: String,
+    /// 本地只读数据目录;series.file 相对且不得逃出该目录。
+    pub data_dir: String,
+    /// 字段映射 YAML:anchors 为运行级内核指标锚点;series 映射 CSV 的
+    /// day/value/denominator 列并按 sum/ratio 聚合。
+    pub mapping: String,
+    /// replicate 数(默认 1;≥2 时输出内核 95% CI),预算上限 128。
+    #[serde(default = "default_calibration_replicates")]
+    pub replicates: u32,
+}
+
+fn default_calibration_replicates() -> u32 {
+    1
+}
+
 /// 必填字符串参数(ab_compare / kpi_summary / recommend 各分支共用)。
 fn require_str<'a>(v: &'a Option<String>, analysis: &str, what: &str) -> Result<&'a str, String> {
     v.as_deref()
@@ -387,6 +412,27 @@ impl SandtableMcp {
             )),
         };
         to_tool_result(out)
+    }
+
+    #[tool(
+        description = "本地只读数据校准对账:按 mapping 聚合 data_dir 内 CSV 的观测值,运行场景仿真,输出逐锚点 sim/observed 残差与 PASS/FAIL/UNMAPPED 报告。支持运行级 KPI 与 win_rate/gold_per_player/power_p50 逐日锚点;数据只在本地读取,不外发"
+    )]
+    fn sandtable_calibrate(
+        &self,
+        Parameters(CalibrateParams {
+            yaml,
+            data_dir,
+            mapping,
+            replicates,
+        }): Parameters<CalibrateParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let input = CalibrationInput {
+            yaml,
+            data_dir,
+            mapping,
+            replicates,
+        };
+        to_tool_result(calibrate_native(&input))
     }
 }
 

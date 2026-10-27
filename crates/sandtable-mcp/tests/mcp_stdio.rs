@@ -8,6 +8,8 @@ use rmcp::{
     ServiceExt,
 };
 use serde_json::{json, Value};
+use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
 
 const SCEN: &str =
@@ -36,7 +38,7 @@ async fn mcp_stdio_end_to_end_kernel_tools() -> anyhow::Result<()> {
     // TokioChildProcess::new 返回 Result(spawn 失败可报),先 ? 取传输
     let client = ().serve(TokioChildProcess::new(Command::new(bin))?).await?;
 
-    // 1) list_tools:四枚工具齐
+    // 1) list_tools:五枚工具齐
     let tools = client.list_all_tools().await?;
     let names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
     for expected in [
@@ -44,6 +46,7 @@ async fn mcp_stdio_end_to_end_kernel_tools() -> anyhow::Result<()> {
         "sandtable_run",
         "sandtable_plan_sweep",
         "sandtable_analyze",
+        "sandtable_calibrate",
     ] {
         assert!(names.iter().any(|n| n == expected), "tools = {names:?}");
     }
@@ -106,6 +109,43 @@ async fn mcp_stdio_end_to_end_kernel_tools() -> anyhow::Result<()> {
     let sweep: Value = serde_json::from_str(&text)?;
     assert_eq!(sweep["sims"], 6);
     assert_eq!(sweep["results"].as_array().unwrap().len(), 3);
+
+    // 7) calibrate:官方客户端完整链路 + 本地 fixture 数据只读聚合。
+    let dir = std::env::temp_dir().join(format!(
+        "st-mcp-e2e-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+    ));
+    fs::create_dir_all(&dir)?;
+    fs::write(
+        dir.join("daily.csv"),
+        "cohort_day,retained,active\n3,98,100\n3,99,100\n",
+    )?;
+    let mapping = "anchors:\n  win_rate: {observed: 0.98}\nseries:\n  win_rate:\n    file: daily.csv\n    day_column: cohort_day\n    value_column: retained\n    denominator_column: active\n    aggregation: ratio\n".to_string();
+    let (is_err, text) = call_text(
+        &client,
+        "sandtable_calibrate",
+        json!({
+            "yaml": SCEN,
+            "data_dir": dir.to_string_lossy(),
+            "mapping": mapping,
+            "replicates": 2
+        }),
+    )
+    .await;
+    assert!(!is_err, "{text}");
+    let calibrated: Value = serde_json::from_str(&text)?;
+    assert_eq!(calibrated["meta"]["data_source"], "local_readonly");
+    assert_eq!(calibrated["summary"]["series_anchors"], 1);
+    assert!(calibrated["rows"].as_array().unwrap().len() <= 10_000);
+    let win_daily = calibrated["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["anchor"] == "win_rate" && row["day"] == 3)
+        .unwrap();
+    assert_eq!(win_daily["observed"], 0.985);
+    assert_eq!(win_daily["replicates"], 2);
 
     client.cancel().await?;
     Ok(())
