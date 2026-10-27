@@ -1,6 +1,7 @@
 //! `sandtable analyze` 端到端:脚本执行面(scripting-design.md §5 口径)。
-//! 三径:正常执行(打印哈希/数据路径 + 转发参数与 env)、只读数据路径被
-//! 改动即失败、超时杀进程组退出码 124。本机无解释器时跳过(不硬失败)。
+//! 四径:正常执行(打印哈希/数据路径 + 转发参数与 env)、真实
+//! pandas + DuckDB + sandtable_sim 绑定通道、只读数据路径被改动即失败、
+//! 超时杀进程组退出码 124。本机无解释器时跳过(不硬失败)。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,6 +27,13 @@ fn python() -> Option<&'static str> {
     ["python3", "python"]
         .into_iter()
         .find(|cand| Command::new(cand).arg("--version").output().is_ok())
+}
+
+fn python_has_module(cand: &str, module: &str) -> bool {
+    Command::new(cand)
+        .args(["-c", &format!("import {module}")])
+        .output()
+        .is_ok_and(|out| out.status.success())
 }
 
 fn write(dir: &Path, name: &str, content: &str) -> PathBuf {
@@ -77,6 +85,63 @@ fn analyze_runs_and_prints_policy_header() {
     assert!(stdout.contains("ARG="), "参数应转发");
     assert!(stdout.contains("DATA="), "数据路径 env 应注入");
     assert_eq!(fs::read_to_string(&outfile).unwrap(), "done");
+}
+
+#[test]
+fn analyze_runs_python_bindings_with_pandas_and_duckdb() {
+    // 本机可能缺 pandas / duckdb / sandtable_sim(pyo3 wheel);缺件即跳过,
+    // 不把「绑定通道未安装」当作失败(同 python() 缺解释器跳过的先例)。
+    let modules = ["pandas", "duckdb", "sandtable_sim"];
+    let Some(py) = ["python3", "python", "/usr/bin/python3"]
+        .into_iter()
+        .find(|cand| modules.iter().all(|m| python_has_module(cand, m)))
+    else {
+        eprintln!("跳过:无 pandas / duckdb / sandtable_sim 解释器");
+        return;
+    };
+    let dir = temp_dir("python");
+    fs::create_dir_all(&dir).unwrap();
+
+    let data = write(&dir, "data.csv", "value\n1.5\n2.5\n");
+    let scenario = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/pokemon.yaml");
+    let script = write(
+        &dir,
+        "analysis.py",
+        &format!(
+            r#"import os
+import duckdb
+import pandas as pd
+import sandtable_sim as st
+
+data = os.environ["SANDTABLE_ANALYZE_DATA"].split(os.pathsep)[0]
+frame = pd.read_csv(data)
+total = duckdb.sql(
+    "SELECT sum(value) AS value FROM read_csv_auto('" + data + "')"
+).limit(1).fetchall()[0][0]
+output = st.run(st.load({scenario:?}), replicates=1)
+print(f"ROWS={{len(frame)}} SUM={{total:g}} DAYS={{len(output['days_csv'].splitlines()) - 1}}")"#
+        ),
+    );
+
+    let out = bin(&[
+        "analyze",
+        script.to_str().unwrap(),
+        "--data",
+        data.to_str().unwrap(),
+        "--python",
+        py,
+        "--timeout",
+        "60",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("ROWS=2"), "{stdout}");
+    assert!(stdout.contains("SUM=4"), "{stdout}");
+    assert!(stdout.contains("DAYS=30"), "{stdout}");
 }
 
 #[test]
