@@ -545,3 +545,7 @@
       编译门、CLI parquet/duckdb 特性测试、python 模板编译、web 全部 60 个 node 测试
       套件（180+92+34+173 通过）、npm run build、docs:build、release 冒烟
       （validate/simulate/compare/sweep/recommend/report）。无缺陷需修复。
+- [x] 审核发现：状态行把代决归因于「用户 2026-10-14 授权按推荐拍,后续可推翻」，但仓内与全部 git 历史均无该授权记录；当日仅有窄口径「巡检 R1」引擎适配器代决（todo.md:467，且明确不含版本发布/License/付费/素材授权/人工验收），授权口径被高估（docs/review/2026-10-30-decisions.md:4）。
+      核证 2026-10-30 属实：`git log -S"按推荐拍" --all` 与 `git log -S"后续可推翻" --all` 仅命中 c6f62fb（本争议行自身，无独立授权来源）；仓库内 `grep -rn` 亦无其他记录。修法：docs/review/2026-10-30-decisions.md:3-8 状态行改「供学习式复核的建议稿,非已授权代决」，并明示 2026-10-14 仅有巡检 R1 窄口径引擎 Adapter 代决（docs/zh/engine-adapter-design.md §5.1，不含发布/License/付费/素材授权/人工验收）。
+- [x] 审核发现：决策依据与来源仅指向仓外 /tmp 临时文件（/tmp/sandtable-analysis.md、/tmp/sandtable-decisions.md），未随仓库版本化，后续无法从仓内复核证据（docs/review/2026-10-30-decisions.md:3,8）。
+      核证 2026-10-30 属实：仓内此前仅 docs/review/2026-10-30-decisions.md:3,8 指向 /tmp。修法：`/tmp/sandtable-analysis.md` 逐字收仓为 docs/review/2026-10-30-analysis.md（`diff` 与 /tmp 源逐位一致）；`/tmp/sandtable-decisions.md` 正文已逐字存在于 docs/review/2026-10-30-decisions.md:6-163（`diff` 差异仅 1-4 行头部），不另存副本；两处 /tmp 引用改为仓内相对链接（docs/review/2026-10-30-decisions.md:3-9）。
