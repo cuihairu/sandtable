@@ -35,7 +35,7 @@ import platform
 import sys
 from pathlib import Path
 
-SCRIPT_VERSION = "1.0"
+SCRIPT_VERSION = "1.1"
 
 # cohort_day.csv 固定列(校准设计 §2)
 COHORT_COLS = ("date", "cohort_day", "cohort", "retained_players", "active_players")
@@ -112,7 +112,14 @@ def parse_meta(path: Path) -> dict:
             data[key] = val == "true"
         elif val.startswith("[") and val.endswith("]"):
             inner = val[1:-1].strip()
-            data[key] = [float(x) for x in inner.split(",") if x.strip()]
+            parts = [x.strip() for x in inner.split(",") if x.strip()]
+            values = []
+            for part in parts:
+                try:
+                    values.append(float(part))
+                except ValueError:
+                    values.append(part)
+            data[key] = values
         elif val.startswith("{") and val.endswith("}"):
             inner = val[1:-1].strip()
             pairs = {}
@@ -180,6 +187,7 @@ def check_cohort(c: Checker, rows: list[dict[str, str]]) -> None:
         else:
             c.ok("整数日轴连续", f"cohort={cohort}: {lo}..{hi} 连续")
     # 3) 非负 + 4) 零分母 + 5) retained ≤ active
+    check_numeric(c, rows, ("retained_players", "active_players"), "数值可解析(人数列)")
     neg = [f"行{i+1} {col}={r[col]}" for i, r in enumerate(rows)
            for col in ("retained_players", "active_players") if _neg(r[col])]
     if neg:
@@ -233,6 +241,7 @@ def check_economy(c: Checker, rows: list[dict[str, str]]) -> None:
             else:
                 c.ok("日期连续(无缺日)", f"{len(dates)} 日连续")
     # 3) 非负 + 4) 零分母
+    check_numeric(c, rows, ("gold_granted_total", "gold_spent_total", "active_players"), "数值可解析(金币/人数)")
     neg = [f"行{i+1} {col}={r[col]}" for i, r in enumerate(rows)
            for col in ("gold_granted_total", "gold_spent_total", "active_players")
            if _neg(r[col])]
@@ -262,13 +271,20 @@ def check_meta(c: Checker, meta: dict) -> None:
     if mix is None:
         c.skip("cohort_mix 份额", "缺席,跳过")
     elif isinstance(mix, dict):
-        total = sum(v for v in mix.values() if isinstance(v, (int, float)))
+        values = [v for v in mix.values() if _finite_number(v)]
+        if len(values) != len(mix):
+            c.skip("cohort_mix 份额", "形状未识别(映射含非数值),跳过")
+            return
+        total = sum(values)
         if abs(total - 1.0) < 1e-6:
             c.ok("cohort_mix 份额和", f"Σ={total:.6f}≈1")
         else:
             c.fail("cohort_mix 份额和", f"Σ={total}≠1")
     elif isinstance(mix, list):
-        total = sum(x for x in mix if isinstance(x, (int, float)))
+        if not all(_finite_number(x) for x in mix):
+            c.skip("cohort_mix 份额", "形状未识别(列表含非数值),跳过")
+            return
+        total = sum(x for x in mix if _finite_number(x))
         if abs(total - 1.0) < 1e-6:
             c.ok("cohort_mix 份额和", f"Σ={total:.6f}≈1")
         else:
@@ -291,6 +307,30 @@ def _neg(s: str) -> bool:
         return False
 
 
+def check_numeric(
+    c: Checker,
+    rows: list[dict[str, str]],
+    columns: tuple[str, ...],
+    check_name: str,
+) -> None:
+    invalid = [
+        f"行{i + 1} {column}={row[column]!r}"
+        for i, row in enumerate(rows)
+        for column in columns
+        if not _finite_number(_num(row[column]))
+    ]
+    if invalid:
+        c.fail(check_name, "; ".join(invalid[:5]))
+    else:
+        c.ok(check_name, f"{len(columns)} 列均为有限数值")
+
+
+def _finite_number(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return value == value and value not in (float("inf"), float("-inf"))
+
+
 def _pos(s: str) -> bool:
     try:
         return float(s) >= 1
@@ -301,8 +341,12 @@ def _pos(s: str) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser(description="观测侧标准契约件校验(决策 §2.3)")
     ap.add_argument("--obs-dir", type=Path, required=True, help="含 cohort_day.csv / economy_day.csv / meta.yaml 的目录")
+    ap.add_argument("--self-test", action="store_true", help="运行合成契约件回归自测")
     args = ap.parse_args()
     print(version_line(), file=sys.stderr)
+
+    if args.self_test:
+        return self_test()
 
     c = Checker()
     obs = args.obs_dir
@@ -335,6 +379,34 @@ def main() -> int:
     n_fail = sum(1 for v, _, _ in c.items if v == "FAIL")
     print(f"summary: {len(c.items)} checks, {n_fail} fail", file=sys.stderr)
     return 1 if c.failed else 0
+
+
+def self_test() -> int:
+    c = Checker()
+    check_meta(c, {"population": 100, "cohort_mix": ["0.5", "abc", "0.5"]})
+    check_cohort(c, [
+        {"date": "2026-01-01", "cohort_day": "0", "cohort": "A",
+         "retained_players": "abc", "active_players": "10"},
+        {"date": "2026-01-02", "cohort_day": "1", "cohort": "A",
+         "retained_players": "5", "active_players": "5"},
+    ])
+    check_economy(c, [
+        {"date": "2026-01-01", "gold_granted_total": "1",
+         "gold_spent_total": "xyz", "active_players": "10"},
+    ])
+    verdicts = [v for v, _, _ in c.items]
+    # meta: PASS(population) + SKIP(cohort_mix 含非数值)
+    # cohort: 重复行 PASS, 唯一 PASS, 日轴 PASS, 数值可解析 FAIL, 非负 PASS,
+    #         零分母 PASS, retained≤active PASS
+    # economy: 重复行 PASS, 日期 PASS, 数值可解析 FAIL, 非负 PASS, 零分母 PASS
+    expected = [
+        "PASS", "SKIP",
+        "PASS", "PASS", "PASS", "FAIL", "PASS", "PASS", "PASS",
+        "PASS", "PASS", "FAIL", "PASS", "PASS",
+    ]
+    ok = verdicts == expected
+    print("self-test: " + ("ok" if ok else "FAIL"), verdicts)
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
