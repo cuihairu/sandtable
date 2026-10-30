@@ -529,3 +529,10 @@
 ## 审核发现
 
 - [x] 审核发现：c4a856e..HEAD 未发现问题
+- [x] 审核发现：d034efbbfdfeb1942a06b7486e89886dcca08194..HEAD 未见问题
+      核证 2026-10-30：范围 d034efb..HEAD 仅含 ab9e995（docs 提交，只改 todo.md，为
+      BLOCKED 条目加「BLOCKED复核 2026-10-30」注释）。实测与声明一致：open PR/issue=0
+      （gh 实测 []）、本机无 JMP/Origin 二进制（which/find 无，仅系统 setjmp.h）、无
+      Power BI/Tableau、Linux 无 DISPLAY/GUI（DISPLAY=/WAYLAND 均空）、仓内仅 examples/
+      合成示例（sim-out 为示例仿真输出，无真实运营数据）；git diff --check 净；无业务
+      代码改动，无缺陷需修复。
