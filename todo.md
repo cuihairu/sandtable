@@ -550,12 +550,16 @@
 - [x] 审核发现：决策依据与来源仅指向仓外 /tmp 临时文件（/tmp/sandtable-analysis.md、/tmp/sandtable-decisions.md），未随仓库版本化，后续无法从仓内复核证据（docs/review/2026-10-30-decisions.md:3,8）。
       核证 2026-10-30 属实：仓内此前仅 docs/review/2026-10-30-decisions.md:3,8 指向 /tmp。修法：`/tmp/sandtable-analysis.md` 逐字收仓为 docs/review/2026-10-30-analysis.md（`diff` 与 /tmp 源逐位一致）；`/tmp/sandtable-decisions.md` 正文已逐字存在于 docs/review/2026-10-30-decisions.md:6-163（`diff` 差异仅 1-4 行头部），不另存副本；两处 /tmp 引用改为仓内相对链接（docs/review/2026-10-30-decisions.md:3-9）。
 - [x] 审核发现：validate_obs.py 的 cohort_mix 列表解析对非数字元素直接 `float()` 抛未捕获 ValueError，整脚本崩溃（traceback）而非按文档报「形状未识别,跳过」（scripts/templates/validate_obs.py:115）。
-      核证 2026-10-31 属实：`float()` 抛 ValueError（traceback），修法=解析层非数值保留原串 + check_meta 对非数值列表/映射判 SKIP；--self-test 断言含 SKIP 且 py_compile 绿（b6de912）。
+      核证 2026-10-31 属实：`float()` 抛 ValueError（traceback），修法=解析层非数值保留原串 + check_meta 对非数值列表/映射判 SKIP；--self-test 断言含 SKIP 且 py_compile 绿（3527e66）。
 - [x] 审核发现：validate_obs.py 对数值列（retained_players/gold_granted_total/gold_spent_total）的非数字值如 "abc"/"xyz" 静默通过（_neg 返回 False、_num 返回 NaN），非负与 retained≤active 被误判为 PASS、退出码 0，未按契约判 FAIL（scripts/templates/validate_obs.py:184,197,237,280-298）。
-      核证 2026-10-31 属实：`_neg(False)`/`_num(NaN)` 静默 PASS，修法=cohort/economy 新增「数值可解析」FAIL 检查；真实样本 exit=1 且无 traceback；--self-test 断言含两处 FAIL 且 py_compile 绿（b6de912）。
+      核证 2026-10-31 属实：`_neg(False)`/`_num(NaN)` 静默 PASS，修法=cohort/economy 新增「数值可解析」FAIL 检查；真实样本 exit=1 且无 traceback；--self-test 断言含两处 FAIL 且 py_compile 绿（3527e66）。
 - [x] 审核发现：todo.md 的 JMP/Origin BLOCKED 条目括号不配对（1 个「〔」对 2 个「〕」），在「不新增 UI。」后多出一个孤立「〕」，与同批 Power BI/Web API 等条目写法不一致（todo.md:400）。
-      核证 2026-10-31 属实：行内 `〔`=1、`〕`=2，修法=删除孤立 `〕`；复核 `〔`/`〕` 各 1（b6de912）。
+      核证 2026-10-31 属实：行内 `〔`=1、`〕`=2，修法=删除孤立 `〕`；复核 `〔`/`〕` 各 1（3527e66）。
 - [x] 审核发现：execution.md 称「执行前 HEAD=d034efb」，但 d034efb 并非执行批前一 HEAD——d034efb 与执行批首个提交 ae4aaee 之间还有 ab9e995/e9dea33/6697810/c6f62fb/4fd2246 共 5 个提交，实际执行前 HEAD 为 4fd2246（docs/review/2026-10-30-execution.md:9）。
-      核证 2026-10-31 属实但计数需修正：ae4aaee 父提交为 4fd2246，d034efb..ae4aaee 共 6 个提交（排除 ae4aaee 自身为 5 个），修法=execution.md 明示执行前 HEAD=4fd2246 与 5 个中间提交；git rev-parse 复核（b6de912）。
+      核证 2026-10-31 属实但计数需修正：ae4aaee 父提交为 4fd2246，d034efb..ae4aaee 共 6 个提交（排除 ae4aaee 自身为 5 个），修法=execution.md 明示执行前 HEAD=4fd2246 与 5 个中间提交；git rev-parse 复核（3527e66）。
 - [x] 审核发现：execution.md 记录「授权:用户 2026-10-30 令『执行立即执行动作…』」，但仓内 git 历史（`git log -S"用户 2026-10-30 令" --all`）仅命中记录提交自身、无独立授权来源；与本 diff 刚为 decisions.md 修正的「授权口径需可追溯」问题同类，授权依据未随仓版本化（docs/review/2026-10-30-execution.md:4）。
-      核证 2026-10-31 属实：git log -S 仅命中记录提交自身，修法=execution.md 如实标注「人工会话授权、仓内无独立授权来源文件、不扩张授权」；本文件条目自身即为可追溯修正记录（b6de912）。
+      核证 2026-10-31 属实：git log -S 仅命中记录提交自身，修法=execution.md 如实标注「人工会话授权、仓内无独立授权来源文件、不扩张授权」；本文件条目自身即为可追溯修正记录（3527e66）。
+- [x] 审核发现：`--self-test` 在未传 `--obs-dir` 时被 argparse 以「required: --obs-dir」拒绝（exit 2），无法独立运行自测；自测模式应不要求 `--obs-dir`，而当前把 `--self-test` 与必填 `--obs-dir` 耦合在同一个 argparse 参数（scripts/templates/validate_obs.py:343-348）。
+      核证 2026-10-31 属实：`python3 scripts/templates/validate_obs.py --self-test` 复现 argparse「required: --obs-dir」exit 2。修法=`--obs-dir` 改非必填 + 非自测模式手检 `args.obs_dir is None` 报「--obs-dir 必需(自测模式 --self-test 除外)」exit 2；`--self-test` 独立运行 14 断言 PASS exit 0，py_compile 绿（ede5dd0）。
+- [x] 审核发现：todo.md 新审核发现行的「核证」注记引用提交 `b6de912`，但该提交已在 HEAD 中被 amend 替换（reflog：3828d32→b6de912→3527e66，HEAD=3527e66），`b6de912` 为悬空对象、不可从任何 ref 到达；核证注记应引用实际在线的 `3527e66`（todo.md:553,555,557,559,561）。
+      核证 2026-10-31 属实：`git branch -a --contains b6de912`=0、`git merge-base --is-ancestor b6de912 HEAD`=no，reflog 3828d32→b6de912→3527e66。修法=5 处核证注记 `b6de912`→`3527e66`（todo.md:553,555,557,559,561 现引用在线 3527e66）；`git merge-base --is-ancestor 3527e66 HEAD`=yes 复核（ede5dd0）。

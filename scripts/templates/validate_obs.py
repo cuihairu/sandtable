@@ -340,13 +340,17 @@ def _pos(s: str) -> bool:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="观测侧标准契约件校验(决策 §2.3)")
-    ap.add_argument("--obs-dir", type=Path, required=True, help="含 cohort_day.csv / economy_day.csv / meta.yaml 的目录")
     ap.add_argument("--self-test", action="store_true", help="运行合成契约件回归自测")
+    ap.add_argument("--obs-dir", type=Path, help="含 cohort_day.csv / economy_day.csv / meta.yaml 的目录")
     args = ap.parse_args()
     print(version_line(), file=sys.stderr)
 
     if args.self_test:
         return self_test()
+
+    if args.obs_dir is None:
+        print("error: --obs-dir 必需(自测模式 --self-test 除外)", file=sys.stderr)
+        return 2
 
     c = Checker()
     obs = args.obs_dir
