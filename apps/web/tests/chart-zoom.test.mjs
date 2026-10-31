@@ -164,6 +164,26 @@ test('zoomFromAxisDrag: 极限钳住(狂拖不越界)', () => {
   assert.deepEqual(w, BOUNDS)
 })
 
+test('zoomFromAxisDrag: 拖右超过 plot 宽度不产生 NaN/负缩放,放宽到全幅', () => {
+  // 起点靠 plot 左缘,拖到右缘(位移 = plotWidth)与拖出右缘(位移 > plotWidth):
+  // 旧式 scale = plotWidth/(plotWidth−dx) 在 dx=plotWidth 为 Inf/NaN、dx>plotWidth 为负,
+  // 域翻转后被 clampDomain 钳成最小跨度(与「拖右放宽」相反);现应放宽到 bounds 全幅。
+  const start = PLOT_L
+  const toRightEdge = zoomFromAxisDrag(BOUNDS, BOUNDS, start, PLOT_R, PLOT_L, PLOT_R, MIN_SPAN)
+  assert.deepEqual(toRightEdge, BOUNDS, '拖到右缘 = 放宽到全幅')
+  const beyondRight = zoomFromAxisDrag(BOUNDS, BOUNDS, start, PLOT_R + 500, PLOT_L, PLOT_R, MIN_SPAN)
+  assert.deepEqual(beyondRight, BOUNDS, '拖出右缘 = 放宽到全幅(不 NaN)')
+  // 从收窄域拖右超过 plot 宽度,应回到全幅而非钳成最小跨度
+  const narrowed = { min: 40, max: 60 }
+  const back = zoomFromAxisDrag(narrowed, BOUNDS, start, PLOT_R + 500, PLOT_L, PLOT_R, MIN_SPAN)
+  assert.deepEqual(back, BOUNDS, '收窄域拖出右缘回到全幅')
+  assert.ok(Number.isFinite(back.min) && Number.isFinite(back.max), '域端点有限')
+  // 拖右恰在 plot 宽度内仍为放宽(scale>1),不越界
+  const justInside = zoomFromAxisDrag({ min: 30, max: 70 }, BOUNDS, start, start + PLOT_W * 0.5, PLOT_L, PLOT_R, MIN_SPAN)
+  assert.ok(spanOf(justInside) > 40, '拖右 50% 放宽')
+  assert.ok(spanOf(justInside) <= 100, '不越 bounds 全幅')
+})
+
 test('zoomStep: 绕中心缩放,scale<1 放大、scale>1 缩小,锚=中心', () => {
   const d = { min: 20, max: 80 }
   const in1 = zoomStep(d, BOUNDS, 1 / 1.25, MIN_SPAN)

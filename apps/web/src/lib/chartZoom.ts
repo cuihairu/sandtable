@@ -81,7 +81,13 @@ export function zoomFromAxisDrag(
   plotLeft: number, plotRight: number, minSpan: number,
 ): Domain {
   const plotWidth = plotRight - plotLeft
-  const scale = plotWidth / (plotWidth - (curPx - startPx))
+  // 拖右位移钳到 (∞, plotWidth]:拖右放宽(缩小),超过 plot 宽度即已放宽到全幅,
+  // 直接返回 bounds,避免 scale 变负/Inf/NaN(旧式 plotWidth/(plotWidth−dx) 在
+  // dx>plotWidth 时 scale<0、dx=plotWidth 时分母 0 → 域翻转后被 clamp 成最小跨度,
+  // 与「拖右放宽」语义相反)。拖左(dx<0)保持负值,由 clampDomain 收窄到 minSpan。
+  const dx = Math.min(curPx - startPx, plotWidth)
+  if (dx >= plotWidth) return bounds
+  const scale = plotWidth / (plotWidth - dx)
   return zoomAtPixel(d, bounds, startPx, plotLeft, plotRight, scale, minSpan)
 }
 
