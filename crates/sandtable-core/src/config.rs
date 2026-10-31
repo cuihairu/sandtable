@@ -287,8 +287,8 @@ impl Default for LootConfig {
 }
 
 /// 抽卡保底配置面(文档 24 章 R2)。状态机语义:
-/// 单抽成功率 `p' = min(1, base_rate + max(0, k − pity_soft_start)·pity_soft_step)`,
-/// 且 `k + 1 ≥ pity_hard > 0` 时 `p' = 1`(k = 连续未中抽数)。
+/// 单抽成功率 `p' = min(1, base_rate + max(0, n − pity_soft_start + 1)·pity_soft_step)`,
+/// 且 `n ≥ pity_hard > 0` 时 `p' = 1`(n = 抽数,1 起始)。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GachaConfig {
@@ -296,7 +296,8 @@ pub struct GachaConfig {
     pub base_rate: f64,
     /// 硬保底:第 pity_hard 抽必中(0 = 无)
     pub pity_hard: u64,
-    /// 软保底起点抽数(pity_soft_step ≤ 0 时软保底整体不生效)
+    /// 软保底起点:第 1 个获得概率加成的抽数(1 起始,抽 n 增量 = max(0, n − 起点 + 1)·step;
+    /// 与官方公示「自第 N 抽起软保底」一致;pity_soft_step ≤ 0 时软保底整体不生效)
     pub pity_soft_start: u64,
     /// 起点后每抽概率增量(0 = 无软保底)
     pub pity_soft_step: f64,

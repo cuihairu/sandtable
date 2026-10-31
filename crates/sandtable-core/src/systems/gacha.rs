@@ -1,9 +1,11 @@
 //! 抽卡保底系统(文档 24 章 R2):保底状态机 + 抽数 KPI。
 //!
 //! 状态机语义(配置面 [`crate::config::GachaConfig`]):
-//! - 单抽成功率 `p' = min(1, base_rate + max(0, k − pity_soft_start)·pity_soft_step)`,
-//!   其中 k = 距上次命中的连续未中抽数;
-//! - 硬保底:`k + 1 ≥ pity_hard > 0` 时 `p' = 1`(第 pity_hard 抽必中);
+//! - 单抽成功率 `p' = min(1, base_rate + max(0, n − pity_soft_start + 1)·pity_soft_step)`,
+//!   其中 n = 距上次命中的抽数(1 起始,= since_hit + 1);`pity_soft_start` 是第 1 个
+//!   获得概率加成的抽数(1 起始,与官方公示"自第 N 抽起软保底"一致,2026-10-31 校准修正
+//!   旧实现 +2 抽偏移:旧式 `max(0, k − soft_start)` 使软保底实际起于 soft_start+2 抽);
+//! - 硬保底:`n ≥ pity_hard > 0` 时 `p' = 1`(第 pity_hard 抽必中);
 //! - 软保底只在 `pity_soft_step > 0` 时生效(起点前增量为 0,天然退化)。
 //!
 //! 确定性:逐抽消耗带键 [`Purpose::Gacha`] 事件;保底计数器是 actor
@@ -15,10 +17,14 @@ use crate::rng::{DayRng, Purpose};
 use crate::world::Actor;
 
 /// 下一次抽取的命中率:基础率 + 软保底增量,硬保底钳到 1。
+/// `since_hit` 为距上次命中的连续未中抽数,故本次是第 `since_hit + 1` 抽。
 pub fn hit_rate(cfg: &GachaConfig, since_hit: u64) -> f64 {
     let mut p = cfg.base_rate;
     if cfg.pity_soft_step > 0.0 {
-        let bonus = (since_hit.saturating_sub(cfg.pity_soft_start)) as f64 * cfg.pity_soft_step;
+        // 抽 n = since_hit + 1 的增量 = max(0, n − pity_soft_start + 1)·step。
+        // 用 i128 免 u64 下溢(soft_start < 2 时 n − soft_start + 1 可为 0 或正)。
+        let n = since_hit as i128 + 1;
+        let bonus = (n - cfg.pity_soft_start as i128 + 1).max(0) as f64 * cfg.pity_soft_step;
         p += bonus;
     }
     if cfg.pity_hard > 0 && since_hit + 1 >= cfg.pity_hard {
@@ -73,13 +79,14 @@ mod tests {
         assert_eq!(hit_rate(&hard, 49), 1.0); // k+1 = 50 → 必中
 
         let soft = cfg(0.02, 0, 40, 0.05);
-        assert_eq!(hit_rate(&soft, 0), 0.02);
-        assert_eq!(hit_rate(&soft, 40), 0.02); // 起点前无增量
-        assert_eq!(hit_rate(&soft, 41), 0.07); // (41−40)·0.05
-        assert_eq!(hit_rate(&soft, 60), 1.0); // 1.02 钳到 1
+        assert_eq!(hit_rate(&soft, 0), 0.02); // 抽 1:起点前无增量
+        assert_eq!(hit_rate(&soft, 38), 0.02); // 抽 39:起点(40)前无增量
+        assert_eq!(hit_rate(&soft, 39), 0.02 + 0.05); // 抽 40 = 起点,增量 1·0.05
+        assert_eq!(hit_rate(&soft, 40), 0.02 + 2.0 * 0.05); // 抽 41:增量 2·0.05
+        assert_eq!(hit_rate(&soft, 60), 1.0); // 增量 22·0.05 → 钳到 1
 
         let both = cfg(0.02, 50, 40, 0.05);
-        assert_eq!(hit_rate(&both, 45), 0.27); // 软保底爬升 0.02 + 5·0.05
+        assert_eq!(hit_rate(&both, 45), 0.02 + 7.0 * 0.05); // 抽 46:软保底爬升 0.02 + 7·0.05
         assert_eq!(hit_rate(&both, 49), 1.0); // 硬保底压过软保底
 
         // step = 0 → 软保底整体不生效(即便起点为 0)
