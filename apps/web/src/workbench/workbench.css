@@ -62,3 +62,7 @@
 .wb-app .table-action{ white-space: nowrap; }
 .wb-app .explorer{ position: relative; }
 .wb-app .explorer .panel-resizer{ position: absolute; top: 0; right: -3px; height: 100%; z-index: 5; }
+
+.wb-app .command-trigger{ min-width: 0; }
+.wb-app .command-trigger > span{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.wb-app .command-trigger kbd{ white-space: nowrap; }
