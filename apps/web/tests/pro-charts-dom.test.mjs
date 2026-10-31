@@ -93,6 +93,8 @@ if (!existsSync(pkgNode)) {
     await act(async () => { node.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
   }
   const tabs = (host) => Array.from(host.querySelectorAll('[role="tab"]'))
+  // rAF 合帧回退 16ms 定时(jsdom 无 global rAF);等待一帧让合帧 flush 提交域
+  const frame = () => new Promise((r) => setTimeout(r, 40))
 
   // —— Grid:9 计划槽只返回 7(后 2 槽未跑完)+ 真推荐(单因子另跑) ——
   const plan = JSON.parse(wasm.sweep_plan(EXP2(), 0))
@@ -162,6 +164,7 @@ if (!existsSync(pkgNode)) {
       svg.dispatchEvent(new dom.window.WheelEvent('wheel', {
         bubbles: true, cancelable: true, deltaY: -400, clientX: 0.5, clientY: 0.5,
       }))
+      await frame() // 等 rAF 合帧 flush
     })
     const zoomed = cxOf()
     assert.ok(zoomed.some((cx) => cx !== undefined && true), '放大后可取点')
@@ -174,6 +177,7 @@ if (!existsSync(pkgNode)) {
       svg.dispatchEvent(pev('pointerdown', 465 / 870, 154 / 330))
       svg.dispatchEvent(pev('pointermove', 315 / 870, 154 / 330))
       svg.dispatchEvent(pev('pointerup', 315 / 870, 154 / 330))
+      await frame() // 等 rAF 合帧 flush
     })
     const afterPan = cxOf()
     const moved = afterPan.filter((cx, i) => cx !== beforePan[i])
@@ -202,6 +206,7 @@ if (!existsSync(pkgNode)) {
       svg.dispatchEvent(pev('pointerdown', 435 / 870, 300 / 330))
       svg.dispatchEvent(pev('pointermove', 348 / 870, 300 / 330))
       svg.dispatchEvent(pev('pointerup', 348 / 870, 300 / 330))
+      await frame() // 等 rAF 合帧 flush
     })
     const after = cxOf()
     const moved = after.filter((cx, i) => cx !== before[i])
@@ -213,13 +218,18 @@ if (!existsSync(pkgNode)) {
     const svg = host.querySelector('svg.pro-chart')
     const cxOf = () => [...host.querySelectorAll('.pro-scatter-point')]
       .map((p) => Number(p.querySelector('circle').getAttribute('cx')))
+    // 前一个测试可能留下缩放(tab 已激活不重挂载)→ 先双击复位取真全幅基线
+    await act(async () => {
+      svg.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 0.5, clientY: 0.5 }))
+    })
     const full = cxOf()
     // 滚轮放大 → 点偏离全幅
     await act(async () => {
       svg.dispatchEvent(new dom.window.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -400, clientX: 0.5, clientY: 0.5 }))
+      await frame() // 等 rAF 合帧 flush
     })
     assert.ok(cxOf().some((cx, i) => cx !== full[i]), '放大后点偏离全幅')
-    // 双击复位 → 回全幅
+    // 双击复位 → 回全幅(即时,无合帧)
     await act(async () => {
       svg.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 0.5, clientY: 0.5 }))
     })
@@ -227,13 +237,40 @@ if (!existsSync(pkgNode)) {
     // 键盘 '+' 放大(svg tabIndex=0 可聚焦)
     await act(async () => {
       svg.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true }))
+      await frame() // 等 rAF 合帧 flush
     })
     assert.ok(cxOf().some((cx, i) => cx !== full[i]), '键盘 + 后点偏离全幅')
-    // 键盘 '0' 复位
+    // 键盘 '0' 复位(即时,无合帧)
     await act(async () => {
       svg.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: '0', bubbles: true, cancelable: true }))
     })
     assert.deepEqual(cxOf(), full, '键盘 0 后回全幅')
+  })
+
+  test('rAF 合帧:一帧内多次滚轮合并为单次提交,域为累计结果', async () => {
+    await click(tabs(host)[1])
+    const svg = host.querySelector('svg.pro-chart')
+    const cxOf = () => [...host.querySelectorAll('.pro-scatter-point')]
+      .map((p) => Number(p.querySelector('circle').getAttribute('cx')))
+    // 先复位到全幅基线
+    await act(async () => {
+      svg.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 0.5, clientY: 0.5 }))
+    })
+    const full = cxOf()
+    // 同帧内连发 10 次滚轮(不中途 await 帧)→ 应合并为单帧提交,域累计收窄
+    await act(async () => {
+      for (let i = 0; i < 10; i++) {
+        svg.dispatchEvent(new dom.window.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, clientX: 0.5, clientY: 0.5 }))
+      }
+      await frame()
+    })
+    const after = cxOf()
+    assert.ok(after.some((cx, i) => cx !== full[i]), '10 次滚轮累计收窄(一帧合帧提交)')
+    // 再复位验证即时复位
+    await act(async () => {
+      svg.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 0.5, clientY: 0.5 }))
+    })
+    assert.deepEqual(cxOf(), full, '合帧后仍可即时复位')
   })
 
   test('OAT 矩阵:只画内核给出弹性系数的格,缺失/不可用指标留空', async () => {

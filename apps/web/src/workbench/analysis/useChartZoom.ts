@@ -6,6 +6,8 @@
 //  - 无修饰滚轮在图表内缩放并 preventDefault 吃掉事件;Ctrl/Cmd+滚轮不接管,
 //    交给桌面壳整页缩放(ce5b7e9),二者不得叠加冲突。
 //  - 只动视图窗口域,不动数值量纲口径与内核数据。
+//  - rAF 合帧:连续手势(滚轮/平移/轴拖)合并为每帧至多一次 setDomains,
+//    禁止每 wheel 事件全量重排;复位(双击/键 0/数据变更)即时生效并取消挂起帧。
 //
 // 事件注记:React 17+ 将 onWheel 挂到根容器为 passive,preventDefault 不生效,
 // 故滚轮用原生 addEventListener(wheel, {passive:false});指针/双击/键盘不在此列。
@@ -30,6 +32,17 @@ const KEY_STEP = 1.25
 /** 拖拽超过该像素视为平移(否则按点击,不抑制后续 click)。 */
 const PAN_DRAG_PX = 3
 
+/** rAF 回退(无 requestAnimationFrame 的环境退化为 16ms 定时,仍合帧)。 */
+const raf = (cb: () => void): number => (
+  typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame(cb)
+    : setTimeout(cb, 16) as unknown as number
+)
+const cancelRaf = (id: number): void => {
+  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id)
+  else clearTimeout(id)
+}
+
 export function useChartZoom(opts: {
   bounds: ZoomPair
   geom: ZoomGeom
@@ -48,6 +61,7 @@ export function useChartZoom(opts: {
 
   const [domains, setDomains] = useState<ZoomPair>({ x: bounds.x, y: bounds.y })
   const [panning, setPanning] = useState(false)
+  const [axisDragging, setAxisDragging] = useState(false)
 
   // 数据/轴域变更 → 视图回全幅(React「调整 props 变化时的 state」render 期模式,
   // 用 boundsKey 判断;避免 useEffect 里 setState 级联渲染)。
@@ -60,12 +74,42 @@ export function useChartZoom(opts: {
 
   const svgRef = useRef<SVGSVGElement | null>(null)
 
-  // 每次渲染后把最新配置写入 ref(事件处理器读最新值;无 deps → 每渲染刷新,
-  // 满足 exhaustive-deps;也为 rAF 合帧提供最新 config)。
+  // 每次渲染后把最新配置写入 ref;无挂起帧时 latestRef 镜像已提交域。
   const cfgRef = useRef({ bounds, geom, minSpanX, minSpanY })
+  const latestRef = useRef<ZoomPair>({ x: bounds.x, y: bounds.y })
+  const rafRef = useRef<number | null>(null)
   useEffect(() => {
     cfgRef.current = { bounds, geom, minSpanX, minSpanY }
+    if (rafRef.current === null) latestRef.current = domains
   })
+
+  // bounds 变化(数据/轴切换):取消挂起合帧,latestRef 回新全幅。
+  useEffect(() => {
+    if (rafRef.current !== null) { cancelRaf(rafRef.current); rafRef.current = null }
+    latestRef.current = {
+      x: { min: bounds.x.min, max: bounds.x.max },
+      y: { min: bounds.y.min, max: bounds.y.max },
+    }
+  }, [bounds.x.min, bounds.x.max, bounds.y.min, bounds.y.max])
+
+  // —— rAF 合帧:连续手势只更新 latestRef,每帧至多一次 flush ——
+  const flush = useCallback(() => {
+    rafRef.current = null
+    setDomains(latestRef.current)
+  }, [])
+
+  const commit = useCallback((next: ZoomPair): void => {
+    latestRef.current = next
+    if (rafRef.current === null) rafRef.current = raf(flush)
+  }, [flush])
+
+  /** 即时复位(双击/键盘 0):取消挂起帧并立即回全幅。 */
+  const resetNow = useCallback((): void => {
+    if (rafRef.current !== null) { cancelRaf(rafRef.current); rafRef.current = null }
+    const b = cfgRef.current.bounds
+    latestRef.current = { x: b.x, y: b.y }
+    setDomains({ x: b.x, y: b.y })
+  }, [])
 
   // 原生非 passive 滚轮监听(React onWheel 是 passive,preventDefault 无效)。
   // 滚轮锚点缩放:光标下数据点不动,scale<1 放大、scale>1 缩小;Ctrl/Cmd 交给壳。
@@ -80,21 +124,21 @@ export function useChartZoom(opts: {
       const vx = (ev.clientX - rect.left) / (rect.width || 1) * geom.W
       const vy = (ev.clientY - rect.top) / (rect.height || 1) * geom.H
       const scale = Math.exp(ev.deltaY * WHEEL_SCALE_K)
-      setDomains((prev) => ({
+      const prev = latestRef.current
+      commit({
         x: zoomAtPixel(prev.x, bounds.x, vx, geom.left, geom.W - geom.right, scale, minSpanX),
         y: clampDomain(zoomDomain(
           prev.y,
           valueAtPixelY(vy, geom.top, geom.H - geom.bottom, prev.y),
           scale,
         ), bounds.y, minSpanY),
-      }))
+      })
     }
     el.addEventListener('wheel', h, { passive: false })
     return () => el.removeEventListener('wheel', h)
-  }, [])
+  }, [commit])
 
   // —— 指针分区:plot 区 = 平移,底部 x 轴条 = 时间轴拖拽缩放 ——
-  const [axisDragging, setAxisDragging] = useState(false)
   const modeRef = useRef<'none' | 'pan' | 'axis'>('none')
   const panStart = useRef<{ vx: number; vy: number } | null>(null)
   const panLast = useRef<{ vx: number; vy: number } | null>(null)
@@ -140,10 +184,11 @@ export function useChartZoom(opts: {
     if (modeRef.current === 'axis') {
       if (axisStart.current === null) return
       const { bounds, minSpanX, geom } = cfgRef.current
-      setDomains((prev) => ({
+      const prev = latestRef.current
+      commit({
         ...prev,
-        x: zoomFromAxisDrag(prev.x, bounds.x, axisStart.current!, vx, geom.left, geom.W - geom.right, minSpanX),
-      }))
+        x: zoomFromAxisDrag(prev.x, bounds.x, axisStart.current, vx, geom.left, geom.W - geom.right, minSpanX),
+      })
       return
     }
     // 拖拽平移:增量 delta;y 轴 top=max 反转(拖下 → 域值增)
@@ -159,11 +204,12 @@ export function useChartZoom(opts: {
     const { bounds, minSpanX, minSpanY, geom } = cfgRef.current
     const pw = geom.W - geom.left - geom.right
     const ph = geom.H - geom.top - geom.bottom
-    setDomains((prev) => ({
+    const prev = latestRef.current
+    commit({
       x: panByPixels(prev.x, bounds.x, dx, pw, minSpanX),
       y: panByPixels(prev.y, bounds.y, -dy, ph, minSpanY),
-    }))
-  }, [clientToView])
+    })
+  }, [clientToView, commit])
 
   const onPointerUp = useCallback((e: PointerEvent<SVGSVGElement>) => {
     const wasDragging = panMoved.current
@@ -198,28 +244,30 @@ export function useChartZoom(opts: {
 
   // —— 复位:双击回全幅;键盘 +/- 绕中心微调、0/Home 复位 ——
   const onDoubleClick = useCallback(() => {
-    setDomains({ x: cfgRef.current.bounds.x, y: cfgRef.current.bounds.y })
-  }, [])
+    resetNow()
+  }, [resetNow])
 
   const onKeyDown = useCallback((e: KeyboardEvent<SVGSVGElement>) => {
     const { bounds, minSpanX, minSpanY } = cfgRef.current
     if (e.key === '+' || e.key === '=') {
       e.preventDefault()
-      setDomains((prev) => ({
+      const prev = latestRef.current
+      commit({
         x: zoomStep(prev.x, bounds.x, 1 / KEY_STEP, minSpanX),
         y: zoomStep(prev.y, bounds.y, 1 / KEY_STEP, minSpanY),
-      }))
+      })
     } else if (e.key === '-' || e.key === '_') {
       e.preventDefault()
-      setDomains((prev) => ({
+      const prev = latestRef.current
+      commit({
         x: zoomStep(prev.x, bounds.x, KEY_STEP, minSpanX),
         y: zoomStep(prev.y, bounds.y, KEY_STEP, minSpanY),
-      }))
+      })
     } else if (e.key === '0' || e.key === 'Home') {
       e.preventDefault()
-      setDomains({ x: bounds.x, y: bounds.y })
+      resetNow()
     }
-  }, [])
+  }, [commit, resetNow])
 
   const bind = useMemo<SVGProps<SVGSVGElement>>(() => ({
     ref: svgRef,
