@@ -82,9 +82,9 @@ export function AppBar({
       {/* WB-11.05 · 语言切换入口(自包含:直连 locale 会话,不经 props) */}
       <LanguageSwitcher />
       {demoMode && (
-        <button className="prototype-label" onClick={onAbout}>
+        <button className="prototype-label" onClick={onAbout} aria-label={t(locale, 'common.demoBadge')} title={t(locale, 'common.demoBadge')}>
           <span className="status-dot amber" />
-          {t(locale, 'common.demoBadge')}
+          <span className="demo-label-text">{t(locale, 'common.demoBadge')}</span>
           <WbIcon name="info" />
         </button>
       )}
