@@ -9,11 +9,14 @@
 //
 // 事件注记:React 17+ 将 onWheel 挂到根容器为 passive,preventDefault 不生效,
 // 故滚轮用原生 addEventListener(wheel, {passive:false});指针/双击/键盘不在此列。
+// 平移用增量 delta(每 move 相对上一位置),避免绝对 delta × functional setState
+// 双重计位;y 轴 top=max 反转,拖下 → 域值增;plot 区内才可平移;拖后抑制一次
+// click(防拖拽误选数据点);平移边界 clamp 在 lib/chartZoom.panByPixels。
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { SVGProps } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent, SVGProps } from 'react'
 import {
-  type Domain, clampDomain, valueAtPixelY, zoomAtPixel, zoomDomain,
+  type Domain, clampDomain, panByPixels, valueAtPixelY, zoomAtPixel, zoomDomain,
 } from '../../lib/chartZoom.ts'
 
 export type ZoomGeom = { W: number; H: number; left: number; right: number; top: number; bottom: number }
@@ -21,6 +24,8 @@ export type ZoomPair = { x: Domain; y: Domain }
 
 /** 滚轮灵敏度:deltaY → scale = exp(deltaY * K)(deltaY>0 缩小、<0 放大)。 */
 const WHEEL_SCALE_K = 0.0015
+/** 拖拽超过该像素视为平移(否则按点击,不抑制后续 click)。 */
+const PAN_DRAG_PX = 3
 
 export function useChartZoom(opts: {
   bounds: ZoomPair
@@ -29,6 +34,7 @@ export function useChartZoom(opts: {
 }): {
   xDomain: Domain
   yDomain: Domain
+  panning: boolean
   bind: SVGProps<SVGSVGElement>
 } {
   const { bounds, geom } = opts
@@ -37,6 +43,7 @@ export function useChartZoom(opts: {
   const minSpanY = Math.max((bounds.y.max - bounds.y.min) * ratio, 1e-12)
 
   const [domains, setDomains] = useState<ZoomPair>({ x: bounds.x, y: bounds.y })
+  const [panning, setPanning] = useState(false)
 
   // 数据/轴域变更 → 视图回全幅(React「调整 props 变化时的 state」render 期模式,
   // 用 boundsKey 判断;避免 useEffect 里 setState 级联渲染)。
@@ -82,10 +89,88 @@ export function useChartZoom(opts: {
     return () => el.removeEventListener('wheel', h)
   }, [])
 
+  // —— 拖拽平移(plot 区内;增量 delta;y 轴反转;拖后抑制 click)——
+  const panStart = useRef<{ vx: number; vy: number } | null>(null)
+  const panLast = useRef<{ vx: number; vy: number } | null>(null)
+  const panMoved = useRef(false)
+
+  const clientToView = useCallback((clientX: number, clientY: number, el: SVGSVGElement): { vx: number; vy: number } => {
+    const rect = el.getBoundingClientRect()
+    return {
+      vx: (clientX - rect.left) / (rect.width || 1) * geom.W,
+      vy: (clientY - rect.top) / (rect.height || 1) * geom.H,
+    }
+  }, [geom.W, geom.H])
+
+  const inPlot = useCallback((vx: number, vy: number): boolean => (
+    vx >= geom.left && vx <= geom.W - geom.right &&
+    vy >= geom.top && vy <= geom.H - geom.bottom
+  ), [geom.left, geom.right, geom.top, geom.bottom, geom.W, geom.H])
+
+  const onPointerDown = useCallback((e: PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return
+    const { vx, vy } = clientToView(e.clientX, e.clientY, e.currentTarget)
+    if (!inPlot(vx, vy)) return
+    panStart.current = { vx, vy }
+    panLast.current = { vx, vy }
+    panMoved.current = false
+    setPanning(true)
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }, [clientToView, inPlot])
+
+  const onPointerMove = useCallback((e: PointerEvent<SVGSVGElement>) => {
+    const last = panLast.current
+    if (!last) return
+    const { vx, vy } = clientToView(e.clientX, e.clientY, e.currentTarget)
+    const dx = vx - last.vx
+    const dy = vy - last.vy
+    panLast.current = { vx, vy }
+    if (panStart.current && Math.hypot(vx - panStart.current.vx, vy - panStart.current.vy) > PAN_DRAG_PX) {
+      panMoved.current = true
+    }
+    if (dx === 0 && dy === 0) return
+    const { bounds, minSpanX, minSpanY, geom } = cfgRef.current
+    const pw = geom.W - geom.left - geom.right
+    const ph = geom.H - geom.top - geom.bottom
+    setDomains((prev) => ({
+      x: panByPixels(prev.x, bounds.x, dx, pw, minSpanX),
+      y: panByPixels(prev.y, bounds.y, -dy, ph, minSpanY),
+    }))
+  }, [clientToView])
+
+  const onPointerUp = useCallback((e: PointerEvent<SVGSVGElement>) => {
+    const wasDragging = panMoved.current
+    panStart.current = null
+    panLast.current = null
+    panMoved.current = false
+    setPanning(false)
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+    // 拖拽后抑制紧随的一次 click(防误选数据点);click 未跟随则超时兜底移除
+    if (wasDragging) {
+      const el = e.currentTarget
+      const handler = (ev: Event): void => { ev.stopPropagation(); ev.preventDefault() }
+      el.addEventListener('click', handler, { capture: true, once: true })
+      setTimeout(() => el.removeEventListener('click', handler, { capture: true }), 400)
+    }
+  }, [])
+
+  const onPointerCancel = useCallback(() => {
+    panStart.current = null
+    panLast.current = null
+    panMoved.current = false
+    setPanning(false)
+  }, [])
+
   const bind = useMemo<SVGProps<SVGSVGElement>>(() => ({
     ref: svgRef,
-    style: { touchAction: 'none' },
-  }), [])
+    style: { touchAction: 'none', cursor: panning ? 'grabbing' : 'grab' },
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel,
+  }), [panning, onPointerDown, onPointerMove, onPointerUp, onPointerCancel])
 
-  return { xDomain: domains.x, yDomain: domains.y, bind }
+  return { xDomain: domains.x, yDomain: domains.y, panning, bind }
 }

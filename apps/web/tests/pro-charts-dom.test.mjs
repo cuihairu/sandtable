@@ -149,6 +149,44 @@ if (!existsSync(pkgNode)) {
     assert.deepEqual(calls, [points[0].dataset.candidate])
   })
 
+  test('拖拽平移:先滚轮放大,plot 区内拖拽改域(点随内容移动),拖后不误选', async () => {
+    await click(tabs(host)[1])
+    const svg = host.querySelector('svg.pro-chart')
+    assert.ok(svg, '散点 svg 存在')
+    // jsdom getBoundingClientRect 全 0 → clientToView 用 (rect.width||1)=1,
+    // clientX ∈ [0,1] 线性映射到 viewBox [0,870](y ∈ [0,330])。
+    const cxOf = () => [...host.querySelectorAll('.pro-scatter-point')]
+      .map((p) => Number(p.querySelector('circle').getAttribute('cx')))
+    // ① 滚轮放大(deltaY<0 → 收窄):先放大才平移得动(全幅域下平移被 clamp 锁死)
+    await act(async () => {
+      svg.dispatchEvent(new dom.window.WheelEvent('wheel', {
+        bubbles: true, cancelable: true, deltaY: -400, clientX: 0.5, clientY: 0.5,
+      }))
+    })
+    const zoomed = cxOf()
+    assert.ok(zoomed.some((cx) => cx !== undefined && true), '放大后可取点')
+    // ② 拖左(viewBox 中心 → 左 150px):内容随手指左移 → 点 cx 变小
+    const beforePan = cxOf()
+    const pev = (type, clientX, clientY) => new dom.window.PointerEvent(type, {
+      bubbles: true, cancelable: true, clientX, clientY, button: 0, pointerId: 1,
+    })
+    await act(async () => {
+      svg.dispatchEvent(pev('pointerdown', 465 / 870, 154 / 330))
+      svg.dispatchEvent(pev('pointermove', 315 / 870, 154 / 330))
+      svg.dispatchEvent(pev('pointerup', 315 / 870, 154 / 330))
+    })
+    const afterPan = cxOf()
+    const moved = afterPan.filter((cx, i) => cx !== beforePan[i])
+    assert.ok(moved.length > 0, `拖左后点左移: ${beforePan} → ${afterPan}`)
+    // ③ 拖后 click 抑制:拖拽释放后紧随的点上 click 不触发 onSelect(误选)
+    calls.length = 0
+    const aPoint = host.querySelector('.pro-scatter-point')
+    await act(async () => {
+      aPoint.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    assert.deepEqual(calls, [], '拖拽后的一次 click 被抑制,不误选')
+  })
+
   test('OAT 矩阵:只画内核给出弹性系数的格,缺失/不可用指标留空', async () => {
     await click(tabs(host)[2])
     const model = oatMatrix(rec.elasticities)
