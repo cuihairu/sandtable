@@ -23,6 +23,7 @@ import type { Locale, TranslationKey } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import type { Job } from '../state/jobLogic.ts'
 import type { ResultRow } from './resultModel.ts'
+import { useChartZoom } from './useChartZoom.ts'
 
 /** 指标默认优化方向:流失/抽卡保底次数取最小,其余取最大(可切) */
 const DEFAULT_GOAL: Partial<Record<MetricKey, ParetoGoal>> = {
@@ -220,11 +221,17 @@ function ScatterChart({ model, metric, xAxis, yAxis, locale, selectedId, onSelec
     const lo = Math.min(...vs), hi = Math.max(...vs)
     return hi === lo ? [lo - 1, hi + 1] : [lo, hi]
   }
-  const [xmin, xmax] = xAxis ? [xAxis.min, xAxis.max] : auto(pts.map((p) => p.x))
-  const [ymin, ymax] = yAxis ? [yAxis.min, yAxis.max] : auto(pts.map((p) => p.y))
+  const [bxmin, bxmax] = xAxis ? [xAxis.min, xAxis.max] : auto(pts.map((p) => p.x))
+  const [bymin, bymax] = yAxis ? [yAxis.min, yAxis.max] : auto(pts.map((p) => p.y))
+  const zoom = useChartZoom({
+    bounds: { x: { min: bxmin, max: bxmax }, y: { min: bymin, max: bymax } },
+    geom: { W, H, left, right, top, bottom },
+  })
+  const xmin = zoom.xDomain.min, xmax = zoom.xDomain.max
+  const ymin = zoom.yDomain.min, ymax = zoom.yDomain.max
   const x = (v: number): number => left + (v - xmin) / (xmax - xmin || 1) * (W - left - right)
   const y = (v: number): number => top + (ymax - v) / (ymax - ymin || 1) * (H - top - bottom)
-  return <svg className="main-chart pro-chart" viewBox={`0 0 ${W} ${H}`} role="group"
+  return <svg className="main-chart pro-chart" viewBox={`0 0 ${W} ${H}`} role="group" {...zoom.bind}
     aria-label={t(locale, 'analysis.proScatterAria', { count: pts.length })}>
     <title>{`kernel · run ${runId} · ${t(locale, 'analysis.proView.scatter')} · ${metricLabel(metric, locale)}/${metricUnit(metric, locale)}`}</title>
     {Array.from({ length: 5 }, (_, i) => {
@@ -304,8 +311,14 @@ function ParetoChart({ model, xMetric, yMetric, locale, selectedId, onSelect, fo
     const lo = Math.min(...vs), hi = Math.max(...vs)
     return hi === lo ? [lo - 1, hi + 1] : [lo, hi]
   }
-  const [xmin, xmax] = auto(all.map((p) => p.x))
-  const [ymin, ymax] = auto(all.map((p) => p.y))
+  const [bxmin, bxmax] = auto(all.map((p) => p.x))
+  const [bymin, bymax] = auto(all.map((p) => p.y))
+  const zoom = useChartZoom({
+    bounds: { x: { min: bxmin, max: bxmax }, y: { min: bymin, max: bymax } },
+    geom: { W, H, left, right, top, bottom },
+  })
+  const xmin = zoom.xDomain.min, xmax = zoom.xDomain.max
+  const ymin = zoom.yDomain.min, ymax = zoom.yDomain.max
   const x = (v: number): number => left + (v - xmin) / (xmax - xmin || 1) * (W - left - right)
   const y = (v: number): number => top + (ymax - v) / (ymax - ymin || 1) * (H - top - bottom)
   const point = (p: { id: string; x: number; y: number }, kind: 'frontier' | 'dominated'): JSX.Element => {
@@ -319,7 +332,7 @@ function ParetoChart({ model, xMetric, yMetric, locale, selectedId, onSelect, fo
       <circle cx={x(p.x)} cy={y(p.y)} r={selected ? 7 : 5} />
     </g>
   }
-  return <svg className="main-chart pro-chart" viewBox={`0 0 ${W} ${H}`} role="group"
+  return <svg className="main-chart pro-chart" viewBox={`0 0 ${W} ${H}`} role="group" {...zoom.bind}
     aria-label={t(locale, 'analysis.proParetoAria', { count: model.frontier.length })}>
     <title>{`kernel · run ${runId} · ${t(locale, 'analysis.proView.pareto')}`}</title>
     {Array.from({ length: 5 }, (_, i) => {
