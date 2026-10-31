@@ -41,7 +41,7 @@ if (!existsSync(pkgNode)) {
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
   for (const key of ['Event', 'KeyboardEvent', 'MouseEvent', 'PointerEvent']) globalThis[key] = dom.window[key]
 
-  const { createElement, act } = await import('react')
+  const { createElement, act, Profiler } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { setLocale } = await import('../src/workbench/state/localeStore.ts')
   const { ProChartsSection } = await import('../src/workbench/analysis/ProCharts.tsx')
@@ -82,11 +82,17 @@ if (!existsSync(pkgNode)) {
 
   await act(async () => setLocale('zh-CN'))
 
+  // 渲染提交计数(React Profiler onRender):rAF 合帧测试用它断言「单次提交」,
+  // 而非仅验证「累计收窄」。每次 commit(含初始 mount/复位)递增。
+  const renderCount = { n: 0 }
+  const onRender = () => { renderCount.n++ }
   const render = async (props) => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
-    await act(async () => { root.render(createElement(ProChartsSection, props)) })
+    await act(async () => {
+      root.render(createElement(Profiler, { id: 'pro', onRender }, createElement(ProChartsSection, props)))
+    })
     return host
   }
   const click = async (node) => {
@@ -257,15 +263,23 @@ if (!existsSync(pkgNode)) {
       svg.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 0.5, clientY: 0.5 }))
     })
     const full = cxOf()
-    // 同帧内连发 10 次滚轮(不中途 await 帧)→ 应合并为单帧提交,域累计收窄
+    // 同帧内连发 10 次滚轮(不中途 await 帧)→ 应合并为单帧提交,域累计收窄;
+    // 且 setDomains 只被 flush 调一次 → 渲染提交次数增量恰为 1(单次提交)。
+    const commitsBefore = renderCount.n
     await act(async () => {
       for (let i = 0; i < 10; i++) {
         svg.dispatchEvent(new dom.window.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, clientX: 0.5, clientY: 0.5 }))
       }
       await frame()
     })
+    const commitsAfter = renderCount.n
     const after = cxOf()
     assert.ok(after.some((cx, i) => cx !== full[i]), '10 次滚轮累计收窄(一帧合帧提交)')
+    assert.equal(
+      commitsAfter - commitsBefore,
+      1,
+      `10 次滚轮应合并为 1 次渲染提交,实际 ${commitsAfter - commitsBefore} 次`,
+    )
     // 再复位验证即时复位
     await act(async () => {
       svg.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 0.5, clientY: 0.5 }))
