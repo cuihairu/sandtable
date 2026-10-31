@@ -66,3 +66,11 @@
 .wb-app .command-trigger{ min-width: 0; }
 .wb-app .command-trigger > span{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .wb-app .command-trigger kbd{ white-space: nowrap; }
+
+/* T1: 语言切换器窄屏用 locale 短码(≤760px 全部 command-trigger 收成 30px 图标,key-label 整词被压成 "E"):改显 "EN"/"中" */
+.wb-app .lang-code{ display: none; }
+@media (max-width:760px){
+  .wb-app .lang-switch .command-trigger{ width: auto; }
+  .wb-app .lang-switch .key-label{ display: none; }
+  .wb-app .lang-switch .lang-code{ display: inline; }
+}

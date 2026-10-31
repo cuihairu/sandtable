@@ -75,6 +75,7 @@ export function LanguageSwitcher(): JSX.Element {
         <WbIcon name="languages" />
         <span>{t(locale, 'common.language')}</span>
         <span className="key-label">{current?.label ?? locale}</span>
+        <span className="lang-code">{locale === 'zh-CN' ? '中' : 'EN'}</span>
       </button>
       {open && (
         <div className="lang-menu" role="listbox" aria-label={t(locale, 'common.language')} ref={listRef} onKeyDown={onMenuKey}>
