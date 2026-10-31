@@ -55,7 +55,7 @@ test('MASTER.md 语义色与字阶/间距必有且取值正确', () => {
     '--wb-explorer': '#f2f5f6', // 项目浏览器
     '--wb-canvas': '#fff', // 数据画布
     '--wb-ink': '#293539', // 正文
-    '--wb-muted': '#66777e', // 辅助文字
+    '--wb-muted': '#617178', // 辅助文字
     '--wb-line': '#d8e0e3', // 边框
     '--wb-teal': '#087f86', // 主要操作 / 数据点
     '--wb-selected-candidate': '#ba7e20', // 选中候选

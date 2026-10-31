@@ -136,7 +136,7 @@ function FactorCells({
       <span className="factor-name" role="gridcell">
         {row.draft.path}
         <br />
-        <span style={{ color: '#82939a' }}>
+        <span style={{ color: '#6a787e' }}>
           {t(locale, 'experiment.registryParamLine', { mode: METHOD_LABEL[showStep ? 'grid' : 'random'] })}
         </span>
       </span>
