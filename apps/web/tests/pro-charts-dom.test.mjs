@@ -208,6 +208,34 @@ if (!existsSync(pkgNode)) {
     assert.ok(moved.length > 0, `轴条拖左后点扩散: ${before} → ${after}`)
   })
 
+  test('双击复位 + 键盘微调:双击回全幅,键盘 +/- 绕中心缩放、0 复位', async () => {
+    await click(tabs(host)[1])
+    const svg = host.querySelector('svg.pro-chart')
+    const cxOf = () => [...host.querySelectorAll('.pro-scatter-point')]
+      .map((p) => Number(p.querySelector('circle').getAttribute('cx')))
+    const full = cxOf()
+    // 滚轮放大 → 点偏离全幅
+    await act(async () => {
+      svg.dispatchEvent(new dom.window.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -400, clientX: 0.5, clientY: 0.5 }))
+    })
+    assert.ok(cxOf().some((cx, i) => cx !== full[i]), '放大后点偏离全幅')
+    // 双击复位 → 回全幅
+    await act(async () => {
+      svg.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 0.5, clientY: 0.5 }))
+    })
+    assert.deepEqual(cxOf(), full, '双击后回全幅')
+    // 键盘 '+' 放大(svg tabIndex=0 可聚焦)
+    await act(async () => {
+      svg.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true }))
+    })
+    assert.ok(cxOf().some((cx, i) => cx !== full[i]), '键盘 + 后点偏离全幅')
+    // 键盘 '0' 复位
+    await act(async () => {
+      svg.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: '0', bubbles: true, cancelable: true }))
+    })
+    assert.deepEqual(cxOf(), full, '键盘 0 后回全幅')
+  })
+
   test('OAT 矩阵:只画内核给出弹性系数的格,缺失/不可用指标留空', async () => {
     await click(tabs(host)[2])
     const model = oatMatrix(rec.elasticities)

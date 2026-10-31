@@ -14,10 +14,10 @@
 // click(防拖拽误选数据点);平移边界 clamp 在 lib/chartZoom.panByPixels。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent, SVGProps } from 'react'
+import type { KeyboardEvent, PointerEvent, SVGProps } from 'react'
 import {
   type Domain, clampDomain, panByPixels, valueAtPixelY,
-  zoomAtPixel, zoomDomain, zoomFromAxisDrag,
+  zoomAtPixel, zoomDomain, zoomFromAxisDrag, zoomStep,
 } from '../../lib/chartZoom.ts'
 
 export type ZoomGeom = { W: number; H: number; left: number; right: number; top: number; bottom: number }
@@ -25,6 +25,8 @@ export type ZoomPair = { x: Domain; y: Domain }
 
 /** 滚轮灵敏度:deltaY → scale = exp(deltaY * K)(deltaY>0 缩小、<0 放大)。 */
 const WHEEL_SCALE_K = 0.0015
+/** 键盘 +/- 每按缩放因子(scale<1 放大、>1 缩小,对应 1/1.25 与 1.25)。 */
+const KEY_STEP = 1.25
 /** 拖拽超过该像素视为平移(否则按点击,不抑制后续 click)。 */
 const PAN_DRAG_PX = 3
 
@@ -194,14 +196,42 @@ export function useChartZoom(opts: {
     setAxisDragging(false)
   }, [])
 
+  // —— 复位:双击回全幅;键盘 +/- 绕中心微调、0/Home 复位 ——
+  const onDoubleClick = useCallback(() => {
+    setDomains({ x: cfgRef.current.bounds.x, y: cfgRef.current.bounds.y })
+  }, [])
+
+  const onKeyDown = useCallback((e: KeyboardEvent<SVGSVGElement>) => {
+    const { bounds, minSpanX, minSpanY } = cfgRef.current
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault()
+      setDomains((prev) => ({
+        x: zoomStep(prev.x, bounds.x, 1 / KEY_STEP, minSpanX),
+        y: zoomStep(prev.y, bounds.y, 1 / KEY_STEP, minSpanY),
+      }))
+    } else if (e.key === '-' || e.key === '_') {
+      e.preventDefault()
+      setDomains((prev) => ({
+        x: zoomStep(prev.x, bounds.x, KEY_STEP, minSpanX),
+        y: zoomStep(prev.y, bounds.y, KEY_STEP, minSpanY),
+      }))
+    } else if (e.key === '0' || e.key === 'Home') {
+      e.preventDefault()
+      setDomains({ x: bounds.x, y: bounds.y })
+    }
+  }, [])
+
   const bind = useMemo<SVGProps<SVGSVGElement>>(() => ({
     ref: svgRef,
+    tabIndex: 0,
     style: { touchAction: 'none', cursor: axisDragging ? 'ew-resize' : panning ? 'grabbing' : 'grab' },
     onPointerDown,
     onPointerMove,
     onPointerUp,
     onPointerCancel,
-  }), [panning, axisDragging, onPointerDown, onPointerMove, onPointerUp, onPointerCancel])
+    onDoubleClick,
+    onKeyDown,
+  }), [panning, axisDragging, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onDoubleClick, onKeyDown])
 
   return { xDomain: domains.x, yDomain: domains.y, panning, axisDragging, bind }
 }
