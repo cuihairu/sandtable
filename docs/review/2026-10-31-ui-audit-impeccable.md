@@ -54,15 +54,17 @@
 - **定位**:`src/workbench/workbench.css` `.command-trigger` 及其子 `span`/`kbd`。
 - **修复**:标签 `white-space:nowrap + text-overflow:ellipsis`、`min-width:0`(kbd 同理单行),沿用徽标的“渐进披露”思路;修复后占位单行截断、无裁切,应用栏无重叠。
 
-## 2. Todo(待办,非当场坏损)
+## 2. 后续修复波(2026-10-31 更新:一问题一 commit,`fix(ui)` 前缀)
 
-| # | 严重度 | 问题 | 定位 / 建议 |
-| --- | --- | --- | --- |
-| T1 | 低 | 语言切换器标签在 390px 被截断为 “E” | `LanguageSwitcher.tsx`;窄屏建议图标化或显示 locale 短码(如 `EN`/`中`),而非整词截断 |
-| T2 | 低 | 应用栏根因仍拥挤:三枚 234px 固定宽命令触发器把 bar 塞满,修复是“渐进披露”治标 | `AppBar.tsx` + `.command-trigger`;建议把低频命令收进溢出菜单,或让触发器自适应内容宽 |
-| T3 | 信息 | 缩放/平移手感待真机走查(rAF 合流已在 `ee36e71` 埋点,未在真机验收) | 图表缩放交互 |
-| T4 | 信息 | **缺 `DESIGN.md` / `PRODUCT.md`**;视觉方向仅 `MASTER.md` token 表局部固化 | 建议补 `impeccable document` 生成 DESIGN.md,把层级/字阶/动效口径固化,否则后续改版缺对照 |
-| T5 | 信息 | 执行内核并发测试(batch queue FIFO / 并发调度)预存 flaky,随机器负载在 0–5 之间抖动,与本轮 UI 修复无关(CSS 改动无法触及执行逻辑;干净 HEAD 同样抖) | `tests/execution.test.mjs`;建议独立成带重试/确定性时钟的子集,不阻塞 UI 审核门禁 |
+> 状态:✅ 已修(含 commit hash)/ ⏳ 待用户(需新素材或用户决策,报告标注)。
+
+| # | 严重度 | 问题 | 定位 / 建议 | 状态 |
+| --- | --- | --- | --- | --- |
+| T1 | 低 | 语言切换器标签在 390px 被截断为 “E” | `LanguageSwitcher.tsx`;窄屏显示 locale 短码(`EN`/`中`)而非整词截断 | ✅ 已修 `784695d` |
+| T2 | 低 | 应用栏根因仍拥挤:三枚 234px 固定宽命令触发器把 bar 塞满,修复是“渐进披露”治标 | `AppBar.tsx` + `.command-trigger`;建议把低频命令收进溢出菜单,或让触发器自适应内容宽 | ⏳ 待用户(应用栏模式是设计决策:统一固定宽 vs 溢出菜单) |
+| T3 | 信息 | 缩放/平移手感待真机走查(rAF 合流已在 `ee36e71` 埋点,未在真机验收) | 图表缩放交互 | ⏳ 待用户(需真机/触控走查) |
+| T4 | 信息 | **缺 `DESIGN.md` / `PRODUCT.md`**;视觉方向仅 `MASTER.md` token 表局部固化 | 建议补 `impeccable document` 生成 DESIGN.md,把层级/字阶/动效口径固化,否则后续改版缺对照 | ⏳ 待用户(设计口径文档属设计决策) |
+| T5 | 信息 | 执行内核并发测试(batch queue FIFO / 并发调度)预存 flaky,随机器负载在 0–5 之间抖动,与本轮 UI 修复无关(CSS 改动无法触及执行逻辑;干净 HEAD 同样抖) | `tests/execution.test.mjs`;建议独立成带重试/确定性时钟的子集,不阻塞 UI 审核门禁 | ⏳ 待用户(测试基建决策,非 UI 修复) |
 
 ## 3. 值得肯定
 
