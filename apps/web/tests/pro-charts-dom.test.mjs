@@ -187,6 +187,27 @@ if (!existsSync(pkgNode)) {
     assert.deepEqual(calls, [], '拖拽后的一次 click 被抑制,不误选')
   })
 
+  test('时间轴拖拽缩放:底部 x 轴条拖左收窄(放大),点随锚点扩散', async () => {
+    await click(tabs(host)[1])
+    const svg = host.querySelector('svg.pro-chart')
+    const cxOf = () => [...host.querySelectorAll('.pro-scatter-point')]
+      .map((p) => Number(p.querySelector('circle').getAttribute('cx')))
+    const before = cxOf()
+    // 轴条 viewBox y=300(∈[274,330]) → client y=300/330;x 起点 viewBox 435(中心)
+    // 拖左 87px → 收窄,锚=起点;点应扩散(离中心更远)
+    const pev = (type, clientX, clientY) => new dom.window.PointerEvent(type, {
+      bubbles: true, cancelable: true, clientX, clientY, button: 0, pointerId: 1,
+    })
+    await act(async () => {
+      svg.dispatchEvent(pev('pointerdown', 435 / 870, 300 / 330))
+      svg.dispatchEvent(pev('pointermove', 348 / 870, 300 / 330))
+      svg.dispatchEvent(pev('pointerup', 348 / 870, 300 / 330))
+    })
+    const after = cxOf()
+    const moved = after.filter((cx, i) => cx !== before[i])
+    assert.ok(moved.length > 0, `轴条拖左后点扩散: ${before} → ${after}`)
+  })
+
   test('OAT 矩阵:只画内核给出弹性系数的格,缺失/不可用指标留空', async () => {
     await click(tabs(host)[2])
     const model = oatMatrix(rec.elasticities)

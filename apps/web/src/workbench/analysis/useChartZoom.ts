@@ -16,7 +16,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent, SVGProps } from 'react'
 import {
-  type Domain, clampDomain, panByPixels, valueAtPixelY, zoomAtPixel, zoomDomain,
+  type Domain, clampDomain, panByPixels, valueAtPixelY,
+  zoomAtPixel, zoomDomain, zoomFromAxisDrag,
 } from '../../lib/chartZoom.ts'
 
 export type ZoomGeom = { W: number; H: number; left: number; right: number; top: number; bottom: number }
@@ -35,6 +36,7 @@ export function useChartZoom(opts: {
   xDomain: Domain
   yDomain: Domain
   panning: boolean
+  axisDragging: boolean
   bind: SVGProps<SVGSVGElement>
 } {
   const { bounds, geom } = opts
@@ -89,10 +91,13 @@ export function useChartZoom(opts: {
     return () => el.removeEventListener('wheel', h)
   }, [])
 
-  // —— 拖拽平移(plot 区内;增量 delta;y 轴反转;拖后抑制 click)——
+  // —— 指针分区:plot 区 = 平移,底部 x 轴条 = 时间轴拖拽缩放 ——
+  const [axisDragging, setAxisDragging] = useState(false)
+  const modeRef = useRef<'none' | 'pan' | 'axis'>('none')
   const panStart = useRef<{ vx: number; vy: number } | null>(null)
   const panLast = useRef<{ vx: number; vy: number } | null>(null)
   const panMoved = useRef(false)
+  const axisStart = useRef<number | null>(null)
 
   const clientToView = useCallback((clientX: number, clientY: number, el: SVGSVGElement): { vx: number; vy: number } => {
     const rect = el.getBoundingClientRect()
@@ -110,18 +115,38 @@ export function useChartZoom(opts: {
   const onPointerDown = useCallback((e: PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0) return
     const { vx, vy } = clientToView(e.clientX, e.clientY, e.currentTarget)
+    // 底部 x 轴条(plot 之下)→ 时间轴拖拽缩放;否则 plot 区 → 平移
+    if (vx >= geom.left && vx <= geom.W - geom.right && vy >= geom.H - geom.bottom) {
+      modeRef.current = 'axis'
+      axisStart.current = vx
+      setAxisDragging(true)
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+      return
+    }
     if (!inPlot(vx, vy)) return
+    modeRef.current = 'pan'
     panStart.current = { vx, vy }
     panLast.current = { vx, vy }
     panMoved.current = false
     setPanning(true)
     e.currentTarget.setPointerCapture?.(e.pointerId)
-  }, [clientToView, inPlot])
+  }, [clientToView, inPlot, geom.left, geom.right, geom.W, geom.bottom, geom.H])
 
   const onPointerMove = useCallback((e: PointerEvent<SVGSVGElement>) => {
-    const last = panLast.current
-    if (!last) return
     const { vx, vy } = clientToView(e.clientX, e.clientY, e.currentTarget)
+    // 时间轴拖拽缩放:锚=拖起点,拖左收窄(放大)、拖右放宽(缩小)
+    if (modeRef.current === 'axis') {
+      if (axisStart.current === null) return
+      const { bounds, minSpanX, geom } = cfgRef.current
+      setDomains((prev) => ({
+        ...prev,
+        x: zoomFromAxisDrag(prev.x, bounds.x, axisStart.current!, vx, geom.left, geom.W - geom.right, minSpanX),
+      }))
+      return
+    }
+    // 拖拽平移:增量 delta;y 轴 top=max 反转(拖下 → 域值增)
+    const last = panLast.current
+    if (!last || modeRef.current !== 'pan') return
     const dx = vx - last.vx
     const dy = vy - last.vy
     panLast.current = { vx, vy }
@@ -140,10 +165,13 @@ export function useChartZoom(opts: {
 
   const onPointerUp = useCallback((e: PointerEvent<SVGSVGElement>) => {
     const wasDragging = panMoved.current
+    modeRef.current = 'none'
+    axisStart.current = null
     panStart.current = null
     panLast.current = null
     panMoved.current = false
     setPanning(false)
+    setAxisDragging(false)
     if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
@@ -157,20 +185,23 @@ export function useChartZoom(opts: {
   }, [])
 
   const onPointerCancel = useCallback(() => {
+    modeRef.current = 'none'
+    axisStart.current = null
     panStart.current = null
     panLast.current = null
     panMoved.current = false
     setPanning(false)
+    setAxisDragging(false)
   }, [])
 
   const bind = useMemo<SVGProps<SVGSVGElement>>(() => ({
     ref: svgRef,
-    style: { touchAction: 'none', cursor: panning ? 'grabbing' : 'grab' },
+    style: { touchAction: 'none', cursor: axisDragging ? 'ew-resize' : panning ? 'grabbing' : 'grab' },
     onPointerDown,
     onPointerMove,
     onPointerUp,
     onPointerCancel,
-  }), [panning, onPointerDown, onPointerMove, onPointerUp, onPointerCancel])
+  }), [panning, axisDragging, onPointerDown, onPointerMove, onPointerUp, onPointerCancel])
 
-  return { xDomain: domains.x, yDomain: domains.y, panning, bind }
+  return { xDomain: domains.x, yDomain: domains.y, panning, axisDragging, bind }
 }
