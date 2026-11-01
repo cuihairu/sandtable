@@ -122,7 +122,7 @@ model:
     featured_guarantee: 1  # 定轨:连续非目标 5★ 达该次数后,下一次 5★ 必为所定目标(0 = 无定轨)
 ```
 
-- 状态机:每 actor 维护 `since_last_hit`;单抽成功率 `p' = min(1, base_rate + max(0, k − pity_soft_start) · pity_soft_step)`,且 `since_last_hit + 1 ≥ pity_hard > 0` 时 `p' = 1`(实现:`systems::gacha::hit_rate`);
+- 状态机:每 actor 维护 `since_last_hit`;单抽成功率 `p' = min(1, base_rate + max(0, n − pity_soft_start + 1) · pity_soft_step)`,其中 `n = since_last_hit + 1`(1 起始抽数)——软保底第 1 个获加成的抽数恰为 `pity_soft_start`;硬保底 `n ≥ pity_hard > 0` 时钳 `p' = 1`(实现:`systems::gacha::hit_rate`);
 - 定轨层(`featured_rate`/`featured_guarantee`):5★ 命中后独立判定是否为所定目标(带键 `Purpose::GachaFeatured`);连续非目标达 `featured_guarantee` 后下一次 5★ 必为目标。该层不改 5★ 率面、用独立 RNG 流——无定轨配置的 5★ 流逐字节不变(CRN 可比);`featured_rate ≤ 0`(无目标概念,如常驻池)时退化为单层 5★ 会话;
 - 六个参数全部 `F64`/`U64` 数值槽(注册表 `model.gacha.*`):**sweep 可扫保底长度与定轨强度**(它直接改变期望补贴,见下);`base_rate ≤ 0` 在 `validate` 拦截(否则抽卡永不终止);`featured_rate` 限 `[0, 1]` 有限数;
 - 执行形态:配置了 `model.gacha` 时,每个 actor 在 **tick 0(第 1 天之前)** 调一次"抽到所定目标"会话(`systems::gacha::pull_until_featured`):逐抽消耗 `Purpose::Gacha` 键直到 5★ 命中,再消耗 `Purpose::GachaFeatured` 键判定是否为目标;非目标 5★ 累计定轨计数,达阈值后必为目标——**可能多次 5★**(定轨目标才停)。开号语义,不进任何一天的统计;命中数按会话前后 `gacha_hits` 差值计入;

@@ -47,7 +47,7 @@ sandtable validate --days 30                                # 校验参数
 
 ## 文档结构
 
-计划原文为单体文档(中文原文存档于 `docs/zh/计划-原始.md`,英文对照版 `docs/计划-原始.md`),先拆分为 20 章,后增补宝可梦案例、Web 端、类型矩阵、随机函数与公式曲线五章。章节与原计划的对应关系:
+计划原文为单体文档(中文原文存档于 `docs/zh/计划-原始.md`,英文对照版 `docs/计划-原始.md`),先拆分为 20 章,后增补宝可梦案例、Web 端、类型矩阵、随机函数、公式曲线与配置开关效果六章。章节与原计划的对应关系:
 
 | 章节 | 内容 | 原计划 |
 | --- | --- | --- |
@@ -76,6 +76,7 @@ sandtable validate --days 30                                # 校验参数
 | [23 游戏类型 × 仿真函数清单](docs/zh/guide/23-genre-simulation.md) | 六族 × 仿真函数:通用积木与类型缺口 | — |
 | [24 随机函数与概率系统](docs/zh/guide/24-random-functions.md) | 加权表、保底、正态、卡方与分期 | — |
 | [25 常用函数与曲线](docs/zh/guide/25-formulas-and-curves.md) | 内置函数速查与真实求值器生成的曲线库 | — |
+| [26 配置开关效果](docs/zh/guide/26-config-effects.md) | 配置开关及其渲染的 off/on 效果 | — |
 
 ## 许可证
 

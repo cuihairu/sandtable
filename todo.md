@@ -608,7 +608,7 @@
   - 文档:docs「配置效果」页(双语)逐开关嵌入:说明+off 图+on 图+GIF(`docs/guide/26-config-effects.md` + `docs/zh/guide/26-config-effects.md`)。
   - 验收:清单内每个开关都有 off/on+GIF;流水线可重跑(配置变更随时再生成);兼作配置效果回归测试。
   - 参考:kode todo C-24 同款流水线模式(2026-11-01 用户令全舰队推广)。
-  - 完成 2026-11-02:清单=4 开关(伤害口径/练级环/掉落/抽卡),全部来自 `SimConfig` 中「一经设置即改变行为」的 `Option`/口径字段;产物=12 PNG + 4 GIF + manifest(共 ~5.4 MB)。流水线重跑 0 报错(`python3 scripts/config_effects.py` 4/4 开关),docs build 0 报错(含双语 26 章与导航),PIL 渲染真实 CLI stdout 同种子对比。commit=8193a27。
+  - 完成 2026-11-02:清单=4 开关(伤害口径/练级环/掉落/抽卡),全部来自 `SimConfig` 中「一经设置即改变行为」的 `Option`/口径字段;产物=8 PNG + 4 GIF + manifest(共 ~3.2 MB)。流水线重跑 0 报错(`python3 scripts/config_effects.py` 4/4 开关),docs build 0 报错(含双语 26 章与导航),PIL 渲染真实 CLI stdout 同种子对比。commit=8193a27。
 - 不属实：README.md 与 README.zh.md 当前均为单斜杠 `sandtable/`、单 Docs 徽章，且 logo 与标题 `# Sandtable` 块完整存在——描述与实际不符。核证 2026-11-02 不属实：两 README 实测单斜杠（en `.../sandtable/`、zh `.../sandtable/zh/`）、各 1 个 `alt="Docs"` 徽章、`logo.svg` 与 `# Sandtable` 完整，描述与实际一致，故「描述与实际不符」结论不成立，本行作废（删）。
 - [x] 审核发现：参数注册表已由 64 项增至 66 项，但 `paramRegistry.ts` 与 `ParametersPage.tsx` 的注释仍写「统计口径 64 项」，与 `crates/sandtable-wasm/src/lib.rs:659`（`assert_eq!(n, 66)`）及实际 `ROWS` 数 66 不符，注释失实易误导后续维护者（apps/web/src/workbench/params/paramRegistry.ts:100、apps/web/src/workbench/pages/ParametersPage.tsx:2）。
       核证 2026-11-02 属实：两文件注释确写「64 项」，`ROWS` 实有 66 行。修法=两处注释改为「66 项」。复核=`apps/web npm run lint` 绿；commit=8193a27。
