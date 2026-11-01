@@ -5,9 +5,7 @@
 
 # Sandtable
 
-
-<div align="center">
-  <a href="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml"><img alt="Deploy Docs" src="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg"></a> <img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"> <img alt="Docs" src="https://img.shields.io/badge/docs-online-2c6e63"> <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"> <img src="https://img.shields.io/badge/docs-docs-blue" alt="docs"> <img src="https://img.shields.io/badge/docs-blue" alt="docs">
+<a href="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml"><img alt="Deploy Docs" src="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg"></a> <img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"> <a href="https://cuihairu.github.io/sandtable/"><img alt="Docs" src="https://img.shields.io/badge/docs-online-2c6e63"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
 </div>
 
 **Sandtable** is a configuration-driven simulation and experimentation framework for game systems. It is used to simulate players, combat, the economy, and progression over long time horizons, and to support game-balance work through experiments and metric analysis.
@@ -29,11 +27,11 @@
 - Online metric aggregation: retention / win rate / inflation / sink_ratio / power percentile snapshots, sliced by cohort; pulls-to-hit for pity-driven gacha
 - Random-function extension: weighted tables (compile-time CDF), shuffling and weighted sampling without replacement, pity state machines, Box–Muller normals, and a chi-square `disttest` for distribution checks
 - Reporting and exchange: single-file HTML reports, `.sandtable` project archives, a two-way CSV parameter table, and Arrow / Parquet behind a feature flag
-- Desktop packages: `desktop-package.yml` (workflow_dispatch, manual) builds Windows msi+nsis / macOS dmg+app / Linux deb; every platform leg is CI-verified to install and run (raw + installed binaries, each alive 20s after launch); no tags, no Releases — unaccepted binaries never ship
+- Desktop packages: `desktop-package.yml` builds Windows msi+nsis / macOS dmg+app / Linux deb — manual `workflow_dispatch` plus a scheduled nightly rolling build that publishes a prerelease under the moving `nightly` tag (daily gate, up-to-48h delivery bound); every platform leg is CI-verified to install and run (raw + installed binaries, each alive 20s after launch); no version tags, no formal Releases — unaccepted binaries never ship
 - Testing: closed-form cross-checks, byte-for-byte determinism under the same seed, golden snapshots, and equivalence tests locking CLI ↔ Web (WASM) ↔ Desktop to one kernel
 - Python bindings: a pyo3 + maturin extension module (`sandtable-sim` wheel; load / run / sweep / recommend / params, plus the stage-3 day-level read-only hook `run_with_day_hook`), with parity tests locking Python ↔ CLI to one kernel — [crate README](crates/sandtable-python/README.md)
 - Engine adapter: an engine-agnostic JSON contract (`sandtable-engine` crate; exports the semantic-layer numbers with a reference importer and backflow convention, contract files `.engine.json`), with roundtrip regression locking the contract to the same core — [crate README](crates/sandtable-engine/README.md)
-- MCP server: an official-rmcp stdio server in Rust (`sandtable-mcp` crate; calls the kernel natively — no wasm/Node hop, single binary; tools `sandtable_validate` / `sandtable_run` / `sandtable_plan_sweep` / `sandtable_analyze`; kernel errors pass through as tool-level errors, interaction budgets reject oversized runs) — [crate README](crates/sandtable-mcp/README.md)
+- MCP server: an official-rmcp stdio server in Rust (`sandtable-mcp` crate; calls the kernel natively — no wasm/Node hop, single binary; tools `sandtable_validate` / `sandtable_run` / `sandtable_plan_sweep` / `sandtable_analyze` / `sandtable_calibrate`; kernel errors pass through as tool-level errors, interaction budgets reject oversized runs) — [crate README](crates/sandtable-mcp/README.md)
 
 ```bash
 cargo install --path crates/sandtable-cli

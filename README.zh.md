@@ -1,12 +1,12 @@
 [English](README.md) | [中文](README.zh.md)
 
 <div align="center">
-  <img src="docs/public/logo.svg" width="64" alt="Sandtable logo" />
+
+<img src="docs/public/logo.svg" width="64" alt="Sandtable logo" />
+
 # Sandtable
-<p align="center">
-<a href="https://github.com/cuihairu/sandtable/releases/tag/nightly"></a> <a href="https://cuihairu.github.io/sandtable/zh//"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml"><img alt="Deploy Docs" src="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg"></a> <a href="LICENSE"></a> <!-- crates.io / codecov 徽章待首次发布后添加 -->
-**Sandtable is a configuration-driven simulation and experimentation framework for game systems.** <a href="https://cuihairu.github.io/sandtable/zh/"></a>
-  <img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"> <img alt="Docs" src="https://img.shields.io/badge/docs-online-2c6e63"> <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"> <img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-blue" alt="docs">
+
+<a href="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml"><img alt="Deploy Docs" src="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg"></a> <img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"> <a href="https://cuihairu.github.io/sandtable/zh/"><img alt="Docs" src="https://img.shields.io/badge/docs-online-2c6e63"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
 </div>
 
 **Sandtable** 是一个面向游戏系统的配置驱动仿真与实验框架,用于长期模拟玩家、战斗、经济和成长系统,并通过实验与指标分析辅助游戏平衡。
@@ -28,7 +28,7 @@
 - 指标在线聚合:留存 / 胜率 / 通胀 / sink_ratio / Power 分位快照,按 cohort 切片;保底抽卡的期望抽数
 - 随机函数扩展:加权表(加载期 CDF)、洗牌与无放回加权抽样、保底状态机、Box–Muller 正态、χ² 分布检验(`disttest`)
 - 报告与交换:单文件 HTML 报告、`.sandtable` 项目归档、双向 CSV 参数表、Arrow / Parquet(feature flag)
-- 桌面安装包:`desktop-package.yml`(workflow_dispatch 手动触发)构建 Windows msi+nsis / macOS dmg+app / Linux deb,CI 每腿实证装完即跑(裸产物 + 安装产物各 20s 进程存活);不打 tag、不建 Release,未验收二进制不进 Releases 页面
+- 桌面安装包:`desktop-package.yml` 构建 Windows msi+nsis / macOS dmg+app / Linux deb——手动 `workflow_dispatch` + 定时夜间滚动构建(每日一查,交付滞后上界 48 小时),滚动产物为移动 `nightly` tag 下的预发布;CI 每腿实证装完即跑(裸产物 + 安装产物各 20s 进程存活);不打版本 tag、不建正式 Release,未验收二进制不进 Releases 页面
 - 测试:解析解对照、同 seed 逐字节确定性、黄金快照,以及把 CLI ↔ Web(WASM)↔ 桌面锁到同一内核的等价测试
 - Python 绑定:pyo3 + maturin 扩展模块(`sandtable-sim` wheel;load / run / sweep / recommend / params 只读面 + 阶段 3 日粒度读态回调 `run_with_day_hook`),py_parity 把 Python ↔ CLI 锁到同一内核——[crate README](crates/sandtable-python/README.md)
 - 引擎 Adapter:引擎无关 JSON 契约(`sandtable-engine` crate;导出语义层数值面 + 参考导入器 + 回流约定,契约文件 `.engine.json`),roundtrip 回归把契约与 core 锁到同一来源——[crate README](crates/sandtable-engine/README.md)
@@ -40,9 +40,9 @@ sandtable compare --attack-a 100 --attack-b 105 --replicates 12 --out out/  # A/
 sandtable validate --days 30                                # 校验参数
 ```
 
-10k 玩家 × 30 天单次运行约 0.5s(release)。完整计划见文档站(源码在 [`docs/`](docs/)),路线图见 [18 · 路线图](docs/guide/18-roadmap.md)。
+10k 玩家 × 30 天单次运行约 0.5s(release)。完整计划见文档站(源码在 [`docs/`](docs/)),路线图见 [18 · 路线图](docs/zh/guide/18-roadmap.md)。
 
-- 文档站:https://cuihairu.github.io/sandtable/
+- 文档站:https://cuihairu.github.io/sandtable/zh/
 - 本地文档构建:`pnpm install && pnpm docs:dev`
 
 ## 文档结构
@@ -51,31 +51,31 @@ sandtable validate --days 30                                # 校验参数
 
 | 章节 | 内容 | 原计划 |
 | --- | --- | --- |
-| [01 项目定位](docs/guide/01-positioning.md) | 核心问题、建模假设、相对比较定位 | §1 |
-| [02 产品边界](docs/guide/02-scope.md) | 做什么、不做什么、许可证 | §2 |
-| [03 核心概念](docs/guide/03-concepts.md) | 七个概念、Model 与 World 拆分 | §3 |
-| [04 仿真内核](docs/guide/04-kernel.md) | World 组成、执行循环、并行模型 | §4 |
-| [05 时间模型](docs/guide/05-time-model.md) | 分层嵌套:离散事件 + 战斗内 tick | §4.1、§21 |
-| [06 确定性随机数](docs/guide/06-deterministic-rng.md) | 带键随机数、并行确定性规则 | §5 |
-| [07 配置与公式引擎](docs/guide/07-config-formula.md) | 参数注册表、config_hash、表达式编译 | §6 |
-| [08 技术栈](docs/guide/08-tech-stack.md) | 选型总表与依赖决策记录 | §7、§8 |
-| [09 数据输出](docs/guide/09-data-output.md) | JSON/CSV 优先,Parquet 走 feature flag | §9 |
-| [10 CLI](docs/guide/10-cli.md) | 子命令与输出约定 | §10 |
-| [11 实验管线](docs/guide/11-experiment-pipeline.md) | 全流程与 replicates | §11 |
-| [12 参数扫描](docs/guide/12-parameter-sweep.md) | Grid / Random / Monte Carlo | §12 |
-| [13 KPI 与指标](docs/guide/13-kpi-metrics.md) | 指标公式、在线聚合、置信区间判定 | §13 |
-| [14 敏感性分析](docs/guide/14-sensitivity.md) | OAT 弹性(选定方法) | §14 |
-| [15 平衡推荐](docs/guide/15-recommendation.md) | 插值区间、置信度定义 | §15 |
-| [16 MVP](docs/guide/16-mvp.md) | 最小 RPG 闭环、A/B 对比、验收标准 | §16、§17、§26 |
-| [17 项目结构](docs/guide/17-project-structure.md) | crate 划分与命名核查 | §18 |
-| [18 路线图](docs/guide/18-roadmap.md) | 纵向切片 + 验证节点 | §19 |
-| [19 测试策略](docs/guide/19-testing.md) | 解析解对照、快照与统计回归分层 | §20 |
-| [20 设计原则与愿景](docs/guide/20-principles-vision.md) | 原则、产品形态、愿景 | §22–§25 |
-| [21 真实配置验证](docs/guide/21-pokemon-case.md) | 宝可梦(第一世代关都)案例接入与阻力清单 | — |
-| [22 Web 端](docs/guide/22-web.md) | 浏览器形态、规模边界、查询与导出 | — |
-| [23 游戏类型 × 仿真函数清单](docs/guide/23-genre-simulation.md) | 六族 × 仿真函数:通用积木与类型缺口 | — |
-| [24 随机函数与概率系统](docs/guide/24-random-functions.md) | 加权表、保底、正态、卡方与分期 | — |
-| [25 常用函数与曲线](docs/guide/25-formulas-and-curves.md) | 内置函数速查与真实求值器生成的曲线库 | — |
+| [01 项目定位](docs/zh/guide/01-positioning.md) | 核心问题、建模假设、相对比较定位 | §1 |
+| [02 产品边界](docs/zh/guide/02-scope.md) | 做什么、不做什么、许可证 | §2 |
+| [03 核心概念](docs/zh/guide/03-concepts.md) | 七个概念、Model 与 World 拆分 | §3 |
+| [04 仿真内核](docs/zh/guide/04-kernel.md) | World 组成、执行循环、并行模型 | §4 |
+| [05 时间模型](docs/zh/guide/05-time-model.md) | 分层嵌套:离散事件 + 战斗内 tick | §4.1、§21 |
+| [06 确定性随机数](docs/zh/guide/06-deterministic-rng.md) | 带键随机数、并行确定性规则 | §5 |
+| [07 配置与公式引擎](docs/zh/guide/07-config-formula.md) | 参数注册表、config_hash、表达式编译 | §6 |
+| [08 技术栈](docs/zh/guide/08-tech-stack.md) | 选型总表与依赖决策记录 | §7、§8 |
+| [09 数据输出](docs/zh/guide/09-data-output.md) | JSON/CSV 优先,Parquet 走 feature flag | §9 |
+| [10 CLI](docs/zh/guide/10-cli.md) | 子命令与输出约定 | §10 |
+| [11 实验管线](docs/zh/guide/11-experiment-pipeline.md) | 全流程与 replicates | §11 |
+| [12 参数扫描](docs/zh/guide/12-parameter-sweep.md) | Grid / Random / Monte Carlo | §12 |
+| [13 KPI 与指标](docs/zh/guide/13-kpi-metrics.md) | 指标公式、在线聚合、置信区间判定 | §13 |
+| [14 敏感性分析](docs/zh/guide/14-sensitivity.md) | OAT 弹性(选定方法) | §14 |
+| [15 平衡推荐](docs/zh/guide/15-recommendation.md) | 插值区间、置信度定义 | §15 |
+| [16 MVP](docs/zh/guide/16-mvp.md) | 最小 RPG 闭环、A/B 对比、验收标准 | §16、§17、§26 |
+| [17 项目结构](docs/zh/guide/17-project-structure.md) | crate 划分与命名核查 | §18 |
+| [18 路线图](docs/zh/guide/18-roadmap.md) | 纵向切片 + 验证节点 | §19 |
+| [19 测试策略](docs/zh/guide/19-testing.md) | 解析解对照、快照与统计回归分层 | §20 |
+| [20 设计原则与愿景](docs/zh/guide/20-principles-vision.md) | 原则、产品形态、愿景 | §22–§25 |
+| [21 真实配置验证](docs/zh/guide/21-pokemon-case.md) | 宝可梦(第一世代关都)案例接入与阻力清单 | — |
+| [22 Web 端](docs/zh/guide/22-web.md) | 浏览器形态、规模边界、查询与导出 | — |
+| [23 游戏类型 × 仿真函数清单](docs/zh/guide/23-genre-simulation.md) | 六族 × 仿真函数:通用积木与类型缺口 | — |
+| [24 随机函数与概率系统](docs/zh/guide/24-random-functions.md) | 加权表、保底、正态、卡方与分期 | — |
+| [25 常用函数与曲线](docs/zh/guide/25-formulas-and-curves.md) | 内置函数速查与真实求值器生成的曲线库 | — |
 
 ## 许可证
 
