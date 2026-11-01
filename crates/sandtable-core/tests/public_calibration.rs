@@ -304,9 +304,10 @@ fn public_pools_carry_source_provenance() {
             src["publication"], "HoYolab 2025-06-10 post 39248513",
             "{name} publication"
         );
-        if let Some(top) = v.get("banners") {
-            assert_eq!(top, banners, "{name} 顶层 banners 与 source 一致");
-        }
+        let top = v
+            .get("banners")
+            .unwrap_or_else(|| panic!("{name} 顶层缺少 banners"));
+        assert_eq!(top, banners, "{name} 顶层 banners 与 source 一致");
     }
 }
 

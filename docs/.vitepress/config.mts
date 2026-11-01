@@ -75,6 +75,7 @@ export default withMermaid(
                   { text: '23 · Genre × Simulation Function Catalog', link: '/guide/23-genre-simulation' },
                   { text: '24 · Random Functions and Probability Systems', link: '/guide/24-random-functions' },
                   { text: '25 · Common Functions and Curves', link: '/guide/25-formulas-and-curves' },
+                  { text: '26 · Config Switch Effects', link: '/guide/26-config-effects' },
                   { text: 'Script Layer Design (Python; finalized, pending phased implementation)', link: 'https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md' }
                 ]
               }
@@ -168,6 +169,7 @@ export default withMermaid(
                   { text: '23 · 游戏类型 × 仿真函数清单', link: '/zh/guide/23-genre-simulation' },
                   { text: '24 · 随机函数与概率系统', link: '/zh/guide/24-random-functions' },
                   { text: '25 · 常用函数与曲线', link: '/zh/guide/25-formulas-and-curves' },
+                  { text: '26 · 配置开关效果', link: '/zh/guide/26-config-effects' },
                   { text: '脚本层设计(Python,定稿待实施)', link: 'https://github.com/cuihairu/sandtable/blob/main/scripts/scripting-design.md' }
                 ]
               }

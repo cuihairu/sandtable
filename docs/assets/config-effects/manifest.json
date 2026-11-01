@@ -1,0 +1,45 @@
+{
+  "generated_by": "scripts/config_effects.py",
+  "switches": [
+    {
+      "id": "combat-damage-model",
+      "title_en": "Combat damage model",
+      "title_zh": "战斗伤害口径",
+      "desc_en": "Toggles the damage formula between difference (attack−defense, clamped at 1) and ratio (ratio_k·attack/(attack+defense)). Off=difference (default), On=ratio. Weak-vs-strong fights stop being a flat floor.",
+      "desc_zh": "切换伤害公式:差值口径(attack−defense,下限 1)与比值口径(ratio_k·attack/(attack+defense))。Off=difference(缺省),On=ratio;弱打强不再被钳底。",
+      "off_png": "docs/assets/config-effects/combat-damage-model-off.png",
+      "on_png": "docs/assets/config-effects/combat-damage-model-on.png",
+      "gif": "docs/assets/config-effects/combat-damage-model.gif"
+    },
+    {
+      "id": "training-loop",
+      "title_en": "Training loop (p_training + training)",
+      "title_zh": "练级环(p_training + training)",
+      "desc_en": "Enables a no-combat growth channel: players spend some sessions training for xp/gold. Off=no training (default), On=behavior p_training>0 plus a training output table.",
+      "desc_zh": "开启无战斗风险的成长通道:玩家部分会话用于练级换经验/金币。Off=无练级环(缺省),On=各分群 p_training>0 且配置 training 产出面。",
+      "off_png": "docs/assets/config-effects/training-loop-off.png",
+      "on_png": "docs/assets/config-effects/training-loop-on.png",
+      "gif": "docs/assets/config-effects/training-loop.gif"
+    },
+    {
+      "id": "loot",
+      "title_en": "Loot settlement (model.loot)",
+      "title_zh": "掉落结算(model.loot)",
+      "desc_en": "Adds a post-victory weighted-table draw that scales reward amounts. Off=no loot (default), On=loot table bound on victory.",
+      "desc_zh": "战斗胜利后从绑定加权表抽一次,按 rate_mult 缩放数额入账。Off=未配置掉落(缺省),On=配置 loot 表并在胜利结算。",
+      "off_png": "docs/assets/config-effects/loot-off.png",
+      "on_png": "docs/assets/config-effects/loot-on.png",
+      "gif": "docs/assets/config-effects/loot.gif"
+    },
+    {
+      "id": "gacha",
+      "title_en": "Gacha (model.gacha)",
+      "title_zh": "抽卡保底(model.gacha)",
+      "desc_en": "Adds a pity-layered gacha draw; every player pulls until a 5★. Off=no gacha (default), On=gacha config with hard pity.",
+      "desc_zh": "接入抽卡保底:每玩家开号抽到 5★ 为止。Off=未配置抽卡(缺省),On=配置 gacha 保底(2% 基础率 + 50 抽硬保底)。",
+      "off_png": "docs/assets/config-effects/gacha-off.png",
+      "on_png": "docs/assets/config-effects/gacha-on.png",
+      "gif": "docs/assets/config-effects/gacha.gif"
+    }
+  ]
+}

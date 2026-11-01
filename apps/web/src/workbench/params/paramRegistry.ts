@@ -97,7 +97,7 @@ const ROWS: readonly [string, ParamKind, string, string][] = [
   ['model.gacha.featured_guarantee', 'u64', '0', '定轨:连续非目标 5★ 达该次数后,下一次 5★ 必为所定目标(0 = 无定轨)'],
 ]
 
-/** 全量注册项(顺序 = registry.rs 声明序;统计口径 64 项,tests 锁漂移)。 */
+/** 全量注册项(顺序 = registry.rs 声明序;统计口径 66 项,tests 锁漂移)。 */
 export const PARAM_REGISTRY: readonly RegistryParam[] = ROWS.map(([path, kind, def, desc]) => ({
   path, kind, default: def, desc,
 }))
