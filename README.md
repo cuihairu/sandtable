@@ -1,18 +1,6 @@
 [English](README.md) | [中文](README.zh.md)
 
-<div align="center">
-
-<img src="docs/public/logo.svg" width="64" alt="Sandtable logo" />
-
-# Sandtable
-
-<p align="center">
-<a href="https://github.com/cuihairu/sandtable/releases/tag/nightly"><img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"></a> <a href="https://cuihairu.github.io/sandtable/"><img alt="Docs" src="https://img.shields.io/badge/docs-online-2c6e63"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml"><img alt="Deploy Docs" src="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a> <!-- crates.io / codecov badges to be added after the first release -->
-</p>
-
-**Sandtable is a configuration-driven simulation and experimentation framework for game systems.**
-
-</div>
+<div align="center"><a href="https://github.com/cuihairu/sandtable/releases/tag/nightly"><img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"></a> <a href="https://cuihairu.github.io/sandtable//"><img alt="Docs" src="https://img.shields.io/badge/docs-online-2c6e63"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml"><img alt="Deploy Docs" src="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a> <a href="https://cuihairu.github.io/sandtable/"><img src="https://img.shields.io/badge/docs-docs-blue" alt="docs"></a></div>
 
 **Sandtable** is a configuration-driven simulation and experimentation framework for game systems. It is used to simulate players, combat, the economy, and progression over long time horizons, and to support game-balance work through experiments and metric analysis.
 
