@@ -1,4 +1,10 @@
 [English](README.md) | [中文](README.zh.md)
+<div align="center">
+
+<img src="docs/public/logo.svg" width="64" alt="Sandtable logo" />
+
+# Sandtable
+
 
 <div align="center">
   <a href="https://github.com/cuihairu/sandtable/releases/tag/nightly"></a> <a href="https://cuihairu.github.io/sandtable///"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml"><img alt="Deploy Docs" src="https://github.com/cuihairu/sandtable/actions/workflows/deploy-docs.yml/badge.svg"></a> <a href="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/sandtable/actions/workflows/ci.yml/badge.svg"></a> <a href="LICENSE"></a> <a href="https://cuihairu.github.io/sandtable//"></a> <a href="https://cuihairu.github.io/sandtable/"></a>
@@ -88,4 +94,3 @@ CI and local development split three ways by change surface — editing one line
    - `cargo test -p <changed crate>`
 3. **Full suite** (`cargo test --workspace`): only in these cases — Cargo.toml / Cargo.lock /
    pyproject.toml, `.github/**`, Docker/Compose config, and before a release.
-
