@@ -393,8 +393,11 @@ impl System<World, SimEvent> for GachaRollSystem<'_> {
         let seed = self.seed;
         let actor = &mut world.actors[actor_id as usize];
         let mut rng = DayRng::new(seed, actor_id, 0);
-        let pulls = gacha::pull_until_hit(&mut rng, actor, gc);
-        world.agg.record_gacha(pulls, 1);
+        let hits_before = actor.gacha_hits;
+        let pulls = gacha::pull_until_featured(&mut rng, actor, gc);
+        world
+            .agg
+            .record_gacha(pulls, actor.gacha_hits - hits_before);
     }
 }
 
@@ -794,6 +797,68 @@ mod tests {
         assert!(
             b.gacha_pulls_to_hit.unwrap() < a.gacha_pulls_to_hit.unwrap(),
             "B 臂保底更近,E[T] 应更小"
+        );
+    }
+
+    /// 定轨语义接入主仿真:featured 会话按「命中所定目标」结束,50/50 且
+    /// guarantee=1 时每会话平均约 2 次 5★(E[#5★]=1/0.5),故人均抽数与人均
+    /// 5★ 命中数相对无定轨臂同步翻倍;定轨臂最坏 2×50=100 抽。
+    #[test]
+    fn gacha_featured_layer_controls_main_sim() {
+        struct Probe {
+            pulls: u64,
+            hits: u64,
+        }
+        impl DayHook for Probe {
+            fn on_day(&mut self, world: &World, day: u32) {
+                if day == 1 {
+                    self.pulls = world.actors.iter().map(|a| a.gacha_pulls).sum();
+                    self.hits = world.actors.iter().map(|a| a.gacha_hits).sum();
+                }
+            }
+        }
+
+        let base = SimConfig {
+            players: 2000,
+            days: 1,
+            gacha: Some(crate::config::GachaConfig {
+                base_rate: 0.02,
+                pity_hard: 50,
+                pity_soft_start: 0,
+                pity_soft_step: 0.0,
+                featured_rate: 0.0,
+                featured_guarantee: 0,
+            }),
+            ..SimConfig::default()
+        };
+        let mut featured = base.clone();
+        featured.gacha.as_mut().unwrap().featured_rate = 0.5;
+        featured.gacha.as_mut().unwrap().featured_guarantee = 1;
+
+        let mut plain_probe = Probe { pulls: 0, hits: 0 };
+        run_with_day_hook(&base, 7, &mut plain_probe);
+        let mut feat_probe = Probe { pulls: 0, hits: 0 };
+        run_with_day_hook(&featured, 7, &mut feat_probe);
+
+        // 无定轨臂:每会话恰 1 次 5★。
+        assert_eq!(plain_probe.hits, 2000, "无定轨每会话恰 1 次 5★");
+
+        // 定轨臂 50/50 + guarantee=1:E[#5★] = 0.5×1 + 0.5×2 = 1.5(首次命中
+        // 即止,否则下一次必为目标),故抽数与命中数同约为无定轨臂的 1.5 倍。
+        let hit_ratio = feat_probe.hits as f64 / plain_probe.hits as f64;
+        assert!(
+            (hit_ratio - 1.5).abs() < 0.1,
+            "定轨臂 5★ 次数应为 1.5 倍,实测 {hit_ratio}"
+        );
+        let pull_ratio = feat_probe.pulls as f64 / plain_probe.pulls as f64;
+        assert!(
+            (pull_ratio - 1.5).abs() < 0.1,
+            "定轨臂抽数应为 1.5 倍,实测 {pull_ratio}"
+        );
+        assert!(
+            feat_probe.pulls <= 2000 * 100,
+            "定轨最坏每玩家 2×50=100,总抽应 ≤ 200k,实测 {}",
+            feat_probe.pulls
         );
     }
 

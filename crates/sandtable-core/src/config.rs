@@ -741,6 +741,11 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
                 "model.gacha.pity_soft_step 必须为非负有限数".into(),
             ));
         }
+        if !gacha.featured_rate.is_finite() || !(0.0..=1.0).contains(&gacha.featured_rate) {
+            return Err(Error::Config(
+                "model.gacha.featured_rate 必须在 [0, 1] 内的有限数".into(),
+            ));
+        }
     }
     // 概率面统一有限性与区间校验(审核整改 P1):NaN 与越界概率会静默改写
     // 行为——NaN 比较恒假恰好越过下面的范围检查,> 1 的流失概率变成必然
@@ -914,6 +919,41 @@ mod tests {
         cfg.combat.ratio_k = 0.0;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("ratio_k"), "{msg}");
+    }
+
+    #[test]
+    fn validate_gacha_featured_rate_bounds() {
+        let mut cfg = SimConfig {
+            gacha: Some(Default::default()),
+            ..SimConfig::default()
+        };
+
+        assert!(validate(&cfg).is_ok());
+
+        cfg.gacha.as_mut().unwrap().featured_rate = f64::NAN;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("featured_rate"), "{msg}");
+
+        cfg.gacha.as_mut().unwrap().featured_rate = f64::INFINITY;
+        assert!(validate(&cfg)
+            .unwrap_err()
+            .to_string()
+            .contains("featured_rate"));
+
+        cfg.gacha.as_mut().unwrap().featured_rate = -0.1;
+        assert!(validate(&cfg)
+            .unwrap_err()
+            .to_string()
+            .contains("featured_rate"));
+
+        cfg.gacha.as_mut().unwrap().featured_rate = 1.1;
+        assert!(validate(&cfg)
+            .unwrap_err()
+            .to_string()
+            .contains("featured_rate"));
+
+        cfg.gacha.as_mut().unwrap().featured_rate = 1.0;
+        assert!(validate(&cfg).is_ok());
     }
 
     /// 练级环耦合(阻力 #4 显式性):产出面与行为带互相咬合,单边给出报错。

@@ -67,8 +67,6 @@ def main() -> int:
 
     counts = payload["per_pity_counts"]
     total = sum(counts)
-    mean = sum((i + 1) * c for i, c in enumerate(counts)) / total
-    rate = 1.0 / mean
 
     try:
         import duckdb

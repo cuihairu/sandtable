@@ -382,8 +382,8 @@ fn weapon_data_structure() {
     );
     // 硬边界 80:81–90 抽位无样本
     assert!(counts[79] > 0, "武器 80 抽边界样本缺失");
-    for i in 80..90 {
-        assert_eq!(counts[i], 0, "武器 {} 抽位应无样本(80 硬保底)", i + 1);
+    for (i, c) in counts.iter().enumerate().take(90).skip(80) {
+        assert_eq!(*c, 0, "武器 {} 抽位应无样本(80 硬保底)", i + 1);
     }
 }
 
