@@ -63,9 +63,9 @@ fn params_export_edit_roundtrip() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // 默认配置 56 项:loot 未配置时 rate_mult 不进模板(apply 会凭空落
-    // 缺 on_victory/rewards 的 loot 节,加载即拒;57 = 配置 loot 后)
-    assert!(stdout.contains("56 项"), "{stdout}");
+    // 默认配置 58 项:loot 未配置时 rate_mult 不进模板(apply 会凭空落
+    // 缺 on_victory/rewards 的 loot 节,加载即拒;59 = 配置 loot 后)
+    assert!(stdout.contains("58 项"), "{stdout}");
     let imported_hash = stdout
         .split("config_hash = ")
         .nth(1)
@@ -301,7 +301,7 @@ fn params_roundtrip_keeps_loot_settlement() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        String::from_utf8_lossy(&out.stdout).contains("57 项"),
+        String::from_utf8_lossy(&out.stdout).contains("59 项"),
         "{}",
         String::from_utf8_lossy(&out.stdout)
     );
