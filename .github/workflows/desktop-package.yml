@@ -467,6 +467,15 @@ jobs:
             # 竞态根治: 已存在即 clobber 覆盖上传,绝不删 Release(连发互删曾致资产空)
             gh release upload nightly "${files[@]}" --clobber
             gh release edit nightly --title "nightly ${sha8}" --notes "$notes" 2>/dev/null || true
+            # 元数据对齐(根治 tag 错位):滚动 nightly 的 tag 与 targetCommitish
+            # 必须随每次更新推进到本次 HEAD——旧版只 edit 标题/正文不挪 tag,
+            # targetCommitish 卡在首次创建 commit,更新门(§gate,读
+            # `gh release view nightly --json targetCommitish`)永远判「有新提交」,
+            # 每次调度都重跑三平台打包。tag 已存在时 `--target` 不挪 tag,故显式
+            # PATCH git ref 移动轻量 tag,并同步 release 的 target_commitish。
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/nightly" \
+              -f "sha=$GITHUB_SHA" -F "force=true" 2>/dev/null || true
+            gh release edit nightly --target "$GITHUB_SHA" 2>/dev/null || true
           else
             gh release create nightly \
               --title "nightly ${sha8}" \
