@@ -101,3 +101,22 @@
 - **缩放矩阵**:100%/125%/150% × 1280/1920/2560 共 9 组合,交换页 `pageW==mainW` 全通过(无挤中间):`shots-after/zoom-grid/z{zoom}-w{width}.png`。其余页(analysis/parameters/designer/runs)经全量 cap 扫描无像素上限,均满宽利用。
 - **designer 排除**:`form-section` 1960px 系 `form-layout`(主列+侧轨网格)自然尺寸,非页面上限,不修。
 - **parameters 排除**:`parameter-table` 在自身滚动容器内横向滚动(right 1419>1280 视口),页面无横向滚动条,属常规表格行为,不修。
+
+## 7. 历史已修项截图补全(2026-11-01 用户令:已修缺截图=未完成)
+
+> 用户令:每个 UI 修复须带同视图 before/after 截图成对,文件名对齐报告问题编号,汇报四联:问题 / before / after / commit。下列 1.1–1.5、T1 为旧波次已 commit、缺截图,本次以临时 worktree checkout 到各 fix 的父 commit 重建真 before(旧 HEAD 同视图为真 after)。
+
+| # | 问题 | before | after | commit |
+| --- | --- | --- | --- | --- |
+| 1.1 | grid 模式因子表一行 5 格套 4 轨,Min/Max/Step 表头与输入格中心错位 | `shots-after/1.1-before.png` | `shots-after/1.1-after.png` | `a6e99ea` |
+| 1.2 | 辅助文字整族灰对比度不达 AA(--wb-muted 对白 2.51–4.66:1) | `shots-after/1.2-before.png` | `shots-after/1.2-after.png` | `e95d198` |
+| 1.3 | 窄屏主画布被全局 `main{max-width}` 规则裁切(content 右缘被切) | `shots-after/1.3-before.png` | `shots-after/1.3-after.png` | `7c9d361` |
+| 1.4 | 1280 下三枚 234px 命令触发器塞爆应用栏,demo 徽标溢出视口 69px(右缘 1349) | `shots-after/1.4-before.png` | `shots-after/1.4-after.png` | `c1f3b43` |
+| 1.5 | 命令搜索占位在 29px 触发器内换行到 3 行被裁 | `shots-after/1.5-before.png` | `shots-after/1.5-after.png` | `a6b48ae` |
+| T1 | 390 窄屏语言切换器整词被裁为 “E” | `shots-after/T1-before.png` | `shots-after/T1-after.png` | `784695d` |
+
+- **1.2 证据**(色差肉眼难辨,补计算值):面包屑/侧栏 `.muted` computed `rgb(102,119,126)→rgb(97,113,120)`,对白 4.66→5.07;按审计对最暗实际底 `#f2f5f6` 为 4.13→4.63(≥4.5 通过)。
+- **1.4 证据**:徽标右缘 1349px(溢出)→ 1263px(图标化,视口内)。
+- **1.5 证据**:搜索触发器占位由 3 行被裁 → 单行 ellipsis + `Ctrl K` kbd。
+- **T1 证据**:390 下切换器文字 “E”(裁)→ “EN”(locale 短码,`aria-label`/`title` 保留全词)。
+- 重建方法:临时 worktree(隔离,未碰主工作树)`git checkout <fix 的父 commit>` + 复用 apps/web/node_modules 软链 + vite dev :5201,Playwright 同视口截图;after 取自主工作树当前 HEAD(:5190)。
