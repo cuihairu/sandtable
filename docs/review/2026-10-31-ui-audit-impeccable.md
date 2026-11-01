@@ -54,13 +54,20 @@
 - **定位**:`src/workbench/workbench.css` `.command-trigger` 及其子 `span`/`kbd`。
 - **修复**:标签 `white-space:nowrap + text-overflow:ellipsis`、`min-width:0`(kbd 同理单行),沿用徽标的“渐进披露”思路;修复后占位单行截断、无裁切,应用栏无重叠。
 
-## 2. 后续修复波(2026-10-31 更新:一问题一 commit,`fix(ui)` 前缀)
+## 2. 后续修复波(2026-11-01 更新:一问题一 commit,`fix(ui)` 前缀;四联格式:问题 / before / after / commit)
 
-> 状态:✅ 已修(含 commit hash)/ ⏳ 待用户(需新素材或用户决策,报告标注)。
+> 状态:✅ 已修(含 before/after 截图与 commit hash)/ ⏳ 待用户(需新素材或用户决策,报告标注)。截图存 `docs/review/shots-after/`,文件名对齐问题编号。
+
+### T1 ✅ 已修 — `784695d`
+- **问题**: 语言切换器标签在 390px 被截断为 “E”(≤760px 下全部 `command-trigger` 收成 30px 图标,`key-label` 整词 “English” 被压成 “E”)。
+- **Before**: `docs/review/shots-after/T1-before.png`(390px,语言入口显示 “文 E” 截断)
+- **After**: `docs/review/shots-after/T1-after.png`(390px,语言入口显示 “文 EN” 短码;1280px 宽屏仍显示完整 “English” 徽标不受影响)
+- **Commit**: `784695d fix(ui): collapse language switcher to locale code on narrow screens`
+
+### T2–T5 ⏳ 待用户
 
 | # | 严重度 | 问题 | 定位 / 建议 | 状态 |
 | --- | --- | --- | --- | --- |
-| T1 | 低 | 语言切换器标签在 390px 被截断为 “E” | `LanguageSwitcher.tsx`;窄屏显示 locale 短码(`EN`/`中`)而非整词截断 | ✅ 已修 `784695d` |
 | T2 | 低 | 应用栏根因仍拥挤:三枚 234px 固定宽命令触发器把 bar 塞满,修复是“渐进披露”治标 | `AppBar.tsx` + `.command-trigger`;建议把低频命令收进溢出菜单,或让触发器自适应内容宽 | ⏳ 待用户(应用栏模式是设计决策:统一固定宽 vs 溢出菜单) |
 | T3 | 信息 | 缩放/平移手感待真机走查(rAF 合流已在 `ee36e71` 埋点,未在真机验收) | 图表缩放交互 | ⏳ 待用户(需真机/触控走查) |
 | T4 | 信息 | **缺 `DESIGN.md` / `PRODUCT.md`**;视觉方向仅 `MASTER.md` token 表局部固化 | 建议补 `impeccable document` 生成 DESIGN.md,把层级/字阶/动效口径固化,否则后续改版缺对照 | ⏳ 待用户(设计口径文档属设计决策) |
