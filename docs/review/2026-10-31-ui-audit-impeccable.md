@@ -88,3 +88,16 @@
 ## 5. 截图与探针
 
 截图目录(临时,未入库):`/tmp/ui-audit-sandtable/` — `rep-analysis-1280/390.png`、`rep-designer-1280/390.png`、`rep-runs-1280.png`、`rep-parameters-1280.png`、`rep-exchange-1280.png`、`final-appbar.png`。几何/对比度探针脚本:`/tmp/a11ycheck.mjs`、`/tmp/bar.mjs`、`/tmp/fact3.mjs`、`/tmp/srch.mjs`。
+
+## 6. 2026-11-01 修复波(缩放自适应;一问题一 commit,`fix(ui)` 前缀)
+
+> 用户令:所有 UI 修复带同视图 before/after 截图成对,存 `docs/review/shots-after/`,文件名对齐问题编号;汇报四联:问题 / before / after / commit。
+
+| # | 严重度 | 问题 | 定位 | before | after | commit |
+| --- | --- | --- | --- | --- | --- | --- |
+| U1 | 高 | 数据与导出页内容被固定 1000px 上限挤在左侧,1920/2560 宽窗右侧空置 ~650–1290px | `.wb-app .exchange-page{ padding:23px; max-width:1000px }` | `shots-after/U1-before.png` | `shots-after/U1-after.png` | (见 git log `fix(ui): exchange page uses full width`) |
+
+- **U1 证据**:修前 100%×2560 下 `.exchange-page` computed `width=1000px / max-width:1000px`,主区 2288px,右侧空置 1288px;修后 `width=2288px / max-width:none`。
+- **缩放矩阵**:100%/125%/150% × 1280/1920/2560 共 9 组合,交换页 `pageW==mainW` 全通过(无挤中间):`shots-after/zoom-grid/z{zoom}-w{width}.png`。其余页(analysis/parameters/designer/runs)经全量 cap 扫描无像素上限,均满宽利用。
+- **designer 排除**:`form-section` 1960px 系 `form-layout`(主列+侧轨网格)自然尺寸,非页面上限,不修。
+- **parameters 排除**:`parameter-table` 在自身滚动容器内横向滚动(right 1419>1280 视口),页面无横向滚动条,属常规表格行为,不修。
