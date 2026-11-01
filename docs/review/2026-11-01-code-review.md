@@ -30,11 +30,11 @@ Web `apps/web/src`（XSS/门禁/异步执行器）、Python `scripts/` + `script
 
 ### 发现（按严重度排序）
 
-**P0：0 项。P1：0 项。**
+**P0：0 项。P1：0 项。**（2026-11-02 复核：C1 撤回，见 §七勘误）
 
 | ID | 严重度 | 位置（file:line） | 问题 | 修法 |
 |---|---|---|---|---|
-| C1 | P2 | `crates/sandtable-cli/src/report.rs:1162`（`let n = c.xs.len()`）、`:1310`（`c.xs[0]`）、`:1315`（`c.xs[n-1]`） | 图表轴标注渲染器假定 `xs` 非空；空数据时 `c.xs[0]` 先 panic（干净 panic，非静默，但会崩掉整个 HTML 报告而非渲染「无数据」态） | 渲染前判 `xs.is_empty()` → 输出空态文本；P2 → todo.md（延迟） |
+| C1 | P2（撤回） | `crates/sandtable-cli/src/report.rs:1162`（`let n = c.xs.len()`）、`:1310`（`c.xs[0]`）、`:1315`（`c.xs[n-1]`） | ~~图表轴标注渲染器假定 `xs` 非空；空数据时 `c.xs[0]` 先 panic~~ —— **误报**：`svg_chart`（`report.rs:1152`）首行守卫 `c.xs.is_empty() || c.series.is_empty() || ...`（`report.rs:1159`）提前返回「无数据」，索引位于守卫之后不可达空数据 | 无需修（守卫已在，7920cd4 起即存在） |
 | C2 | P2 | `crates/sandtable-core/src/registry.rs:516-523`（`unsigned` 闭包仅拒负）、`:536/549/562/572/579/586/616`（`.round() as u32`） | u32 槽位（`population`/`max_rounds`/`tiers`/`sessions_int`/`stall_days`）**无上限检查**；值 > u32::MAX 经 `as u32` 静默饱和（自 Rust 1.45 饱和不 UB，但违反本仓 `exact_u64` 注释「明确拒绝不静默」原则） | `unsigned` 增上界校验（`v ≤ u32::MAX`）或改用 checked 转换；P2 → todo.md（延迟） |
 
 ### 核验干净（非发现的防御点，均证明安全）
@@ -68,18 +68,25 @@ Web `apps/web/src`（XSS/门禁/异步执行器）、Python `scripts/` + `script
 |---|---|---|
 | P0 | 0 | — |
 | P1 | 0 | — |
-| P2 | 2 | C1（report.rs 空数据 panic）、C2（registry u32 饱和） |
+| P2 | 1 | C2（registry u32 饱和）；C1 撤回（见 §七） |
 | P3 | 0 | — |
 
 ## 五、修复状态（⑤）
 
 - **P0/P1 当场修**：无（0 项）——本轮无 P0/P1 发现。
-- **P2/P3 → todo.md**：C1、C2 两项 P2 应记 todo。**已延迟**：`todo.md` 正被并行会话未提交编辑占用
-  （家规「他人 WIP 不替我 commit 或重写」），故两项在此报告登记为「待入 todo.md」，待该会话落地后补记。
-- **无代码改动**（未发现需修的真实缺陷；C1/C2 为防御性缺口，留 todo）。
+- **P2/P3 → todo.md**：C2（registry u32 饱和）已记 todo.md（见 §七）。C1 为误报、无需入 todo。
+- **无代码改动**（未发现需修的真实缺陷；C2 为防御性缺口，留 todo）。
 
 ## 六、汇报（⑥）
 
-- **发现数**：2（C1 P2 / C2 P2）。**已修**：0（无 P0/P1）。**剩余**：2（P2，待入 todo.md）。
-- **commit**：本报告 `docs/review/2026-11-01-code-review.md`（本轮无代码修复 commit）。
+- **发现数**：1 确认（C2 P2）；1 撤回（C1 误报，见 §七）。**已修**：0（无 P0/P1）。**剩余**：1（C2，待修，已入 todo）。
+- **commit**：本报告 `docs(review): add 2026-11-01 full-repo code review`（本轮无代码修复 commit）。
 - **门禁**：全部绿（见 §三）。**扫描覆盖**：见 §首段（Rust 全量、Web 门禁+XSS+执行器、Python、GH Actions）。
+
+## 七、勘误（2026-11-02）
+
+复核 C1 时发现误报，如实更正：
+
+- **C1 撤回**：报告初稿称 `report.rs` 图表轴渲染器（`let n = c.xs.len()` @ 1162、`c.xs[0]` @ 1310、`c.xs[n-1]` @ 1315）在空数据时会 panic。实测 `fn svg_chart`（`report.rs:1152`）**首行守卫** `if c.xs.is_empty() || c.series.is_empty() || c.series.iter().all(|s| s.ys.is_empty()) { return "…无数据" }`（`report.rs:1159-1161`）提前返回空态，三处索引全在守卫之后、同函数内无其他 fn 边界，空数据时不可达。该守卫自 `svg_chart` 首个 commit（7920cd4）即在，非新修。故 C1 不成立，撤回。
+- **C2 保留**：复核 `crates/sandtable-core/src/registry.rs:516-523` 的 `unsigned` 闭包当前 HEAD 仍只拒负、无上界校验，`.round() as u32` 在值 > u32::MAX 时静默饱和（自 Rust 1.45 起不 UB，但违背本仓 `exact_u64`「明确拒绝不静默」原则）。C2 成立，已补 todo.md（条目「审核发现：u32 槽位无上限检查」）。
+- **计数更正**：P2 由 2 改为 1（C2）。
