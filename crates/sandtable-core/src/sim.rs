@@ -367,8 +367,11 @@ impl System<World, SimEvent> for PlayerDaySystem<'_> {
     }
 }
 
-/// 抽卡会话系统(文档 24 章 R2):每个玩家一次"出到即止"会话,逐抽
-/// 消耗 Purpose::Gacha 事件直到命中;命中数计入 E[T] 分母。
+/// 抽卡会话系统(文档 24 章 R2,2026-11-01 升级定轨层):每个玩家一次
+/// "抽到所定目标"会话(`pull_until_featured`)——逐抽消耗 Purpose::Gacha
+/// 直到 5★ 命中,再消耗 Purpose::GachaFeatured 判定是否为所定目标;
+/// 连续非目标达 featured_guarantee 后下一次 5★ 必为目标,可能多次 5★。
+/// 命中数按会话前后 gacha_hits 差值计入 E[T] 分母。
 struct GachaRollSystem<'a> {
     cfg: &'a SimConfig,
     seed: u64,
