@@ -93,6 +93,8 @@ const ROWS: readonly [string, ParamKind, string, string][] = [
   ['model.gacha.pity_hard', 'u64', '0', '硬保底抽数(第 N 抽必中;0 = 无保底)'],
   ['model.gacha.pity_soft_start', 'u64', '0', '软保底起点抽数(从第 N 抽起每抽 +step)'],
   ['model.gacha.pity_soft_step', 'f64', '0.0', '软保底起点后每抽概率增量(0 = 无软保底)'],
+  ['model.gacha.featured_rate', 'f64', '0.0', '5★ 命中时为所定目标/UP 卡的概率(0 = 无目标概念,如常驻池)'],
+  ['model.gacha.featured_guarantee', 'u64', '0', '定轨:连续非目标 5★ 达该次数后,下一次 5★ 必为所定目标(0 = 无定轨)'],
 ]
 
 /** 全量注册项(顺序 = registry.rs 声明序;统计口径 64 项,tests 锁漂移)。 */
@@ -229,6 +231,8 @@ const EN_NAMES: Readonly<Record<string, string>> = {
   'model.gacha.pity_hard': 'Hard pity pulls',
   'model.gacha.pity_soft_start': 'Soft pity start',
   'model.gacha.pity_soft_step': 'Soft pity step',
+  'model.gacha.featured_rate': 'Featured rate (5★ target/UP chance)',
+  'model.gacha.featured_guarantee': 'Featured guarantee (off-target 5★ cap)',
 }
 
 /** 当前语言显示名:zh = 注册表原始描述,en = 英文表(缺词回退描述)。 */

@@ -291,6 +291,18 @@ const MODEL: &[ParamSpec] = &[
         "0.0",
         "软保底起点后每抽概率增量(0 = 无软保底)",
     ),
+    spec(
+        "model.gacha.featured_rate",
+        F64,
+        "0.0",
+        "5★ 命中时为所定目标/UP 卡的概率(0 = 无目标概念,如常驻池)",
+    ),
+    spec(
+        "model.gacha.featured_guarantee",
+        U64,
+        "0",
+        "定轨:连续非目标 5★ 达该次数后,下一次 5★ 必为所定目标(0 = 无定轨)",
+    ),
 ];
 
 use ParamKind::{Dur, Expr, Mix, Table, F64, I64, U32, U64};
@@ -476,6 +488,12 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.gacha.pity_soft_step" => {
             Ok(cfg.gacha.as_ref().map(|g| g.pity_soft_step).unwrap_or(0.0))
         }
+        "model.gacha.featured_rate" => {
+            Ok(cfg.gacha.as_ref().map(|g| g.featured_rate).unwrap_or(0.0))
+        }
+        "model.gacha.featured_guarantee" => {
+            Ok(cfg.gacha.as_ref().map(|g| g.featured_guarantee).unwrap_or(0) as f64)
+        }
         // 非数值槽:与 apply_numeric 同口径
         "scenario.duration"
         | "model.formulas.xp_needed"
@@ -620,6 +638,16 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
                 .get_or_insert_with(crate::config::GachaConfig::default)
                 .pity_soft_step = unsigned(value, "pity_soft_step")?;
         }
+        "model.gacha.featured_rate" => {
+            cfg.gacha
+                .get_or_insert_with(crate::config::GachaConfig::default)
+                .featured_rate = value;
+        }
+        "model.gacha.featured_guarantee" => {
+            cfg.gacha
+                .get_or_insert_with(crate::config::GachaConfig::default)
+                .featured_guarantee = exact_u64(value, "featured_guarantee")?.round() as u64;
+        }
         // 非数值槽:不可数值扫描(时长是字符串,公式是表达式,逐层表是数组,
         // 伤害口径是枚举开关,掉落结构面是字符串/映射)
         "scenario.duration"
@@ -647,6 +675,9 @@ pub fn read_u64_raw(cfg: &SimConfig, path: &str) -> Option<u64> {
         "model.gacha.pity_hard" => Some(cfg.gacha.as_ref().map(|g| g.pity_hard).unwrap_or(0)),
         "model.gacha.pity_soft_start" => {
             Some(cfg.gacha.as_ref().map(|g| g.pity_soft_start).unwrap_or(0))
+        }
+        "model.gacha.featured_guarantee" => {
+            Some(cfg.gacha.as_ref().map(|g| g.featured_guarantee).unwrap_or(0))
         }
         _ => None,
     }
@@ -713,6 +744,30 @@ mod tests {
         assert_eq!(edit_distance("abc", "abc"), 0);
         assert_eq!(edit_distance("atk", "attack"), 3);
         assert_eq!(edit_distance("", "ab"), 2);
+    }
+
+    /// 定轨字段已注册进参数表:YAML 入口放行(check_tree),数值通道可读可写
+    /// (read_numeric / apply_numeric / read_u64_raw)。新增注册路径漏任何一臂
+    /// 都会在此红(与 get_set_mirror_all_numeric_paths 同纪律)。
+    #[test]
+    fn featured_fields_registered_and_routable() {
+        let yaml = "schema_version: \"1\"\nmodel:\n  gacha:\n    featured_rate: 0.5\n    featured_guarantee: 1\n";
+        let root: Value = from_str(yaml).unwrap();
+        check_tree(&root).expect("定轨字段应通过 YAML 入口校验");
+
+        let cfg = SimConfig::default();
+        assert_eq!(read_numeric(&cfg, "model.gacha.featured_rate").unwrap(), 0.0);
+        assert_eq!(read_numeric(&cfg, "model.gacha.featured_guarantee").unwrap(), 0.0);
+        assert_eq!(read_u64_raw(&cfg, "model.gacha.featured_guarantee"), Some(0));
+
+        let mut c2 = cfg.clone();
+        apply_numeric(&mut c2, "model.gacha.featured_rate", 0.5).unwrap();
+        apply_numeric(&mut c2, "model.gacha.featured_guarantee", 1.0).unwrap();
+        let g = c2.gacha.as_ref().unwrap();
+        assert_eq!(g.featured_rate, 0.5);
+        assert_eq!(g.featured_guarantee, 1);
+        assert_eq!(read_numeric(&c2, "model.gacha.featured_rate").unwrap(), 0.5);
+        assert_eq!(read_u64_raw(&c2, "model.gacha.featured_guarantee"), Some(1));
     }
 
     /// read_numeric 与 apply_numeric 互为镜像:全部数值路径读出 → 写回 →
