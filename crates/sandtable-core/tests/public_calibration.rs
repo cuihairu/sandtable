@@ -280,6 +280,37 @@ fn read_counts(name: &str) -> Vec<u64> {
     serde_json::from_value(v["per_pity_counts"].clone()).unwrap()
 }
 
+/// 四个公共聚合文件均携带 `source` 溯源对象(§1b 声称「同源数据集 dataset.json
+/// 按 banner_type 拆分」,文件本身须可复现同源):repo / dataset_file / banners
+/// 与 publication 全量核对;`banners` 须与文件顶层 `banners` 一致。
+#[test]
+fn public_pools_carry_source_provenance() {
+    let cases = [
+        ("character-event", 74),
+        ("weapon_event", 75),
+        ("standard", 1),
+        ("chronicled_wish", 2),
+    ];
+    for (name, banners) in cases {
+        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("../../data/public/genshin/{name}-pity.json"));
+        let raw = std::fs::read_to_string(&p).expect("读 data/public/genshin/...-pity.json");
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let src = &v["source"];
+        assert_eq!(src["repo"], "MsExcel85/genshin-drop-rate", "{name} repo");
+        assert_eq!(src["dataset_file"], "dataset.json", "{name} dataset_file");
+        assert_eq!(src["banners"], banners, "{name} source.banners");
+        assert_eq!(
+            src["publication"],
+            "HoYolab 2025-06-10 post 39248513",
+            "{name} publication"
+        );
+        if let Some(top) = v.get("banners") {
+            assert_eq!(top, banners, "{name} 顶层 banners 与 source 一致");
+        }
+    }
+}
+
 /// 武器池 5★ 率:官方 0.7% 基础 / 1.85% 综合 / 80 硬保底 / 63 软保底起。
 #[test]
 fn weapon_model_reproduces_official_rates() {

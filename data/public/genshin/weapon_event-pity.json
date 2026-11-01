@@ -1,6 +1,12 @@
 {
  "game": "Genshin Impact",
  "banner_type": "weapon_event",
+ "source": {
+  "repo": "MsExcel85/genshin-drop-rate",
+  "dataset_file": "dataset.json",
+  "banners": 75,
+  "publication": "HoYolab 2025-06-10 post 39248513"
+ },
  "banners": 75,
  "total_five_star_hits": 6252311,
  "mean_pulls": 49.8111,
