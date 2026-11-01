@@ -516,6 +516,10 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
     let unsigned = |v: f64, ty: &str| -> Result<f64, Error> {
         if v < 0.0 {
             Err(Error::Config(format!("{path}: {ty} 不能为负(得到 {v})")))
+        } else if v > u32::MAX as f64 {
+            Err(Error::Config(format!(
+                "{path}: {ty} 不能超过 u32 上限(得到 {v})"
+            )))
         } else {
             Ok(v)
         }
@@ -782,6 +786,23 @@ mod tests {
         assert_eq!(g.featured_guarantee, 1);
         assert_eq!(read_numeric(&c2, "model.gacha.featured_rate").unwrap(), 0.5);
         assert_eq!(read_u64_raw(&c2, "model.gacha.featured_guarantee"), Some(1));
+    }
+
+    #[test]
+    fn unsigned_rejects_above_u32_max() {
+        let mut cfg = SimConfig::default();
+        let err = apply_numeric(&mut cfg, "scenario.population", u32::MAX as f64 + 1.0)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("不能超过 u32 上限"),
+            "应拒绝超 u32 上限,实际:{err}"
+        );
+        let err = apply_numeric(&mut cfg, "scenario.population", -1.0)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("不能为负"), "仍应拒绝负数,实际:{err}");
+        apply_numeric(&mut cfg, "scenario.population", 0.0).unwrap();
     }
 
     /// read_numeric 与 apply_numeric 互为镜像:全部数值路径读出 → 写回 →
