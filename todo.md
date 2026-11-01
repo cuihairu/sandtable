@@ -602,3 +602,9 @@
       核证 2026-11-01 属实：两文档「执行形态」确写 `pull_until_hit`，YAML 示例缺 `featured_rate`/`featured_guarantee`，而 `sim.rs` 主路径已调 `pull_until_featured` 且按会话 `gacha_hits` 差值记录（sim.rs:397-400）。修法=两文档 YAML 示例补两字段、执行形态改述 `pull_until_featured`（含 `Purpose::GachaFeatured` 定轨判定、非目标 5★ 累计定轨计数、可能多次 5★、命中数按会话差值计入），并补充定轨层语义与 `gacha_pulls_to_hit` = 总抽数/5★ 命中数（每 5★ 而非每目标）口径。复核=文档无独立 YAML 校验门禁（docs 仅注释性）,相关语义与 `sim.rs`/`gacha.rs` 实现逐点一致。
 - [x] 审核发现：`GachaRollSystem::update` 的注释仍称「抽卡会话系统（文档 24 章 R2）：每个玩家一次“出到即止”会话，逐抽消耗 Purpose::Gacha 事件直到命中；命中数计入 E[T] 分母」，但实现已改为 `pull_until_featured`（定轨目标才停、可能多次 5★），注释与实现不一致，且该注释是后续维护者理解「命中数计入 E[T] 分母」的唯一定位（crates/sandtable-core/src/sim.rs:370-371）。
       核证 2026-11-01 属实：注释仍称 `pull_until_hit` 式「出到即止」会话语义，而 `update` 已调 `pull_until_featured`（sim.rs:397）。修法=注释改述「抽到所定目标」会话（`pull_until_featured`、`Purpose::GachaFeatured` 定轨判定、连续非目标达 `featured_guarantee` 必为目标、可能多次 5★、命中数按会话前后 `gacha_hits` 差值计入 E[T] 分母）。复核=`cargo test -p sandtable-core` 全绿（含 `gacha_featured_layer_controls_main_sim`）。
+
+- [ ] **DOC-GIF · P2 · 文档 · 配置开关效果动态图(每个开关 off→on 对比+GIF)**
+  - 交付:枚举本仓全部「开启后有效果」的开关/配置项;自动流水线生成证据——GUI 类用 @vscode/test-electron 或应用截图(off 一张/on 一张+切换过程录屏),CLI 类用终端录屏(asciinema→GIF 或 ffmpeg);ffmpeg 缝合动态 GIF。
+  - 文档:docs「配置效果」页(双语)逐开关嵌入:说明+off 图+on 图+GIF。
+  - 验收:清单内每个开关都有 off/on+GIF;流水线可重跑(配置变更随时再生成);兼作配置效果回归测试。
+  - 参考:kode todo C-24 同款流水线模式(2026-11-01 用户令全舰队推广)。
