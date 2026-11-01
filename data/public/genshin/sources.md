@@ -105,10 +105,13 @@
   50/50；光锥池 80 硬/软约 66/75-25），可作为**跨游戏同构验证**的官方口径（详见
   `docs/analysis/public-benchmark-calibration.md` 跨游戏节），不代用原神数值、不声称
   有 HSR 真实分布数据。
-- Steam 开箱（CS:GO/CS2 案例）公示概率：steamcommunity market 页为客户端渲染，
-  **未采集**。官方掉率在游戏客户端内公示（Mil-Spec 79.92% / Restricted 15.98% /
-  Classified 3.2% / Covert 0.64% / Rare Special 0.26%），但本会话未能抓到可读静态页
-  （CSGO-API crates.json 仅箱子元数据无掉率），如实标注未采集。
+- Steam 开箱（CS:GO/CS2 案例）公示概率：**未采集**（2026-11-01 复核抓取仍失败）。
+  尝试：steamcommunity market 箱页返回价格历史 JSON 非掉率；CSGO-API crates.json
+  （481 箱 7.2MB，含 contains/contains_rare 物品清单）无掉率字段；counterstrike/cs2
+  fandom 403（~5.4KB 拦截页）；liquipedia 武器箱页与 counter-strike.net 更新页无
+  掉率文本；第三方 StashAway/CS2-Case-Odds 404。官方掉率仅在游戏客户端内公示
+  （Mil-Spec 79.92% / Restricted 15.98% / Classified 3.2% / Covert 0.64% /
+  Rare Special 0.26%，须经真机游戏客户端核对），本会话无可读静态来源，如实标注。
 - Diablo Immortal 公示数据：**未采集**。
 - 学术基准（Zendle et al. loot box 期望成本）：nature.com 论文页 303 跳转、正文为付费/摘要，
   未能提取可靠数值，**未采集**（不作为校准基准；校准以官方公示率 + 社区分布为准）。
