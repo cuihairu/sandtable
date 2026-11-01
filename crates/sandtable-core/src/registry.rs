@@ -491,9 +491,11 @@ pub fn read_numeric(cfg: &SimConfig, path: &str) -> Result<f64, Error> {
         "model.gacha.featured_rate" => {
             Ok(cfg.gacha.as_ref().map(|g| g.featured_rate).unwrap_or(0.0))
         }
-        "model.gacha.featured_guarantee" => {
-            Ok(cfg.gacha.as_ref().map(|g| g.featured_guarantee).unwrap_or(0) as f64)
-        }
+        "model.gacha.featured_guarantee" => Ok(cfg
+            .gacha
+            .as_ref()
+            .map(|g| g.featured_guarantee)
+            .unwrap_or(0) as f64),
         // 非数值槽:与 apply_numeric 同口径
         "scenario.duration"
         | "model.formulas.xp_needed"
@@ -676,9 +678,12 @@ pub fn read_u64_raw(cfg: &SimConfig, path: &str) -> Option<u64> {
         "model.gacha.pity_soft_start" => {
             Some(cfg.gacha.as_ref().map(|g| g.pity_soft_start).unwrap_or(0))
         }
-        "model.gacha.featured_guarantee" => {
-            Some(cfg.gacha.as_ref().map(|g| g.featured_guarantee).unwrap_or(0))
-        }
+        "model.gacha.featured_guarantee" => Some(
+            cfg.gacha
+                .as_ref()
+                .map(|g| g.featured_guarantee)
+                .unwrap_or(0),
+        ),
         _ => None,
     }
 }
@@ -756,9 +761,18 @@ mod tests {
         check_tree(&root).expect("定轨字段应通过 YAML 入口校验");
 
         let cfg = SimConfig::default();
-        assert_eq!(read_numeric(&cfg, "model.gacha.featured_rate").unwrap(), 0.0);
-        assert_eq!(read_numeric(&cfg, "model.gacha.featured_guarantee").unwrap(), 0.0);
-        assert_eq!(read_u64_raw(&cfg, "model.gacha.featured_guarantee"), Some(0));
+        assert_eq!(
+            read_numeric(&cfg, "model.gacha.featured_rate").unwrap(),
+            0.0
+        );
+        assert_eq!(
+            read_numeric(&cfg, "model.gacha.featured_guarantee").unwrap(),
+            0.0
+        );
+        assert_eq!(
+            read_u64_raw(&cfg, "model.gacha.featured_guarantee"),
+            Some(0)
+        );
 
         let mut c2 = cfg.clone();
         apply_numeric(&mut c2, "model.gacha.featured_rate", 0.5).unwrap();

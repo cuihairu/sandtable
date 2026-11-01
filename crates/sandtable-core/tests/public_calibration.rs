@@ -301,8 +301,7 @@ fn public_pools_carry_source_provenance() {
         assert_eq!(src["dataset_file"], "dataset.json", "{name} dataset_file");
         assert_eq!(src["banners"], banners, "{name} source.banners");
         assert_eq!(
-            src["publication"],
-            "HoYolab 2025-06-10 post 39248513",
+            src["publication"], "HoYolab 2025-06-10 post 39248513",
             "{name} publication"
         );
         if let Some(top) = v.get("banners") {
