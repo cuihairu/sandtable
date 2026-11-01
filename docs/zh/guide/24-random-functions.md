@@ -118,13 +118,16 @@ model:
     pity_hard: 50          # 硬保底:第 50 抽必出(0 = 无)
     pity_soft_start: 0     # 软保底起点抽数(0 = 无)
     pity_soft_step: 0.0    # 起点后每抽概率增量(0 = 无软保底)
+    featured_rate: 0.5     # 5★ 命中时为所定目标/UP 卡的概率(0 = 无目标概念,如常驻池)
+    featured_guarantee: 1  # 定轨:连续非目标 5★ 达该次数后,下一次 5★ 必为所定目标(0 = 无定轨)
 ```
 
 - 状态机:每 actor 维护 `since_last_hit`;单抽成功率 `p' = min(1, base_rate + max(0, k − pity_soft_start) · pity_soft_step)`,且 `since_last_hit + 1 ≥ pity_hard > 0` 时 `p' = 1`(实现:`systems::gacha::hit_rate`);
-- 四个参数全部 `F64`/`U64` 数值槽(注册表 `model.gacha.*`):**sweep 可扫保底长度**(它直接改变期望补贴,见下);`base_rate ≤ 0` 在 `validate` 拦截(否则抽卡永不终止);
-- 执行形态:配置了 `model.gacha` 时,每个 actor 在 **tick 0(第 1 天之前)** 调一次"出到即止"会话(`systems::gacha::pull_until_hit`,逐抽消耗 `Purpose::Gacha` 键直到命中)——开号语义,不进任何一天的统计;
+- 定轨层(`featured_rate`/`featured_guarantee`):5★ 命中后独立判定是否为所定目标(带键 `Purpose::GachaFeatured`);连续非目标达 `featured_guarantee` 后下一次 5★ 必为目标。该层不改 5★ 率面、用独立 RNG 流——无定轨配置的 5★ 流逐字节不变(CRN 可比);`featured_rate ≤ 0`(无目标概念,如常驻池)时退化为单层 5★ 会话;
+- 六个参数全部 `F64`/`U64` 数值槽(注册表 `model.gacha.*`):**sweep 可扫保底长度与定轨强度**(它直接改变期望补贴,见下);`base_rate ≤ 0` 在 `validate` 拦截(否则抽卡永不终止);`featured_rate` 限 `[0, 1]` 有限数;
+- 执行形态:配置了 `model.gacha` 时,每个 actor 在 **tick 0(第 1 天之前)** 调一次"抽到所定目标"会话(`systems::gacha::pull_until_featured`):逐抽消耗 `Purpose::Gacha` 键直到 5★ 命中,再消耗 `Purpose::GachaFeatured` 键判定是否为目标;非目标 5★ 累计定轨计数,达阈值后必为目标——**可能多次 5★**(定轨目标才停)。开号语义,不进任何一天的统计;命中数按会话前后 `gacha_hits` 差值计入;
 - **验收口径(设计侧 ↔ 仿真侧的对账)**:hello-game numerical/05 的手算账——单抽 2%、无保底期望 50 抽;硬保底 50 抽时期望 ≈ **31.8 抽**(闭式 `E[T] = (1 − (1−p)^H)/p = (1 − 0.98⁵⁰)/0.02 = 31.79`,前 49 抽全空概率 0.98⁴⁹ ≈ 37.2%,截断把长尾砍掉)。仿真的机器验收 = 万次抽样均值 ± CI95,落在闭式值 ± CI 内即通过(核心测试 `抽卡_期望抽数对齐解析解` 用 2000 玩家对账,容差 1.0);软保底无闭式,抽样均值本身就是验收手段(同页口径);
-- 期望抽数是**新 KPI**:`MetricKey::GachaPullsToHit`(`gacha_pulls_to_hit`),走既有 replicates → `summarize` → CI95 全链,可比较、可 sweep、可推荐;未配置 gacha 时为 `None`,`#[serde(skip_serializing_if)]` 不进 JSON(黄金快照逐字节不变)。
+- 期望抽数是**新 KPI**:`MetricKey::GachaPullsToHit`(`gacha_pulls_to_hit`),走既有 replicates → `summarize` → CI95 全链,可比较、可 sweep、可推荐;未配置 gacha 时为 `None`,`#[serde(skip_serializing_if)]` 不进 JSON(黄金快照逐字节不变)。**口径**:`gacha_pulls_to_hit` = 总抽数 / 5★ 命中数(按会话差值累计)——有定轨层时一个会话可能多次 5★,故该 KPI 衡量「每 5★ 抽数」而非「每定轨目标抽数」。
 
 ### 6. 回放种子(已有,口径存档)
 
