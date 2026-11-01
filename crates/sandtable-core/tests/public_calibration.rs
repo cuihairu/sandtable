@@ -19,18 +19,58 @@
 
 use sandtable_core::config::{Cohort, GachaConfig};
 use sandtable_core::rng::DayRng;
-use sandtable_core::systems::gacha::{hit_rate, pull_until_hit};
+use sandtable_core::systems::gacha::{hit_rate, pull_until_featured, pull_until_hit};
 use sandtable_core::world::Actor;
 use std::path::PathBuf;
 
-/// Genshin 官方参数:0.6% 基础、90 硬保底、74 软保底起、+6%/抽。
+/// Genshin 角色池官方参数:0.6% 基础、90 硬保底、74 软保底起、+6%/抽,
+/// 定轨层 50/50(0.5,歪 1 次后必 UP)——定轨层不改 5★ 率面,下测 5★ 率不受影响。
 fn genshin_cfg() -> GachaConfig {
     GachaConfig {
         base_rate: 0.006,
         pity_hard: 90,
         pity_soft_start: 74,
         pity_soft_step: 0.06,
+        featured_rate: 0.5,
+        featured_guarantee: 1,
     }
+}
+
+/// Genshin 武器池(祈愿)官方参数:0.7% 基础、80 硬保底、63 软保底起。
+/// 软保底步长 0.043(≈+4.3%/抽)为**与官方综合 1.85% 自洽**的解(0.04304);
+/// 社区数据 63–71 段经验斜率 +6.9%/抽被玩家提交过报抬高,且按 +6.9% 线性外推
+/// 会在 77 抽饱和、与官方 80 硬保底矛盾(见 sources.md §1b),故不取经验斜率,
+/// 而以官方综合率反解步长。该步长下抽 79 率面 73.8% < 100%,不提前饱和,80 硬保底钳制生效。
+/// 定轨层 v5.0 起 0.375(双 UP 各 37.5%,所定单武器)、1 点必保(最坏 160)。
+fn weapon_cfg() -> GachaConfig {
+    GachaConfig {
+        base_rate: 0.007,
+        pity_hard: 80,
+        pity_soft_start: 63,
+        pity_soft_step: 0.043,
+        featured_rate: 0.375,
+        featured_guarantee: 1,
+    }
+}
+
+/// Genshin 常驻池:官方与角色同构(0.6%/90/74/+6%,无定轨)。
+/// 数据已证实常驻有软保底(74 起,见 sources.md §1b「standard 反驳预设」),按同构校准。
+fn standard_cfg() -> GachaConfig {
+    GachaConfig {
+        base_rate: 0.006,
+        pity_hard: 90,
+        pity_soft_start: 74,
+        pity_soft_step: 0.06,
+        featured_rate: 0.0,
+        featured_guarantee: 0,
+    }
+}
+
+/// 星穹铁道(HSR)角色活动跃迁官方参数:与 Genshin 角色同构
+/// (0.6%/1.6%/90 硬/74 软/50-50)——跨游戏同构验证,官方参数经多源交叉核对
+/// (溯源见 sources.md §3),无 HSR 社区分布数据集,不代用 Genshin 数值。
+fn hsr_character_cfg() -> GachaConfig {
+    genshin_cfg()
 }
 
 /// 模型精确分布(逐抽条件率经 hit_rate):dist[n] = P(第 n 抽命中),n = 1..=90。
@@ -74,7 +114,41 @@ fn new_actor(id: u64) -> Actor {
         gacha_since_hit: 0,
         gacha_pulls: 0,
         gacha_hits: 0,
+        gacha_off_featured: 0,
     }
+}
+
+/// 模型精确分布(逐抽条件率经 hit_rate):dist[n] = P(第 n 抽命中),n = 1..=hard。
+fn model_distribution_to_hard(cfg: &GachaConfig) -> Vec<f64> {
+    let hard = cfg.pity_hard as usize;
+    let mut dist = vec![0.0; hard + 1];
+    let mut surv = 1.0;
+    for n in 1..=hard as u64 {
+        let p = hit_rate(cfg, n - 1);
+        dist[n as usize] = surv * p;
+        surv *= 1.0 - p;
+    }
+    dist
+}
+
+fn mean_of_to_hard(dist: &[f64]) -> f64 {
+    (1..dist.len()).map(|n| n as f64 * dist[n]).sum()
+}
+
+/// 定轨目标命中抽数的 5★ 数分布:target 在第 k 次 5★ 命中(k = 1..=g 时概率
+/// (1−fr)^(k−1)·fr;连续 g 次非目标后第 g+1 次强制)。
+fn featured_star_count_expectation(fr: f64, g: u64) -> f64 {
+    if fr <= 0.0 {
+        return 1.0;
+    }
+    let mut e = 0.0f64;
+    let mut pnot = 1.0f64;
+    for k in 1..=g {
+        e += k as f64 * pnot * fr;
+        pnot *= 1.0 - fr;
+    }
+    e += (g + 1) as f64 * pnot; // 连续 g 次非目标后第 g+1 次强制
+    e
 }
 
 #[test]
@@ -178,5 +252,229 @@ fn model_mc_simulation_matches_analytic() {
     assert!(
         (sim_mean - analytic_mean).abs() < 0.6,
         "MC 均值 {sim_mean:.3} vs 解析 {analytic_mean:.3}"
+    );
+}
+
+/// 逐抽经验条件率(反向累计):rate[n] = count[n] / 存活到第 n 抽者。
+fn empirical_rates(counts: &[u64]) -> Vec<f64> {
+    let n = counts.len();
+    let mut rate = vec![0.0f64; n + 1];
+    let mut surv = 0.0f64;
+    for i in (0..n).rev() {
+        surv += counts[i] as f64;
+        rate[i + 1] = counts[i] as f64 / surv;
+    }
+    rate
+}
+
+fn read_counts(name: &str) -> Vec<u64> {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("../../data/public/genshin/{name}-pity.json"));
+    let raw = std::fs::read_to_string(&p).expect("读 data/public/genshin/...-pity.json");
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    serde_json::from_value(v["per_pity_counts"].clone()).unwrap()
+}
+
+/// 武器池 5★ 率:官方 0.7% 基础 / 1.85% 综合 / 80 硬保底 / 63 软保底起。
+#[test]
+fn weapon_model_reproduces_official_rates() {
+    let cfg = weapon_cfg();
+    let dist = model_distribution_to_hard(&cfg);
+    let tail: f64 = dist.iter().skip(1).sum();
+    assert!(tail > 0.9999, "总质量 {tail}");
+    // 硬保底:80 抽内必出(第 80 抽率面 = 1,之后无质量)
+    assert!(dist[80] > 0.0);
+    assert!(dist.len() == 81, "dist 只到 80(硬保底后无质量)");
+    // 基础率:抽 1..=62 恒 0.7%
+    for n in 1..=62u64 {
+        assert!(
+            (hit_rate(&cfg, n - 1) - 0.007).abs() < 1e-12,
+            "抽 {n} 基础率"
+        );
+    }
+    // 软保底起点:抽 63 起跳(0.7% → 0.7%+4.3% = 5.0%);抽 79 率面 73.8% < 100%
+    // (不提前饱和,80 硬保底钳制生效——与官方 80 硬保底自洽)
+    assert!((hit_rate(&cfg, 62) - 0.05).abs() < 1e-9, "抽 63 = 5.0%");
+    assert!(
+        hit_rate(&cfg, 78) < 1.0,
+        "抽 79 不应饱和:{}",
+        hit_rate(&cfg, 78)
+    );
+    // 综合概率 vs 官方 1.85%(< 0.1pp),均值 vs 1/0.0185 ≈ 54.05
+    let mean = mean_of_to_hard(&dist);
+    let consolidated = 1.0 / mean;
+    assert!(
+        (consolidated - 0.0185).abs() < 0.001,
+        "武器综合 {consolidated:.5} vs 官方 0.0185(均值 {mean:.3})"
+    );
+}
+
+/// 常驻池 5★ 率:与角色同构(0.6%/1.6%/90/74/+6%)。
+#[test]
+fn standard_model_reproduces_official_rates() {
+    let cfg = standard_cfg();
+    let dist = model_distribution_to_hard(&cfg);
+    let mean = mean_of_to_hard(&dist);
+    let consolidated = 1.0 / mean;
+    assert!(
+        (consolidated - 0.016).abs() < 0.001,
+        "常驻综合 {consolidated:.5} vs 官方 0.016(均值 {mean:.3})"
+    );
+    assert!((mean - 62.5).abs() < 1.0, "常驻均值 {mean:.3} vs 官方 62.5");
+    // 常驻确有软保底:抽 74 起跳
+    assert!(
+        (hit_rate(&cfg, 73) - 0.066).abs() < 1e-9,
+        "常驻抽 74 = 6.6%"
+    );
+}
+
+/// 常驻池数据反驳「无软保底」预设(诚实修正):standard-pity.json 经验率
+/// 74 抽起明确爬坡,且 90 抽硬边界有样本。
+#[test]
+fn standard_data_shows_soft_pity() {
+    let counts = read_counts("standard");
+    assert_eq!(counts.len(), 90, "standard per_pity_counts 应含 90 项");
+    let total: u64 = counts.iter().sum();
+    assert!(total > 1_000_000, "standard 样本过小:{total}");
+    let rate = empirical_rates(&counts);
+    // 基础段(1..=70)均值约官方 0.6% 的社区过报水平(约 1.2%),只作登记
+    let base_zone: f64 = (1..=70).map(|n| rate[n]).sum::<f64>() / 70.0;
+    // 软保底结构:74 起经验率跳升到基础段 3 倍以上(社区过报不挪位置)
+    assert!(
+        rate[74] > 3.0 * base_zone,
+        "常驻 74 抽起跳:rate[74]={:.4} vs 基础段均值 {base_zone:.4}",
+        rate[74]
+    );
+    assert!(
+        rate[74] > rate[73] * 2.0,
+        "常驻软保底在 74:rate[73]={:.4} rate[74]={:.4}",
+        rate[73],
+        rate[74]
+    );
+    // 硬边界:90 抽位有样本(与 90 硬保底结构一致)
+    assert!(counts[89] > 0, "常驻 90 抽边界样本缺失");
+    // 金丝雀:常驻高抽段非单调(同角色池伪影特征),锁数据伪影解释
+    assert!(
+        rate[87] < rate[84],
+        "常驻 84..=89 非单调回落(84:{:.4} 87:{:.4})",
+        rate[84],
+        rate[87]
+    );
+}
+
+/// 武器池数据结构:软保底 63、硬边界 80(81–90 抽位无样本,与官方 80 硬保底一致)。
+#[test]
+fn weapon_data_structure() {
+    let counts = read_counts("weapon_event");
+    assert_eq!(counts.len(), 90, "weapon per_pity_counts 应含 90 项");
+    let rate = empirical_rates(&counts);
+    let base_zone: f64 = (1..=45).map(|n| rate[n]).sum::<f64>() / 45.0;
+    assert!(
+        rate[63] > 3.0 * base_zone && rate[62] <= 3.0 * base_zone,
+        "武器软保底在 63:rate[62]={:.4} rate[63]={:.4} 基础段 {base_zone:.4}",
+        rate[62],
+        rate[63]
+    );
+    // 硬边界 80:81–90 抽位无样本
+    assert!(counts[79] > 0, "武器 80 抽边界样本缺失");
+    for i in 80..90 {
+        assert_eq!(counts[i], 0, "武器 {} 抽位应无样本(80 硬保底)", i + 1);
+    }
+}
+
+/// 定轨(Epitomized Path):5★ 数分布解析 vs 仿真;期望抽数与最坏 160 界。
+#[test]
+fn weapon_epitomized_path_featured() {
+    let cfg = weapon_cfg();
+    // 解析 E[#5★] = 0.375·1 + 0.625·2 = 1.625(v5.0:1 点必保,最坏 2 次 5★)
+    let e_stars = featured_star_count_expectation(cfg.featured_rate, cfg.featured_guarantee);
+    assert!(
+        (e_stars - 1.625).abs() < 1e-9,
+        "E[#5★] = 1.625,实测 {e_stars}"
+    );
+    // 仿真:平均 5★ 数、平均抽数、最坏抽数 ≤ 160
+    let n = 40_000u64;
+    let mut sum_stars = 0.0f64;
+    let mut sum_pulls = 0.0f64;
+    let mut worst = 0u64;
+    for i in 0..n {
+        let mut rng = DayRng::new(20261101, i, 0);
+        let mut a = new_actor(i);
+        let pulls = pull_until_featured(&mut rng, &mut a, &cfg);
+        sum_stars += a.gacha_hits as f64;
+        sum_pulls += pulls as f64;
+        worst = worst.max(pulls);
+    }
+    let mean_stars = sum_stars / n as f64;
+    let mean_pulls = sum_pulls / n as f64;
+    assert!(
+        (mean_stars - e_stars).abs() < 0.02,
+        "仿真平均 5★ 数 {mean_stars:.4} vs 解析 {e_stars:.4}"
+    );
+    // E[pulls] ≈ E[#5★] × 每 5★ 均值(54.05)→ ≈ 87.8
+    assert!(
+        (mean_pulls - e_stars * 54.05).abs() < 1.5,
+        "仿真均值 {mean_pulls:.2} vs 解析 {:.2}",
+        e_stars * 54.05
+    );
+    assert!(worst <= 160, "定轨最坏 {worst} 应 ≤ 160(2×80)");
+}
+
+/// 角色池 50/50:E[#5★] = 1.5、最坏 180(2×90)。
+#[test]
+fn character_fifty_fifty_guarantee() {
+    let cfg = genshin_cfg();
+    let e_stars = featured_star_count_expectation(cfg.featured_rate, cfg.featured_guarantee);
+    assert!(
+        (e_stars - 1.5).abs() < 1e-9,
+        "角色 E[#5★] = 1.5,实测 {e_stars}"
+    );
+    let n = 20_000u64;
+    let mut worst = 0u64;
+    for i in 0..n {
+        let mut rng = DayRng::new(20261031, i, 0);
+        let mut a = new_actor(i);
+        worst = worst.max(pull_until_featured(&mut rng, &mut a, &cfg));
+    }
+    assert!(worst <= 180, "角色 50/50 最坏 {worst} 应 ≤ 180(2×90)");
+}
+
+/// 定轨层不扰动 5★ 率路径(CRN):同率面(武器池率面)下,有无定轨层,
+/// 同键流的 pull_until_hit 抽数逐点一致——定轨只在命中后判定,不改 5★ 率面。
+#[test]
+fn featured_layer_does_not_perturb_5star_path() {
+    let mut plain = weapon_cfg();
+    plain.featured_rate = 0.0;
+    plain.featured_guarantee = 0;
+    let featured = weapon_cfg();
+    for i in 0..300u64 {
+        let mut r1 = DayRng::new(9, i, 0);
+        let mut r2 = DayRng::new(9, i, 0);
+        let mut a1 = new_actor(i);
+        let mut a2 = new_actor(i);
+        let p1 = pull_until_hit(&mut r1, &mut a1, &plain);
+        let p2 = pull_until_hit(&mut r2, &mut a2, &featured);
+        assert_eq!(p1, p2, "定轨层不应改 5★ 抽数路径:i={i}");
+        assert_eq!(a1.gacha_pulls, a2.gacha_pulls);
+        assert_eq!(a1.gacha_hits, a2.gacha_hits);
+    }
+}
+
+/// 跨游戏同构(HSR):HSR 角色活动跃迁官方参数(0.6%/1.6%/90 硬/74 软/50-50)
+/// 与 Genshin 角色池同构;模型按同参数复现官方 1.6% 综合——验证模型跨游戏泛化
+/// (非 HSR 专属分布数据,溯源见 sources.md §3)。
+#[test]
+fn hsr_character_warp_matches_genshin_structure() {
+    let cfg = hsr_character_cfg();
+    let dist = model_distribution_to_hard(&cfg);
+    let mean = mean_of_to_hard(&dist);
+    let consolidated = 1.0 / mean;
+    assert!(
+        (consolidated - 0.016).abs() < 0.001,
+        "HSR 角色跃迁综合 {consolidated:.5} vs 官方 0.016"
+    );
+    assert!(
+        (hit_rate(&cfg, 73) - 0.066).abs() < 1e-9,
+        "HSR 抽 74 = 6.6%(软保底同构)"
     );
 }

@@ -77,6 +77,7 @@ mod tests {
             gacha_since_hit: 0,
             gacha_pulls: 0,
             gacha_hits: 0,
+            gacha_off_featured: 0,
         };
         a.recompute_power();
         a

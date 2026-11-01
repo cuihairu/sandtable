@@ -44,9 +44,12 @@ pub enum Purpose {
     /// 正态抽样(文档 24 章 R3):Box–Muller,一次逻辑抽取消耗两个均匀值
     /// (计数器 +2);改 μ/σ 只改变换不改键,双消耗键稳定。
     Normal = 8,
+    /// 抽卡「所定目标/UP 卡」判定(文档 24 章 R2,定轨层):与 5★ 命中流
+    /// ([`Purpose::Gacha`])分立,无定轨配置的 5★ 流逐字节不变(CRN 可比)。
+    GachaFeatured = 9,
 }
 
-pub const PURPOSE_COUNT: usize = 9;
+pub const PURPOSE_COUNT: usize = 10;
 
 /// 单个 u64 键派生:SplitMix64 终结器。
 fn mix(mut x: u64) -> u64 {
@@ -370,8 +373,9 @@ mod tests {
             Purpose::Shuffle as u8,
             Purpose::Gacha as u8,
             Purpose::Normal as u8,
+            Purpose::GachaFeatured as u8,
         ];
-        assert_eq!(nums, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(nums, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
         // 各 purpose 在同一键下取值互不相同(键空间正交)
         let all = [
             Purpose::Behavior,

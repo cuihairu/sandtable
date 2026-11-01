@@ -36,6 +36,9 @@ pub struct Actor {
     pub gacha_pulls: u64,
     /// 累计命中数
     pub gacha_hits: u64,
+    /// 定轨(连续非目标 5★ 计数,文档 24 章 R2):达到 featured_guarantee 后下一次
+    /// 5★ 必为所定目标;命中目标即清零。仅 featured_rate > 0 时推进(否则恒 0)。
+    pub gacha_off_featured: u64,
 }
 
 impl Actor {
@@ -96,6 +99,7 @@ impl World {
                 gacha_since_hit: 0,
                 gacha_pulls: 0,
                 gacha_hits: 0,
+                gacha_off_featured: 0,
             };
             actor.recompute_power();
             actors.push(actor);

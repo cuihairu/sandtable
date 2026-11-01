@@ -7,6 +7,10 @@
 //!   旧实现 +2 抽偏移:旧式 `max(0, k − soft_start)` 使软保底实际起于 soft_start+2 抽);
 //! - 硬保底:`n ≥ pity_hard > 0` 时 `p' = 1`(第 pity_hard 抽必中);
 //! - 软保底只在 `pity_soft_step > 0` 时生效(起点前增量为 0,天然退化)。
+//! - 定轨层(2026-11-01 校准,`featured_rate`/`featured_guarantee`):5★ 命中后独立判定
+//!   是否为所定目标(带键 [`Purpose::GachaFeatured`]);连续非目标达到 `featured_guarantee`
+//!   后下一次 5★ 必为目标。该层不改 5★ 率面、用独立 RNG 流——无定轨配置的 5★ 流
+//!   逐字节不变(CRN 可比)。
 //!
 //! 确定性:逐抽消耗带键 [`Purpose::Gacha`] 事件;保底计数器是 actor
 //! 确定性状态、**不进 RNG 键**——改保底参数只改概率面,不挪键(CRN 保持,
@@ -49,6 +53,41 @@ pub fn pull_until_hit(rng: &mut DayRng, actor: &mut Actor, cfg: &GachaConfig) ->
     }
 }
 
+/// 定轨判定:下一次 5★ 是否因连续非目标达到阈值而被强制为所定目标。
+/// 仅当 `featured_rate > 0`(有目标概念)且 `featured_guarantee > 0` 时成立。
+pub fn featured_is_guaranteed(cfg: &GachaConfig, off_featured: u64) -> bool {
+    cfg.featured_rate > 0.0 && cfg.featured_guarantee > 0 && off_featured >= cfg.featured_guarantee
+}
+
+/// 抽到「所定目标」的会话语义:重复 5★ 命中直到命中所定目标,期间非目标 5★
+/// 累计定轨计数(`actor.gacha_off_featured`),命中目标即清零。
+/// `featured_rate <= 0`(无目标概念,如常驻池)时退化为 [`pull_until_hit`]。
+///
+/// 定轨语义(2026-11-01 校准,溯源见 `data/public/genshin/sources.md`):
+/// 角色池 `featured_rate = 0.5` / `featured_guarantee = 1`(50/50,歪后必 UP);
+/// 武器池 Version 5.0 起 `0.375` / `1`(双 UP 各 37.5%,所定单武器,最坏 160 抽;
+/// 此前 2 点最坏 240);常驻池 `0` / `0`(无定轨)。
+pub fn pull_until_featured(rng: &mut DayRng, actor: &mut Actor, cfg: &GachaConfig) -> u64 {
+    if cfg.featured_rate <= 0.0 {
+        return pull_until_hit(rng, actor, cfg);
+    }
+    let before = actor.gacha_pulls;
+    loop {
+        // 5★ 率面与定轨无关:先走独立 5★ 命中会话,再判定是否为目标。
+        pull_until_hit(rng, actor, cfg);
+        let p = if featured_is_guaranteed(cfg, actor.gacha_off_featured) {
+            1.0
+        } else {
+            cfg.featured_rate
+        };
+        if rng.chance(Purpose::GachaFeatured, p) {
+            actor.gacha_off_featured = 0;
+            return actor.gacha_pulls - before;
+        }
+        actor.gacha_off_featured += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,6 +98,8 @@ mod tests {
             pity_hard,
             pity_soft_start: soft_start,
             pity_soft_step: soft_step,
+            featured_rate: 0.0,
+            featured_guarantee: 0,
         }
     }
 
@@ -200,6 +241,72 @@ mod tests {
         );
     }
 
+    /// 定轨层:featured_rate ≤ 0 退化为单层 5★ 会话(抽数逐点一致);
+    /// 定轨阈值处判定为真;有定轨时会话必在有限 5★ 内命中目标且计数清零;
+    /// 无定轨(featured_guarantee=0)时每次 5★ 独立判定。
+    #[test]
+    fn featured_layer_semantics() {
+        // 无目标概念 → pull_until_featured 与 pull_until_hit 抽数逐点一致
+        let plain = cfg(0.02, 50, 0, 0.0);
+        for i in 0..30u64 {
+            let mut r1 = DayRng::new(7, i, 0);
+            let mut r2 = DayRng::new(7, i, 0);
+            let mut a1 = new_actor(i);
+            let mut a2 = new_actor(i);
+            assert_eq!(
+                pull_until_featured(&mut r1, &mut a1, &plain),
+                pull_until_hit(&mut r2, &mut a2, &plain)
+            );
+            assert_eq!(a1.gacha_off_featured, 0);
+        }
+
+        // 定轨阈值判定:featured_guarantee=1 → 连续 1 次非目标后必为目标
+        let mut c = cfg(0.02, 50, 0, 0.0);
+        c.featured_rate = 0.5;
+        c.featured_guarantee = 1;
+        assert!(!featured_is_guaranteed(&c, 0));
+        assert!(featured_is_guaranteed(&c, 1));
+        assert!(featured_is_guaranteed(&c, 5));
+
+        // 有定轨:会话必命中目标、命中后计数清零、抽数 ≤ 最坏 2 次 5★ × 硬保底 50
+        for i in 0..200u64 {
+            let mut rng = DayRng::new(11, i, 0);
+            let mut a = new_actor(i);
+            pull_until_featured(&mut rng, &mut a, &c);
+            assert!(
+                a.gacha_hits >= 1 && a.gacha_hits <= 2,
+                "hits={}",
+                a.gacha_hits
+            );
+            assert_eq!(a.gacha_off_featured, 0, "命中目标后定轨计数清零");
+            assert!(
+                a.gacha_pulls <= 100,
+                "最坏 2×50=100:pulls={}",
+                a.gacha_pulls
+            );
+        }
+    }
+
+    /// 无定轨(featured_guarantee=0):5★ 独立判定,目标命中会话数服从几何(均 2 次 5★)。
+    #[test]
+    fn featured_without_guarantee_is_geometric() {
+        let mut c = cfg(0.02, 50, 0, 0.0);
+        c.featured_rate = 0.5;
+        c.featured_guarantee = 0;
+        let n = 2000u64;
+        let mean_hits: f64 = (0..n)
+            .map(|i| {
+                let mut rng = DayRng::new(42, i, 0);
+                let mut a = new_actor(i);
+                pull_until_featured(&mut rng, &mut a, &c);
+                a.gacha_hits as f64
+            })
+            .sum::<f64>()
+            / n as f64;
+        // E[#5★] = 1/0.5 = 2,σ=√2 → SE≈0.03,给 0.25 余量
+        assert!((mean_hits - 2.0).abs() < 0.25, "E[#5★]=2,实测 {mean_hits}");
+    }
+
     fn new_actor(id: u64) -> Actor {
         Actor {
             id,
@@ -220,6 +327,7 @@ mod tests {
             gacha_since_hit: 0,
             gacha_pulls: 0,
             gacha_hits: 0,
+            gacha_off_featured: 0,
         }
     }
 }

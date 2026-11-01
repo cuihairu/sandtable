@@ -301,6 +301,28 @@ pub struct GachaConfig {
     pub pity_soft_start: u64,
     /// 起点后每抽概率增量(0 = 无软保底)
     pub pity_soft_step: f64,
+    /// 5★ 命中时为「所定目标/UP 卡」的概率(0 = 无目标概念,如常驻池)。
+    /// - 角色池 0.5(50/50,UP 单卡);武器池 0.375(双 UP 各 37.5%,所定单武器),
+    ///   此时双 UP 合计 = 2 × featured_rate = 0.75(无 50/50);常驻池 0。
+    /// - 仅影响「命中后是否为所定目标」的分层,不改 5★ 率面(定轨不挪 CRN 键,
+    ///   同键流下 5★ 抽数分布与无定轨完全一致)。
+    #[serde(default, skip_serializing_if = "featured_rate_is_default")]
+    pub featured_rate: f64,
+    /// 定轨:连续「非目标」5★ 达该次数后,下一次 5★ 必为所定目标(0 = 无定轨)。
+    /// 角色池 1(50/50 歪后必 UP);武器池 Version 5.0 起 1(此前 2,最坏 240 抽);
+    /// 常驻池 0。仅与 featured_rate > 0 一同生效。
+    #[serde(default, skip_serializing_if = "featured_guarantee_is_default")]
+    pub featured_guarantee: u64,
+}
+
+/// featured_rate 缺省值 0.0 不进 canonical JSON(旧配置 config_hash 不变)。
+fn featured_rate_is_default(v: &f64) -> bool {
+    *v == 0.0
+}
+
+/// featured_guarantee 缺省值 0 不进 canonical JSON(旧配置 config_hash 不变)。
+fn featured_guarantee_is_default(v: &u64) -> bool {
+    *v == 0
 }
 
 impl Default for GachaConfig {
@@ -310,6 +332,8 @@ impl Default for GachaConfig {
             pity_hard: 0,
             pity_soft_start: 0,
             pity_soft_step: 0.0,
+            featured_rate: 0.0,
+            featured_guarantee: 0,
         }
     }
 }
@@ -1166,6 +1190,8 @@ mod tests {
                     pity_hard: 50,
                     pity_soft_start: 0,
                     pity_soft_step,
+                    featured_rate: 0.0,
+                    featured_guarantee: 0,
                 }),
                 ..SimConfig::default()
             }

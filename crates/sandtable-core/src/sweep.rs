@@ -750,6 +750,8 @@ mod tests {
                 pity_hard: 50,
                 pity_soft_start: 0,
                 pity_soft_step: 0.0,
+                featured_rate: 0.0,
+                featured_guarantee: 0,
             }),
             ..SimConfig::default()
         };
