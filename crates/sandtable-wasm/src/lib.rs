@@ -656,7 +656,7 @@ mod tests {
     fn param_registry_is_full_static_table() {
         let defs = param_registry_native();
         let n = defs.as_array().unwrap().len();
-        assert_eq!(n, 64, "注册表全量 64 项");
+        assert_eq!(n, 66, "注册表全量 66 项");
         let first = &defs[0];
         assert_eq!(first["path"], "scenario.population");
         assert_eq!(first["kind"], "u32", "kind serde 小写串");
@@ -788,8 +788,8 @@ mod tests {
         assert!(vals.get("scenario.duration").is_none());
         assert!(vals.get("model.loot.tables").is_none());
         assert!(vals.get("model.formulas.xp_needed").is_none());
-        // 数值注册路径全覆盖:64 − 7 非数值 = 57
-        assert_eq!(vals.as_object().unwrap().len(), 57);
+        // 数值注册路径全覆盖:66 − 7 非数值 = 59
+        assert_eq!(vals.as_object().unwrap().len(), 59);
         // 非法配置报配置错误(与 validate_config 同前缀)
         let err =
             param_values_native("schema_version: '1'\nscenario: {population: -5}\n").unwrap_err();
