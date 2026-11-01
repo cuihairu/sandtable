@@ -95,7 +95,7 @@
 
 | # | 严重度 | 问题 | 定位 | before | after | commit |
 | --- | --- | --- | --- | --- | --- | --- |
-| U1 | 高 | 数据与导出页内容被固定 1000px 上限挤在左侧,1920/2560 宽窗右侧空置 ~650–1290px | `.wb-app .exchange-page{ padding:23px; max-width:1000px }` | `shots-after/U1-before.png` | `shots-after/U1-after.png` | (见 git log `fix(ui): exchange page uses full width`) |
+| U1 | 高 | 数据与导出页内容被固定 1000px 上限挤在左侧,1920/2560 宽窗右侧空置 ~650–1290px | `.wb-app .exchange-page{ padding:23px; max-width:1000px }` | `shots-after/U1-before.png` | `shots-after/U1-after.png` | `068041f` |
 
 - **U1 证据**:修前 100%×2560 下 `.exchange-page` computed `width=1000px / max-width:1000px`,主区 2288px,右侧空置 1288px;修后 `width=2288px / max-width:none`。
 - **缩放矩阵**:100%/125%/150% × 1280/1920/2560 共 9 组合,交换页 `pageW==mainW` 全通过(无挤中间):`shots-after/zoom-grid/z{zoom}-w{width}.png`。其余页(analysis/parameters/designer/runs)经全量 cap 扫描无像素上限,均满宽利用。
