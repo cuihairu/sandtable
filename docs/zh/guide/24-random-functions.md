@@ -60,7 +60,7 @@ sandtable disttest normal --samples 100000 --buckets 20 --spread 3 --mu 0 --sigm
 **场景**:掉落表(70/25/5 三档)、品质 roll、NPC 行为分支。
 
 ::: tip 交付记录(2026-10-20,掉落结算 System)
-原语 2026-10-10 落地;2026-10-18 审核整改曾把配置面整体关闭(含 `model.loot` 的配置加载即拒),直到出现消费方。**结算现已接入**([设计](../loot-settlement-design.md)):每场战斗胜利从绑定表抽一次(`Purpose::Loot`,独立键维度,不扰动其他流),按 `rate_mult` 缩放条目金币/经验入账。含 `model.loot` 的配置恢复可加载;`model.loot.rate_mult` 数值通道**开放**(可读、可写、可 sweep)。`model.loot` **未配置**时该槽不进参数表 / 合并 YAML(落值会凭空生成缺 on_victory/rewards 的残缺 loot 节),故默认参数表 56 项、配置 loot 的基线 57 项。
+原语 2026-10-10 落地;2026-10-18 审核整改曾把配置面整体关闭(含 `model.loot` 的配置加载即拒),直到出现消费方。**结算现已接入**([设计](../loot-settlement-design.md)):每场战斗胜利从绑定表抽一次(`Purpose::Loot`,独立键维度,不扰动其他流),按 `rate_mult` 缩放条目金币/经验入账。含 `model.loot` 的配置恢复可加载;`model.loot.rate_mult` 数值通道**开放**(可读、可写、可 sweep)。`model.loot` **未配置**时该槽不进参数表 / 合并 YAML(落值会凭空生成缺 on_victory/rewards 的残缺 loot 节),故默认参数表 58 项、配置 loot 的基线 59 项(2026-10-20 落地时为 56/57,+2 来自 2026-11-01 定轨层)。
 :::
 
 ```yaml
@@ -178,7 +178,7 @@ R1/R2/R3 均为内核扩展,动 `rng.rs` 与注册表——**实施前以本页�
 ### R1 落地存档(2026-10-10)
 
 - **purpose 键纪律**:`Purpose::Shuffle = 6` 追加在枚举尾(锁定测试断言 0–6 逐位不变);加权表抽取复用既有空置的 `Purpose::Loot = 3`,R2/R3 用途届时继续尾部追加。黄金快照(`tests/golden.rs`)逐字节通过,`config_hash` 不变。
-- **配置面**:落地形态比设计稿多一层——`model.loot: {rate_mult, on_victory, tables: {表名: {weights: {...}}}, rewards: {条目: {gold, xp}}}`。`tables` / `on_victory` / `rewards` 走 `ParamKind::Table`(结构参数,不进数值通道),`rate_mult` 是 F64 数值槽。`loot: Option<LootConfig>` + `skip_serializing_if`(同 training 字段先例),未配置时 config_hash 与旧版逐字节一致。**更正(2026-10-18,审核整改)**:掉落结算始终未接入仿真,含 `model.loot` 的配置曾加载即拒、`rate_mult` 通道关闭。**已落地(2026-10-20,掉落结算 System)**:结算接入(胜利时经 `Purpose::Loot` 抽取,数额乘 `rate_mult`,金币随战斗金币同乘鲸鱼倍率),配置恢复可加载,通道开放(默认参数表 56 项 / 配置 loot 57 项),掉落金币切片走 `loot_gold_per_player` KPI(设计:[掉落结算设计](../loot-settlement-design.md);可跑案例 `examples/loot-settlement.yaml`,`cases.rs` 冒烟覆盖)。
+- **配置面**:落地形态比设计稿多一层——`model.loot: {rate_mult, on_victory, tables: {表名: {weights: {...}}}, rewards: {条目: {gold, xp}}}`。`tables` / `on_victory` / `rewards` 走 `ParamKind::Table`(结构参数,不进数值通道),`rate_mult` 是 F64 数值槽。`loot: Option<LootConfig>` + `skip_serializing_if`(同 training 字段先例),未配置时 config_hash 与旧版逐字节一致。**更正(2026-10-18,审核整改)**:掉落结算始终未接入仿真,含 `model.loot` 的配置曾加载即拒、`rate_mult` 通道关闭。**已落地(2026-10-20,掉落结算 System)**:结算接入(胜利时经 `Purpose::Loot` 抽取,数额乘 `rate_mult`,金币随战斗金币同乘鲸鱼倍率),配置恢复可加载,通道开放(默认参数表 58 项 / 配置 loot 59 项,自 2026-11-01 定轨层起;2026-10-20 落地时为 56/57),掉落金币切片走 `loot_gold_per_player` KPI(设计:[掉落结算设计](../loot-settlement-design.md);可跑案例 `examples/loot-settlement.yaml`,`cases.rs` 冒烟覆盖)。
 - **抽取原语**(`rng.rs`):`WeightedTable`(from_weights 校验 / probabilities / pick 二分)、`Draw::weighted`、`DayRng::weighted` / `draw_stream`(流式,一次推进 n)/ `shuffle`(Fisher–Yates,n−1 抽取)/ `sample`(局部洗牌取前 k)/ `sample_weighted`(A-Res 键序法,`u^(1/w)` 取前 k 大,total_cmp 排序 + 序号 tiebreak)。
 - **分布检验**(`disttest.rs`,不进仿真路径):Pearson χ²、Cochran 桶合并(期望 ≥ 5)、p 值经正则化不完全伽马(级数 + Lentz 连分数,Lanczos ln Γ);CLI `disttest uniform | weighted`,检验失败退出码 1,配置错误 2。
 
