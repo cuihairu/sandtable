@@ -539,6 +539,18 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
             Ok(v)
         }
     };
+    // F64 槽门(与 validate 的「非负有限」一致):pity_soft_step 是概率增量
+    // f64,合法值域为非负有限数——不得套 u32 上界门(u32 上界只属于 u32 槽),
+    // 否则同一参数经 YAML 直配与 apply_numeric 两条入口行为不一致。
+    let finite_nonneg = |v: f64, ty: &str| -> Result<f64, Error> {
+        if !v.is_finite() || v < 0.0 {
+            Err(Error::Config(format!(
+                "{path}: {ty} 必须为非负有限数(得到 {v})"
+            )))
+        } else {
+            Ok(v)
+        }
+    };
     match path {
         "scenario.population" => cfg.players = unsigned(value, "population")?.round() as u32,
         "scenario.seed" => cfg.base_seed = exact_u64(value, "seed")?.round() as u64,
@@ -645,7 +657,7 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.gacha.pity_soft_step" => {
             cfg.gacha
                 .get_or_insert_with(crate::config::GachaConfig::default)
-                .pity_soft_step = unsigned(value, "pity_soft_step")?;
+                .pity_soft_step = finite_nonneg(value, "pity_soft_step")?;
         }
         "model.gacha.featured_rate" => {
             cfg.gacha
@@ -806,6 +818,25 @@ mod tests {
             .to_string();
         assert!(err.contains("不能为负"), "仍应拒绝负数,实际:{err}");
         apply_numeric(&mut cfg, "scenario.population", 0.0).unwrap();
+    }
+
+    #[test]
+    fn f64_slot_pity_soft_step_uses_finite_nonneg_not_u32_bound() {
+        // F64 槽(概率增量)不得套 u32 上界门:超 u32 的值仍应可写(与 YAML
+        // validate 的「非负有限」入口一致),但非有限/负值必须拒绝。
+        let mut cfg = SimConfig::default();
+        apply_numeric(&mut cfg, "model.gacha.pity_soft_step", u32::MAX as f64 + 1.0).unwrap();
+        assert_eq!(
+            cfg.gacha.as_ref().unwrap().pity_soft_step,
+            u32::MAX as f64 + 1.0
+        );
+        for bad in [f64::NAN, f64::INFINITY, -1.0] {
+            let err = apply_numeric(&mut cfg, "model.gacha.pity_soft_step", bad)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("非负有限"), "应拒绝 {bad},实际:{err}");
+        }
+        apply_numeric(&mut cfg, "model.gacha.pity_soft_step", 0.0).unwrap();
     }
 
     #[test]
