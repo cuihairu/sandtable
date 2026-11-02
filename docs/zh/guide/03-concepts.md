@@ -6,7 +6,7 @@ title: 03 · 核心概念
 
 # 核心概念
 
-Sandtable 的核心不是功能列表,而是七个模型概念:
+Sandtable 的核心是七个模型概念:
 
 ```text
 Model · Actor · Cohort · System · Scenario · Metric · Experiment

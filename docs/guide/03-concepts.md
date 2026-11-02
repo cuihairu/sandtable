@@ -5,7 +5,7 @@ title: 03 · Core Concepts
 
 # Core Concepts
 
-Sandtable's core is not a feature list but seven modeling concepts:
+Sandtable's core is seven modeling concepts:
 
 ```text
 Model · Actor · Cohort · System · Scenario · Metric · Experiment

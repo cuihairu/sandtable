@@ -64,7 +64,7 @@ Keeping the project from losing control at the start:
 
 ## Relation to the Modeling Assumptions
 
-The PvP, guilds, and markets in the "not doing" list were not omitted casually — they correspond one-to-one with the modeling assumptions in [Project positioning](./01-positioning.md): independent players, PvE only, economy as aggregates. These three assumptions together form the MVP's feasible set; items beyond them (inter-player interaction) are architecture-level changes, filed as follow-up directions rather than MVP patches.
+The PvP, guilds, and markets in the "not doing" list correspond one-to-one with the modeling assumptions in [Project positioning](./01-positioning.md): independent players, PvE only, economy as aggregates. These three assumptions together form the MVP's feasible set; items beyond them (inter-player interaction) are architecture-level changes, filed as follow-up directions rather than MVP patches.
 
 ## License
 
