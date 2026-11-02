@@ -6,6 +6,7 @@
 > 2026-10-17 迁 VitePress 官方 locales:英文升为主语言占根路由(`/guide/`),中文整树移入 `docs/zh/`(`/zh/guide/`),导航栏出内置语言切换;此前同目录 `.en.md` 配对路由作废(下两条历史行的做法已被取代,内容全部保留)。
 > 2026-10-17 收尾(e990ad2,补记于 10-18 巡检):两棵树 29 页自定义「English | 中文」切换行全撤,语言切换归 VitePress 导航栏内置,路由不变,页面正文无改动。
 > 2026-10-18 巡检复核:可自服务区已清;5 条挂闸/方向性逐条核解锁证据仍无新输入——真实案例二期无运营数据入仓(2026-10-16 后 git log 仅 docs 提交,工作树净)、桌面人工开窗验收无执行记录(需本机 GUI 人工走查)、随机函数/Web API/GP 无新需求登记(open PR/issue=0,Dependabot=0);CI 与 Deploy Docs 至 e990ad2 全绿;tauri 上游 max stable 仍 2.12.4(3.0.0-α.5),tauri 3 未 stable,parked glib 抬升条件不满足,不重开已裁决搁置。
+> 2026-11-02 假验收事故与复核:用户看界面「尚无真实运行/合成演示」断言「没接内核,验收是假的」。复核结论——**内核链路是真的**,但本地构建链有一个静默旧内核坑:pnpm 对 `file:../../crates/sandtable-wasm/pkg` 依赖在 install 时拷贝进 node_modules,10-31 注册表新增 featured 抽卡字段并重建 pkg 后未重跑 `pnpm install`,dist 里打包的还是旧 wasm → 默认样例实验的 `model.gacha.featured_rate` 被旧内核判「未知参数」→ 提交按钮永久禁用,观感即「没接内核」。修复动作:wasm-pack 重建两份 pkg → `pnpm install` 刷新拷贝 → `pnpm build`(dist wasm hash dfb19ff0→fc15fe79)。无头 E2E 实测(1440px,playwright):提交实验 → 任务页「运行中·真实执行」→ 终态「已完成 · 真实执行」×2 → 分析页选中 run(succeeded,来源 kernel,6/6 候选返回,参数响应图/候选表/推荐齐全);472px 与 1280px 均 scrollWidth==clientWidth 无横向溢出。重建后 `pnpm install` 纪律已成文 docs/zh+en guide 22-web(WB-03.13 节)。截图:~/.cache/sandtable-shots/e2e-2026-11-02T11-52-02-120Z/。
 > 2026-10-24 架构总览图(7ba9710):`docs/public/architecture/` 四份 SVG(中英 × 桌面/竖排),照 apollo 画法——三色系、图内图例、桌面 1280×840 零连线交叉、移动 480×2320 竖排改版;中英首页各引对应图(窄屏 `<picture>` 自动切竖排)。验收:四份 XML 解析通过、中英用词分文件正确、精确字宽审计 0 溢出 0 越界、`docs:build` 通过且产物 URL 带 `/sandtable/` 前缀;图内数字(56 参数 / 8 指标 / 12 子命令 / 13 桌面命令 / 5 工作区)均对源码核过。
 
 ## 待办(可自服务)

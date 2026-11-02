@@ -55,7 +55,7 @@ A/B 双臂比较的输入契约与统计判定全部在内核,前端不另算一
 
 ### 绑定生成守卫(WB-03.13)
 
-wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试:`wasm-pack build crates/sandtable-wasm --target web --release`(浏览器 + tsc)与 `--target nodejs --out-dir pkg-node --dev`(节点测试)。漏建的症状是运行时 `does not provide an export named …`。contracts 里的**绑定生成守卫**把这条纪律自动化:收集 TS 包装(wasm.ts 服务层 + Worker 入口)从 `sandtable-wasm` 的全部命名导入,逐名校验 pkg-node 运行时导出、web pkg 的 JS 导出与 `.d.ts` 声明三面齐备——包装调用未生成导出即红。pkg / pkg-node 是构建产物,不进 git。
+wasm 导出面变更后必须**重建两份 pkg** 再做类型检查 / 跑测试:`wasm-pack build crates/sandtable-wasm --target web --release`(浏览器 + tsc)与 `--target nodejs --out-dir pkg-node --dev`(节点测试)。漏建的症状是运行时 `does not provide an export named …`。contracts 里的**绑定生成守卫**把这条纪律自动化:收集 TS 包装(wasm.ts 服务层 + Worker 入口)从 `sandtable-wasm` 的全部命名导入,逐名校验 pkg-node 运行时导出、web pkg 的 JS 导出与 `.d.ts` 声明三面齐备——包装调用未生成导出即红。pkg / pkg-node 是构建产物,不进 git。本地另有一个坑:pnpm 对 `file:` 依赖是在 install 时**拷贝**进 node_modules 的,重建 pkg 后不重跑 `pnpm install`,`vite build` 拿到的还是旧拷贝。绑定守卫查不到这一层(它校验的是新 pkg,不是安装拷贝),症状是打包产物静默跑**旧内核**——新注册参数被报未知。本地每次 wasm-pack 重建后:`pnpm install && pnpm build`,并确认 `dist/assets/` 里 wasm 资产 hash 已变化(CI 无此问题,`npm ci` 在 wasm-pack 之后执行)。
 
 ### 统一错误分类与 locale 展示(WB-03.15)
 
