@@ -626,7 +626,7 @@ export default function WorkbenchApp(): JSX.Element {
     : activeDoc?.id ?? null
 
   return (
-    <div className="wb-app" data-wb-root>
+    <div className={`wb-app${state.explorerCollapsed ? ' explorer-collapsed' : ''}`} data-wb-root>
       <a className="skip-link" href="#workspace">{t(locale, 'common.skipToWorkspace')}</a>
       {/* WB-04.01 · YAML 与 .sandtable 文件选择入口(取消不触发 onChange) */}
       <input
