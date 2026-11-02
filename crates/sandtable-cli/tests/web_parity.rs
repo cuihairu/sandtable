@@ -170,11 +170,13 @@ fn ab_compare_matches_cli_compare() {
     assert_eq!(wc["arm_a"]["n"], 8);
 }
 
-/// A/B 配对统计对照(WB-10.03):同一基线改 model.dungeon.m_attack 派生两个
+/// A/B 配对统计对照(WB-10.03):同一基线改 model.dungeon.m_defense 派生两个
 /// 候选,CLI 各自真跑 12 个 replicate。三方一致——CLI 的 report.json ≡ wasm
 /// `run_simulation` 的 results ≡ 内核 `compare` 直接吃 CLI 自己的原始逐
 /// replicate 值;后者证明 `compare_arms` 的指标提取不丢值、不错序。
-/// 用留存指标(随副本怪物攻击有真实波动)覆盖配对 t 区间,不是点估计退化。
+/// 用留存指标(随副本怪物防御=玩家可清线程度有真实波动)覆盖配对 t 区间,
+/// 不是点估计退化。注:怪物攻击在此口径下不影响留存——pick_tier 只进
+/// 玩家能赢的战斗,故防御才是留存驱动。
 #[test]
 fn ab_compare_matches_kernel_on_cli_arms() {
     let dir = scratch("st-ab-retention");
@@ -182,13 +184,14 @@ fn ab_compare_matches_kernel_on_cli_arms() {
         "schema_version: \"1\"\n",
         "scenario: {population: 400, duration: \"14d\", seed: 42}\n",
     );
-    let arm_yaml = |m_attack: i64| format!("{base}model:\n  dungeon:\n    m_attack: {m_attack}\n");
+    let arm_yaml =
+        |m_defense: i64| format!("{base}model:\n  dungeon:\n    m_defense: {m_defense}\n");
     const R: u32 = 12;
 
     // CLI 端:两份候选 YAML 各真跑一遍,留下原始逐 replicate 值
     let mut cli = Vec::new();
-    for (name, attack) in [("a", 10i64), ("b", 120i64)] {
-        let y = arm_yaml(attack);
+    for (name, defense) in [("a", 50i64), ("b", 120i64)] {
+        let y = arm_yaml(defense);
         let yaml_path = dir.join(format!("arm{name}.yaml"));
         let out_dir = dir.join(format!("arm{name}"));
         fs::write(&yaml_path, &y).unwrap();

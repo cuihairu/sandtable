@@ -664,6 +664,7 @@ export const en = {
   'analysis.responseTitle': '{label} · parameter response',
   'analysis.responseNote': 'Observed means / kernel 95% CI; constraint lines come from the submitted plan; the baseline shows only when the scan really ran the same baseline config. hard is a long dash, soft dotted. Multi-axis results project onto the selected axis; no interpolation.',
   'analysis.chartNote': '{points} observed points · {hidden} candidates not drawn (pending/failed/metric unavailable, see table) · independent y-axis {unit}',
+  'analysis.ratioOutOfRange': '{metric} has a mean outside [0, 100%] — a ratio can never be negative or exceed 100% (confidence-interval endpoints may legitimately cross the bounds); the axis is clamped, check the kernel data',
   'analysis.colStatus': 'Status / reason',
   'analysis.missingCoord': 'missing coordinate',
   'analysis.colCi': '{key} · 95% CI / n (sorted by lower bound)',

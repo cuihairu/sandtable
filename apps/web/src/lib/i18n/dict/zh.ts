@@ -665,6 +665,7 @@ export const zh = {
   'analysis.responseTitle': '{label} · 参数响应',
   'analysis.responseNote': '观测均值 / 内核 95% CI;约束线来自提交计划;基线仅在扫描确实运行了同一基线配置时显示。hard 长虚线,soft 点线。多轴结果按所选轴投影,不插值。',
   'analysis.chartNote': '{points} 个观测点 · {hidden} 个未绘制候选（等待/失败/指标不可用,见表） · 独立纵轴 {unit}',
+  'analysis.ratioOutOfRange': '{metric} 均值出现 [0,100%] 之外的值——比率不可能为负或超 100%(置信区间端点越界属正常统计现象);轴已钳制,请核查内核数据',
   'analysis.colStatus': '状态 / 原因',
   'analysis.missingCoord': '缺失坐标',
   'analysis.colCi': '{key} · 95% CI / n（下界排序）',

@@ -190,10 +190,14 @@ export function xAxisDomain(xs: readonly number[]): { min: number; max: number }
  * y 轴范围 = 观测均值 ± 真实 CI 的包络,再加 10% 余量;参考线(目标/基线)
  * 在包络外则并入;单点/同值(全同)给最小可见跨度 ±1e-9 档位扩大,不为画
  * 精确点伪造范围数字(余量与扩档都是轴设置,不落在数据上)。
+ * `clampTo`(可选):把包络后的轴钳进自然边界——比率/百分比类指标(win_rate
+ * 等)物理上 ∈ [0,1],10% 余量会把轴推出 [-10%,110%],画出"负胜率/超 100%"
+ * 的不可能刻度;传入 {min:0,max:1} 后轴不越界。仅轴设置收口,数据原样。
  */
 export function yAutoDomain(
   points: ReadonlyArray<{ mean: number; ci95_lo: number; ci95_hi: number }>,
   refs: ReadonlyArray<number | null>,
+  clampTo?: { min: number; max: number } | null,
 ): { min: number; max: number } | null {
   if (points.length === 0) return null
   let min = Infinity
@@ -208,8 +212,16 @@ export function yAutoDomain(
     max = Math.max(max, r)
   }
   const pad = (max - min) * 0.1
-  if (max - min <= Number.EPSILON) return { min: min - 1, max: max + 1 }
-  return { min: min - pad, max: max + pad }
+  const domain = max - min <= Number.EPSILON
+    ? { min: min - 1, max: max + 1 }
+    : { min: min - pad, max: max + pad }
+  if (clampTo) {
+    const clamped = { min: Math.max(clampTo.min, domain.min), max: Math.min(clampTo.max, domain.max) }
+    // 数据整体在边界外(或全同退化为越界档)时钳成整区间,不为空轴
+    if (clamped.max <= clamped.min) return { min: clampTo.min, max: clampTo.max }
+    return clamped
+  }
+  return domain
 }
 
 /* —— WB-08.05 · 真实约束线与基线线 —— */

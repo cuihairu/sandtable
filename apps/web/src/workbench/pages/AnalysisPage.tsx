@@ -169,7 +169,14 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
     const points = responsePoints(views, key, axis).drawable
     const targets = plan?.targets.filter((t) => t.metric === key) ?? []
     const base = baseline?.result?.stats.get(key)?.mean
-    const domain = yAutoDomain(points, [...targets.flatMap((t) => [t.min, t.max]), base ?? null])
+    // 比率/百分比类指标(win_rate/retention/churn)物理上 ∈ [0,1]:轴钳进
+    // [0,1](10% 余量会把轴推出 [-10%,110%],画出不可能刻度),数据真越界
+    // 则警告——内核口径保证不越界,此处是防御性兜底,不静默画错。
+    const ratio = meta.dimension === 'percent'
+    if (ratio && points.some((p) => p.mean < 0 || p.mean > 1)) {
+      notify('warning', t(locale, 'analysis.ratioOutOfRange', { metric: metricLabel(key, locale) }))
+    }
+    const domain = yAutoDomain(points, [...targets.flatMap((t) => [t.min, t.max]), base ?? null], ratio ? { min: 0, max: 1 } : null)
     return <div key={key} className={mini ? 'mini-figure' : 'chart-viewport'}>
       <h3>{metricLabel(key, locale)} · {metricUnit(key, locale)}</h3>
       <ResponseChart mini={mini} metric={{ id: key, label: metricLabel(key, locale), unit: metricUnit(key, locale), decimals: meta.decimals,

@@ -86,20 +86,20 @@ const MODEL: &[ParamSpec] = &[
     spec(
         "model.training.xp",
         I64,
-        "0",
+        "400",
         "每次练级会话经验产出(需 behavior.*.p_training > 0)",
     ),
     spec(
         "model.training.gold",
         I64,
-        "0",
+        "150",
         "每次练级会话金币产出(需 behavior.*.p_training > 0)",
     ),
     spec("model.dungeon.tiers", U32, "8", "副本层数(0 起)"),
-    spec("model.dungeon.m_hp", I64, "300", "第 0 层怪物 hp"),
-    spec("model.dungeon.m_attack", I64, "45", "第 0 层怪物攻击"),
-    spec("model.dungeon.m_defense", I64, "20", "第 0 层怪物防御"),
-    spec("model.dungeon.tier_growth", F64, "1.5", "每层怪物数值倍率"),
+    spec("model.dungeon.m_hp", I64, "250", "第 0 层怪物 hp"),
+    spec("model.dungeon.m_attack", I64, "160", "第 0 层怪物攻击"),
+    spec("model.dungeon.m_defense", I64, "150", "第 0 层怪物防御"),
+    spec("model.dungeon.tier_growth", F64, "1.3", "每层怪物数值倍率"),
     spec("model.dungeon.reward_gold", I64, "40", "第 0 层金币产出"),
     spec("model.dungeon.reward_xp", I64, "45", "第 0 层经验产出"),
     spec(
@@ -147,7 +147,7 @@ const MODEL: &[ParamSpec] = &[
     spec(
         "model.behavior.casual.p_training",
         F64,
-        "0.0",
+        "0.1",
         "casual 练级概率(需 model.training 产出面)",
     ),
     spec(
@@ -167,7 +167,7 @@ const MODEL: &[ParamSpec] = &[
     spec(
         "model.behavior.core.p_training",
         F64,
-        "0.0",
+        "0.1",
         "core 练级概率(需 model.training 产出面)",
     ),
     spec(
@@ -197,7 +197,7 @@ const MODEL: &[ParamSpec] = &[
     spec(
         "model.behavior.whale.p_training",
         F64,
-        "0.0",
+        "0.05",
         "whale 练级概率(需 model.training 产出面)",
     ),
     spec("model.progression.xp_base", I64, "60", "升级经验基数"),
@@ -205,7 +205,7 @@ const MODEL: &[ParamSpec] = &[
     spec(
         "model.progression.level_attack_gain",
         I64,
-        "5",
+        "8",
         "每次升级攻击增量",
     ),
     spec(
@@ -825,7 +825,12 @@ mod tests {
         // F64 槽(概率增量)不得套 u32 上界门:超 u32 的值仍应可写(与 YAML
         // validate 的「非负有限」入口一致),但非有限/负值必须拒绝。
         let mut cfg = SimConfig::default();
-        apply_numeric(&mut cfg, "model.gacha.pity_soft_step", u32::MAX as f64 + 1.0).unwrap();
+        apply_numeric(
+            &mut cfg,
+            "model.gacha.pity_soft_step",
+            u32::MAX as f64 + 1.0,
+        )
+        .unwrap();
         assert_eq!(
             cfg.gacha.as_ref().unwrap().pity_soft_step,
             u32::MAX as f64 + 1.0

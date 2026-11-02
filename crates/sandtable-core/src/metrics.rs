@@ -300,7 +300,9 @@ impl RunAggregator {
             churn_rate: self.cur.new_churned as f64 / alive_at_start.max(1) as f64,
             battles: self.cur.battles,
             wins: self.cur.wins,
-            win_rate: self.cur.wins as f64 / self.cur.battles.max(1) as f64,
+            // 防御性钳制 [0,1]:record_battle 保证 wins ≤ battles,但聚合/未来
+            // 调用点若引入重复计数,胜率不得外泄成不可能值(>100% / 负)
+            win_rate: (self.cur.wins as f64 / self.cur.battles.max(1) as f64).clamp(0.0, 1.0),
             gold_earned: self.cur.gold_earned,
             gold_spent: self.cur.gold_spent,
             sink_ratio,
@@ -367,7 +369,8 @@ impl RunAggregator {
             retention_d30: ret(30),
             churn_total: self.churn_total,
             churn_rate_total: self.churn_total as f64 / self.players.max(1) as f64,
-            win_rate: self.wins_total as f64 / self.battles_total.max(1) as f64,
+            // 防御性钳制 [0,1](同上:口径不变,只保证不越界)
+            win_rate: (self.wins_total as f64 / self.battles_total.max(1) as f64).clamp(0.0, 1.0),
             gold_earned_total: self.gold_earned_total,
             gold_spent_total: self.gold_spent_total,
             whale_gold_share: self.whale_gold_total as f64 / self.gold_earned_total.max(1) as f64,

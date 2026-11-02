@@ -169,11 +169,12 @@ impl Default for DungeonConfig {
     fn default() -> Self {
         Self {
             tiers: 8,
-            m_hp: 300,
-            // 基础怪物攻击接近玩家初始防御,深层构成真实威胁
-            m_attack: 45,
-            m_defense: 20,
-            tier_growth: 1.5,
+            m_hp: 250,
+            // 怪物攻防显著高于玩家初始值:低练度打不过、练级成长后逐层解锁——
+            // 胜率随初始攻击呈「上升→平台→饱和」梯度,而非 0/100 双峰
+            m_attack: 160,
+            m_defense: 150,
+            tier_growth: 1.3,
             reward_gold: 40,
             reward_xp: 45,
             reward_gold_growth: 1.4,
@@ -369,7 +370,7 @@ impl Default for ActorBehaviorConfig {
             sessions_frac: 0.5,
             p_dungeon: 0.7,
             p_upgrade: 0.2,
-            p_training: 0.0,
+            p_training: 0.1,
         }
     }
 }
@@ -447,14 +448,14 @@ impl Default for BehaviorConfig {
                 sessions_frac: 0.5,
                 p_dungeon: 0.6,
                 p_upgrade: 0.3,
-                p_training: 0.0,
+                p_training: 0.1,
             },
             whale: ActorBehaviorConfig {
                 sessions_int: 5,
                 sessions_frac: 0.0,
                 p_dungeon: 0.65,
                 p_upgrade: 0.3,
-                p_training: 0.0,
+                p_training: 0.05,
             },
         }
     }
@@ -502,7 +503,7 @@ impl Default for ProgressionConfig {
         Self {
             xp_base: 60,
             xp_pow: 1.3,
-            level_attack_gain: 5,
+            level_attack_gain: 8,
             level_defense_gain: 3,
             level_hp_gain: 50,
             upgrade_cost_base: 50,
@@ -613,7 +614,7 @@ impl Default for SimConfig {
             combat: CombatConfig::default(),
             dungeon: DungeonConfig::default(),
             behavior: BehaviorConfig::default(),
-            training: None,
+            training: Some(TrainingConfig { xp: 400, gold: 150 }),
             progression: ProgressionConfig::default(),
             formulas: FormulaConfig::default(),
             churn: ChurnConfig::default(),

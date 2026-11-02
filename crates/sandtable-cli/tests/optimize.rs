@@ -31,7 +31,7 @@ optimize:
   mutation_scale: 0.3
   replicates: 2
   parameters:
-    model.warrior.attack: {min: 80, max: 140, step: 10}
+    model.warrior.attack: {min: 100, max: 180, step: 20}
   targets:
     - metric: win_rate
       min: 0.3
@@ -71,7 +71,7 @@ fn optimize_end_to_end_best_and_generations() {
     let best_atk = v["best"]["values"]["model.warrior.attack"]
         .as_f64()
         .unwrap();
-    assert!((80.0..=140.0).contains(&best_atk), "{best_atk}");
+    assert!((100.0..=180.0).contains(&best_atk), "{best_atk}");
     assert_eq!(v["best_fitness"]["hard_pass"], 1);
     assert_eq!(v["best"]["status"], "ok");
 
