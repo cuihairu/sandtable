@@ -527,8 +527,11 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
     // u64 槽位安全整数门(WB-03.08):f64 在 2^53 之外整数值会静默舍入,
     // seed / 保底抽数是确定性语义,错 1 就是另一个实验——明确拒绝不静默。
     let exact_u64 = |v: f64, ty: &str| -> Result<f64, Error> {
-        unsigned(v, ty)?;
-        if v > 9_007_199_254_740_991.0 {
+        // 不复用 unsigned:u64 槽(seed/保底抽数)合法值域到 2^53−1,
+        // u32 上界只属于 u32 槽,先经 unsigned 会把大 seed 误报成 u32 超限。
+        if v < 0.0 {
+            Err(Error::Config(format!("{path}: {ty} 不能为负(得到 {v})")))
+        } else if v > 9_007_199_254_740_991.0 {
             Err(Error::Config(format!(
                 "{path}: {ty} 超出安全整数上限 2^53−1(得到 {v}),请在 YAML 直接编辑,不静默舍入"
             )))
@@ -803,6 +806,22 @@ mod tests {
             .to_string();
         assert!(err.contains("不能为负"), "仍应拒绝负数,实际:{err}");
         apply_numeric(&mut cfg, "scenario.population", 0.0).unwrap();
+    }
+
+    #[test]
+    fn exact_u64_accepts_above_u32_up_to_safe_integer() {
+        // C2 修复回归锁:u64 槽(seed)合法值域到 2^53−1,u32 上界不得误伤;
+        // 越 2^53−1 仍走安全整数门(明确拒绝不静默),不是 u32 门。
+        let mut cfg = SimConfig::default();
+        apply_numeric(&mut cfg, "scenario.seed", 12_345_678_901.0).unwrap();
+        assert_eq!(cfg.base_seed, 12_345_678_901);
+        let err = apply_numeric(&mut cfg, "scenario.seed", 9_007_199_254_740_993.0)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("2^53−1") && err.contains("不静默舍入"),
+            "超安全整数应报 2^53−1 门,实际:{err}"
+        );
     }
 
     /// read_numeric 与 apply_numeric 互为镜像:全部数值路径读出 → 写回 →
