@@ -67,21 +67,21 @@ Web `apps/web/src`（XSS/门禁/异步执行器）、Python `scripts/` + `script
 | 严重度 | 数 | 明细 |
 |---|---|---|
 | P0 | 0 | — |
-| P1 | 0 | — |
-| P2 | 1 | C2（registry u32 饱和）；C1 撤回（见 §七） |
+| P1 | 1 | C3（C2 修复的 u32 上界泄漏进 u64 槽，2026-11-02 复验发现，已修，见 §八） |
+| P2 | 1 | C2（registry u32 饱和，已由 `0eb947b` 修复并关闭）；C1 撤回（误报，见 §七） |
 | P3 | 0 | — |
 
 ## 五、修复状态（⑤）
 
-- **P0/P1 当场修**：无（0 项）——本轮无 P0/P1 发现。
-- **P2/P3 → todo.md**：C2（registry u32 饱和）已记 todo.md（见 §七）。C1 为误报、无需入 todo。
-- **无代码改动**（未发现需修的真实缺陷；C2 为防御性缺口，留 todo）。
+- **P0/P1 当场修**：C3（P1，2026-11-02 复验发现）——一问题一 commit（见 §八）。
+- **P2**：C2（registry u32 饱和）已由 `0eb947b` 修复并关闭（todo 行见 `8170f7a`）。C1 为误报、无需入 todo。
+- **剩余未修**：0。
 
 ## 六、汇报（⑥）
 
-- **发现数**：1 确认（C2 P2）；1 撤回（C1 误报，见 §七）。**已修**：0（无 P0/P1）。**剩余**：1（C2，待修，已入 todo）。
-- **commit**：本报告 `docs(review): add 2026-11-01 full-repo code review`（本轮无代码修复 commit）。
-- **门禁**：全部绿（见 §三）。**扫描覆盖**：见 §首段（Rust 全量、Web 门禁+XSS+执行器、Python、GH Actions）。
+- **发现数**：2 确认（C2 P2、C3 P1）；1 撤回（C1 误报，见 §七）。**已修**：2（C2 由 `0eb947b`、C3 由本次修复，见 §八）。**剩余**：0。
+- **commit**：`0eb947b`（C2 修复）、本次 C3 修复 + 本报告（见 §八）。
+- **门禁**：fmt/clippy/workspace-test/tsc/oxlint/docs 全绿（C3 修复后复验，见 §八）。**扫描覆盖**：见 §首段（Rust 全量、Web 门禁+XSS+执行器、Python、GH Actions）。
 
 ## 七、勘误（2026-11-02）
 
@@ -90,3 +90,13 @@ Web `apps/web/src`（XSS/门禁/异步执行器）、Python `scripts/` + `script
 - **C1 撤回**：报告初稿称 `report.rs` 图表轴渲染器（`let n = c.xs.len()` @ 1162、`c.xs[0]` @ 1310、`c.xs[n-1]` @ 1315）在空数据时会 panic。实测 `fn svg_chart`（`report.rs:1152`）**首行守卫** `if c.xs.is_empty() || c.series.is_empty() || c.series.iter().all(|s| s.ys.is_empty()) { return "…无数据" }`（`report.rs:1159-1161`）提前返回空态，三处索引全在守卫之后、同函数内无其他 fn 边界，空数据时不可达。该守卫自 `svg_chart` 首个 commit（7920cd4）即在，非新修。故 C1 不成立，撤回。
 - **C2 保留**：复核 `crates/sandtable-core/src/registry.rs:516-523` 的 `unsigned` 闭包当前 HEAD 仍只拒负、无上界校验，`.round() as u32` 在值 > u32::MAX 时静默饱和（自 Rust 1.45 起不 UB，但违背本仓 `exact_u64`「明确拒绝不静默」原则）。C2 成立，已补 todo.md（条目「审核发现：u32 槽位无上限检查」）。
 - **计数更正**：P2 由 2 改为 1（C2）。
+
+## 八、复验与新增发现（2026-11-02）
+
+按任务书复跑全流程（安全静态扫描 → 隐藏 bug 猎捕 → 质量门禁 → 分级修复），发现 C2 已被修复、且其修复引入一处回归：
+
+- **C2 已修复（`0eb947b`）**：`apply_numeric` 的 `unsigned` 闭包现含 `v > u32::MAX as f64` 上界校验（`registry.rs:519`），超限报「不能超过 u32 上限」；测试 `unsigned_rejects_above_u32_max`（`registry.rs:794`）。todo 行已关闭（`8170f7a`）。
+- **C3（新，P1，已修）**：`0eb947b` 把 u32 上界加进 `unsigned` 闭包，而 `exact_u64`（u64 槽）当时第 530 行委托 `unsigned(v, ty)?`，使 u32 上界泄漏进 u64 槽——`scenario.seed`（合法值域到 2^53−1）在 `(u32::MAX, 2^53−1]` 被**误拒**、报「不能超过 u32 上限」，且 `> 2^53−1` 的报错也从安全整数门换成 u32 门，破坏「明确拒绝不静默」契约，并使 `sandtable-wasm` 测试 `u64_beyond_safe_integer_is_lossless_or_rejected` 红（`crates/sandtable-wasm/src/lib.rs:817` 断言 `2^53−1` + `不静默舍入`）。**修法**：`exact_u64` 不再委托 `unsigned`，自持负值 + 安全整数门（`registry.rs:529-538`）；回归测试 `exact_u64_accepts_above_u32_up_to_safe_integer` 锁定（`registry.rs:794`）。一问题一 commit。
+- **门禁（复跑，C3 修复后）**：`cargo fmt --all --check` 净；`cargo clippy --workspace --all-targets -- -D warnings` exit 0；`cargo test --workspace` 全绿（core 204、wasm 24、engine 20、cli 22、mcp 13 等，0 失败）；`tsc -b --noEmit` exit 0；`oxlint` exit 0；`pnpm docs:build` 绿。
+- **安全扫描（复跑）**：硬编码密钥 / shell 注入 / SQL 拼接 / eval / 不安全反序列化全部零命中；唯一 `unsafe` 仍为 `analyze.rs:95` 合法进程组 kill（pid 来自刚 spawn 的子进程，非用户输入）。结论同 §一。
+- **计数更正**：P1 由 0 改为 1（C3）；发现数 2、已修 2、剩余 0。
