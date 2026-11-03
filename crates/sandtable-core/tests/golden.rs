@@ -86,10 +86,8 @@ fn golden_recorded_balance_values_match_snapshot() {
 
 /// 把相邻拼接的多个 JSON 对象解析为数组(serde_json 流式读多个值)。
 fn parse_concatenated_json(raw: &str) -> Vec<serde_json::Value> {
-    let mut out = Vec::new();
-    let mut stream = serde_json::Deserializer::from_str(raw).into_iter::<serde_json::Value>();
-    while let Some(v) = stream.next() {
-        out.push(v.unwrap());
-    }
-    out
+    serde_json::Deserializer::from_str(raw)
+        .into_iter::<serde_json::Value>()
+        .map(Result::unwrap)
+        .collect()
 }
