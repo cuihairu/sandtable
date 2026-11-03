@@ -182,6 +182,9 @@ pub struct RunAggregator {
     gacha_pulls_total: u64,
     gacha_hits_total: u64,
     loot_gold_total: u64,
+    /// 配置存在金币型掉落奖励(决定 loot_gold_per_player 是否为可测量:
+    /// 有金币型奖励时 0 亦是实测值须给出;纯经验/未配置时该切片无口径)
+    loot_gold_capable: bool,
 }
 
 impl RunAggregator {
@@ -209,6 +212,10 @@ impl RunAggregator {
             gacha_pulls_total: 0,
             gacha_hits_total: 0,
             loot_gold_total: 0,
+            loot_gold_capable: cfg
+                .loot
+                .as_ref()
+                .is_some_and(|l| l.rewards.values().any(|r| r.gold > 0)),
         }
     }
 
@@ -386,7 +393,9 @@ impl RunAggregator {
             } else {
                 None
             },
-            loot_gold_per_player: if self.loot_gold_total > 0 {
+            // 切片口径=「存在金币型掉落奖励」:有则 0 也是实测值(无胜利→0.0
+            // 仍应给出),无则纯经验/未配置无该口径(契约:配置决定键存否)
+            loot_gold_per_player: if self.loot_gold_capable {
                 Some(self.loot_gold_total as f64 / self.players.max(1) as f64)
             } else {
                 None

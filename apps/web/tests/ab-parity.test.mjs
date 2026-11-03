@@ -27,9 +27,12 @@ if (!existsSync(pkgNode)) {
   // 基线只带 scenario;两个候选只改副本怪物攻击这一处,其余逐字相同。
   // 用同一模板替换数值,「只改一个参数」是构造上成立的,不是断言出来的。
   const BASELINE = ['schema_version: "1"', 'scenario: {population: 400, duration: "14d", seed: 42}', '']
-  const armYaml = (mAttack) =>
-    BASELINE.join('\n') + `model:\n  dungeon:\n    m_attack: ${mAttack}\n`
-  const A = 10
+  // 派生(完整 retune):副本怪物防御是留存驱动——m_attack 10 vs 120 的
+  // 逐 replicate retention_d7 逐位相同(实测 sdd=0,配对 t 区间退化),故用
+  // m_defense 扰动(50 vs 120)产生真实波动与差异;方向 B(防御 120)留存更低。
+  const armYaml = (mDefense) =>
+    BASELINE.join('\n') + `model:\n  dungeon:\n    m_defense: ${mDefense}\n`
+  const A = 50
   const B = 120
   const ya = armYaml(A)
   const yb = armYaml(B)
@@ -66,10 +69,10 @@ if (!existsSync(pkgNode)) {
     const pb = JSON.parse(wasm.param_values(yb))
     const keys = new Set([...Object.keys(pa), ...Object.keys(pb)])
     const differs = [...keys].filter((k) => JSON.stringify(pa[k]) !== JSON.stringify(pb[k]))
-    assert.deepEqual(differs, ['model.dungeon.m_attack'], '两候选只差一个数值')
+    assert.deepEqual(differs, ['model.dungeon.m_defense'], '两候选只差一个数值')
     // param_values 是按路径平铺的 map(键即点号路径),不是嵌套对象
-    assert.equal(pb['model.dungeon.m_attack'], B)
-    assert.equal(pa['model.dungeon.m_attack'], A)
+    assert.equal(pb['model.dungeon.m_defense'], B)
+    assert.equal(pa['model.dungeon.m_defense'], A)
 
     // 2 · 双臂真跑:同 seed 同 replicate 序号 = CRN 配对,可复现
     const ra = JSON.parse(wasm.run_simulation(ya, R))
@@ -118,8 +121,8 @@ if (!existsSync(pkgNode)) {
     assert.ok(sdd > 0, '配对差有波动,CI 不是退化点估计')
     assert.ok(cmp.diff_ci95_lo < cmp.diff_mean && cmp.diff_mean < cmp.diff_ci95_hi, '配对差均值落在自身 CI 内')
 
-    // 7 · 方向:怪物攻击更高的一侧留存更低——两臂确实是 A/B 而非同号副本
-    assert.ok(cmp.diff_mean < 0, 'B(m_attack=120)留存低于 A(m_attack=10)')
+    // 7 · 方向:怪物防御更高的一侧留存更低——两臂确实是 A/B 而非同号副本
+    assert.ok(cmp.diff_mean < 0, 'B(m_defense=120)留存低于 A(m_defense=50)')
 
     // 8 · 换臂不变量:差值取反、CI 镜像、判定互翻——配对是按 replicate 序号而非重排
     const swap = JSON.parse(wasm.ab_compare(yb, ya, METRIC, JSON.stringify(rb.results), JSON.stringify(ra.results)))

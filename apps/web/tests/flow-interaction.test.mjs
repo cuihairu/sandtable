@@ -104,21 +104,25 @@ if (!existsSync(pkgNode)) {
     // 选中点恰是图上 aria-pressed 的那个:data-candidate 面与 selectedId 对位
     assert.ok(drawable.some((p) => p.id === ui.selectedId), '选中 id 在图上有点(焦点可落)')
 
-    // —— 表格键盘步进在「可见」行集内:真内核判定 pass×1 + borderline×2,
+    // —— 表格键盘步进在「可见」行集内:真内核判定 pass×2 + borderline×1,
     //    筛选后只走可见子集,不越进被筛掉的隐藏行 ——
+    // 派生(完整 retune 后 sweep_candidate 实测):强怪下默认战士兵败,玩具 3 天
+    // 场景 win_rate≈0——attack 90/100 全 0 胜 CI 收缩 [0,0] 全含 [0,1] → pass;
+    // attack 110 仅 1 胜(win_rate 0.0044)CI=[-0.052,0.060] 下界触界 → borderline。
     const verdictOf = (r) => r.result ? overallOutcome(r.result).overall : null
-    assert.deepEqual(rows.map(verdictOf), ['pass', 'borderline', 'borderline'], '内核判定:attack=90 过界,其余 CI 触界临界')
+    assert.deepEqual(rows.map(verdictOf), ['pass', 'pass', 'borderline'], '完整 retune:90/100 CI 全含 [0,1],110 单胜 CI 触界')
     const visible = orderedRows(all, { filter: 'pass', by: 'index', dir: 1 })
-    assert.deepEqual(visible.map((r) => r.id), [rows[0].id], 'pass 可见子集 = 1 行')
+    assert.deepEqual(visible.map((r) => r.id), [rows[0].id, rows[1].id], 'pass 可见子集 = 2 行')
     const stepIn = (order, id, delta) => stepSelection(order.map((r) => ({ id: r.id })), id, delta)
     assert.equal(stepIn(visible, null, 1), rows[0].id, '空选中从首个可见行进入')
-    assert.equal(stepIn(visible, rows[0].id, -1), rows[0].id, '单行子集两向夹紧')
-    assert.equal(stepIn(visible, rows[0].id, 1), rows[0].id)
+    assert.equal(stepIn(visible, rows[0].id, -1), rows[0].id, '子集首行向上夹紧——不越进被筛掉的隐藏行')
+    assert.equal(stepIn(visible, rows[0].id, 1), rows[1].id, '子集内前进')
+    assert.equal(stepIn(visible, rows[1].id, 1), rows[1].id, '子集末行夹紧(不回绕)')
+    assert.equal(stepIn(visible, rows[1].id, -1), rows[0].id, '子集内后退')
     const border = orderedRows(all, { filter: 'borderline', by: 'index', dir: 1 })
-    assert.deepEqual(border.map((r) => r.id), [rows[1].id, rows[2].id], 'borderline 可见子集 = 2 行')
-    assert.equal(stepIn(border, rows[1].id, 1), rows[2].id, '子集内前进')
+    assert.deepEqual(border.map((r) => r.id), [rows[2].id], 'borderline 可见子集 = 1 行')
     assert.equal(stepIn(border, rows[2].id, 1), rows[2].id, '子集末行夹紧(不回绕)')
-    assert.equal(stepIn(border, rows[1].id, -1), rows[1].id, '子集首行向上夹紧——不越进被筛掉的隐藏行')
+    assert.equal(stepIn(border, rows[2].id, -1), rows[2].id, '子集首行向上夹紧——不越进被筛掉的隐藏行')
     const failView = orderedRows(all, { filter: 'fail', by: 'index', dir: 1 })
     assert.equal(failView.length, 0, '无 fail 判定行,fail 视图为空(隐藏行不进导航域)')
     assert.equal(stepIn(failView, null, 1), null, '空可见集步进不逃进隐藏行')

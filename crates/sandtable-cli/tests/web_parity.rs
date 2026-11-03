@@ -175,8 +175,12 @@ fn ab_compare_matches_cli_compare() {
 /// `run_simulation` 的 results ≡ 内核 `compare` 直接吃 CLI 自己的原始逐
 /// replicate 值;后者证明 `compare_arms` 的指标提取不丢值、不错序。
 /// 用留存指标(随副本怪物防御=玩家可清线程度有真实波动)覆盖配对 t 区间,
-/// 不是点估计退化。注:怪物攻击在此口径下不影响留存——pick_tier 只进
-/// 玩家能赢的战斗,故防御才是留存驱动。
+/// 不是点估计退化。注(本工作点,非普遍因果):完整 retune 下副本怪物攻防
+/// 均高于玩家初始值,pick_tier 门②(incoming=rounds·p_hit_monster·dmg_in,
+/// dmg_in 含 m_attack)按战力自选可清层——但实测 m_attack 10 vs 120 的逐
+/// replicate retention_d7 逐位相同(留存由防御/清线难度主导),故本测试用
+/// m_defense 扰动产生真实波动;换工作点(如弱怪)时 m_attack 可重新进入
+/// 留存驱动面,不应据此把「攻击不影响留存」当普遍因果。
 #[test]
 fn ab_compare_matches_kernel_on_cli_arms() {
     let dir = scratch("st-ab-retention");
