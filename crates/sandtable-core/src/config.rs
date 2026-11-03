@@ -287,6 +287,22 @@ impl Default for LootConfig {
     }
 }
 
+impl LootConfig {
+    /// 是否存在金币型掉落奖励。`loot_gold_per_player` 只测金币切片:
+    /// 有金币奖励时 0 也是实测值;纯经验/未配置时该口径不可用。
+    pub fn has_gold_reward(&self) -> bool {
+        self.rewards.values().any(|reward| reward.gold > 0)
+    }
+}
+
+impl SimConfig {
+    /// `loot_gold_per_player` 是否可测:存在金币型掉落奖励(不是只看
+    /// loot 节是否在场——纯经验掉落 gold 全 0 时该 KPI 无金币口径)。
+    pub fn loot_gold_measurable(&self) -> bool {
+        self.loot.as_ref().is_some_and(LootConfig::has_gold_reward)
+    }
+}
+
 /// 抽卡保底配置面(文档 24 章 R2)。状态机语义:
 /// 单抽成功率 `p' = min(1, base_rate + max(0, n − pity_soft_start + 1)·pity_soft_step)`,
 /// 且 `n ≥ pity_hard > 0` 时 `p' = 1`(n = 抽数,1 起始)。

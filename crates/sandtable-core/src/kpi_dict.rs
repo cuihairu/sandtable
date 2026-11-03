@@ -137,7 +137,7 @@ fn definition(key: MetricKey) -> MetricDefinition {
 pub fn is_gated(def: &MetricDefinition, cfg: &crate::config::SimConfig) -> bool {
     (def.days_required > 0 && cfg.days < def.days_required)
         || (def.requires_gacha && cfg.gacha.is_none())
-        || (def.requires_loot && cfg.loot.is_none())
+        || (def.requires_loot && !cfg.loot_gold_measurable())
 }
 
 #[cfg(test)]
@@ -161,7 +161,24 @@ mod tests {
         if !loot {
             cfg.loot = None;
         } else {
-            cfg.loot = Some(crate::config::LootConfig::default());
+            // 默认 LootConfig 无奖励;构造一个带金币型奖励的配置,使
+            // 「loot 在场且可测」在测试里代表金币掉落口径(与既有断言一致)。
+            use crate::config::{LootConfig, LootReward, LootTableConfig};
+            let mut tables = std::collections::BTreeMap::new();
+            tables.insert(
+                "chest".to_string(),
+                LootTableConfig {
+                    weights: [("gold_pouch".to_string(), 1.0)].into(),
+                },
+            );
+            let mut rewards = std::collections::BTreeMap::new();
+            rewards.insert("gold_pouch".to_string(), LootReward { gold: 10, xp: 0 });
+            cfg.loot = Some(LootConfig {
+                rate_mult: 1.0,
+                on_victory: "chest".to_string(),
+                tables,
+                rewards,
+            });
         }
         cfg
     }

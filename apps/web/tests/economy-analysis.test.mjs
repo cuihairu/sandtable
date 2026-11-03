@@ -114,6 +114,15 @@ test('unconfigured gacha/loot stay null and every absence gets a reason', () => 
   assert.ok(economyUnavailable(AGG).every((item) => item.labelKey && item.reasonKey))
 })
 
+/* 审核发现 2026-11-04:纯经验掉落(gold 全 0)与未配置 loot 同为「无可测口径」,
+   原因统一为「无可测的金币型掉落奖励」,不再失实为「未配置」。 */
+test('economy loot off reason names the measurable-gold predicate, not a wrong "unconfigured"', () => {
+  assert.match(zh['analysis.econ.lootOffReason'], /无可测的金币型掉落奖励/)
+  assert.match(en['analysis.econ.lootOffReason'], /no measurable gold-bearing loot reward/i)
+  const lootOff = economyUnavailable(AGG).find((item) => item.id === 'loot_off')
+  assert.equal(lootOff?.reasonKey, 'analysis.econ.lootOffReason')
+})
+
 if (!existsSync(pkgNode)) {
   test('skip: pkg-node unavailable; model and i18n guards still ran', () => {
     assert.ok(true)

@@ -356,6 +356,19 @@ export function hasParam(parsed: ParsedConfig, path: string): boolean {
   )
 }
 
+/** `loot_gold_per_player` 是否可测:存在金币型掉落奖励。
+ *  与内核 config.rs `SimConfig::loot_gold_measurable` 同口径——纯经验掉落
+ *  (gold 全 0、xp>0,validate 合法)时该 KPI 无金币口径,不得因 loot 节
+ *  在场就宣称可测。*/
+export function lootGoldMeasurable(parsed: ParsedConfig): boolean {
+  return parsed.leaves.some((l) => {
+    const m = /^model\.loot\.rewards\.[^.]+\.gold$/.exec(l.path)
+    if (!m) return false
+    const n = Number(l.raw)
+    return Number.isFinite(n) && n > 0
+  })
+}
+
 /** 配置中数值注册路径 → 数值(参数域视图;候选 ID / 导出用)。
  * 只取注册表数值 kind 的路径,schema_version 等非注册键不进域。 */
 export function numericValuesOf(parsed: ParsedConfig): Record<string, number> {

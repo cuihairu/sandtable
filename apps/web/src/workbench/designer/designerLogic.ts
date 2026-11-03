@@ -9,7 +9,7 @@
 // 执行/预算不在这里猜:候选与预算只能来自 planSweep(WB-06.10)。
 import { SWEEP_MODES } from '../../lib/types.ts'
 import type { SweepMode } from '../../lib/types.ts'
-import { applyParamEdit, parseConfig, readNumeric, readText } from '../params/configYaml.ts'
+import { applyParamEdit, lootGoldMeasurable, parseConfig, readNumeric, readText } from '../params/configYaml.ts'
 import { formatScalar } from '../params/paramsLogic.ts'
 import { hashId, ID_PREFIXES } from '../ids.ts'
 import { PARAM_REGISTRY, registryParam } from '../params/paramRegistry.ts'
@@ -266,6 +266,7 @@ export function kpiAvailability(yaml: string, locale?: Locale): Record<string, K
   const days = stats.days
   const hasGacha = parsed.leaves.some((l) => l.path.startsWith('model.gacha.'))
   const hasLoot = parsed.leaves.some((l) => l.path.startsWith('model.loot.'))
+  const lootGold = lootGoldMeasurable(parsed)
   const out: Record<string, KpiAvailability> = {}
   for (const metric of KPI_POOL) {
     let reason: string | null = null
@@ -275,8 +276,9 @@ export function kpiAvailability(yaml: string, locale?: Locale): Record<string, K
       reason = days === null ? msg(locale, 'experiment.errD3NoDays') : msg(locale, 'experiment.errD3Short')
     } else if (metric === 'gacha_pulls_to_hit' && !hasGacha) {
       reason = msg(locale, 'experiment.errKpiNeedGacha')
-    } else if (metric === 'loot_gold_per_player' && !hasLoot) {
-      reason = msg(locale, 'experiment.errKpiNeedLoot')
+    } else if (metric === 'loot_gold_per_player') {
+      if (!hasLoot) reason = msg(locale, 'experiment.errKpiNeedLoot')
+      else if (!lootGold) reason = msg(locale, 'experiment.errKpiLootNoGold')
     }
     out[metric] = { ok: reason === null, reason }
   }

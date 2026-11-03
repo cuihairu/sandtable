@@ -249,6 +249,29 @@ test('WB-06.07:KPI 仅限当前配置可用;days<7 时 D7 不可用并阻止提�
   assert.ok(designErrors(empty, { availability: AVAIL }).some((e) => e.message.includes('至少给出 min 或 max')))
 })
 
+/* 审核发现 2026-11-04:纯经验掉落(gold 全 0、xp>0)与未配置 loot 都不可用,
+   但原因需区分——前者是「无金币奖励」,不是「未配置」。designer 与内核同口径。 */
+test('WB-06.07:纯经验掉落的 loot KPI 不可用且原因区分「无金币奖励」与「未配置」', () => {
+  const build = (gold) => [
+    "schema_version: '1'",
+    'scenario: {population: 40, duration: 30d, seed: 1}',
+    'model:',
+    '  loot:',
+    '    on_victory: chest',
+    '    tables: {chest: {weights: {potion: 1.0}}}',
+    `    rewards: {potion: {gold: ${gold}, xp: 10}}`,
+    '',
+  ].join('\n')
+  const pureXp = kpiAvailability(build(0))
+  assert.equal(pureXp.loot_gold_per_player.ok, false, '纯经验掉落无金币口径,不可用')
+  assert.ok(pureXp.loot_gold_per_player.reason?.includes('无金币掉落'), '原因应点名「无金币奖励」')
+  const unconfigured = kpiAvailability(SCEN)
+  assert.equal(unconfigured.loot_gold_per_player.ok, false)
+  assert.ok(unconfigured.loot_gold_per_player.reason?.includes('未配置'), '未配置应报「未配置」')
+  const withGold = kpiAvailability(build(5))
+  assert.equal(withGold.loot_gold_per_player.ok, true, '金币型奖励可测')
+})
+
 /* ================================ WB-06.08 ================================ */
 test('WB-06.08:约束 hard/soft×min/max;UI 百分数 ⇄ 内核比例(不是 UI 直写比例)', () => {
   // 比例类判定(四个;锁定防止以后混口径)

@@ -93,7 +93,7 @@ export const ECONOMY_ROWS = [
 export type EconomyRow = EconomyRowSpec & { stat: AggregateMetricStats | null }
 
 /**
- * 运行级行:stat 为 null = 该次运行未配置对应系统,内核整键缺席。
+ * 运行级行:stat 为 null = 该次运行无可测口径(未配置 / 纯经验掉落),
  * 调用方据此显示不可用而非 0,并把它计入不可用原因列表。
  */
 export function economyRows(agg: DailyAggregation | null): readonly EconomyRow[] {

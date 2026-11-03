@@ -212,10 +212,7 @@ impl RunAggregator {
             gacha_pulls_total: 0,
             gacha_hits_total: 0,
             loot_gold_total: 0,
-            loot_gold_capable: cfg
-                .loot
-                .as_ref()
-                .is_some_and(|l| l.rewards.values().any(|r| r.gold > 0)),
+            loot_gold_capable: cfg.loot_gold_measurable(),
         }
     }
 
@@ -394,7 +391,7 @@ impl RunAggregator {
                 None
             },
             // 切片口径=「存在金币型掉落奖励」:有则 0 也是实测值(无胜利→0.0
-            // 仍应给出),无则纯经验/未配置无该口径(契约:配置决定键存否)
+            // 仍应给出),纯经验/未配置时无金币口径,键缺席
             loot_gold_per_player: if self.loot_gold_capable {
                 Some(self.loot_gold_total as f64 / self.players.max(1) as f64)
             } else {
@@ -483,5 +480,86 @@ mod tests {
         assert_eq!(m.retention_d7, Some(0.0));
         assert!(m.retention_d14.is_none()); // 超出运行天数
         assert_eq!(m.power_snapshots.len(), 3); // 快照日 1/3/7 ⊆ 运行窗口
+    }
+
+    /// 审核发现 2026-11-04:纯经验掉落(gold 全 0、xp>0,validate 合法)时
+    /// `loot_gold_capable` 应为 false,loot_gold_per_player 缺席——该 KPI
+    /// 只测金币型奖励,不能因 loot 节在场就宣称可测。
+    #[test]
+    fn pure_xp_loot_not_gold_capable() {
+        use crate::config::{LootConfig, LootReward, LootTableConfig};
+        let mut tables = std::collections::BTreeMap::new();
+        tables.insert(
+            "chest".to_string(),
+            LootTableConfig {
+                weights: [("potion".to_string(), 1.0)].into(),
+            },
+        );
+        let mut rewards = std::collections::BTreeMap::new();
+        rewards.insert("potion".to_string(), LootReward { gold: 0, xp: 10 });
+        let cfg = SimConfig {
+            players: 4,
+            days: 7,
+            loot: Some(LootConfig {
+                rate_mult: 1.0,
+                on_victory: "chest".to_string(),
+                tables,
+                rewards,
+            }),
+            ..SimConfig::default()
+        };
+        assert!(!cfg.loot_gold_measurable(), "纯经验掉落无金币口径");
+        let mut agg = RunAggregator::new(&cfg);
+        for _ in 0..4 {
+            agg.mark_active(1, false);
+        }
+        for d in 1..=7 {
+            agg.end_day(d, 4, 0, &[], None);
+        }
+        let m = agg.finish(&cfg, 0, cfg.base_seed);
+        assert!(
+            m.loot_gold_per_player.is_none(),
+            "纯经验掉落不应产出金币切片"
+        );
+    }
+
+    /// 有金币型奖励时,loot_gold_per_player 在 0 胜利下也给出实测 0.0。
+    #[test]
+    fn gold_loot_capable_even_when_zero_wins() {
+        use crate::config::{LootConfig, LootReward, LootTableConfig};
+        let mut tables = std::collections::BTreeMap::new();
+        tables.insert(
+            "chest".to_string(),
+            LootTableConfig {
+                weights: [("pouch".to_string(), 1.0)].into(),
+            },
+        );
+        let mut rewards = std::collections::BTreeMap::new();
+        rewards.insert("pouch".to_string(), LootReward { gold: 5, xp: 0 });
+        let cfg = SimConfig {
+            players: 4,
+            days: 7,
+            loot: Some(LootConfig {
+                rate_mult: 1.0,
+                on_victory: "chest".to_string(),
+                tables,
+                rewards,
+            }),
+            ..SimConfig::default()
+        };
+        assert!(cfg.loot_gold_measurable(), "金币型奖励应可测");
+        let mut agg = RunAggregator::new(&cfg);
+        for _ in 0..4 {
+            agg.mark_active(1, false);
+        }
+        for d in 1..=7 {
+            agg.end_day(d, 4, 0, &[], None);
+        }
+        let m = agg.finish(&cfg, 0, cfg.base_seed);
+        assert_eq!(
+            m.loot_gold_per_player,
+            Some(0.0),
+            "金币口径下 0 胜利 = 实测 0.0"
+        );
     }
 }

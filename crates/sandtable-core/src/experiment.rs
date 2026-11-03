@@ -248,6 +248,9 @@ impl MetricKey {
             MetricKey::LootGoldPerPlayer if cfg.loot.is_none() => {
                 Some("loot_gold_per_player 需要 model.loot 配置,当前未配置")
             }
+            MetricKey::LootGoldPerPlayer if !cfg.loot_gold_measurable() => {
+                Some("loot_gold_per_player 需要 model.loot 存在金币型奖励,当前无金币掉落")
+            }
             _ => None,
         }
     }
@@ -972,6 +975,43 @@ mod tests {
         assert!(json.get("gacha_pulls_to_hit").is_none(), "{json}");
         assert!(json.get("loot_gold_per_player").is_none(), "{json}");
         assert!(json.get("retention_d30").is_none(), "{json}");
+    }
+
+    /// 审核发现 2026-11-04:纯经验掉落(gold 全 0)与未配置 loot 都不可用,
+    /// 但原因需区分——前者是「无金币型奖励」,不是「未配置」。
+    #[test]
+    fn loot_gold_unavailable_reason_distinguishes_pure_xp_from_unconfigured() {
+        use crate::config::{LootConfig, LootReward, LootTableConfig};
+        let mut tables = std::collections::BTreeMap::new();
+        tables.insert(
+            "chest".to_string(),
+            LootTableConfig {
+                weights: [("potion".to_string(), 1.0)].into(),
+            },
+        );
+        let mut rewards = std::collections::BTreeMap::new();
+        rewards.insert("potion".to_string(), LootReward { gold: 0, xp: 10 });
+        let pure_xp = crate::config::SimConfig {
+            loot: Some(LootConfig {
+                rate_mult: 1.0,
+                on_victory: "chest".to_string(),
+                tables,
+                rewards,
+            }),
+            ..crate::config::SimConfig::default()
+        };
+        let reason = MetricKey::LootGoldPerPlayer.unavailable_reason(&pure_xp);
+        assert_eq!(
+            reason,
+            Some("loot_gold_per_player 需要 model.loot 存在金币型奖励,当前无金币掉落"),
+            "纯经验掉落应报「无金币奖励」而非「未配置」"
+        );
+        let unconfigured = crate::config::SimConfig::default();
+        assert_eq!(
+            MetricKey::LootGoldPerPlayer.unavailable_reason(&unconfigured),
+            Some("loot_gold_per_player 需要 model.loot 配置,当前未配置"),
+            "未配置应报「未配置」"
+        );
     }
 
     /// inflation 第 1 天无定义:该日整键缺席;其余字段 CI 与手算样本一致。
