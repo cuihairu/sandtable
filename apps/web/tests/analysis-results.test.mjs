@@ -62,6 +62,51 @@ test('08.04: singleton, constant and empty axis domains are safe', () => {
   const constant = yAutoDomain([{ mean: 0, ci95_lo: 0, ci95_hi: 0 }], [])
   assert.ok(constant.min < 0 && constant.max > 0)
 })
+test('08.04: clampTo pins the axis into natural bounds and handles degenerate fallback', () => {
+  const near = (a, b, what, tol = 1e-9) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} != ${b}`)
+  // ① 包络已在内(无参考线拉出):钳制为恒等(不动域)
+  const inside = yAutoDomain([stat(0.5)], [], { min: 0, max: 1 })
+  near(inside.min, 0.47, 'inside.min') // [0.48,0.58] +10% 余量
+  near(inside.max, 0.59, 'inside.max')
+  // ② 下界被 10% 余量推出:钳回 0,上端不动
+  const low = yAutoDomain([stat(0)], [], { min: 0, max: 1 })
+  near(low.min, 0, 'low.min') // [-0.03,0.09] → 下界钳 0
+  near(low.max, 0.09, 'low.max')
+  // ②b 上界被余量推出(win_rate 高胜率):上端钳回 1,下端不动
+  const high = yAutoDomain([{ mean: 0.95, ci95_lo: 0.9, ci95_hi: 1 }], [], { min: 0, max: 1 })
+  near(high.min, 0.89, 'high.min') // [0.9,1.0] → [0.89,1.01] → 上端钳 1
+  near(high.max, 1, 'high.max')
+  // ③ 两端都被余量推出:钳成整自然区间 [0,1]
+  const both = yAutoDomain([{ mean: 0.5, ci95_lo: 0, ci95_hi: 1 }], [0, 1], { min: 0, max: 1 })
+  near(both.min, 0, 'both.min')
+  near(both.max, 1, 'both.max')
+  // ④ 数据整体在边界上方:退化钳(空轴)回退整区间,不为空轴
+  const above = yAutoDomain([{ mean: 1.05, ci95_lo: 1.04, ci95_hi: 1.15 }], [], { min: 0, max: 1 })
+  near(above.min, 0, 'above.min')
+  near(above.max, 1, 'above.max')
+  // ⑤ 数据整体在边界下方:同上回退
+  const below = yAutoDomain([{ mean: -0.1, ci95_lo: -0.15, ci95_hi: -0.05 }], [], { min: 0, max: 1 })
+  near(below.min, 0, 'below.min')
+  near(below.max, 1, 'below.max')
+  // ⑥ 单点全同(退化域)遇钳制:扩档后钳回整自然区间
+  const degenerate = yAutoDomain([{ mean: 0.5, ci95_lo: 0.5, ci95_hi: 0.5 }], [], { min: 0, max: 1 })
+  near(degenerate.min, 0, 'degenerate.min')
+  near(degenerate.max, 1, 'degenerate.max')
+  // ⑦ 无钳制:返回余量域(不截断)
+  const none = yAutoDomain([stat(0.5)], [], null)
+  near(none.min, 0.47, 'none.min')
+  near(none.max, 0.59, 'none.max')
+  // ⑧ 空点恒 null,与钳制无关
+  assert.equal(yAutoDomain([], [1], { min: 0, max: 1 }), null)
+  // ⑨ 参考线把包络拉出边界:钳回 [0,1]
+  const refs = yAutoDomain([stat(0.5)], [-0.2, 1.2], { min: 0, max: 1 })
+  near(refs.min, 0, 'refs.min')
+  near(refs.max, 1, 'refs.max')
+  // ⑩ 非 [0,1] 边界:同退化回退到该边界
+  const custom = yAutoDomain([{ mean: 25, ci95_lo: 24, ci95_hi: 26 }], [], { min: 10, max: 20 })
+  near(custom.min, 10, 'custom.min')
+  near(custom.max, 20, 'custom.max')
+})
 test('08.05: only submitted constraints and an actually observed identical baseline are references', () => {
   assert.deepEqual(targetSpan(plan, 'win_rate'), { min: 0, max: 1, kind: 'hard' })
   assert.equal(targetSpan(plan, 'power_p50'), null)
