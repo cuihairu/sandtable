@@ -520,13 +520,16 @@ mod tests {
         cfg.combat.p_hit_monster = 0.0;
         cfg.combat.dmg_var = 0;
         cfg.combat.max_rounds = 32;
-        let m = monster_of(&cfg, 0); // hp 300, defense 20
+        // 62e1185 起缺省 m_hp 300→250、m_defense 20→150:原 attack 120 已破不了
+        // 防(dmg=max(120-150,1)=1/轮,250 轮 > 32 超时判负),故把 attack 提到
+        // 175 使伤害成为 hp 的干净约数,闭式解仍成立:
+        let m = monster_of(&cfg, 0); // hp 250, defense 150
         let mut rng = DayRng::new(1, 1, 1);
-        let out = settle_battle(120, 80, 1000, &m, &mut rng, 0, &cfg);
-        // dmg = 120 - 20 = 100/轮 → 3 轮打完 300
+        let out = settle_battle(175, 80, 1000, &m, &mut rng, 0, &cfg);
+        // dmg = 175 - 150 = 25/轮 → 250/25 = 10 轮打完 250
         assert!(out.win);
-        assert_eq!(out.rounds, 3);
-        assert_eq!(out.damage_dealt, 300);
+        assert_eq!(out.rounds, 10);
+        assert_eq!(out.damage_dealt, 250);
         assert_eq!(out.gold, cfg.dungeon.reward_gold);
         assert_eq!(out.xp, cfg.dungeon.reward_xp);
     }
@@ -559,13 +562,13 @@ mod tests {
         cfg.combat.max_rounds = 32;
         cfg.combat.damage_model = Some(crate::config::DamageModel::Ratio);
         cfg.combat.ratio_k = 200.0;
-        let m = monster_of(&cfg, 0); // hp 300, defense 20
+        let m = monster_of(&cfg, 0); // hp 250, defense 150
         let mut rng = DayRng::new(1, 1, 1);
-        // dmg = floor(200·120/140) = 171/轮 → 2 轮打完 300
+        // dmg = floor(200·120/(120+150)) = floor(88.89) = 88/轮 → 250/88 上取 3 轮打完
         let out = settle_battle(120, 80, 1000, &m, &mut rng, 0, &cfg);
         assert!(out.win);
-        assert_eq!(out.rounds, 2);
-        assert_eq!(out.damage_dealt, 342);
+        assert_eq!(out.rounds, 3);
+        assert_eq!(out.damage_dealt, 264);
     }
 
     /// 比值口径的平滑性(阻力 #1 根因):attack ≪ defense 时差值口径钳到 1
@@ -579,12 +582,13 @@ mod tests {
         cfg.combat.max_rounds = 32;
         cfg.combat.damage_model = Some(crate::config::DamageModel::Ratio);
         cfg.combat.ratio_k = 200.0;
-        let m = monster_of(&cfg, 0); // hp 300, defense 20
+        let m = monster_of(&cfg, 0); // hp 250, defense 150
         let mut rng = DayRng::new(1, 1, 1);
-        // dmg = floor(200·10/30) = 66/轮 → 5 轮打完(差值口径同输入只有 1/轮,超时判负)
+        // dmg = floor(200·10/(10+150)) = floor(12.5) = 12/轮 → 250/12 上取 21 轮打完
+        // (差值口径同输入只有 1/轮,250 轮超时判负)
         let out = settle_battle(10, 80, 1000, &m, &mut rng, 0, &cfg);
         assert!(out.win);
-        assert_eq!(out.rounds, 5);
+        assert_eq!(out.rounds, 21);
     }
 
     /// 练级产出面(阻力 #4):p_training 满概率时全分群只练级——金币经验
@@ -632,6 +636,13 @@ mod tests {
             },
             ..SimConfig::default()
         };
+        // 62e1185 起怪物面大幅上调(m_hp 250 / m_defense 150 / tier_growth 1.3):
+        // 默认战士攻 100 在任何层都 dmg=max(100-150·1.3^t,1)=1/轮,清剿轮数
+        // 远超预算,选层退到 0 层也磨不死(超时判负、零收入)。把战士攻提到 300
+        // 恢复「随机性关掉后逐玩家可手算」的确定收入场景:
+        // 选层:第 3 层 dmg=300-⌊150·1.3³⌋=300-329<0→1/轮(549 轮 > 20 预算)
+        // 被跳过;第 2 层 dmg=300-253=47,⌈422/47⌉=9 轮 ≤ 预算,选到第 2 层。
+        cfg.warrior.attack = 300;
         // 全分群只打副本、会话数固定 1(随机性被关掉后逐玩家可手算)
         for c in crate::config::Cohort::ALL {
             let b = cfg.behavior.for_cohort_mut(c);
@@ -642,7 +653,7 @@ mod tests {
         }
         let m = run(&cfg, 0);
         assert_eq!(m.day1_cohort, 1);
-        // 选层:第 3 层需 31 轮(> 20 预算)被跳过,选到第 2 层
+        // 选层(攻 300 下):第 2 层 9 轮 ≤ 预算,第 3 层起破不了防被跳过
         let day1 = &m.day_stats[0];
         assert_eq!(day1.battles, 1);
         assert_eq!(day1.gold_earned, 78); // 40 * 1.4^2 = 78.4 → 78
@@ -1012,9 +1023,21 @@ mod tests {
                     .collect(),
             }
         }
+        // 62e1185 起怪物面大幅上调(m_hp 250 / m_defense 150 / tier_growth 1.3):
+        // 默认战士攻 100 在任何层 dmg=max(100-150·1.3^t,1)=1/轮,清剿轮数远超
+        // 预算,选层退到 0 层仍超时判负——战斗全负 → 掉落永不结算,XP 臂与基线
+        // 逐位相同(「经验掉落应抬升战力」断言失效)。把战士攻提到 250 使基线
+        // 落在「可胜、掉落会结算」档位:tier 1 dmg=250-195=55,⌈325/55⌉=6 轮 ≤
+        // 预算,门②承伤 0.85·128·6≈653 ≤ 800 通过;tier 2 门② 0.85·190·9≈1454
+        // > 800 被挡,基线选 tier 1;+50xp 臂战力抬升后选层更高(胜率本种子下
+        // 微降 0.9841 vs 0.9861),整组方向断言成立。
         let base = SimConfig {
             players: 200,
             days: 5,
+            warrior: crate::config::WarriorConfig {
+                attack: 250,
+                ..SimConfig::default().warrior
+            },
             ..SimConfig::default()
         };
         let a = run(&base, 0);

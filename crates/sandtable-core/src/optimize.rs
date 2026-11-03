@@ -816,10 +816,13 @@ mod tests {
     fn spec() -> OptimSpec {
         OptimSpec {
             mode: OptimMode::Evolutionary,
+            // 62e1185 起怪物 m_defense 150:win_rate≥0.5 需攻 ≥~175 才稳胜
+            // (tier 0 击杀轮 ≈ 250/(0.85·(A-150)) ≤ 生存 ~14 轮 → A ≥ 171),
+            // 原 60–160 全域破不了防、无可行候选;上界提到 250 覆盖可行区。
             parameters: vec![ParamRange {
                 path: "model.warrior.attack".into(),
-                min: 60.0,
-                max: 160.0,
+                min: 100.0,
+                max: 250.0,
                 step: 10.0,
             }],
             replicates: 2,
@@ -861,14 +864,16 @@ mod tests {
         assert_eq!(r.history.len(), 5, "初始 + 4 代");
         let best = r.best.expect("应找到候选");
         assert!(matches!(best.status, CandidateStatus::Ok));
-        // 攻击力越高 power 越高(win_rate 默认已近 1,hard 约束不约束方向)
+        // 攻击力越高 power 越高;可行域内 win_rate≥0.5 随攻升高(攻 ~175+ 才
+        // 稳胜,m_defense 150),hard 约束不约束方向 → 最优可推向域高端
         let atk = best.values["model.warrior.attack"];
-        assert!((60.0..=160.0).contains(&atk), "最优值应在域内:{atk}");
+        assert!((100.0..=250.0).contains(&atk), "最优值应在域内:{atk}");
         assert!(r.best_fitness.unwrap().hard_pass == 1, "hard 约束应 pass");
         // 目标方向:末代种群最优不劣于初始种群(精英保留的单调性)
         assert!(r.history.last().unwrap().best.score >= r.history[0].best.score);
-        // power 随攻击单调 → 最优应偏向域高端(收敛性冒烟,不逐位卡)
-        assert!(atk > 100.0, "maximize power 应把攻击推向高端:{atk}");
+        // power 随攻击单调 → 最优应偏向域高端(域 100–250 中点 175,收敛性
+        // 冒烟,不逐位卡;实测最优 250)
+        assert!(atk > 175.0, "maximize power 应把攻击推向高端:{atk}");
     }
 
     #[test]

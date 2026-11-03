@@ -920,9 +920,13 @@ model:
         // 产出缺省回退几何,显式行取表值
         assert_eq!(m0.gold, 100);
         assert_eq!(m1.gold, 999);
-        // 表长越界回退几何(防御性;validate 已保证表长 = tiers)
+        // 表长越界回退几何(防御性;validate 已保证表长 = tiers)。
+        // 回退式 = m_hp · tier_growth^tier;期望值从载入配置读缺省参数再套同一
+        // 公式(62e1185 起缺省 m_hp 300→250、tier_growth 1.5→1.3,硬编码旧缺省
+        // 会随 retune 再碎一次),断言的是「回退按几何增长」这一契约本身。
         let m5 = crate::systems::combat::monster_of(&cfg, 5);
-        assert_eq!(m5.hp, (300.0 * 1.5f64.powi(5)) as i64);
+        let g5 = cfg.dungeon.tier_growth.powi(5);
+        assert_eq!(m5.hp, (cfg.dungeon.m_hp as f64 * g5) as i64);
 
         let err = load_str(&yaml(8)).unwrap_err();
         assert!(err.to_string().contains("tier_table"), "{err}");

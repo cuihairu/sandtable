@@ -960,10 +960,15 @@ mod tests {
     /// 练级环耦合(阻力 #4 显式性):产出面与行为带互相咬合,单边给出报错。
     #[test]
     fn validate_training_loop_coupling() {
+        // 62e1185 起缺省已带训练产出(Some{xp:400,gold:150})且各分群 p_training=0.1,
+        // 默认行为带已满足耦合;要构造「产出面有、行为带无」须显式把三群 p_training 清零。
         let mut cfg = SimConfig {
             training: Some(TrainingConfig { xp: 100, gold: 10 }),
             ..SimConfig::default()
         };
+        cfg.behavior.casual.p_training = 0.0;
+        cfg.behavior.core.p_training = 0.0;
+        cfg.behavior.whale.p_training = 0.0;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("p_training"), "{msg}"); // 产出面有、行为带无
 
@@ -979,7 +984,9 @@ mod tests {
         };
         assert!(validate(&zero).is_ok());
 
+        // 62e1185 起缺省已带训练产出,要构造「行为带有、产出面无」须显式 training: None。
         let cfg2 = SimConfig {
+            training: None,
             behavior: {
                 let mut b = BehaviorConfig::default();
                 b.core.p_training = 0.1; // 0.6 + 0.3 + 0.1 合计恰为 1

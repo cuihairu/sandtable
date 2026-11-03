@@ -824,7 +824,14 @@ mod tests {
             max: Some(1.0),
             kind: TargetKind::Hard,
         }];
-        let cands = spec.plan(1).unwrap();
+        let mut cands = spec.plan(1).unwrap();
+        // 62e1185 起怪物 m_defense 150:grid_spec 攻 90–110 全部破不了防
+        // (dmg=1/轮,战全负 → win_rate=0,其对称 CI 跨 0 界 → Borderline)。
+        // 把该候选的攻提到 200 恢复「可胜、胜率 CI 严格入 [0,1] → Pass」:
+        // tier 0 dmg=200-150=50,⌈250/50⌉=5 轮 ≤ 预算,门②承伤 0.85·80·5=340
+        // ≤ 800,选 0 层稳胜。此测试验证 run_candidate 汇总与判定机制,
+        // 攻击具体值非契约内容,故局部覆盖而非改共享的 grid_spec。
+        cands[0].insert("model.warrior.attack".into(), 200.0);
         let r = run_candidate(&base, &spec, &cands[0]);
         assert!(matches!(r.status, CandidateStatus::Ok));
         // 全部指标进汇总;gacha_pulls_to_hit 与 loot_gold_per_player 在各自
@@ -840,7 +847,7 @@ mod tests {
         assert_eq!(r.target_outcomes.len(), 1);
         assert_eq!(r.target_outcomes[0].verdict, ConstraintVerdict::Pass);
         // 候选值确实生效
-        assert_eq!(r.values["model.warrior.attack"], 90.0);
+        assert_eq!(r.values["model.warrior.attack"], 200.0);
     }
 
     #[test]
