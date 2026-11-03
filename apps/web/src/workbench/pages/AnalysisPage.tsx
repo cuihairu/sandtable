@@ -49,7 +49,8 @@ let metricDictionaryVersionCache: Promise<string | null> | null = null
 
 // L632 · 比率越界警告只在首次出现时弹一次——每次重渲染(选行/筛选/换语言)
 // 都弹会刷屏并堆定时器;键恢复(回到 [0,1])后再次越界可重弹(是新的问题)。
-// 模块级 Set 跨 StrictMode 双挂载存续,dev 双跑不会重复弹。
+// 模块级 Set 跨 StrictMode 双挂载存续,dev 双跑不会重复弹;任务切换(job.id
+// 变化)时在 RealResult 的 mount effect 清空,任务 A 的越界键不吞任务 B 的新问题。
 const notifiedRatioWarnings = new Set<MetricKey>()
 
 function metricDictionaryVersion(): Promise<string | null> {
@@ -145,6 +146,9 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
   const locale = useLocale()
   const a = useSyncExternalStore(subscribeAnalysis, analysisSnapshot)
   const ui = a.byJob[job.id] ?? defaultResultUI
+  useEffect(() => {
+    notifiedRatioWarnings.clear()
+  }, [job.id])
   const exec = job.exec!
   const context = exec.spec.analysis
   // 扫描实验完整 YAML(含 sweep 节);优化与代理小节据此合成寻优实验

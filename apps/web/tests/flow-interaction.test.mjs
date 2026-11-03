@@ -182,6 +182,10 @@ if (!existsSync(pkgNode)) {
     // 重渲染重弹;断言 key 只出现一次(= 唯一 effect 内的那次调用)
     assert.match(page, /import \{ useEffect, useSyncExternalStore \} from 'react'/, 'notify 副作用经 useEffect 触发(非渲染期)')
     assert.equal((page.match(/analysis\.ratioOutOfRange/g) ?? []).length, 1, '比率越界通知只在 useEffect 出现一次,渲染闭包无直接调用')
+    // 审核发现 2026-11-04:任务切换(job.id 变化)必须清空去重集,否则任务 A
+    // 已弹的越界键会吞掉任务 B 的跨 run 新问题。断言 mount effect 按 job.id 清空。
+    assert.match(page, /notifiedRatioWarnings\.clear\(\)/, '任务切换时清空去重集')
+    assert.match(page, /\}, \[job\.id\]\)/, '清空 effect 依赖 job.id(任务切换触发)')
     const factor = readFileSync(join(here, '../src/workbench/designer/FactorTable.tsx'), 'utf8')
     assert.match(factor, /aria-invalid=\{samplesError !== undefined\}/, '采样数错误标记非法输入')
     assert.match(factor, /aria-invalid=\{row\.error !== undefined\}/, '因子行错误标记非法输入')
