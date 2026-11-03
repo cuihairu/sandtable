@@ -551,23 +551,42 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
             Ok(v)
         }
     };
+    // 只拒绝非有限(NaN/Inf):cohort_weights 是人群配比,validate 允许单项为负
+    // (只要求每项有限且总和 > 0),故不套非负门,只挡会污染仿真的 NaN/Inf。
+    let finite_only = |v: f64, ty: &str| -> Result<f64, Error> {
+        if !v.is_finite() {
+            Err(Error::Config(format!(
+                "{path}: {ty} 必须为有限数(得到 {v})"
+            )))
+        } else {
+            Ok(v)
+        }
+    };
     match path {
         "scenario.population" => cfg.players = unsigned(value, "population")?.round() as u32,
         "scenario.seed" => cfg.base_seed = exact_u64(value, "seed")?.round() as u64,
-        "scenario.population_mix.casual" => cfg.cohort_weights[0] = value,
-        "scenario.population_mix.core" => cfg.cohort_weights[1] = value,
-        "scenario.population_mix.whale" => cfg.cohort_weights[2] = value,
+        "scenario.population_mix.casual" => {
+            cfg.cohort_weights[0] = finite_only(value, "population_mix.casual")?
+        }
+        "scenario.population_mix.core" => {
+            cfg.cohort_weights[1] = finite_only(value, "population_mix.core")?
+        }
+        "scenario.population_mix.whale" => {
+            cfg.cohort_weights[2] = finite_only(value, "population_mix.whale")?
+        }
         "model.warrior.attack" => cfg.warrior.attack = value.round() as i64,
         "model.warrior.defense" => cfg.warrior.defense = value.round() as i64,
         "model.warrior.hp" => cfg.warrior.hp = value.round() as i64,
         "model.whale_gain_mult" => cfg.whale_gain_mult = value.round() as i64,
-        "model.combat.p_hit" => cfg.combat.p_hit = value,
-        "model.combat.p_hit_monster" => cfg.combat.p_hit_monster = value,
+        "model.combat.p_hit" => cfg.combat.p_hit = finite_nonneg(value, "p_hit")?,
+        "model.combat.p_hit_monster" => {
+            cfg.combat.p_hit_monster = finite_nonneg(value, "p_hit_monster")?
+        }
         "model.combat.dmg_var" => cfg.combat.dmg_var = value.round() as i64,
         "model.combat.max_rounds" => {
             cfg.combat.max_rounds = unsigned(value, "max_rounds")?.round() as u32
         }
-        "model.combat.ratio_k" => cfg.combat.ratio_k = value,
+        "model.combat.ratio_k" => cfg.combat.ratio_k = finite_nonneg(value, "ratio_k")?,
         "model.training.xp" => {
             cfg.training
                 .get_or_insert_with(crate::config::TrainingConfig::default)
@@ -582,34 +601,65 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.dungeon.m_hp" => cfg.dungeon.m_hp = value.round() as i64,
         "model.dungeon.m_attack" => cfg.dungeon.m_attack = value.round() as i64,
         "model.dungeon.m_defense" => cfg.dungeon.m_defense = value.round() as i64,
-        "model.dungeon.tier_growth" => cfg.dungeon.tier_growth = value,
+        "model.dungeon.tier_growth" => {
+            cfg.dungeon.tier_growth = finite_nonneg(value, "tier_growth")?
+        }
         "model.dungeon.reward_gold" => cfg.dungeon.reward_gold = value.round() as i64,
         "model.dungeon.reward_xp" => cfg.dungeon.reward_xp = value.round() as i64,
-        "model.dungeon.reward_gold_growth" => cfg.dungeon.reward_gold_growth = value,
-        "model.dungeon.reward_xp_growth" => cfg.dungeon.reward_xp_growth = value,
+        "model.dungeon.reward_gold_growth" => {
+            cfg.dungeon.reward_gold_growth = finite_nonneg(value, "reward_gold_growth")?
+        }
+        "model.dungeon.reward_xp_growth" => {
+            cfg.dungeon.reward_xp_growth = finite_nonneg(value, "reward_xp_growth")?
+        }
         "model.behavior.casual.sessions_int" => {
             cfg.behavior.casual.sessions_int = unsigned(value, "sessions_int")?.round() as u32
         }
-        "model.behavior.casual.sessions_frac" => cfg.behavior.casual.sessions_frac = value,
-        "model.behavior.casual.p_dungeon" => cfg.behavior.casual.p_dungeon = value,
-        "model.behavior.casual.p_upgrade" => cfg.behavior.casual.p_upgrade = value,
-        "model.behavior.casual.p_training" => cfg.behavior.casual.p_training = value,
+        "model.behavior.casual.sessions_frac" => {
+            cfg.behavior.casual.sessions_frac =
+                finite_nonneg(value, "behavior.casual.sessions_frac")?
+        }
+        "model.behavior.casual.p_dungeon" => {
+            cfg.behavior.casual.p_dungeon = finite_nonneg(value, "behavior.casual.p_dungeon")?
+        }
+        "model.behavior.casual.p_upgrade" => {
+            cfg.behavior.casual.p_upgrade = finite_nonneg(value, "behavior.casual.p_upgrade")?
+        }
+        "model.behavior.casual.p_training" => {
+            cfg.behavior.casual.p_training = finite_nonneg(value, "behavior.casual.p_training")?
+        }
         "model.behavior.core.sessions_int" => {
             cfg.behavior.core.sessions_int = unsigned(value, "sessions_int")?.round() as u32
         }
-        "model.behavior.core.sessions_frac" => cfg.behavior.core.sessions_frac = value,
-        "model.behavior.core.p_dungeon" => cfg.behavior.core.p_dungeon = value,
-        "model.behavior.core.p_upgrade" => cfg.behavior.core.p_upgrade = value,
-        "model.behavior.core.p_training" => cfg.behavior.core.p_training = value,
+        "model.behavior.core.sessions_frac" => {
+            cfg.behavior.core.sessions_frac = finite_nonneg(value, "behavior.core.sessions_frac")?
+        }
+        "model.behavior.core.p_dungeon" => {
+            cfg.behavior.core.p_dungeon = finite_nonneg(value, "behavior.core.p_dungeon")?
+        }
+        "model.behavior.core.p_upgrade" => {
+            cfg.behavior.core.p_upgrade = finite_nonneg(value, "behavior.core.p_upgrade")?
+        }
+        "model.behavior.core.p_training" => {
+            cfg.behavior.core.p_training = finite_nonneg(value, "behavior.core.p_training")?
+        }
         "model.behavior.whale.sessions_int" => {
             cfg.behavior.whale.sessions_int = unsigned(value, "sessions_int")?.round() as u32
         }
-        "model.behavior.whale.sessions_frac" => cfg.behavior.whale.sessions_frac = value,
-        "model.behavior.whale.p_dungeon" => cfg.behavior.whale.p_dungeon = value,
-        "model.behavior.whale.p_upgrade" => cfg.behavior.whale.p_upgrade = value,
-        "model.behavior.whale.p_training" => cfg.behavior.whale.p_training = value,
+        "model.behavior.whale.sessions_frac" => {
+            cfg.behavior.whale.sessions_frac = finite_nonneg(value, "behavior.whale.sessions_frac")?
+        }
+        "model.behavior.whale.p_dungeon" => {
+            cfg.behavior.whale.p_dungeon = finite_nonneg(value, "behavior.whale.p_dungeon")?
+        }
+        "model.behavior.whale.p_upgrade" => {
+            cfg.behavior.whale.p_upgrade = finite_nonneg(value, "behavior.whale.p_upgrade")?
+        }
+        "model.behavior.whale.p_training" => {
+            cfg.behavior.whale.p_training = finite_nonneg(value, "behavior.whale.p_training")?
+        }
         "model.progression.xp_base" => cfg.progression.xp_base = value.round() as i64,
-        "model.progression.xp_pow" => cfg.progression.xp_pow = value,
+        "model.progression.xp_pow" => cfg.progression.xp_pow = finite_nonneg(value, "xp_pow")?,
         "model.progression.level_attack_gain" => {
             cfg.progression.level_attack_gain = value.round() as i64
         }
@@ -629,20 +679,20 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.progression.upgrade_attack_gain" => {
             cfg.progression.upgrade_attack_gain = value.round() as i64
         }
-        "model.churn.p_base" => cfg.churn.p_base = value,
-        "model.churn.p_stall" => cfg.churn.p_stall = value,
+        "model.churn.p_base" => cfg.churn.p_base = finite_nonneg(value, "p_base")?,
+        "model.churn.p_stall" => cfg.churn.p_stall = finite_nonneg(value, "p_stall")?,
         "model.churn.stall_days" => {
             cfg.churn.stall_days = unsigned(value, "stall_days")?.round() as u32
         }
         "model.loot.rate_mult" => {
             cfg.loot
                 .get_or_insert_with(crate::config::LootConfig::default)
-                .rate_mult = value;
+                .rate_mult = finite_nonneg(value, "rate_mult")?;
         }
         "model.gacha.base_rate" => {
             cfg.gacha
                 .get_or_insert_with(crate::config::GachaConfig::default)
-                .base_rate = value;
+                .base_rate = finite_nonneg(value, "base_rate")?;
         }
         "model.gacha.pity_hard" => {
             cfg.gacha
@@ -662,7 +712,7 @@ pub fn apply_numeric(cfg: &mut SimConfig, path: &str, value: f64) -> Result<(), 
         "model.gacha.featured_rate" => {
             cfg.gacha
                 .get_or_insert_with(crate::config::GachaConfig::default)
-                .featured_rate = value;
+                .featured_rate = finite_nonneg(value, "featured_rate")?;
         }
         "model.gacha.featured_guarantee" => {
             cfg.gacha
@@ -842,6 +892,66 @@ mod tests {
             assert!(err.contains("非负有限"), "应拒绝 {bad},实际:{err}");
         }
         apply_numeric(&mut cfg, "model.gacha.pity_soft_step", 0.0).unwrap();
+    }
+
+    #[test]
+    fn f64_slots_reject_nonfinite_and_negative() {
+        // L631:非负有限门扩展到全部 f64 槽(此前只 pity_soft_step)。NaN/Inf/
+        // 负值经数值通道必须拒绝,不静默写入污染仿真;validate 未覆盖的槽
+        // (tier_growth / reward_*_growth / xp_pow)由此获得数值通道防线。
+        let bad = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0];
+        for path in [
+            "model.combat.p_hit",
+            "model.combat.p_hit_monster",
+            "model.combat.ratio_k",
+            "model.dungeon.tier_growth",
+            "model.dungeon.reward_gold_growth",
+            "model.dungeon.reward_xp_growth",
+            "model.behavior.casual.sessions_frac",
+            "model.behavior.casual.p_dungeon",
+            "model.behavior.casual.p_upgrade",
+            "model.behavior.casual.p_training",
+            "model.behavior.core.sessions_frac",
+            "model.behavior.core.p_dungeon",
+            "model.behavior.core.p_upgrade",
+            "model.behavior.core.p_training",
+            "model.behavior.whale.sessions_frac",
+            "model.behavior.whale.p_dungeon",
+            "model.behavior.whale.p_upgrade",
+            "model.behavior.whale.p_training",
+            "model.progression.xp_pow",
+            "model.churn.p_base",
+            "model.churn.p_stall",
+            "model.loot.rate_mult",
+            "model.gacha.base_rate",
+            "model.gacha.featured_rate",
+        ] {
+            for v in bad {
+                let mut c = SimConfig::default();
+                let err = apply_numeric(&mut c, path, v).unwrap_err().to_string();
+                assert!(
+                    err.contains("非负有限"),
+                    "{path} 应拒绝 {v}(非负有限),实际:{err}"
+                );
+            }
+            // 有效值仍可写(非负有限门不误伤合法值)
+            let mut c = SimConfig::default();
+            apply_numeric(&mut c, path, 0.5).unwrap();
+        }
+        // cohort_weights:validate 允许单项为负(只要求每项有限且总和 > 0),故
+        // 只拒非有限;负值仍可写(与 validate 同口径,不额外加非负门)。
+        for v in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut c = SimConfig::default();
+            let err = apply_numeric(&mut c, "scenario.population_mix.casual", v)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains("有限数"),
+                "cohort_weights 应拒绝 {v},实际:{err}"
+            );
+        }
+        let mut c = SimConfig::default();
+        apply_numeric(&mut c, "scenario.population_mix.casual", -0.5).unwrap();
     }
 
     #[test]
