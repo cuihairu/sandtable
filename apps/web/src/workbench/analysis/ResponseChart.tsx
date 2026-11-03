@@ -60,6 +60,11 @@ export function ResponseChart({ metric, xAxis, points, selectedId, onSelect, min
   const capHalf = Math.min(MARK_RADIUS, markRadius * 1.5)
   const lo = (p: ResponsePoint): number => p.ci95_lo ?? p.mean - (p.ciHalf ?? 0)
   const hi = (p: ResponsePoint): number => p.ci95_hi ?? p.mean + (p.ciHalf ?? 0)
+  // L633:须线画在轴域内——比率指标 CI 端点可合法跨 0/100%(低样本 win_rate),
+  // 但轴已钳到 [0,1],用原始端点会让须线画出绘图区、叠到 x 轴刻度/标题上。
+  // 钳制只影响像素映射(须线/命中区),标签仍显示真实 CI(不静默改数据)。
+  const drawLo = (p: ResponsePoint): number => Math.max(metric.min, Math.min(metric.max, lo(p)))
+  const drawHi = (p: ResponsePoint): number => Math.max(metric.min, Math.min(metric.max, hi(p)))
   const targets = metric.targets ?? (metric.target === undefined ? [] : [{ min: metric.op === '≥' ? metric.target : null, max: metric.op === '≤' ? metric.target : null, kind: 'hard' as const }])
   return <svg className={mini ? 'mini-chart' : 'main-chart'} viewBox={`0 0 ${W} ${H}`} role="group"
     aria-label={t(locale, 'analysis.chart.aria', { label: metric.label, unit: metric.unit, count: points.length, axis: xAxis.path })}>
@@ -90,8 +95,8 @@ export function ResponseChart({ metric, xAxis, points, selectedId, onSelect, min
             if (id) { onSelect?.(id); const node = Array.from(e.currentTarget.parentElement!.querySelectorAll<SVGGElement>('[data-candidate]')).find((n) => n.dataset.candidate === id); node?.focus() }
           }
         }}><title>{label}</title>
-        <rect x={x(p.x) - hitWidth / 2} y={Math.min(y(hi(p)), y(lo(p))) - 12} width={hitWidth} height={Math.max(24, Math.abs(y(lo(p)) - y(hi(p))) + 24)} fill="transparent" />
-        <path className="chart-ci" d={`M${x(p.x)} ${y(hi(p))}V${y(lo(p))}M${x(p.x) - capHalf} ${y(hi(p))}h${capHalf * 2}M${x(p.x) - capHalf} ${y(lo(p))}h${capHalf * 2}`} />
+        <rect x={x(p.x) - hitWidth / 2} y={Math.min(y(drawHi(p)), y(drawLo(p))) - 12} width={hitWidth} height={Math.max(24, Math.abs(y(drawLo(p)) - y(drawHi(p))) + 24)} fill="transparent" />
+        <path className="chart-ci" d={`M${x(p.x)} ${y(drawHi(p))}V${y(drawLo(p))}M${x(p.x) - capHalf} ${y(drawHi(p))}h${capHalf * 2}M${x(p.x) - capHalf} ${y(drawLo(p))}h${capHalf * 2}`} />
         <circle className="chart-point" cx={x(p.x)} cy={y(p.mean)} r={selectedId === p.id ? markRadius + 2 : markRadius} />
       </g>
     })}

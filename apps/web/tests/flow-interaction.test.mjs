@@ -163,6 +163,13 @@ if (!existsSync(pkgNode)) {
     assert.match(chart, /\['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'\]/, '四方向键步进')
     assert.match(chart, /stepSelection\(points/, '步进用同一夹紧逻辑')
     assert.match(chart, /node\?\.focus\(\)/, '步进后焦点跟随到下一点')
+    // L633:须线画在轴域内——比率 CI 端点可合法跨 0/100%,但轴已钳到 [0,1],
+    // 须线/命中区用钳后的 drawLo/drawHi,标签仍用原始 lo/hi 显示真实 CI
+    assert.match(chart, /const drawLo =/, '须线下端钳到轴域')
+    assert.match(chart, /const drawHi =/, '须线上端钳到轴域')
+    assert.match(chart, /y\(drawHi\(p\)\)/, '须线路径用钳后上端')
+    assert.match(chart, /y\(drawLo\(p\)\)/, '须线路径用钳后下端')
+    assert.match(chart, /fmt\(lo\(p\)\)/, '标签仍显示真实 CI 下限(不静默改数据)')
     // 分析页表格:方向键步进落在可见行集,焦点移到行按钮
     const page = readFileSync(join(here, '../src/workbench/pages/AnalysisPage.tsx'), 'utf8')
     assert.match(page, /e\.key !== 'ArrowDown' && e\.key !== 'ArrowUp'/, '表格容器接上下方向键')
