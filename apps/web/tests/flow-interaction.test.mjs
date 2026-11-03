@@ -170,6 +170,11 @@ if (!existsSync(pkgNode)) {
     assert.match(page, /button\?\.focus\(\)/, '步进后焦点落行按钮')
     // 错误就地播报:产生处可见,读屏即时
     assert.match(page, /role="alert"/, '分析页执行错误即时播报(role=alert)')
+    // L632:比率越界警告由 useEffect 触发,不在 chart() 渲染闭包里——notify 是
+    // 副作用(改通知 store + emit),渲染期调用触发 React 跨组件更新告警且每次
+    // 重渲染重弹;断言 key 只出现一次(= 唯一 effect 内的那次调用)
+    assert.match(page, /import \{ useEffect, useSyncExternalStore \} from 'react'/, 'notify 副作用经 useEffect 触发(非渲染期)')
+    assert.equal((page.match(/analysis\.ratioOutOfRange/g) ?? []).length, 1, '比率越界通知只在 useEffect 出现一次,渲染闭包无直接调用')
     const factor = readFileSync(join(here, '../src/workbench/designer/FactorTable.tsx'), 'utf8')
     assert.match(factor, /aria-invalid=\{samplesError !== undefined\}/, '采样数错误标记非法输入')
     assert.match(factor, /aria-invalid=\{row\.error !== undefined\}/, '因子行错误标记非法输入')

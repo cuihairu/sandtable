@@ -1,5 +1,5 @@
 // WB-08: real jobs are the default source. Synthetic data requires explicit source selection.
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import type { JSX } from 'react'
 import { METRIC_KEYS } from '../../lib/types.ts'
 import type { MetricKey } from '../../lib/types.ts'
@@ -46,6 +46,11 @@ import '../analysis/analysis.css'
 // 指标字典版本(内核 kpi_dict 桥,静态注册表):导出报告前取一次并缓存,
 // 失败按未知处理(口径行不出字典条目),不阻塞报告导出。
 let metricDictionaryVersionCache: Promise<string | null> | null = null
+
+// L632 · 比率越界警告只在首次出现时弹一次——每次重渲染(选行/筛选/换语言)
+// 都弹会刷屏并堆定时器;键恢复(回到 [0,1])后再次越界可重弹(是新的问题)。
+// 模块级 Set 跨 StrictMode 双挂载存续,dev 双跑不会重复弹。
+const notifiedRatioWarnings = new Set<MetricKey>()
 
 function metricDictionaryVersion(): Promise<string | null> {
   metricDictionaryVersionCache ??= metricDictionary()
@@ -154,6 +159,30 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
   // Requested metrics also remain visible when every candidate failed or produced no value.
   const metrics = METRIC_KEYS.filter((m) => m === metric || plan?.targets.some((t) => t.metric === m) || all.some((r) => r.result?.stats.has(m)))
   const views = rows.flatMap((r) => r.result ? [r.result] : [])
+  // L632 · 比率越界(均值 ∉ [0,1])是渲染期纯计算,但 notify 是副作用(改通知
+  // store + emit 订阅者),不能留在 chart() 渲染闭包里——渲染期改 store 会触发
+  // React「Cannot update a component while rendering a different component」,
+  // 且每次重渲染重弹、定时器堆积。这里只算不弹,效果按「越界键集」变化弹,
+  // 键集不变的重渲染(选行/筛选/排序)零通知。
+  const outOfRangeRatioKeys = metrics.filter((key) => {
+    const meta = METRIC_META[key]
+    if (meta.dimension !== 'percent') return false
+    return responsePoints(views, key, axis).drawable.some((p) => p.mean < 0 || p.mean > 1)
+  })
+  const ratioWarningSignature = outOfRangeRatioKeys.join('|')
+  useEffect(() => {
+    for (const key of outOfRangeRatioKeys) {
+      if (!notifiedRatioWarnings.has(key)) {
+        notifiedRatioWarnings.add(key)
+        notify('warning', t(locale, 'analysis.ratioOutOfRange', { metric: metricLabel(key, locale) }))
+      }
+    }
+    // 恢复(回到 [0,1])即放出,让再次越界能重弹
+    for (const key of [...notifiedRatioWarnings]) {
+      if (!outOfRangeRatioKeys.includes(key)) notifiedRatioWarnings.delete(key)
+    }
+  // 签名覆盖全部依赖(键集与轴);locale 变化时文案随之,但去重集挡重复弹
+  }, [ratioWarningSignature, locale])
   // WB-12(L365)· 图型吃「本 run 全部已返回候选」,不随表格筛选/排序变化
   // (筛选是 UI 状态,图不能因筛选而伪造缺失格)
   const allViews = all.flatMap((r) => r.result ? [r.result] : [])
@@ -173,9 +202,8 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
     // [0,1](10% 余量会把轴推出 [-10%,110%],画出不可能刻度),数据真越界
     // 则警告——内核口径保证不越界,此处是防御性兜底,不静默画错。
     const ratio = meta.dimension === 'percent'
-    if (ratio && points.some((p) => p.mean < 0 || p.mean > 1)) {
-      notify('warning', t(locale, 'analysis.ratioOutOfRange', { metric: metricLabel(key, locale) }))
-    }
+    // L632:越界警告已上移到 RealResult 的 useEffect(纯计算在渲染期,notify 在
+    // 效果期);这里只保留轴钳制所需的 ratio 判断
     const domain = yAutoDomain(points, [...targets.flatMap((t) => [t.min, t.max]), base ?? null], ratio ? { min: 0, max: 1 } : null)
     return <div key={key} className={mini ? 'mini-figure' : 'chart-viewport'}>
       <h3>{metricLabel(key, locale)} · {metricUnit(key, locale)}</h3>
