@@ -251,7 +251,13 @@ fn read_archive(path: &Path) -> anyhow::Result<(Manifest, BTreeMap<String, Vec<u
     let f = fs::File::open(path).with_context(|| format!("打开 {} 失败", path.display()))?;
     let mut ar = zip::ZipArchive::new(f)
         .with_context(|| format!("{} 不是有效的 zip 归档", path.display()))?;
-    let mut names: BTreeSet<String> = ar.file_names().map(str::to_owned).collect();
+    let mut names: BTreeSet<String> = ar
+        .file_names()
+        .collect::<Result<BTreeSet<_>, _>>()
+        .with_context(|| format!("{} 含非法文件名字节", path.display()))?
+        .into_iter()
+        .map(|name| name.into_owned())
+        .collect();
     if !names.remove(MANIFEST) {
         bail!("归档缺少 {MANIFEST}");
     }

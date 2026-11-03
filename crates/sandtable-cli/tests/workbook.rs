@@ -34,7 +34,7 @@ fn part_names(path: &std::path::Path) -> Vec<String> {
     let f = fs::File::open(path).unwrap();
     let mut ar = zip::ZipArchive::new(f).unwrap();
     (0..ar.len())
-        .map(|i| ar.by_index(i).unwrap().name().to_string())
+        .map(|i| ar.by_index(i).unwrap().name().unwrap().into_owned())
         .collect()
 }
 
