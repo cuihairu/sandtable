@@ -616,7 +616,7 @@
   - 文档:docs「配置效果」页(双语)逐开关嵌入:说明+off 图+on 图+GIF(`docs/guide/26-config-effects.md` + `docs/zh/guide/26-config-effects.md`)。
   - 验收:清单内每个开关都有 off/on+GIF;流水线可重跑(配置变更随时再生成);兼作配置效果回归测试。
   - 参考:kode todo C-24 同款流水线模式(2026-11-01 用户令全舰队推广)。
-  - 完成 2026-11-02:清单=4 开关(伤害口径/练级环/掉落/抽卡),全部来自 `SimConfig` 中「一经设置即改变行为」的 `Option`/口径字段;产物=8 PNG + 4 GIF + manifest(共 ~3.2 MB)。流水线重跑 0 报错(`python3 scripts/config_effects.py` 4/4 开关),docs build 0 报错(含双语 26 章与导航),PIL 渲染真实 CLI stdout 同种子对比。commit=6578d14。
+  - 完成 2026-11-02:清单=4 开关(伤害口径/练级环/掉落/抽卡),全部来自 `SimConfig` 中「一经设置即改变行为」的 `Option`/口径字段;产物=8 PNG + 4 GIF + manifest(共 ~3.2 MB)。流水线重跑 0 报错(`python3 scripts/config_effects.py` 4/4 开关),docs build 0 报错(含双语 26 章与导航),PIL 渲染真实 CLI stdout 同种子对比。commit=8193a27。
 - 不属实：README.md 与 README.zh.md 当前均为单斜杠 `sandtable/`、单 Docs 徽章，且 logo 与标题 `# Sandtable` 块完整存在——描述与实际不符。核证 2026-11-02 不属实：两 README 实测单斜杠（en `.../sandtable/`、zh `.../sandtable/zh/`）、各 1 个 `alt="Docs"` 徽章、`logo.svg` 与 `# Sandtable` 完整，描述与实际一致，故「描述与实际不符」结论不成立，本行作废（删）。
 - [x] 审核发现：参数注册表已由 64 项增至 66 项，但 `paramRegistry.ts` 与 `ParametersPage.tsx` 的注释仍写「统计口径 64 项」，与 `crates/sandtable-wasm/src/lib.rs:659`（`assert_eq!(n, 66)`）及实际 `ROWS` 数 66 不符，注释失实易误导后续维护者（apps/web/src/workbench/params/paramRegistry.ts:100、apps/web/src/workbench/pages/ParametersPage.tsx:2）。
       核证 2026-11-02 属实：两文件注释确写「64 项」，`ROWS` 实有 66 行。修法=两处注释改为「66 项」。复核=`apps/web npm run lint` 绿；commit=6578d14。
@@ -718,4 +718,5 @@
       核证 2026-11-05 属实：`lootGoldMeasurable` 用 `path.startsWith('model.loot.tables.chest.weights.')` 识别权重，含点表名 `chest.weights.foo` 的路径同样以此开头而误收。修法=parser 叶新增 `segments`（解码后键链），`lootGoldMeasurable` 改段级结构匹配（`tables.<on_victory>.weights.<名>` 恰好 6 段，`rewards.<名>.gold` 恰好 5 段），并同收权重>0 口径（发现 1 前端镜像）；复核=`node --test apps/web/tests/experiment-form.test.mjs` 20/20 绿（含新增「表名含点不混淆」用例）+`npx tsc --noEmit` 净；commit=96e3c53。
 - [x] 审核发现：`on_victory` 使用合法 YAML 转义字符串如 `"ch\u0065st"` 时，前端使用未解码的原文拼接表路径而漏判金币 KPI，内核则将其解析为 `chest`（apps/web/src/workbench/params/configYaml.ts:368）。
       核证 2026-11-05 属实：`unquote` 仅剥引号不解 `\uXXXX`，`on_victory` 原文 `"ch\u0065st"` 拼表路径与内核 serde 解析的 `chest` 分叉而漏判。修法=新增 `decodeYamlScalar` 解双引号 unicode/hex/控制转义（单引号 `''`→`'`），叶 `raw` 统一走解码，`on_victory` 比较用解码值；复核=`node --test apps/web/tests/experiment-form.test.mjs` 20/20 绿（含新增「on_victory 转义解码」用例）+`npx tsc --noEmit` 净；commit=96e3c53。
-- [ ] 审核发现：本轮将多条历史完成记录的真实提交号批量改为 `6578d14`，例如配置效果文档原属 `8193a27` 而该提交未包含相关文件，导致审核证据无法追溯（todo.md:619）。
+- [x] 审核发现：本轮将多条历史完成记录的真实提交号批量改为 `6578d14`，例如配置效果文档原属 `8193a27` 而该提交未包含相关文件，导致审核证据无法追溯（todo.md:619）。
+      核证 2026-11-05 属实：`1d9ccb2` 把此前 `b80d1c5`（被重写为 `6578d14`，二者内容等价）批量钉到 `6578d14`，多数行正确；但 todo.md:619「配置效果」完成行真实落地是 `8193a27`（含 `scripts/config_effects.py` 与 `docs/{zh/,}guide/26-config-effects.md`），`6578d14` 未包含这些文件，证据链断裂。修法=619 行恢复 `commit=8193a27`（其余 19 条 `6578d14` 经逐行核验均为重写后等价提交，不改）；复核=`git show --name-only 8193a27` 含三文件、`git show --name-only 6578d14` 不含，行尾 commit 已改回 `8193a27`；commit=1967e1c。
