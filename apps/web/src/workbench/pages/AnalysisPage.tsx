@@ -51,7 +51,13 @@ let metricDictionaryVersionCache: Promise<string | null> | null = null
 // 都弹会刷屏并堆定时器;键恢复(回到 [0,1])后再次越界可重弹(是新的问题)。
 // 模块级 Set 跨 StrictMode 双挂载存续,dev 双跑不会重复弹;任务切换(job.id
 // 变化)时在 RealResult 的 mount effect 清空,任务 A 的越界键不吞任务 B 的新问题。
+// 审核发现 2026-11-04:StrictMode 双挂载会二次执行 mount effect,若每次都
+// clear() 会抹掉首次挂载已记录的越界键,notify effect 因键缺席再次弹 toast。
+// 只在实际任务切换(不同 job.id)时清空——记上次清空的 job.id,同 id 的
+// StrictMode 第二次挂载不再清空,dev 双跑不重复弹;真实切换(新 key 重挂载)
+// 仍清空,任务 A 的越界键不吞任务 B 的新问题。
 const notifiedRatioWarnings = new Set<MetricKey>()
+let lastClearedJobId: string | null = null
 
 function metricDictionaryVersion(): Promise<string | null> {
   metricDictionaryVersionCache ??= metricDictionary()
@@ -147,7 +153,11 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
   const a = useSyncExternalStore(subscribeAnalysis, analysisSnapshot)
   const ui = a.byJob[job.id] ?? defaultResultUI
   useEffect(() => {
-    notifiedRatioWarnings.clear()
+    // 仅在实际任务切换时清空;同 job.id 的 StrictMode 第二次挂载不重复清空
+    if (lastClearedJobId !== job.id) {
+      notifiedRatioWarnings.clear()
+      lastClearedJobId = job.id
+    }
   }, [job.id])
   const exec = job.exec!
   const context = exec.spec.analysis

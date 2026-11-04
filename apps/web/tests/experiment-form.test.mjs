@@ -272,6 +272,59 @@ test('WB-06.07:纯经验掉落的 loot KPI 不可用且原因区分「无金币�
   assert.equal(withGold.loot_gold_per_player.ok, true, '金币型奖励可测')
 })
 
+/* 审核发现 2026-11-04:①奖励名含点(如 gold.pouch)时,旧正则 `[^.]+` 只吃掉
+   第一段,前端镜像漏判「不可测」而内核仍判「可测」——designer 与内核分叉;
+   ②金币奖励放在非 on_victory 表(从未抽取)时仍判可测,纯结构零冒充实测值。
+   两处已改走「on_victory 指名表 + 按段匹配奖励名」的统一口径。 */
+test('WB-06.07:loot 可测口径统一——奖励名含点与 on_victory 指名表', () => {
+  const dotName = [
+    "schema_version: '1'",
+    'scenario: {population: 40, duration: 30d, seed: 1}',
+    'model:',
+    '  loot:',
+    '    on_victory: chest',
+    '    tables: {chest: {weights: {gold.pouch: 1.0}}}',
+    '    rewards: {gold.pouch: {gold: 5, xp: 0}}',
+    '',
+  ].join('\n')
+  const dotAvail = kpiAvailability(dotName)
+  assert.equal(dotAvail.loot_gold_per_player.ok, true, '奖励名含点仍判可测(与内核同口径)')
+
+  // 金币奖励只放在非 on_victory 表(从未抽取)→ 不可测
+  const offTable = [
+    "schema_version: '1'",
+    'scenario: {population: 40, duration: 30d, seed: 1}',
+    'model:',
+    '  loot:',
+    '    on_victory: chest',
+    '    tables:',
+    '      chest: {weights: {potion: 1.0}}',
+    '      spare: {weights: {gold_pouch: 1.0}}',
+    '    rewards:',
+    '      potion: {gold: 0, xp: 10}',
+    '      gold_pouch: {gold: 5, xp: 0}',
+    '',
+  ].join('\n')
+  const offAvail = kpiAvailability(offTable)
+  assert.equal(offAvail.loot_gold_per_player.ok, false, '金币奖励不在 on_victory 表 → 不可测')
+
+  // 金币奖励在 on_victory 表(可抽取)→ 可测
+  const onTable = [
+    "schema_version: '1'",
+    'scenario: {population: 40, duration: 30d, seed: 1}',
+    'model:',
+    '  loot:',
+    '    on_victory: chest',
+    '    tables:',
+    '      chest: {weights: {gold_pouch: 1.0}}',
+    '    rewards:',
+    '      gold_pouch: {gold: 5, xp: 0}',
+    '',
+  ].join('\n')
+  const onAvail = kpiAvailability(onTable)
+  assert.equal(onAvail.loot_gold_per_player.ok, true, '金币奖励在 on_victory 表 → 可测')
+})
+
 /* ================================ WB-06.08 ================================ */
 test('WB-06.08:约束 hard/soft×min/max;UI 百分数 ⇄ 内核比例(不是 UI 直写比例)', () => {
   // 比例类判定(四个;锁定防止以后混口径)

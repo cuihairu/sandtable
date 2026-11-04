@@ -356,14 +356,27 @@ export function hasParam(parsed: ParsedConfig, path: string): boolean {
   )
 }
 
-/** `loot_gold_per_player` 是否可测:存在金币型掉落奖励。
+/** `loot_gold_per_player` 是否可测:存在**可抽取**的金币型掉落奖励。
  *  与内核 config.rs `SimConfig::loot_gold_measurable` 同口径——纯经验掉落
  *  (gold 全 0、xp>0,validate 合法)时该 KPI 无金币口径,不得因 loot 节
- *  在场就宣称可测。*/
+ *  在场就宣称可测;金币奖励只在非 on_victory 表(从未抽取)同样不可测。
+ *  奖励名可含点(如 `gold.pouch`),按「rewards.<名>.gold」段数识别而非
+ *  单段正则——点分路径里名内点会多占层,`[^.]+` 会漏匹配。*/
 export function lootGoldMeasurable(parsed: ParsedConfig): boolean {
-  return parsed.leaves.some((l) => {
-    const m = /^model\.loot\.rewards\.[^.]+\.gold$/.exec(l.path)
-    if (!m) return false
+  const leaves = parsed.leaves.filter((l) => l.path.startsWith('model.loot.rewards.'))
+  // on_victory 表名(可能含点):从 tables 节取 weights 键
+  const onVictory = parsed.leaves.find((l) => l.path === 'model.loot.on_victory')?.raw
+  if (!onVictory) return false
+  const tablePrefix = `model.loot.tables.${onVictory}.weights`
+  const tableLeafPaths = parsed.leaves
+    .filter((l) => l.path.startsWith(tablePrefix + '.'))
+    .map((l) => l.path.slice(tablePrefix.length + 1))
+  return leaves.some((l) => {
+    // 形如 model.loot.rewards.<名>.gold;名段 = 去掉前缀与尾段
+    const rest = l.path.slice('model.loot.rewards.'.length)
+    if (!rest.endsWith('.gold')) return false
+    const name = rest.slice(0, -'.gold'.length)
+    if (!tableLeafPaths.includes(name)) return false
     const n = Number(l.raw)
     return Number.isFinite(n) && n > 0
   })

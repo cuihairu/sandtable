@@ -288,10 +288,17 @@ impl Default for LootConfig {
 }
 
 impl LootConfig {
-    /// 是否存在金币型掉落奖励。`loot_gold_per_player` 只测金币切片:
-    /// 有金币奖励时 0 也是实测值;纯经验/未配置时该口径不可用。
+    /// 是否存在**可抽取**的金币型掉落奖励。`loot_gold_per_player` 只测
+    /// 金币切片:有金币奖励时 0 也是实测值;纯经验/未配置时该口径不可用。
+    /// 只计入 `on_victory` 指名表——掉落仅从该表抽取(sim.rs),金币奖励
+    /// 放在非胜利表(从未抽取)不是可测口径,纯结构零不得冒充实测值。
     pub fn has_gold_reward(&self) -> bool {
-        self.rewards.values().any(|reward| reward.gold > 0)
+        self.tables.get(&self.on_victory).is_some_and(|table| {
+            table
+                .weights
+                .keys()
+                .any(|name| self.rewards.get(name).is_some_and(|r| r.gold > 0))
+        })
     }
 }
 
@@ -1276,5 +1283,73 @@ mod tests {
         assert!(validate(&gacha(1.0, 0.1)).is_ok());
         // gacha = None 缺省不进 canonical JSON(训练字段先例)
         assert!(SimConfig::default().gacha.is_none());
+    }
+
+    /// 审核发现 2026-11-04:`has_gold_reward` 须只计入 `on_victory` 指名表
+    /// 的金币奖励——掉落仅从该表抽取,金币放在非胜利表(从未抽取)不是可测
+    /// 口径,纯结构零不得冒充实测值;奖励名含点(如 `gold.pouch`)也须能识别。
+    #[test]
+    fn has_gold_reward_only_counts_on_victory_table() {
+        use std::collections::BTreeMap;
+
+        fn loot_cfg(
+            on_victory: &str,
+            tables: BTreeMap<String, LootTableConfig>,
+            rewards: BTreeMap<String, LootReward>,
+        ) -> LootConfig {
+            LootConfig {
+                rate_mult: 1.0,
+                on_victory: on_victory.to_string(),
+                tables,
+                rewards,
+            }
+        }
+        fn table(weights: BTreeMap<String, f64>) -> LootTableConfig {
+            LootTableConfig { weights }
+        }
+
+        // 金币奖励只在 on_victory 表 → 可测
+        let mut tables = BTreeMap::new();
+        tables.insert(
+            "chest".to_string(),
+            table([("gold.pouch".to_string(), 1.0)].into()),
+        );
+        let mut rewards = BTreeMap::new();
+        rewards.insert("gold.pouch".to_string(), LootReward { gold: 5, xp: 0 });
+        let cfg = loot_cfg("chest", tables, rewards);
+        assert!(
+            cfg.has_gold_reward(),
+            "on_victory 表的金币奖励(名含点)应可测"
+        );
+
+        // 金币奖励只放在非 on_victory 表(从未抽取)→ 不可测
+        let mut tables = BTreeMap::new();
+        tables.insert(
+            "chest".to_string(),
+            table([("potion".to_string(), 1.0)].into()),
+        );
+        tables.insert(
+            "spare".to_string(),
+            table([("gold_pouch".to_string(), 1.0)].into()),
+        );
+        let mut rewards = BTreeMap::new();
+        rewards.insert("potion".to_string(), LootReward { gold: 0, xp: 10 });
+        rewards.insert("gold_pouch".to_string(), LootReward { gold: 5, xp: 0 });
+        let cfg = loot_cfg("chest", tables, rewards);
+        assert!(
+            !cfg.has_gold_reward(),
+            "金币奖励不在 on_victory 表 → 不可测"
+        );
+
+        // on_victory 表缺失(未指向既有表)→ 不可测
+        let mut tables = BTreeMap::new();
+        tables.insert(
+            "spare".to_string(),
+            table([("gold_pouch".to_string(), 1.0)].into()),
+        );
+        let mut rewards = BTreeMap::new();
+        rewards.insert("gold_pouch".to_string(), LootReward { gold: 5, xp: 0 });
+        let cfg = loot_cfg("missing", tables, rewards);
+        assert!(!cfg.has_gold_reward(), "on_victory 指向不存在的表 → 不可测");
     }
 }
