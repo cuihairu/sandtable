@@ -713,7 +713,7 @@
 - [ ] ST-AUD 首批七项(01/09/10/02/03/11/12)派单并闭环(验收口径见上表;改 core 须 `cargo test -p sandtable-core` + 五形态等价测试全绿)。
 - [ ] ST-AUD 其余 31 项按派修顺序逐批闭环;统计口径批次落地后更新本节勾账与落地文档对照表状态。
 - [x] 审核发现：胜利表中的金币奖励权重为 0 时仍被 `has_gold_reward` 判为可抽取，合法配置 `weights: {potion: 1, gold: 0}` 会把恒为零的金币 KPI 当作可测（crates/sandtable-core/src/config.rs:299）。
-      核证 2026-11-05 属实：`has_gold_reward` 仅查 `reward.gold > 0`，未查该条目在 `on_victory` 表中的抽取权重；权重 0 条目恒不可抽（抽取层按权重抽样），金币奖励挂在权重 0 条目上从未产出，KPI 却判可测。修法=`has_gold_reward` 遍历 `table.weights` 时同时要求 `w > 0.0`（config.rs:299-307）；复核=`cargo test -p sandtable-core` 全绿（213 lib + 2/2/12/0 集成，含新增用例「金币奖励挂权重 0 条目不得判可测」）；commit=f67ebcb。
+      核证 2026-11-05 属实：`has_gold_reward` 仅查 `reward.gold > 0`，未查该条目在 `on_victory` 表中的抽取权重；权重 0 条目恒不可抽（抽取层按权重抽样），金币奖励挂在权重 0 条目上从未产出，KPI 却判可测。修法=`has_gold_reward` 遍历 `table.weights` 时同时要求 `w > 0.0`（config.rs:299-307）；复核=`cargo test -p sandtable-core` 全绿（213 lib + 2/2/12/0 集成，含新增用例「金币奖励挂权重 0 条目不得判可测」）；commit=aa95a2f。
 - [ ] 审核发现：前端按点分路径前缀识别胜利表时会混淆含点的表名，例如 `chest` 与 `chest.weights.foo` 的路径发生重叠，可将其他表的权重误认作胜利表并与内核可测判定分叉（apps/web/src/workbench/params/configYaml.ts:372）。
 - [ ] 审核发现：`on_victory` 使用合法 YAML 转义字符串如 `"ch\u0065st"` 时，前端使用未解码的原文拼接表路径而漏判金币 KPI，内核则将其解析为 `chest`（apps/web/src/workbench/params/configYaml.ts:368）。
 - [ ] 审核发现：本轮将多条历史完成记录的真实提交号批量改为 `6578d14`，例如配置效果文档原属 `8193a27` 而该提交未包含相关文件，导致审核证据无法追溯（todo.md:619）。
