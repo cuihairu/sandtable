@@ -31,6 +31,9 @@ export type StageRuleRow = {
 export type YamlLeaf = {
   /** 点分注册路径(映射键拼接;序列内部键不生成路径) */
   path: string
+  /** 解码后的键链(每个映射键一段;YAML 双引号 \uXXXX 转义已解码)。
+   *  点分 path 无法区分「表名含点」与嵌套路径,段级结构匹配须用它。 */
+  segments: string[]
   /** key 所在行(1-based) */
   line: number
   /** 值原文(引号剥离后;仅展示/数值解析用) */
@@ -93,6 +96,43 @@ function unquote(text: string): string {
   return t
 }
 
+/** 解码 YAML 双引号字符串转义(`\uXXXX` / `\xXX` / `\n` 等)。
+ *  单引号 YAML 只转义 `''`→`'`;双引号才支持 unicode/hex/控制转义。
+ *  内核(serde_yaml)对 `"ch\\u0065st"` 解析为 `chest`,前端须同口径,
+ *  否则用未解码原文拼表路径会漏判(2026-11-05 审核发现 3)。 */
+function decodeYamlScalar(text: string): string {
+  const t = text.trim()
+  if (t.length >= 2 && t[0] === '\'' && t[t.length - 1] === '\'') {
+    // 单引号:唯一转义是 '' → '
+    return t.slice(1, -1).replace(/''/g, "'")
+  }
+  if (t.length >= 2 && t[0] === '"' && t[t.length - 1] === '"') {
+    const body = t.slice(1, -1)
+    let out = ''
+    for (let i = 0; i < body.length; i++) {
+      const c = body[i]
+      if (c !== '\\' || i + 1 >= body.length) {
+        out += c
+        continue
+      }
+      const e = body[i + 1]
+      if (e === 'u' && i + 5 < body.length && /^[0-9a-fA-F]{4}$/.test(body.slice(i + 2, i + 6))) {
+        out += String.fromCharCode(parseInt(body.slice(i + 2, i + 6), 16))
+        i += 5
+      } else if (e === 'x' && i + 3 < body.length && /^[0-9a-fA-F]{2}$/.test(body.slice(i + 2, i + 4))) {
+        out += String.fromCharCode(parseInt(body.slice(i + 2, i + 4), 16))
+        i += 3
+      } else {
+        const map: Record<string, string> = { n: '\n', t: '\t', r: '\r', '0': '\0', '\\': '\\', '"': '"', "'": "'" }
+        out += map[e] ?? e
+        i += 1
+      }
+    }
+    return out
+  }
+  return t
+}
+
 /* ————— 行内 flow(映射/序列)扫描 ————— */
 // 约定:cursor 相对 text 起点;绝对偏移 = spanBase + cursor。
 
@@ -125,7 +165,14 @@ function readFlowToken(text: string, i: number): { token: string; start: number;
 type FlowScan = { end: number; error: string | null }
 
 /** 扫描行内 flow 值(text[0] 须为 { 或 [),登记叶路径与括号跨度(绝对偏移)。 */
-function scanFlow(text: string, spanBase: number, prefix: string, line: number, out: ParsedConfig): FlowScan {
+function scanFlow(
+  text: string,
+  spanBase: number,
+  prefix: string,
+  prefixSegs: string[],
+  line: number,
+  out: ParsedConfig,
+): FlowScan {
   let i = skipWs(text, 0)
   const open = text[i]
   if (open !== '{' && open !== '[') return { end: i, error: 'flow 值应以 { 或 [ 开头' }
@@ -147,15 +194,16 @@ function scanFlow(text: string, spanBase: number, prefix: string, line: number, 
       if (text[j] !== ':') return { end: j, error: `flow 项缺冒号:${key}` }
       j = skipWs(text, j + 1)
       if (text[j] === '{' || text[j] === '[') {
-        const sub = scanFlow(text.slice(j), spanBase + j, `${prefix}.${key}`, line, out)
+        const sub = scanFlow(text.slice(j), spanBase + j, `${prefix}.${key}`, [...prefixSegs, key], line, out)
         if (sub.error) return sub
         i = j + sub.end
       } else {
         const val = readFlowToken(text, j)
         out.leaves.push({
           path: `${prefix}.${key}`,
+          segments: [...prefixSegs, key],
           line,
-          raw: unquote(val.token),
+          raw: decodeYamlScalar(val.token),
           start: spanBase + val.start,
           end: spanBase + val.end,
           keyStart: spanBase + keyTok.start,
@@ -217,7 +265,7 @@ export function parseConfig(yaml: string): ParsedConfig {
     lineStarts.push(off)
     off += l.length + 1
   }
-  type Frame = { indent: number; path: string }
+  type Frame = { indent: number; path: string; segments: string[] }
   const stack: Frame[] = []
   let seqOpen: { path: string; indent: number; startLine: number; endLine: number } | null = null
   const flushSeq = (): void => {
@@ -273,7 +321,7 @@ export function parseConfig(yaml: string): ParsedConfig {
     const valStart = keyStart + m[1].length + (m[2].length - m[2].trimStart().length) + 1
     if (rest === '') {
       // 节(空值键):块映射/块序列的开头
-      stack.push({ indent, path })
+      stack.push({ indent, path, segments: [...(parent?.segments ?? []), key] })
       out.sections.push({ path, startLine: lineNo, endLine: lineNo, indent })
       continue
     }
@@ -284,7 +332,7 @@ export function parseConfig(yaml: string): ParsedConfig {
         endIdx++
       }
       const joined = yaml.slice(valStart, lineStarts[endIdx] + lines[endIdx].length)
-      const scan = scanFlow(joined, valStart, path, lineNo, out)
+      const scan = scanFlow(joined, valStart, path, [...(parent?.segments ?? []), key], lineNo, out)
       if (scan.error) out.errors.push({ line: lineNo, message: scan.error })
       out.sections.push({ path, startLine: lineNo, endLine: endIdx + 1, indent })
       continue
@@ -296,8 +344,9 @@ export function parseConfig(yaml: string): ParsedConfig {
     }
     out.leaves.push({
       path,
+      segments: [...(parent?.segments ?? []), key],
       line: lineNo,
-      raw: unquote(rest),
+      raw: decodeYamlScalar(rest),
       start: valStart,
       end: valStart + rest.length,
       keyStart,
@@ -363,23 +412,33 @@ export function hasParam(parsed: ParsedConfig, path: string): boolean {
  *  奖励名可含点(如 `gold.pouch`),按「rewards.<名>.gold」段数识别而非
  *  单段正则——点分路径里名内点会多占层,`[^.]+` 会漏匹配。*/
 export function lootGoldMeasurable(parsed: ParsedConfig): boolean {
-  const leaves = parsed.leaves.filter((l) => l.path.startsWith('model.loot.rewards.'))
-  // on_victory 表名(可能含点):从 tables 节取 weights 键
   const onVictory = parsed.leaves.find((l) => l.path === 'model.loot.on_victory')?.raw
   if (!onVictory) return false
-  const tablePrefix = `model.loot.tables.${onVictory}.weights`
-  const tableLeafPaths = parsed.leaves
-    .filter((l) => l.path.startsWith(tablePrefix + '.'))
-    .map((l) => l.path.slice(tablePrefix.length + 1))
-  return leaves.some((l) => {
-    // 形如 model.loot.rewards.<名>.gold;名段 = 去掉前缀与尾段
-    const rest = l.path.slice('model.loot.rewards.'.length)
-    if (!rest.endsWith('.gold')) return false
-    const name = rest.slice(0, -'.gold'.length)
-    if (!tableLeafPaths.includes(name)) return false
-    const n = Number(l.raw)
-    return Number.isFinite(n) && n > 0
-  })
+  // on_victory 表的 weights 键(段级匹配:表名含点时旧前缀法会误收
+  // 其他表,如 `chest` 与 `chest.weights.foo` 路径重叠——2026-11-05 审核)。
+  const tableWeights = new Map<string, number>()
+  for (const l of parsed.leaves) {
+    const s = l.segments
+    if (
+      s[0] === 'model' && s[1] === 'loot' && s[2] === 'tables' &&
+      s[3] === onVictory && s[4] === 'weights' && s.length === 6
+    ) {
+      tableWeights.set(s[5], Number(l.raw))
+    }
+  }
+  if (tableWeights.size === 0) return false
+  for (const l of parsed.leaves) {
+    const s = l.segments
+    if (s[0] === 'model' && s[1] === 'loot' && s[2] === 'rewards' && s.length === 5 && s[4] === 'gold') {
+      const w = tableWeights.get(s[3])
+      if (w === undefined || !(w > 0)) continue
+      // 权重 0 的条目恒不可抽(与内核同口径,2026-11-05 审核发现 1)
+      if (!Number.isFinite(w) || w <= 0) continue
+      const n = Number(l.raw)
+      return Number.isFinite(n) && n > 0
+    }
+  }
+  return false
 }
 
 /** 配置中数值注册路径 → 数值(参数域视图;候选 ID / 导出用)。

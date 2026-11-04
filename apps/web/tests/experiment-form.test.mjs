@@ -325,6 +325,61 @@ test('WB-06.07:loot 可测口径统一——奖励名含点与 on_victory 指名
   assert.equal(onAvail.loot_gold_per_player.ok, true, '金币奖励在 on_victory 表 → 可测')
 })
 
+/* 审核发现 2026-11-05:①表名含点时旧前缀法会误收其他表(如 `chest` 与
+   `chest.weights.foo` 路径重叠),须按段级结构匹配;②on_victory 用 YAML
+   双引号转义(`"ch\u0065st"`)时前端须解码为 `chest`,与内核 serde 同口径,
+   否则漏判金币 KPI。 */
+test('WB-06.07:loot 可测按段匹配——表名含点不混淆、on_victory 转义解码', () => {
+  // on_victory=chest,另一表 `chest.weights.foo` 也有金币:旧前缀法会把
+  // `model.loot.tables.chest.weights.foo` 误认作 chest 表权重 → 应不可测。
+  const dotTable = [
+    "schema_version: '1'",
+    'scenario: {population: 40, duration: 30d, seed: 1}',
+    'model:',
+    '  loot:',
+    '    on_victory: chest',
+    '    tables:',
+    '      chest: {weights: {potion: 1.0}}',
+    '      "chest.weights.foo": {weights: {gold: 1.0}}',
+    '    rewards:',
+    '      potion: {gold: 0, xp: 10}',
+    '      gold: {gold: 5, xp: 0}',
+    '',
+  ].join('\n')
+  const dotAvail = kpiAvailability(dotTable)
+  assert.equal(dotAvail.loot_gold_per_player.ok, false, '含点表名的金币不得误作 chest 表 → 不可测')
+
+  // 真正指向含点表 `chest.weights.foo` 且该表有金币 → 可测
+  const dotTarget = [
+    "schema_version: '1'",
+    'scenario: {population: 40, duration: 30d, seed: 1}',
+    'model:',
+    '  loot:',
+    '    on_victory: "chest.weights.foo"',
+    '    tables:',
+    '      "chest.weights.foo": {weights: {gold: 1.0}}',
+    '    rewards:',
+    '      gold: {gold: 5, xp: 0}',
+    '',
+  ].join('\n')
+  const dotTargetAvail = kpiAvailability(dotTarget)
+  assert.equal(dotTargetAvail.loot_gold_per_player.ok, true, 'on_victory 含点表名 + 金币 → 可测')
+
+  // on_victory 用双引号 unicode 转义:前端解码 `ch\u0065st` → `chest`
+  const esc = [
+    "schema_version: '1'",
+    'scenario: {population: 40, duration: 30d, seed: 1}',
+    'model:',
+    '  loot:',
+    '    on_victory: "ch\\u0065st"',
+    '    tables: {chest: {weights: {gold: 1.0}}}',
+    '    rewards: {gold: {gold: 5, xp: 0}}',
+    '',
+  ].join('\n')
+  const escAvail = kpiAvailability(esc)
+  assert.equal(escAvail.loot_gold_per_player.ok, true, 'on_victory 转义解码为 chest → 可测')
+})
+
 /* ================================ WB-06.08 ================================ */
 test('WB-06.08:约束 hard/soft×min/max;UI 百分数 ⇄ 内核比例(不是 UI 直写比例)', () => {
   // 比例类判定(四个;锁定防止以后混口径)
