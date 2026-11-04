@@ -661,3 +661,54 @@
 
 - [x] VULN-SANDT-001 [高危 9.1/7.5/7.3/—·RUSTSEC-2026-0369/0429/0367/0368] zip 6.0.0→9.0.0【跨大版本需改代码】：patched 仅 ≥9.0.0，涉及 zip API 变更需适配（sandtable-cli 直接依赖，跨 6→9 两个 major）；验收：cargo audit 上述 4 个 ID 清零 + cargo test 绿（cargo test --workspace --no-fail-fast；sandtable-mcp calibrate 用例为 pre-existing 红项不计）
       核证 2026-11-04 属实并已修：①zip 依赖升 `6→9`（crates/sandtable-cli/Cargo.toml:29/43）；②API 适配——zip 9 的 `file_names()` 改为返回 `Result<Cow<str>>`，`project.rs:254-259` 改经 `collect::<Result<BTreeSet<_>,_>>()` 逐名收集并显式报「含非法文件名字节」，`workbook.rs` 测试的 `name().to_string()` 改 `name().unwrap().into_owned()`（workbook.rs:37）；③连带发现 `libduckdb-sys`（经 duckdb 拉入）也依赖 zip 6.0.0——升 `duckdb`/`libduckdb-sys` 至 `1.20000.1`（apps/desktop/src-tauri/Cargo.toml:27、crates/sandtable-cli/Cargo.toml:27，该版 build-dependency 已不再用 zip），使锁文件仅剩 zip 9.3.0（`cargo tree -i zip` 只列 sandtable-cli→zip 9.3.0，旧 zip 6.0.0 条目消失）。复核=`cargo audit` 上述 4 个 ID 全清零（zip 6.0.0 不在依赖树）+`cargo test --workspace --no-fail-fast` 绿（sandtable-mcp calibrate 一项为 pre-existing 红项不计，已 stash 验证与本次无关）+`cargo test -p sandtable-cli --features duckdb,parquet` 绿（项目/workbook/parquet 全套）+`cargo test -p sandtable-desktop` 绿（22/22）+`cargo clippy -p sandtable-cli --all-targets --features duckdb,parquet -D warnings` 净+`cargo check -p sandtable-wasm --target wasm32-unknown-unknown` 绿；commit=6578d14。
+
+## 外部深度审核跟踪(ST-AUD-01..38)
+
+> 来源:[外部深度审核落地 · Sandtable 源码级 Issues](docs/review/external-deep-audit-2026-11-04.md)(外部静态审查 38 条,基准 9aeb4e4,重核 HEAD 1d9ccb2)——**外部建议非仓内事实,静态审查未实跑的限定语在落地文档中原样保留**。
+> 重核结论(2026-11-04):属实 36 / 部分属实 2(I-031 量级低估、I-034 位置错记)/ 不属实 0 / 重复已挂账 0;本节只做映射不搬全文,细证据看落地文档对照表。
+> 限定语:标 ⚠ 的条目(I-014 config_hash 身份、I-015 溢出行为、I-037 瘦身意图/CSV 可利用性)**需实跑验证,不得当已验证结论**;统计口径条目(I-001/005/008)修复必须同步黄金快照并在提交说明写明口径变更。
+> 派修顺序(按审核者建议优先级):**ST-AUD-01 → 09 → 10 → 02 → 03 → 11 → 12**(首七项)→ 统计结论层(05/06/07/08/16)→ 统一门禁与预算(04/14/17/15/18/19)→ 前端状态与工程化(13/20-25/31/32)→ 一致性收尾(26-30/33-38)。每项派单时以落地文档对照表的 HEAD file:line 为现场情报。
+
+| 跟踪号 | 原编号/级别/判态 | 重核后位置(HEAD 1d9ccb2) | 验收口径 |
+|---|---|---|---|
+| ST-AUD-01 | I-001 · P0/属实 | `core experiment.rs:44,57-67,136-142; sweep.rs:179; cli main.rs:948-949` | n<2 或 sd==0 时 compare/judge 拒绝判定返回「证据不足」;所有入口统一 R≥2;黄金快照按新口径更新并写明 stats 口径变更 |
+| ST-AUD-09 | I-009 · P1/属实 | `mcp calibrate.rs:130-133,158,170` | join 后 canonicalize 并断言 starts_with(dir);显式拒绝 is_absolute/盘符前缀;错误信息不回显单元格原值;cargo test -p sandtable-mcp 增 C:/ 逃逸用例 |
+| ST-AUD-10 | I-010 · P1/属实 | `tauri lib.rs:604,614,624; cli main.rs:1071` | 只读连接+语句白名单(仅 SELECT+注册视图);禁 read_csv_auto/read_parquet/COPY;inputs 限定应用数据目录并 canonicalize;白名单逻辑抽纯函数加单测 |
+| ST-AUD-02 | I-002 · P1/属实 | `config.rs:652,655; world.rs:71; metrics.rs:196; scenario.rs:496-508` | validate 增加 players/days 上界与 players×days 预算;五壳层共用同一常量;恶意 YAML 表驱动用例 population:4294967295 返回 ConfigError |
+| ST-AUD-03 | I-003 · P1/属实 | `systems/gacha.rs:44-53; config.rs:758-760,356` | pity_hard>0 或 base_rate 下限门;pull_until_hit/featured 加最大抽数保护返回 Result;回归用例 base_rate:1e-9 有限时间终止 |
+| ST-AUD-11 | I-011 · P1/属实 | `tauri lib.rs:8-9,420,439,523` | 桌面 replicates 设上限(对齐 WASM 64 或另定);改按需 push/try_reserve 返回错误;invoke 大 R 用例返回结构化错误 |
+| ST-AUD-12 | I-012 · P1/属实 | `runManager.ts:332,317` | 终局 promise 改 .then(ok,err) 或 .finally;失败分支删控制引用+落 failed 终态+startNextQueued;node --test 注入 reject backend 断言队列可继续 |
+| ST-AUD-05 | I-005 · P1/属实 | `experiment.rs:123-127` | 效应量改 d_z=Δ/s_d(或 d_av);同步修订 docs 13/15 章公式与黄金快照;compare 最小复现回归测试 |
+| ST-AUD-06 | I-006 · P1/属实 | `sweep.rs:392-394,400-413,417` | 运行级缺失显式标 missing 或返回 ConfigError;断言 target_outcomes.len()==targets.len();gacha_pulls_to_hit==0 用例 |
+| ST-AUD-07 | I-007 · P1/属实 | `sensitivity.rs:239,249` | stat_at 增基线向量参数,校验非轴维≈基线;补「基线非网格端点」二维 Grid 回归测试 |
+| ST-AUD-08 | I-008 · P1/属实 | `metrics.rs:297; golden_report.json:94-95` | end_day 在 day==1 记无定义显式语义;inflation_last 跳过 day1;黄金快照同步更新 |
+| ST-AUD-16 | I-016 · P2/属实 | `kpi_custom.rs:103; formula.rs:550-556,594-605,457` | 求值前逐个检查 used_vars 的 extract,任一 None 记 None;formula 对非有限输入显式传播;缺席指标用例 |
+| ST-AUD-04 | I-004 · P1/属实 | `config.rs:667,610,517; sim.rs:320-345; progression.rs:47` | i64 数值字段符号/范围门;gold_gain 用 try_into/饱和转换;record_upgrade 对负 cost 报错;恶意 YAML 用例 whale_gain_mult:-1、upgrade_cost_base:-100 |
+| ST-AUD-14 | I-014 · P2/属实 | `config.rs(各槽位见对照表); registry.rs:900` | validate 顶部对全部 f64/i64/u32 数值槽统一 is_finite+区间门;config_hash 前拒绝非有限值;「遍历 SimConfig 所有 f64 拒绝非有限」回归测试(⚠ config_hash NaN 身份保持待实跑口径) |
+| ST-AUD-17 | I-017 · P2/属实 | `sweep.rs:179,201; optimize.rs:188-189; wasm lib.rs:92` | core 层统一预算函数(候选数×R×players×days)五壳层共用;ParamRange 增 (max−min).is_finite() 检查;±1e308 用例 |
+| ST-AUD-15 | I-015 · P2/属实(⚠待实跑) | `world.rs:46; combat.rs:67; sim.rs:331; Cargo.toml:18-20` | 运算结果上界门+checked_*/saturating/try_from;debug/release 构建溢出行为实测后再定门限(保留待实跑限定) |
+| ST-AUD-18 | I-018 · P2/属实 | `surrogate.rs:59-62,167,392,341-367` | trees≤1024、max_depth≤32;predict_row 改 Result 校验行宽;方差削减改 Welford/前缀和+最小削减阈值 |
+| ST-AUD-19 | I-019 · P2/属实 | `wasm lib.rs:58-79; mcp main.rs:122,128` | run_simulation_native 补 scale 门(与 sweep_plan_native 同口径);MCP plan() 前判预算+results_json 字节上限 |
+| ST-AUD-13 | I-013 · P1/属实 | `projectDoc.ts:828-847; runManager.ts:449-456` | 恢复时丢弃结果类字段(只留 spec/done/status 由执行槽重建)或完整签名校验;篡改 localStorage 回归测试 |
+| ST-AUD-20 | I-020 · P2/属实 | `runManager.ts:299-300,114; executor.ts:380-382` | 复用同一 backends Promise;终局统一删除并 terminate;泄漏断言测试 |
+| ST-AUD-21 | I-021 · P2/属实 | `runManager.ts:160-165` | 终态检查移到 patch.status 条件之外无条件拦截;取消后中途更新不写进度用例 |
+| ST-AUD-22 | I-022 · P2/属实 | `routing.ts:59; workbenchStore.ts:536` | parseHash 整体 try/catch,非法值按忽略该键降级;#/workbench/analysis?metric=%E0%A4%A jsdom 模块加载用例 |
+| ST-AUD-23 | I-023 · P2/属实 | `apps/web/package.json:19; ci.yml:130,140` | prebuild 比对 node_modules/sandtable-wasm 与 pkg/ 的 wasm hash,不一致 fail;CI 增 pnpm 路径+wasm asset hash 断言;评估 --frozen-lockfile |
+| ST-AUD-24 | I-024 · P2/属实 | `wasm.ts:239,309; workerProtocol.ts:21-27` | Worker 协议扩展 optimize/surrogate/aggregate/kpi;短期至少让出一帧并明示计算中 |
+| ST-AUD-25 | I-025 · P2/属实 | `WorkbenchApp.tsx:517; sampleProject.ts:11; StatusBar.tsx:59; AppBar.tsx:37,84` | demoMode 由 state.project/selection.source/jobs 派生,删常量;真实 run 后状态栏不再显示演示数据走查用例 |
+| ST-AUD-26 | I-026 · P2/属实 | `report.rs:307,339` | 壳层改读内核聚合或调 core::experiment::summarize;除数用 per.len();HTML 与 report.json/summary.csv 一致性测试 |
+| ST-AUD-27 | I-027 · P2/属实 | `project.rs:243(正面:69 路径纪律)` | 解压加 Read::take(MAX_ENTRY_BYTES)、条目数与总字节上限、manifest 限长;zip bomb 用例 |
+| ST-AUD-28 | I-028 · P2/属实 | `analyze.rs:10,87-90,101-104` | Windows 分支 Job Object 或 taskkill /T /F;文档标注平台差异 |
+| ST-AUD-29 | I-029 · P2/属实 | `python lib.rs:236-283,82,213` | py_to_value 加 MAX_DEPTH 或 visited 检测;expect/unwrap 换 PyErr;l=[l] 循环引用用例 |
+| ST-AUD-30 | I-030 · P2/属实 | `cli Cargo.toml:23-27; Cargo.lock:130,148` | Arrow 统一到 60.x 或禁用 duckdb parquet feature;cargo tree -d 纳入 CI |
+| ST-AUD-31 | I-031 · P2/部分属实(量级修正:未入 CI 实为约 27 个非十余个) | `ci.yml:149-153; package.json:16-23; scaffold.rs:19-21` | node --test apps/web/tests/*.test.mjs 自动发现;统一包管理器+一份 lock+frozen-lockfile;crates/**/templates/** 加白名单 |
+| ST-AUD-32 | I-032 · P2/属实 | `App.tsx:32-34,152,328-331` | rs.length===0 显示空态跳过图表区;空 results 渲染用例 |
+| ST-AUD-33 | I-033 · P3/属实 | `scenario.rs:947-949; config.rs:1048-1050; disttest.rs:59,43` | 更新两处过时 loot 注释(与 sim.rs 已接入现实一致);merge_buckets 注释改「期望值最小优先」;chi_square 补 is_infinite 检查 |
+| ST-AUD-34 | I-034 · P3/部分属实(位置修正:特例在 registry.rs:408 check_section,非 scenario.rs check_tree) | `registry.rs:408; scenario.rs:55-69` | stage_rules 特例移除或 ModelSection 落字段;死配置静默丢弃改为显式报错或文档声明 |
+| ST-AUD-35 | I-035 · P3/属实 | `WorkbenchApp.tsx:149-150; routing.ts:54-62` | hashchange 恢复保留 link.selection;守卫拦截时回滚 hash |
+| ST-AUD-36 | I-036 · P3/属实 | `executor.ts:419; StatusBar.tsx:53; WorkbenchApp.tsx:935; keyboard.ts:26` | init 类 errorClass 保持可重试语义;aria-expanded 接真实状态;Ctrl/Cmd+C 声明与实现对齐(实现或摘除声明) |
+| ST-AUD-37 | I-037 · P3/属实(⚠意图待确认) | `desktop-package.yml:390; Cargo.toml:18-20; main.rs:1036` | 确认 headless 发布是否需 query/parquet(有意瘦身则记录决策);csv_field 补 =+-@ 前缀防护;release 评估 opt-level=z/strip/wasm-opt |
+| ST-AUD-38 | I-038 · P3/属实 | `五壳层入口见对照表` | 跨壳层契约文档成文(load 入口/replicates 默认/错误形状/预算矩阵);to_tool_result 序列化失败不再静默空串 |
+
+- [ ] ST-AUD 首批七项(01/09/10/02/03/11/12)派单并闭环(验收口径见上表;改 core 须 `cargo test -p sandtable-core` + 五形态等价测试全绿)。
+- [ ] ST-AUD 其余 31 项按派修顺序逐批闭环;统计口径批次落地后更新本节勾账与落地文档对照表状态。
