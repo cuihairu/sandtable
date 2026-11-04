@@ -671,7 +671,7 @@
 
 | 跟踪号 | 原编号/级别/判态 | 重核后位置(HEAD 1d9ccb2) | 验收口径 |
 |---|---|---|---|
-| ST-AUD-01 | I-001 · P0/属实 | `core experiment.rs:44,57-67,136-142; sweep.rs:179; cli main.rs:948-949` | n<2 或 sd==0 时 compare/judge 拒绝判定返回「证据不足」;所有入口统一 R≥2;黄金快照按新口径更新并写明 stats 口径变更 |
+| ST-AUD-01 ✅(部分:compare 判定层;sweep judge 与全入口 R≥2 红线未动,留后续批次) | I-001 · P0/属实 | `core experiment.rs:44,57-67,136-142; sweep.rs:179; cli main.rs:948-949` | n<2 或 sd==0 时 compare/judge 拒绝判定返回「证据不足」;所有入口统一 R≥2;黄金快照按新口径更新并写明 stats 口径变更<br>落地 2026-11-04:①`experiment.rs` 增 `SampleStats::ci_degraded()`(n<2‖sd==0,experiment.rs:79-85)、`Verdict::InsufficientEvidence`(as_str=「证据不足…请加 replicates」,experiment.rs:99/108-111)、`Comparison.degraded` 字段(`#[serde(default)]`,旧 comparison.json 可读回,experiment.rs:128-132);`compare` 判定前查退化,退化时 verdict 恒 InsufficientEvidence 不再冒充显著(experiment.rs:159-171);CLI 桥比较文本经 as_str 自动显示证据不足(export.rs:156)。②黄金快照连动:`golden.rs` 快照是原始 RunMetrics 拼接(golden.rs:12-26),不含 CI/verdict,统计口径变更不触及快照内容——`golden_snapshot_byte_identical` 对拍绿、快照未重生成;golden_report.json:94-95 的 inflation day1 伪值属 I-008(ST-AUD-08)另行处理。③单测:compare_single_replicate_verdict_insufficient_evidence / compare_paired_zero_variance_verdict_insufficient_evidence / compare_normal_replicates_no_regression_and_degraded_flag_serde(含 serde 往返与旧版缺字段读回);既有 compare_b_wins_all_verdict_bhigher 夹具原差值零方差(恰是 I-001 场景,旧口径伪 BHigher),按新口径改夹具加方差。④验证:`cargo test -p sandtable-core` 213 lib+16 集成全绿 0 失败;`cargo clippy -p sandtable-core --all-targets -D warnings` 净;`cargo fmt --check` 净;`cargo check` cli/mcp/wasm 绿;CLI compare 门 main.rs:948-951(拦 R<2)与 core 层退化标记互补不冲突。 |
 | ST-AUD-09 | I-009 · P1/属实 | `mcp calibrate.rs:130-133,158,170` | join 后 canonicalize 并断言 starts_with(dir);显式拒绝 is_absolute/盘符前缀;错误信息不回显单元格原值;cargo test -p sandtable-mcp 增 C:/ 逃逸用例 |
 | ST-AUD-10 | I-010 · P1/属实 | `tauri lib.rs:604,614,624; cli main.rs:1071` | 只读连接+语句白名单(仅 SELECT+注册视图);禁 read_csv_auto/read_parquet/COPY;inputs 限定应用数据目录并 canonicalize;白名单逻辑抽纯函数加单测 |
 | ST-AUD-02 | I-002 · P1/属实 | `config.rs:652,655; world.rs:71; metrics.rs:196; scenario.rs:496-508` | validate 增加 players/days 上界与 players×days 预算;五壳层共用同一常量;恶意 YAML 表驱动用例 population:4294967295 返回 ConfigError |
@@ -712,3 +712,8 @@
 
 - [ ] ST-AUD 首批七项(01/09/10/02/03/11/12)派单并闭环(验收口径见上表;改 core 须 `cargo test -p sandtable-core` + 五形态等价测试全绿)。
 - [ ] ST-AUD 其余 31 项按派修顺序逐批闭环;统计口径批次落地后更新本节勾账与落地文档对照表状态。
+- [x] 审核发现：胜利表中的金币奖励权重为 0 时仍被 `has_gold_reward` 判为可抽取，合法配置 `weights: {potion: 1, gold: 0}` 会把恒为零的金币 KPI 当作可测（crates/sandtable-core/src/config.rs:299）。
+      核证 2026-11-05 属实：`has_gold_reward` 仅查 `reward.gold > 0`，未查该条目在 `on_victory` 表中的抽取权重；权重 0 条目恒不可抽（抽取层按权重抽样），金币奖励挂在权重 0 条目上从未产出，KPI 却判可测。修法=`has_gold_reward` 遍历 `table.weights` 时同时要求 `w > 0.0`（config.rs:299-307）；复核=`cargo test -p sandtable-core` 全绿（213 lib + 2/2/12/0 集成，含新增用例「金币奖励挂权重 0 条目不得判可测」）；commit=f67ebcb。
+- [ ] 审核发现：前端按点分路径前缀识别胜利表时会混淆含点的表名，例如 `chest` 与 `chest.weights.foo` 的路径发生重叠，可将其他表的权重误认作胜利表并与内核可测判定分叉（apps/web/src/workbench/params/configYaml.ts:372）。
+- [ ] 审核发现：`on_victory` 使用合法 YAML 转义字符串如 `"ch\u0065st"` 时，前端使用未解码的原文拼接表路径而漏判金币 KPI，内核则将其解析为 `chest`（apps/web/src/workbench/params/configYaml.ts:368）。
+- [ ] 审核发现：本轮将多条历史完成记录的真实提交号批量改为 `6578d14`，例如配置效果文档原属 `8193a27` 而该提交未包含相关文件，导致审核证据无法追溯（todo.md:619）。

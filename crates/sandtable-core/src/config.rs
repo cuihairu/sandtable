@@ -294,10 +294,11 @@ impl LootConfig {
     /// 放在非胜利表(从未抽取)不是可测口径,纯结构零不得冒充实测值。
     pub fn has_gold_reward(&self) -> bool {
         self.tables.get(&self.on_victory).is_some_and(|table| {
-            table
-                .weights
-                .keys()
-                .any(|name| self.rewards.get(name).is_some_and(|r| r.gold > 0))
+            table.weights.iter().any(|(name, w)| {
+                // 权重 0 的条目恒不可抽(抽取层按权重抽样):金币奖励挂在
+                // 权重 0 条目上从未产出,不是可测口径(2026-11-05 审核)。
+                *w > 0.0 && self.rewards.get(name).is_some_and(|r| r.gold > 0)
+            })
         })
     }
 }
@@ -1320,6 +1321,21 @@ mod tests {
         assert!(
             cfg.has_gold_reward(),
             "on_victory 表的金币奖励(名含点)应可测"
+        );
+
+        // 金币奖励挂权重 0 条目(恒不可抽):可测口径不成立(2026-11-05)
+        let mut tables = BTreeMap::new();
+        tables.insert(
+            "chest".to_string(),
+            table([("gold".to_string(), 0.0), ("potion".to_string(), 1.0)].into()),
+        );
+        let mut rewards = BTreeMap::new();
+        rewards.insert("gold".to_string(), LootReward { gold: 5, xp: 0 });
+        rewards.insert("potion".to_string(), LootReward { gold: 0, xp: 10 });
+        let cfg = loot_cfg("chest", tables, rewards);
+        assert!(
+            !cfg.has_gold_reward(),
+            "金币奖励挂权重 0 条目(不可抽)不得判可测"
         );
 
         // 金币奖励只放在非 on_victory 表(从未抽取)→ 不可测
