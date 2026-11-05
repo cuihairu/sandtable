@@ -107,6 +107,19 @@ fn calibrate_rejects_bad_mapping_zero_and_path_escape() {
     let bad = "series:\n  win_rate:\n    file: bad.csv\n    day_column: cohort_day\n    value_column: v\n    aggregation: sum\n";
     let err = calibrate_native(&input(&dir, bad)).unwrap_err();
     assert!(!err.contains("not-a-number"), "{err}");
+
+    // 2026-11-05 审核发现 5:合法文件名内「..」子串(如 v2..final.csv)与
+    // POSIX 冒号(a:b.csv)不属穿越/盘符,不得误拒——旧 `file.contains("..")`
+    // 与 `bytes[1]==':'` 检查会拒绝此前合法的 mapping 文件。
+    fs::write(dir.join("v2..final.csv"), "cohort_day,v\n3,1\n").unwrap();
+    let dots = "series:\n  win_rate:\n    file: v2..final.csv\n    day_column: cohort_day\n    value_column: v\n    aggregation: sum\n";
+    let out = calibrate_native(&input(&dir, dots));
+    assert!(out.is_ok(), "v2..final.csv 应可读: {out:?}");
+
+    fs::write(dir.join("a:b.csv"), "cohort_day,v\n3,1\n").unwrap();
+    let colon = "series:\n  win_rate:\n    file: a:b.csv\n    day_column: cohort_day\n    value_column: v\n    aggregation: sum\n";
+    let out = calibrate_native(&input(&dir, colon));
+    assert!(out.is_ok(), "a:b.csv 应可读: {out:?}");
 }
 
 #[test]

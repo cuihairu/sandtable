@@ -76,11 +76,13 @@ pub fn summarize(values: &[f64]) -> SampleStats {
 }
 
 impl SampleStats {
-    /// CI 是否零宽退化:n<2(sd/half 无定义,记 0)或 sd==0(全同序列,
-    /// t·0/√n = 0)。两种情况 CI 都是 [mean, mean],不含任何抽样噪声信息,
-    /// 据此判「显著」等于把单点当置信区间(ST-AUD-01 / I-001)。
+    /// CI 是否零宽退化:n<2(sd/half 无定义,记 0)或 CI 上界==下界。
+    /// f64 下真正的零宽条件是 `ci95_lo == ci95_hi`:sd==0 只是其子集,
+    /// 当 sd 极小但非零、均值很大使 mean±t·sd/√n 舍入塌缩成同值时也零宽,
+    /// 用 sd==0 作代理会漏判(2026-11-05 审核发现)。零宽 CI 不含任何
+    /// 抽样噪声信息,据此判「显著」等于把单点当置信区间(ST-AUD-01 / I-001)。
     pub fn ci_degraded(&self) -> bool {
-        self.n < 2 || self.sd == 0.0
+        self.n < 2 || self.ci95_lo == self.ci95_hi
     }
 }
 
@@ -114,7 +116,7 @@ impl Verdict {
 
 /// 一对臂在某指标上的比较结果。
 /// Deserialize:comparison.json 是两向契约,壳层(workbook 导出)按同结构读回。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Comparison {
     pub metric: String,
     pub arm_a: SampleStats,
@@ -127,10 +129,54 @@ pub struct Comparison {
     pub effect_size_d: f64,
     /// CI 零宽退化(n<2 或配对差零方差):此时 verdict 恒为
     /// InsufficientEvidence,CI/均值仅作记录,不构成统计结论。
-    /// serde(default):旧 comparison.json 缺该字段时按 false 读回。
+    /// 旧 comparison.json 缺该字段或已按旧口径(sd==0)误写为 false 时,
+    /// 反序列化按 diff CI 零宽重推导,避免「单点当置信区间」误判读回
+    /// (2026-11-05 审核发现 7)。
     #[serde(default)]
     pub degraded: bool,
     pub verdict: Verdict,
+}
+
+impl<'de> serde::Deserialize<'de> for Comparison {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            metric: String,
+            arm_a: SampleStats,
+            arm_b: SampleStats,
+            diff_mean: f64,
+            diff_ci95_lo: f64,
+            diff_ci95_hi: f64,
+            effect_size_d: f64,
+            #[serde(default)]
+            degraded: Option<bool>,
+            verdict: Verdict,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        // 真正的零宽退化条件是 diff CI 上下界相等(不依赖 sd 代理);
+        // 显式字段存在且非退化时尊重显式值,否则按 CI 重推导;退化时
+        // verdict 一并重标 InsufficientEvidence,避免旧 BHigher 误判读回。
+        let degraded = raw.degraded.unwrap_or(false) || raw.diff_ci95_lo == raw.diff_ci95_hi;
+        let verdict = if degraded {
+            Verdict::InsufficientEvidence
+        } else {
+            raw.verdict
+        };
+        Ok(Comparison {
+            metric: raw.metric,
+            arm_a: raw.arm_a,
+            arm_b: raw.arm_b,
+            diff_mean: raw.diff_mean,
+            diff_ci95_lo: raw.diff_ci95_lo,
+            diff_ci95_hi: raw.diff_ci95_hi,
+            effect_size_d: raw.effect_size_d,
+            degraded,
+            verdict,
+        })
+    }
 }
 
 /// 配对比较:输入两臂逐 replicate 的同指标值(顺序即 replicate 序号)。
@@ -799,7 +845,7 @@ mod tests {
 
     /// ST-AUD-01 回归:R≥3 且配对差有方差时行为不变——verdict 三态照旧、
     /// degraded=false、JSON 含 degraded 字段;旧版无该字段的
-    /// comparison.json 仍可读回(serde default)。
+    /// comparison.json 仍可读回,且按 diff CI 零宽重推导 degraded。
     #[test]
     fn compare_normal_replicates_no_regression_and_degraded_flag_serde() {
         let a = [10.0, 10.5, 9.8, 10.2];
@@ -827,8 +873,50 @@ mod tests {
         let old: Comparison = serde_json::from_value(legacy).unwrap();
         assert!(
             !old.degraded,
-            "旧 comparison.json 缺 degraded 按 false 读回"
+            "旧 comparison.json 缺 degraded 且 diff CI 非零宽 → 按 false 读回"
         );
+    }
+
+    /// 2026-11-05 审核发现 7:旧 comparison.json 已按旧口径(sd==0 代理)对
+    /// 退化数据(n<2 或零方差)写出 verdict=BHigher 且无 degraded 字段,读回
+    /// 必须按 diff CI 零宽重推导 degraded=true,不再让「单点当置信区间」
+    /// 误判冒充显著。
+    #[test]
+    fn legacy_degraded_json_re_derives_degraded_from_zero_width_ci() {
+        // 零宽 diff CI(diff_ci95_lo == diff_ci95_hi)但无 degraded 字段
+        let legacy = serde_json::json!({
+            "metric": "win_rate",
+            "arm_a": {"n": 4, "mean": 10.0, "sd": 0.3, "ci95_lo": 9.5, "ci95_hi": 10.5},
+            "arm_b": {"n": 4, "mean": 12.0, "sd": 0.3, "ci95_lo": 11.5, "ci95_hi": 12.5},
+            "diff_mean": 1.5, "diff_ci95_lo": 1.5, "diff_ci95_hi": 1.5,
+            "effect_size_d": 0.0, "verdict": "BHigher"
+        });
+        let old: Comparison = serde_json::from_value(legacy).unwrap();
+        assert!(old.degraded, "零宽 diff CI 必须重推导 degraded=true");
+        assert_eq!(
+            old.verdict,
+            Verdict::InsufficientEvidence,
+            "退化时旧 BHigher verdict 必须一并重标证据不足"
+        );
+    }
+
+    /// 2026-11-05 审核发现 6:sd 极小但非零、均值很大使 mean±t·sd/√n 舍入
+    /// 塌缩成零宽 CI 时,ci_degraded 必须按 ci95_lo==ci95_hi 判真(旧的
+    /// sd==0 代理会漏判);verdict 不得把零宽 CI 判成「显著」。
+    #[test]
+    fn zero_width_ci_from_rounding_collapse_is_degraded() {
+        // n=100,配对差在 1e16 与 1e16+2 间交替(arm_a=0):sd≈1.42 非零,
+        // 但 t·sd/√n≈0.28 在 1e16 量级 ULP=2 下舍入塌缩,ci95_lo == ci95_hi。
+        let base = 1e16;
+        let a: Vec<f64> = (0..100).map(|_| 0.0).collect();
+        let b: Vec<f64> = (0..100)
+            .map(|i| base + if i % 2 == 0 { 2.0 } else { 0.0 })
+            .collect();
+        let c = compare("m", &a, &b);
+        assert!(c.diff_ci95_lo == c.diff_ci95_hi, "舍入塌缩应产生零宽 CI");
+        assert!(c.diff_ci95_lo > 0.0, "零宽 CI 完全在 0 以上(旧口径伪显著)");
+        assert!(c.degraded, "零宽 CI 必须标 degraded(旧 sd==0 代理漏判)");
+        assert_eq!(c.verdict, Verdict::InsufficientEvidence);
     }
 
     // —— compare_arms(WB-03.10:A/B 桥的内核入口)——

@@ -378,6 +378,46 @@ test('WB-06.07:loot 可测按段匹配——表名含点不混淆、on_victory �
   ].join('\n')
   const escAvail = kpiAvailability(esc)
   assert.equal(escAvail.loot_gold_per_player.ok, true, 'on_victory 转义解码为 chest → 可测')
+
+  // serde_yaml 全转义表:键与值同口径解码(\e → ESC,\U 8 位 → 标量,
+  // \a\b\f\v\ \/ \N\_\L\P → 对应控制/Unicode 字符;代理与超限码点保留原文)。
+  // 2026-11-05 审核发现 1:原 decodeYamlScalar 只覆盖 \uXXXX/\xXX/部分控制转义,
+  // 键走 unquote 不解转义,表名键转义时与 on_victory 解码值不匹配 → 漏判。
+  const escKey = [
+    "schema_version: '1'",
+    'scenario: {population: 40, duration: 30d, seed: 1}',
+    'model:',
+    '  loot:',
+    '    on_victory: "ch\\u0065st"',
+    '    tables: {"ch\\u0065st": {weights: {gold: 1.0}}}',
+    '    rewards: {gold: {gold: 5, xp: 0}}',
+    '',
+  ].join('\n')
+  const escKeyAvail = kpiAvailability(escKey)
+  assert.equal(escKeyAvail.loot_gold_per_player.ok, true, '键转义解码同口径 → 可测')
+
+  // 全转义表抽查(serde 实测口径):\a=\x07,\e=\x1b,\N=\u0085,\L=\u2028,
+  // \U0001F600=😀,\U00000041=A,\x41=A;孤代理/超限码点 serde 报错,保留原文。
+  const cfg = parseConfig([
+    'model:',
+    '  loot:',
+    '    on_victory: "\\a\\b\\f\\v\\e\\ \\N\\_\\L\\P\\U0001F600\\U00000041\\x41"',
+    '    tables: {chest: {weights: {gold: 1.0}}}',
+    '    rewards: {gold: {gold: 5, xp: 0}}',
+    '',
+  ].join('\n'))
+  const leaf = cfg.leaves.find((l) => l.path === 'model.loot.on_victory')
+  assert.ok(leaf)
+  const expected = '\x07\x08\x0c\x0b\x1b \u0085\u00a0\u2028\u2029😀AA'
+  assert.equal(leaf.raw, expected)
+  // 孤代理:serde 拒绝,前端不解(保留转义原文)
+  const surrogate = parseConfig('k: "\\uD83D\\uDE00"')
+  const surrogateLeaf = surrogate.leaves.find((l) => l.path === 'k')
+  assert.equal(surrogateLeaf?.raw, '\\uD83D\\uDE00')
+  // 超限码点:serde 拒绝,前端不解(保留转义原文)
+  const overflow = parseConfig('k: "\\U00110000"')
+  const overflowLeaf = overflow.leaves.find((l) => l.path === 'k')
+  assert.equal(overflowLeaf?.raw, '\\U00110000')
 })
 
 /* ================================ WB-06.08 ================================ */

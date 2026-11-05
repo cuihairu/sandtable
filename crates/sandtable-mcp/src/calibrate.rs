@@ -130,12 +130,22 @@ fn read_csv_rows(dir: &Path, file: &str) -> Result<Vec<BTreeMap<String, String>>
     if file.is_empty() {
         return Err("mapping 文件路径不可为空".into());
     }
-    if file.contains("..") || file.starts_with('/') || file.starts_with('\\') {
+    // 只把「..」作为独立路径分量判为穿越;子串「..」(如 v2..final.csv)是
+    // 合法文件名,不得误拒(2026-11-05 审核发现 5)。
+    if file.split(['/', '\\']).any(|c| c == "..") {
         return Err("mapping 文件路径必须留在数据目录内".into());
     }
     let bytes = file.as_bytes();
-    if bytes.len() >= 2 && bytes[1] == b':' {
-        // Windows 盘符(如 C:/x.csv):join 会整体替换路径,直接拒绝。
+    // Windows 盘符绝对路径(如 C:/x.csv、C:\x.csv):join 会整体替换路径,
+    // 直接拒绝;POSIX 合法文件名内冒号(如 a:b.csv)不属盘符,不误拒。
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'/' || bytes[2] == b'\\')
+    {
+        return Err("mapping 文件路径必须留在数据目录内".into());
+    }
+    if file.starts_with('/') || file.starts_with('\\') {
         return Err("mapping 文件路径必须留在数据目录内".into());
     }
     let path = dir.join(file);

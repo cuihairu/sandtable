@@ -99,7 +99,10 @@ function unquote(text: string): string {
 /** 解码 YAML 双引号字符串转义(`\uXXXX` / `\xXX` / `\n` 等)。
  *  单引号 YAML 只转义 `''`→`'`;双引号才支持 unicode/hex/控制转义。
  *  内核(serde_yaml)对 `"ch\\u0065st"` 解析为 `chest`,前端须同口径,
- *  否则用未解码原文拼表路径会漏判(2026-11-05 审核发现 3)。 */
+ *  否则用未解码原文拼表路径会漏判(2026-11-05 审核发现 3)。2026-11-05
+ *  复核发现 1:原实现只覆盖 `\uXXXX`/`\xXX`/`\n\t\r\0\\"'`,其余合法转义
+ *  (`\a\b\f\v\e\ \/\N\_\L\P` 与 8 位 `\UXXXXXXXX`)被静默丢反斜杠,与
+ *  serde_yaml 解码分叉;此处按 serde_yaml_ng 全表对齐。 */
 function decodeYamlScalar(text: string): string {
   const t = text.trim()
   if (t.length >= 2 && t[0] === '\'' && t[t.length - 1] === '\'') {
@@ -116,14 +119,28 @@ function decodeYamlScalar(text: string): string {
         continue
       }
       const e = body[i + 1]
+      // \uXXXX:4 位十六进制(serde 拒绝孤立代理,保留原文防误判)
       if (e === 'u' && i + 5 < body.length && /^[0-9a-fA-F]{4}$/.test(body.slice(i + 2, i + 6))) {
-        out += String.fromCharCode(parseInt(body.slice(i + 2, i + 6), 16))
+        const cp = parseInt(body.slice(i + 2, i + 6), 16)
+        out += cp >= 0xd800 && cp <= 0xdfff ? '\\' + body.slice(i + 1, i + 6) : String.fromCharCode(cp)
         i += 5
+      } else if (e === 'U' && i + 9 < body.length && /^[0-9a-fA-F]{8}$/.test(body.slice(i + 2, i + 10))) {
+        // \UXXXXXXXX:8 位十六进制 Unicode 标量(serde 上限 0x10FFFF)
+        const cp = parseInt(body.slice(i + 2, i + 10), 16)
+        out += cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)
+          ? '\\' + body.slice(i + 1, i + 10)
+          : String.fromCodePoint(cp)
+        i += 9
       } else if (e === 'x' && i + 3 < body.length && /^[0-9a-fA-F]{2}$/.test(body.slice(i + 2, i + 4))) {
         out += String.fromCharCode(parseInt(body.slice(i + 2, i + 4), 16))
         i += 3
       } else {
-        const map: Record<string, string> = { n: '\n', t: '\t', r: '\r', '0': '\0', '\\': '\\', '"': '"', "'": "'" }
+        // serde_yaml 全转义表:0/a/b/t/n/v/f/r/e/空格/斜杠/反斜杠/引号/N/_/L/P
+        const map: Record<string, string> = {
+          '0': '\0', a: '\x07', b: '\x08', t: '\t', n: '\n', v: '\x0b',
+          f: '\x0c', r: '\r', e: '\x1b', ' ': ' ', '/': '/', '\\': '\\',
+          '"': '"', "'": "'", N: '\u0085', _: '\u00a0', L: '\u2028', P: '\u2029',
+        }
         out += map[e] ?? e
         i += 1
       }
@@ -131,6 +148,14 @@ function decodeYamlScalar(text: string): string {
     return out
   }
   return t
+}
+
+/** 解码 YAML 标量键(引号键同样走全转义解码;键可含 `\uXXXX` 等转义,
+ *  与 serde_yaml 对键名解析同口径——2026-11-05 审核发现 1:键走 unquote
+ *  不解 `\uXXXX`,表名键 `"ch\\u0065st"` 与解码后的 on_victory 值 `chest`
+ *  不匹配导致漏判)。 */
+function decodeYamlKey(text: string): string {
+  return decodeYamlScalar(text)
 }
 
 /* ————— 行内 flow(映射/序列)扫描 ————— */
@@ -188,7 +213,7 @@ function scanFlow(
     }
     if (open === '{') {
       const keyTok = readFlowToken(text, i)
-      const key = unquote(keyTok.token)
+      const key = decodeYamlKey(keyTok.token)
       if (key === '' || key.includes(':')) return { end: i, error: `flow 键不合法:${key}` }
       let j = skipWs(text, keyTok.end)
       if (text[j] !== ':') return { end: j, error: `flow 项缺冒号:${key}` }
@@ -312,7 +337,7 @@ export function parseConfig(yaml: string): ParsedConfig {
       out.errors.push({ line: lineNo, message: `无法识别的行(应为 key: value):${content.slice(0, 30)}` })
       continue
     }
-    const key = unquote(m[1])
+    const key = decodeYamlKey(m[1])
     const rest = m[2].trim()
     while (stack.length > 0 && stack[stack.length - 1].indent >= indent) stack.pop()
     const parent = stack[stack.length - 1]

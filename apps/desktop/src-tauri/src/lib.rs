@@ -578,7 +578,10 @@ fn sweep_recommend(yaml: String, results_json: String) -> Result<serde_json::Val
 /// 按词根注册视图(summary.csv → summary;parquet 走 read_parquet),跑 SQL
 /// 返回 `{columns, rows}`;与 CLI `query` 子命令同源(视图名 is_ident 拦注入、
 /// 列名走 DESCRIBE、单元格转显示文本)。SQL 只允许只读 SELECT/WITH(禁止
-/// 文件表函数与写语句),input 路径经 canonicalize 限定应用数据目录。
+/// 文件表函数与写语句)。input 路径经 canonicalize 解析为存在且为普通文件
+/// (拒目录/缺失/符号链接逃逸);本命令读的是**用户自选的结果文件**(对话框/
+/// 手输路径/下载目录,设计见 docs 18 Phase 7 第 5-6 步),并非单一「应用
+/// 数据目录」下的文件,故不做单目录限定——只读边界由 SQL 词表承担。
 #[tauri::command]
 fn query(inputs: Vec<String>, sql: String) -> Result<serde_json::Value, String> {
     use duckdb::types::ValueRef;
@@ -670,19 +673,31 @@ fn validate_query_sql(raw: &str) -> Result<&str, String> {
     }
     // 文件表函数与写语句:即使语句以 SELECT 开头,内部仍可引用文件表函数
     // (read_csv_auto / read_parquet 读任意本地路径)或借子句落盘,一律拦截。
+    // 2026-11-05 审核发现:词表原缺 read_text/read_blob(标量文件读取)与
+    // read_ndjson/read_json_objects/parquet_scan/glob(文件表函数),可借
+    // `SELECT * FROM read_text('/etc/passwd')` 绕 SELECT 前缀读任意文件;
+    // 补齐全部 DuckDB 文件访问/写入口(含 glob 路径枚举、INSTALL/LOAD 等)。
     for word in [
         "READ_CSV_AUTO",
         "READ_CSV",
         "READ_PARQUET",
         "READ_JSON",
         "READ_JSON_AUTO",
+        "READ_JSON_OBJECTS",
+        "READ_NDJSON",
         "READ_XLSX",
+        "READ_TEXT",
+        "READ_BLOB",
+        "PARQUET_SCAN",
+        "GLOB",
         "COPY",
         "INSERT",
         "UPDATE",
         "DELETE",
         "CREATE",
         "DROP",
+        "CREATE_VIEW",
+        "CREATE_TABLE",
         "ATTACH",
         "DETACH",
         "PRAGMA",
@@ -690,6 +705,7 @@ fn validate_query_sql(raw: &str) -> Result<&str, String> {
         "INSTALL",
         "LOAD",
         "CALL",
+        "IMPORT",
     ] {
         if contains_word(&upper, word) {
             return Err(format!(
@@ -1370,6 +1386,19 @@ mod tests {
                 "SELECT * FROM read_parquet('/data/x.parquet')",
                 "READ_PARQUET",
             ),
+            // 2026-11-05 审核发现:标量/表文件读取函数原漏词表,补齐后必须被拦。
+            ("SELECT * FROM read_text('/etc/passwd')", "READ_TEXT"),
+            ("SELECT * FROM read_blob('/etc/passwd')", "READ_BLOB"),
+            ("SELECT * FROM read_ndjson('/data/x.json')", "READ_NDJSON"),
+            (
+                "SELECT * FROM read_json_objects('/data/x.json')",
+                "READ_JSON_OBJECTS",
+            ),
+            (
+                "SELECT * FROM parquet_scan('/data/x.parquet')",
+                "PARQUET_SCAN",
+            ),
+            ("SELECT * FROM glob('/tmp/*')", "GLOB"),
             ("SELECT * FROM t; DELETE FROM t", "DELETE"),
         ] {
             let err = validate_query_sql(sql).unwrap_err();
