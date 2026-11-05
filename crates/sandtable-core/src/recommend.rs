@@ -277,13 +277,15 @@ fn feasible_segment(
     } else {
         (
             crossing(
+                &CrossingCtx {
+                    spec,
+                    base,
+                    results,
+                    axis,
+                    t,
+                },
                 axis_vals[l - 1],
                 axis_vals[l],
-                spec,
-                base,
-                results,
-                axis,
-                t,
                 t.min.map(|m| (Side::Lo, m)),
             ),
             true,
@@ -294,13 +296,15 @@ fn feasible_segment(
     } else {
         (
             crossing(
+                &CrossingCtx {
+                    spec,
+                    base,
+                    results,
+                    axis,
+                    t,
+                },
                 axis_vals[r + 1],
                 axis_vals[r],
-                spec,
-                base,
-                results,
-                axis,
-                t,
                 t.max.map(|m| (Side::Hi, m)),
             ),
             true,
@@ -323,25 +327,25 @@ enum Side {
     Hi,
 }
 
+/// 插值穿越所需的上下文(扫描/基态/结果/轴/目标)。
+struct CrossingCtx<'a> {
+    spec: &'a SweepSpec,
+    base: &'a SimConfig,
+    results: &'a [CandidateResult],
+    axis: usize,
+    t: &'a Target,
+}
+
 /// 在格点 p_out(不可行侧)与 p_in(可行侧)之间,线性插值统计序列
 /// (ci95_lo 或 ci95_hi)穿越边界值的参数位置。退线(两端统计相等)回退
 /// 到可行侧格点(标注不插值)。
-fn crossing(
-    p_out: f64,
-    p_in: f64,
-    spec: &SweepSpec,
-    base: &SimConfig,
-    results: &[CandidateResult],
-    axis: usize,
-    t: &Target,
-    probe: Option<(Side, f64)>,
-) -> f64 {
+fn crossing(ctx: &CrossingCtx, p_out: f64, p_in: f64, probe: Option<(Side, f64)>) -> f64 {
     let Some((side, bound)) = probe else {
         // 单侧无界:以格点为端(该侧不可行只可能来自另一侧;MVP 取格点)
         return p_in;
     };
     let get = |p: f64| {
-        stat_at(spec, base, results, axis, p, t.metric)
+        stat_at(ctx.spec, ctx.base, ctx.results, ctx.axis, p, ctx.t.metric)
             .map(|s| match side {
                 Side::Lo => s.ci95_lo,
                 Side::Hi => s.ci95_hi,

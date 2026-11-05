@@ -20,12 +20,14 @@ use crate::metrics::RunMetrics;
 
 pub type ArrowResult<T> = Result<T, ArrowError>;
 
-/// 从 (列名, 类型) 表构建全非空 Schema。
-fn schema_of(fields: &[(&str, DataType)]) -> Arc<Schema> {
+/// 从 (列名, 类型, 可空) 表构建 Schema。
+/// 列的可空性必须与数据一致:day 1 的 inflation 无定义记 `None`,
+/// 该列必须声明可空,否则 `RecordBatch::try_new` 会拒绝含空值的批次。
+fn schema_of(fields: &[(&str, DataType, bool)]) -> Arc<Schema> {
     Arc::new(Schema::new(
         fields
             .iter()
-            .map(|(name, ty)| Field::new(*name, ty.clone(), false))
+            .map(|(name, ty, nullable)| Field::new(*name, ty.clone(), *nullable))
             .collect::<Vec<_>>(),
     ))
 }
@@ -33,24 +35,25 @@ fn schema_of(fields: &[(&str, DataType)]) -> Arc<Schema> {
 /// 日序列批次(列名 / 列序 / 类型与 [`super::day_csv`] 表头一致)。
 pub fn day_stats_batch(m: &RunMetrics) -> ArrowResult<RecordBatch> {
     let schema = schema_of(&[
-        ("day", DataType::UInt32),
-        ("active", DataType::UInt64),
-        ("alive_at_start", DataType::UInt64),
-        ("new_churned", DataType::UInt64),
-        ("churn_rate", DataType::Float64),
-        ("battles", DataType::UInt64),
-        ("wins", DataType::UInt64),
-        ("win_rate", DataType::Float64),
-        ("gold_earned", DataType::UInt64),
-        ("gold_spent", DataType::UInt64),
-        ("sink_ratio", DataType::Float64),
-        ("gold_supply", DataType::Int64),
-        ("inflation", DataType::Float64),
-        ("income_per_active", DataType::Float64),
-        ("spending_per_active", DataType::Float64),
-        ("mean_power", DataType::Float64),
-        ("levelups", DataType::UInt64),
-        ("upgrades", DataType::UInt64),
+        ("day", DataType::UInt32, false),
+        ("active", DataType::UInt64, false),
+        ("alive_at_start", DataType::UInt64, false),
+        ("new_churned", DataType::UInt64, false),
+        ("churn_rate", DataType::Float64, false),
+        ("battles", DataType::UInt64, false),
+        ("wins", DataType::UInt64, false),
+        ("win_rate", DataType::Float64, false),
+        ("gold_earned", DataType::UInt64, false),
+        ("gold_spent", DataType::UInt64, false),
+        ("sink_ratio", DataType::Float64, false),
+        ("gold_supply", DataType::Int64, false),
+        // I-008 / ST-AUD-08:day 1 无 G(d−1),inflation 为 None → 列可空。
+        ("inflation", DataType::Float64, true),
+        ("income_per_active", DataType::Float64, false),
+        ("spending_per_active", DataType::Float64, false),
+        ("mean_power", DataType::Float64, false),
+        ("levelups", DataType::UInt64, false),
+        ("upgrades", DataType::UInt64, false),
     ]);
     let cols: Vec<ArrayRef> = vec![
         Arc::new(UInt32Array::from_iter_values(
@@ -114,11 +117,11 @@ pub fn day_stats_batch(m: &RunMetrics) -> ArrowResult<RecordBatch> {
 /// 快照日 Power 分布批次。
 pub fn power_snapshots_batch(m: &RunMetrics) -> ArrowResult<RecordBatch> {
     let schema = schema_of(&[
-        ("day", DataType::UInt32),
-        ("n", DataType::UInt64),
-        ("p50", DataType::Float64),
-        ("p90", DataType::Float64),
-        ("p99", DataType::Float64),
+        ("day", DataType::UInt32, false),
+        ("n", DataType::UInt64, false),
+        ("p50", DataType::Float64, false),
+        ("p90", DataType::Float64, false),
+        ("p99", DataType::Float64, false),
     ]);
     let cols: Vec<ArrayRef> = vec![
         Arc::new(UInt32Array::from_iter_values(
@@ -143,12 +146,12 @@ pub fn power_snapshots_batch(m: &RunMetrics) -> ArrowResult<RecordBatch> {
 /// 期末 cohort 切片批次。
 pub fn cohort_batch(m: &RunMetrics) -> ArrowResult<RecordBatch> {
     let schema = schema_of(&[
-        ("cohort", DataType::Utf8),
-        ("count", DataType::UInt64),
-        ("churned", DataType::UInt64),
-        ("mean_power", DataType::Float64),
-        ("mean_gold", DataType::Float64),
-        ("mean_level", DataType::Float64),
+        ("cohort", DataType::Utf8, false),
+        ("count", DataType::UInt64, false),
+        ("churned", DataType::UInt64, false),
+        ("mean_power", DataType::Float64, false),
+        ("mean_gold", DataType::Float64, false),
+        ("mean_level", DataType::Float64, false),
     ]);
     let cols: Vec<ArrayRef> = vec![
         Arc::new(StringArray::from_iter_values(
