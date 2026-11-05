@@ -22,6 +22,7 @@ const stat = (mean, sd, n = 6) => ({
 const cmp = (metric, aMean, bMean, lo, hi, d = 0.5) => ({
   metric, arm_a: stat(aMean), arm_b: stat(bMean),
   diff_mean: bMean - aMean, diff_ci95_lo: lo, diff_ci95_hi: hi, effect_size_d: d,
+  degraded: lo === hi,
   verdict: lo > 0 ? 'BHigher' : hi < 0 ? 'AHigher' : 'NoDifference',
 })
 

@@ -358,7 +358,7 @@ function RealResult({ job, state, onExport }: { job: Job; state: WorkbenchState;
             <td>{`[${formatMetric(f.diffCi95Lo, f.metric, true, locale)}, ${formatMetric(f.diffCi95Hi, f.metric, true, locale)}]`}</td>
             <td>{f.relativeChangePct === null ? t(locale, 'analysis.unavailable') : `${fmtNumber(locale, f.relativeChangePct, { maxFractionDigits: 1 })}%`}</td>
             <td>{f.effectSizeD}</td>
-            <td>{f.verdict}{f.significant ? '' : ` · ${t(locale, 'analysis.abOverlapTag')}`}</td>
+            <td>{f.verdict}{f.degraded ? ` · ${t(locale, 'analysis.abDegradedTag')}` : f.significant ? '' : ` · ${t(locale, 'analysis.abOverlapTag')}`}</td>
           </tr>)}</tbody>
         </table></div>
         {unavailable.length > 0 && <div>

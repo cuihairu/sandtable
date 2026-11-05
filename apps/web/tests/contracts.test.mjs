@@ -417,9 +417,11 @@ test('WB-03.10/11 A/B 桥:compare_arms 内核直出 Comparison,成对前提/可�
   const a = JSON.parse(wasm.run_simulation(baseYaml, 3))
   const b = JSON.parse(wasm.run_simulation(candYaml, 3))
   const cmp = JSON.parse(wasm.ab_compare(baseYaml, candYaml, 'win_rate', JSON.stringify(a.results), JSON.stringify(b.results)))
-  // 键集与 TS Comparison 同构(WB-03.01 口径):恰 8 键,verdict 是内核三值
-  assert.deepEqual(Object.keys(cmp).sort(), ['arm_a', 'arm_b', 'diff_ci95_hi', 'diff_ci95_lo', 'diff_mean', 'effect_size_d', 'metric', 'verdict'])
-  assert.ok(['BHigher', 'AHigher', 'NoDifference'].includes(cmp.verdict), `${cmp.verdict}`)
+  // 键集与 TS Comparison 同构(WB-03.01 口径):恰 9 键(含 degraded),
+  // verdict 是内核四值(含 InsufficientEvidence,2026-11-05 审核发现 7)
+  assert.deepEqual(Object.keys(cmp).sort(), ['arm_a', 'arm_b', 'degraded', 'diff_ci95_hi', 'diff_ci95_lo', 'diff_mean', 'effect_size_d', 'metric', 'verdict'])
+  assert.equal(typeof cmp.degraded, 'boolean', 'degraded 是布尔')
+  assert.ok(['BHigher', 'AHigher', 'NoDifference', 'InsufficientEvidence'].includes(cmp.verdict), `${cmp.verdict}`)
   assert.ok(['BHigher', 'AHigher', 'NoDifference'].includes(cmp.arm_a.verdict ?? cmp.arm_b.verdict) === false, 'SampleStats 无 verdict')
   assert.equal(cmp.metric, 'win_rate')
   assert.equal(cmp.arm_a.n, 3)

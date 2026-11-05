@@ -21,7 +21,9 @@ export type AbFacet = {
   diffCi95Hi: number
   /** 效应量 d = Δ / 合并 sd(内核直出) */
   effectSizeD: number
-  /** 内核判定原样(BHigher/AHigher/NoDifference) */
+  /** CI 零宽退化时内核恒出 InsufficientEvidence;仅记录,不构成统计结论 */
+  degraded: boolean
+  /** 内核判定原样(BHigher/AHigher/NoDifference/InsufficientEvidence) */
   verdict: Comparison['verdict']
   /** 配对差 95% CI 是否不含 0——内核 CI 的直接读数,不是新做的检验 */
   significant: boolean
@@ -50,8 +52,9 @@ export function abFacets(comparisons: readonly Comparison[]): AbFacet[] {
       diffCi95Lo: c.diff_ci95_lo,
       diffCi95Hi: c.diff_ci95_hi,
       effectSizeD: c.effect_size_d,
+      degraded: c.degraded,
       verdict: c.verdict,
-      significant: c.diff_ci95_lo > 0 || c.diff_ci95_hi < 0,
+      significant: !c.degraded && (c.diff_ci95_lo > 0 || c.diff_ci95_hi < 0),
       relativeChangePct: relative,
     }]
   })

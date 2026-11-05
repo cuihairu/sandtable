@@ -335,7 +335,9 @@ export type AbView = {
   diffCi95Hi: number
   /** 效应量 d = Δ / 合并 sd */
   effectSizeD: number
-  /** 内核判定原样(BHigher/AHigher/NoDifference) */
+  /** CI 零宽退化时内核恒出 InsufficientEvidence;仅记录,不构成统计结论 */
+  degraded: boolean
+  /** 内核判定原样(BHigher/AHigher/NoDifference/InsufficientEvidence) */
   verdict: Comparison['verdict']
 }
 
@@ -348,6 +350,7 @@ export function abView(comparison: Comparison): AbView {
     diffCi95Lo: comparison.diff_ci95_lo,
     diffCi95Hi: comparison.diff_ci95_hi,
     effectSizeD: comparison.effect_size_d,
+    degraded: comparison.degraded,
     verdict: comparison.verdict,
   }
 }

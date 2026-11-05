@@ -142,7 +142,7 @@ if (!existsSync(pkgNode)) {
     assert.ok(report.unavailableMetrics.some((row) => row.metric === 'gacha_pulls_to_hit' && row.reason.includes('缺少')))
     assert.ok(report.unavailableMetrics.some((row) => row.metric === 'loot_gold_per_player' && row.reason.includes('缺少')))
     assert.ok(report.metrics.every((row) => row.metric !== 'gacha_pulls_to_hit'))
-    const comparison = { metric: 'win_rate', arm_a: { n: 2, mean: 1, sd: 0, ci95_lo: 1, ci95_hi: 1 }, arm_b: { n: 2, mean: 1, sd: 0, ci95_lo: 1, ci95_hi: 1 }, diff_mean: 0, diff_ci95_lo: 0, diff_ci95_hi: 0, effect_size_d: 0, verdict: 'NoDifference' }
+    const comparison = { metric: 'win_rate', arm_a: { n: 2, mean: 1, sd: 0, ci95_lo: 1, ci95_hi: 1 }, arm_b: { n: 2, mean: 1, sd: 0, ci95_lo: 1, ci95_hi: 1 }, diff_mean: 0, diff_ci95_lo: 0, diff_ci95_hi: 0, effect_size_d: 0, degraded: true, verdict: 'NoDifference' }
     const ab = designReport({ ...source, artifactText: JSON.stringify({ ...JSON.parse(source.artifactText), comparison: [comparison], comparison_errors: [{ metric: 'retention_d7', message: 'kernel says unavailable' }] }) }, baseline)
     assert.ok(ab.metrics.some((row) => row.metric === 'win_rate'))
     assert.ok(ab.unavailableMetrics.some((row) => row.metric === 'retention_d7' && row.reason === 'kernel says unavailable'))

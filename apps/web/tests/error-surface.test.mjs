@@ -208,7 +208,10 @@ if (!existsSync(pkgNode)) {
     assert.equal(out.arms.base.config_hash, JSON.parse(wasm.validate_config(ya)).config_hash, 'base 臂是真内核输出')
     assert.equal(out.arms.cand.config_hash, JSON.parse(wasm.validate_config(yb)).config_hash, 'cand 臂是真内核输出')
     assert.equal(out.comparison.metric, 'win_rate')
-    assert.ok(['BHigher', 'AHigher', 'NoDifference'].includes(out.comparison.verdict))
+    // 该夹具双臂 win_rate 配对差零方差(n=2):内核显式判 InsufficientEvidence,
+    // 不再冒充「显著」(ST-AUD-01);degraded=true 随内核直出。
+    assert.equal(out.comparison.verdict, 'InsufficientEvidence')
+    assert.equal(out.comparison.degraded, true)
 
     // b · Worker 运行失败:协议错误响应原样过执行器错误通道
     const failing = {

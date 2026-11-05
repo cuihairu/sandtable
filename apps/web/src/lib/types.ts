@@ -579,8 +579,10 @@ export interface SimConfig {
 // —— A/B 比较(WB-03.01 对照 core::experiment::Comparison 序列化;桥接出口
 // ab_compare 已发布(WB-03.10/11/12),contracts 守卫运行时锁)——
 
-/** 判定来自配对差 CI 与 0 的关系(内核枚举 PascalCase 原样序列化) */
-export type CompareVerdict = 'BHigher' | 'AHigher' | 'NoDifference'
+/** 判定来自配对差 CI 与 0 的关系(内核枚举 PascalCase 原样序列化);
+ *  `InsufficientEvidence` 为 CI 零宽退化(replicates<2 或配对差零方差)
+ *  时内核的显式判定,不得冒充「显著」(ST-AUD-01 / I-001)。 */
+export type CompareVerdict = 'BHigher' | 'AHigher' | 'NoDifference' | 'InsufficientEvidence'
 
 export interface Comparison {
   metric: MetricKey
@@ -592,6 +594,10 @@ export interface Comparison {
   diff_ci95_hi: number
   /** 效应量 d = Δ / 合并 sd */
   effect_size_d: number
+  /** CI 零宽退化(n<2 或配对差零方差):此时 verdict 恒为
+   *  InsufficientEvidence,CI/均值仅作记录,不构成统计结论;
+   *  内核直出,前端不重算(2026-11-05 审核发现 7 同构)。 */
+  degraded: boolean
   verdict: CompareVerdict
 }
 

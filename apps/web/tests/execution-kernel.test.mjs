@@ -109,11 +109,12 @@ if (!existsSync(pkgNode)) {
     assert.equal(out.arms.base.config_hash, JSON.parse(wasm.validate_config(baseYaml)).config_hash)
     assert.equal(out.arms.cand.config_hash, JSON.parse(wasm.validate_config(candYaml)).config_hash)
     assert.equal(out.arms.base.meta.schema_version, out.arms.cand.meta.schema_version)
-    // Comparison 是内核直出(WB-03.01 同构形状):指标/逐臂 n/verdict 三值之一
+    // Comparison 是内核直出(WB-03.01 同构形状):指标/逐臂 n/verdict 四值之一
     assert.equal(out.comparison.metric, 'win_rate')
     assert.equal(out.comparison.arm_a.n, 2)
     assert.equal(out.comparison.arm_b.n, 2)
-    assert.ok(['BHigher', 'AHigher', 'NoDifference'].includes(out.comparison.verdict))
+    assert.ok(['BHigher', 'AHigher', 'NoDifference', 'InsufficientEvidence'].includes(out.comparison.verdict))
+    assert.equal(typeof out.comparison.degraded, 'boolean')
     // CRN 配对口径:diff_mean = cand 臂均值 − base 臂均值(内核 compare)
     const mean = (arm) => arm.results.reduce((s, m) => s + m.win_rate, 0) / arm.results.length
     const expected = mean(out.arms.cand) - mean(out.arms.base)
