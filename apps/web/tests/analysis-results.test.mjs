@@ -402,7 +402,9 @@ test('WB-09.02:统计量与内核逐字对齐(规范十进制,0–1 比例不乘
   assert.equal(row0[10], '90')
   assert.equal(row0[11], 'ok')
   assert.equal(row0[12], '')
-  assert.equal(row0[13], 'pass')
+  // ST-AUD-01:该 toy 配置下 win_rate 配对差 CI 零宽退化 → 内核不再冒充 PASS,
+  // 统一 BORDERLINE(「无法结论,加 replicates」),导出如实带出。
+  assert.equal(row0[13], 'borderline')
   const ret = results[0].metric_stats.find(([k]) => k === 'retention_d3')[1]
   assert.equal(row0[14], String(ret.mean))
   assert.equal(row0[15], String(ret.ci95_lo))

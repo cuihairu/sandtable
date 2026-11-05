@@ -105,7 +105,7 @@ fn recommend_multi_axis_exit2() {
             "schema_version: \"1\"\n",
             "scenario: {population: 20, duration: \"3d\"}\n",
             "sweep:\n",
-            "  replicates: 1\n",
+            "  replicates: 2\n",
             "  parameters:\n",
             "    model.warrior.attack: {min: 90, max: 110, step: 10}\n",
             "    model.warrior.defense: {min: 70, max: 90, step: 10}\n",

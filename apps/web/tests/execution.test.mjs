@@ -695,6 +695,33 @@ test('WB-07.16:runManager 竞争——重复取消/终态后取消无副作用;�
   resetForTest()
 })
 
+test('WB-07.17 · ST-AUD-12:终局 promise 拒绝不得占死并发槽——失败分支清控制引用并续跑队列', async () => {
+  resetForTest()
+  // backend 解析自身 reject:startExec 内 `await backends` 抛错 ⇒ controls.promise 拒绝。
+  // 无 .then(ok,err) 处理时 activeControls 永不删除,队列永久卡死(I-012)。
+  const rejectBackends = Promise.reject(new Error('backend 初始化失败'))
+  const job = enqueueRun({
+    experimentId: 'exp_staud12', runId: 'run_staud12', name: '拒绝任务', method: 'GRID',
+    spec: { kind: 'sweep', yaml: 'e', plan: PLAN3 },
+    backends: rejectBackends,
+  })
+  await new Promise((r) => setTimeout(r, 10))
+  const failed = listJobs().find((j) => j.id === job.id)
+  assert.equal(failed.status, 'failed', '拒绝后端落 failed 终态,不永久卡 running')
+  assert.equal(failed.exec.errorClass, 'run')
+
+  // 队列须可继续:并发槽已释放,后续正常任务能执行到终态
+  const { backends } = fakeBackends()
+  const next = enqueueRun({
+    experimentId: 'exp_staud12b', runId: 'run_staud12b', name: '后续任务', method: 'GRID',
+    spec: { kind: 'sweep', yaml: 'e', plan: PLAN3 },
+    backends,
+  })
+  await new Promise((r) => setTimeout(r, 10))
+  assert.equal(listJobs().find((j) => j.id === next.id).status, 'succeeded', '拒绝后队列可继续')
+  resetForTest()
+})
+
 test('批量重试:扫描只补首个失败点之后的候选,不重跑成功 replicate', async () => {
   resetForTest()
   let callIndex = 0

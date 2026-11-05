@@ -31,6 +31,14 @@ export type AbFacet = {
   relativeChangePct: number | null
 }
 
+/** 分面注记的 i18n 键:退化优先(零宽 CI 不构成统计结论,不得误标「含 0」);
+ *  其次按显著性读数选「显著/不区分」。内核 degraded 恒配 InsufficientEvidence,
+ *  此处分派只做展示,绝不覆写内核判定。 */
+export function abFacetNoteKey(facet: Pick<AbFacet, 'degraded' | 'significant'>): 'analysis.abFacetDegraded' | 'analysis.abFacetSignificant' | 'analysis.abFacetOverlap' {
+  if (facet.degraded) return 'analysis.abFacetDegraded'
+  return facet.significant ? 'analysis.abFacetSignificant' : 'analysis.abFacetOverlap'
+}
+
 /**
  * 逐 KPI 分面:输入 = 内核逐指标 Comparison(METRIC_KEYS 序);
  * 未知指标原样丢弃(内核只会回 METRIC_KEYS 内的指标,防御不编造)。

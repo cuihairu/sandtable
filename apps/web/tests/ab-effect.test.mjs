@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
-import { abFacets, abUnavailable, effectDomain, facetsByDimension } from '../src/lib/abEffect.ts'
+import { abFacets, abFacetNoteKey, abUnavailable, effectDomain, facetsByDimension } from '../src/lib/abEffect.ts'
 import { METRIC_KEYS } from '../src/lib/types.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -49,6 +49,12 @@ test('abFacets:基线均值为 0 时相对变化 = null(不编造),未知指标�
   assert.equal(facets[0].relativeChangePct, null, '0 基线不可算相对变化,如实不可用')
   const only = abFacets([cmp('win_rate', 0.4, 0.4, -0.01, 0.01)])
   assert.deepEqual(only.map((f) => f.metric), ['win_rate'], '未比较的 KPI 不造空分面')
+})
+
+test('abFacetNoteKey:退化优先于零点读数——零宽 CI 不含 0 时仍显示「证据不足」而非「CI 含 0」', () => {
+  assert.equal(abFacetNoteKey({ degraded: true, significant: false }), 'analysis.abFacetDegraded')
+  assert.equal(abFacetNoteKey({ degraded: false, significant: true }), 'analysis.abFacetSignificant')
+  assert.equal(abFacetNoteKey({ degraded: false, significant: false }), 'analysis.abFacetOverlap')
 })
 
 test('effectDomain:每分面独立轴域(0 + CI 包络 + 余量),退化时扩档——不同单位绝不共用一根轴', () => {

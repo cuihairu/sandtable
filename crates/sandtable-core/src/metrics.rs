@@ -252,8 +252,11 @@ impl RunAggregator {
     }
 
     pub fn record_upgrade(&mut self, cost: i64) {
-        self.cur.gold_spent += cost as u64;
-        self.gold_spent_total += cost as u64;
+        let spent = u64::try_from(cost).unwrap_or_else(|_| {
+            panic!("record_upgrade 收到负成本 {cost}(validate 已前置拦截,运行时不可能)")
+        });
+        self.cur.gold_spent += spent;
+        self.gold_spent_total += spent;
         self.cur.upgrades += 1;
     }
 

@@ -23,6 +23,11 @@ struct ProgressEvent {
     total: u32,
 }
 
+/// 桌面 replicates 上界(ST-AUD-11 / I-011):与 WASM `MAX_REPLICATES=64` 对齐。
+/// 此前桌面无门,`invoke("run_simulation", {replicates: 4294967295})` 会
+/// 立即申请数十 GB(Vec::with_capacity)分配失败即 abort(不可捕获)。
+const MAX_REPLICATES: u32 = 64;
+
 /// 取消令牌:活动任务在 replicate 边界轮询。
 type CancelFlag = Arc<AtomicBool>;
 
@@ -417,11 +422,15 @@ fn run_replicates(
     cancel: &CancelFlag,
     progress: &mut dyn FnMut(u32),
 ) -> Result<Vec<sandtable_core::metrics::RunMetrics>, String> {
-    let mut results = Vec::with_capacity(replicates as usize);
+    // ST-AUD-11:不再预分配 with_capacity(超大门直接 abort),改按需 push。
+    let mut results = Vec::new();
     for r in 0..replicates {
         if cancel.load(Ordering::Relaxed) {
             return Err(format!("已取消: 完成 {r}/{replicates} replicate"));
         }
+        results
+            .try_reserve(1)
+            .map_err(|e| format!("结果缓冲分配失败: {e}"))?;
         results.push(sandtable_core::sim::run(cfg, r));
         progress(r + 1);
     }
@@ -438,6 +447,11 @@ fn run_simulation_impl(
 ) -> Result<serde_json::Value, String> {
     if replicates == 0 {
         return Err("参数错误: replicates 至少为 1".into());
+    }
+    if replicates > MAX_REPLICATES {
+        return Err(format!(
+            "参数错误: 桌面 replicates 上限 {MAX_REPLICATES}(更大实验走 CLI)"
+        ));
     }
     let cfg = load(yaml)?;
     let results = run_replicates(&cfg, replicates, cancel, progress)?;
@@ -683,7 +697,9 @@ fn validate_query_sql(raw: &str) -> Result<&str, String> {
         "READ_PARQUET",
         "READ_JSON",
         "READ_JSON_AUTO",
+        "READ_JSON_OBJECTS_AUTO",
         "READ_JSON_OBJECTS",
+        "READ_NDJSON_AUTO",
         "READ_NDJSON",
         "READ_XLSX",
         "READ_TEXT",
@@ -1391,8 +1407,16 @@ mod tests {
             ("SELECT * FROM read_blob('/etc/passwd')", "READ_BLOB"),
             ("SELECT * FROM read_ndjson('/data/x.json')", "READ_NDJSON"),
             (
+                "SELECT * FROM read_ndjson_auto('/data/x.json')",
+                "READ_NDJSON_AUTO",
+            ),
+            (
                 "SELECT * FROM read_json_objects('/data/x.json')",
                 "READ_JSON_OBJECTS",
+            ),
+            (
+                "SELECT * FROM read_json_objects_auto('/data/x.json')",
+                "READ_JSON_OBJECTS_AUTO",
             ),
             (
                 "SELECT * FROM parquet_scan('/data/x.parquet')",
@@ -1427,6 +1451,25 @@ mod tests {
         assert!(resolve_query_input(&dir.to_string_lossy()).is_err());
         assert!(resolve_query_input("/no/such/file.csv").is_err());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// ST-AUD-11 / I-011:桌面 run_simulation 对大 R 返回结构化错误,
+    /// 不得先 `Vec::with_capacity` 申请巨量内存导致进程 abort。
+    #[test]
+    fn run_simulation_rejects_large_replicates_before_allocation() {
+        let flag = CancelFlag::new(std::sync::atomic::AtomicBool::new(false));
+        let mut progress = |_done: u32| {};
+        let err = run_simulation_impl(
+            "schema_version: \"1\"\nscenario: {population: 10, duration: \"3d\", seed: 7}\n",
+            MAX_REPLICATES + 1,
+            &flag,
+            &mut progress,
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("replicates 上限"),
+            "应返回结构化错误而非 OOM/abort: {err}"
+        );
     }
 
     /// 下载落点:重名加序号,不静默覆盖上一次导出的产物(第 6 步下载接线)。

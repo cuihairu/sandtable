@@ -190,7 +190,7 @@ if (!existsSync(pkgNode)) {
     assert.deepEqual(cols[2].values, ['d1', 'd2'], '非数值列保持文本')
 
     // 下载面:小实验真跑(单候选×1)出真实 CSV,经 download 全链
-    const yaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\nsweep:\n  replicates: 1\n  parameters:\n    model.warrior.attack: {min: 100, max: 100, step: 10}\n  targets:\n    - {metric: win_rate, min: 0.0, max: 1.0}\n'
+    const yaml = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\nsweep:\n  replicates: 2\n  parameters:\n    model.warrior.attack: {min: 100, max: 100, step: 10}\n  targets:\n    - {metric: win_rate, min: 0.0, max: 1.0}\n'
     const plan = JSON.parse(wasm.sweep_plan(yaml, 0))
     const ctl = startExec({ kind: 'sweep', yaml, plan }, desktopBackends, { update: () => {} }, 'job_dl_check')
     const out = await ctl.promise

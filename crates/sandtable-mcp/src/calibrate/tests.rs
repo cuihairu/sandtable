@@ -115,7 +115,16 @@ fn calibrate_rejects_bad_mapping_zero_and_path_escape() {
     let dots = "series:\n  win_rate:\n    file: v2..final.csv\n    day_column: cohort_day\n    value_column: v\n    aggregation: sum\n";
     let out = calibrate_native(&input(&dir, dots));
     assert!(out.is_ok(), "v2..final.csv 应可读: {out:?}");
+}
 
+/// 2026-11-05 审核发现:POSIX 合法文件名 a:b.csv 含冒号,但 Windows 上冒号是
+/// NTFS 备用数据流(ADS)分隔符,该文件名非法——冒号用例仅在非 Windows 平台跑,
+/// Windows 上以不含冒号的合法文件名替代(冒号用例本身无 Windows 对应语义)。
+#[cfg(not(windows))]
+#[test]
+fn calibrate_accepts_posix_colon_filename() {
+    let dir = temp_dir("colon");
+    fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("a:b.csv"), "cohort_day,v\n3,1\n").unwrap();
     let colon = "series:\n  win_rate:\n    file: a:b.csv\n    day_column: cohort_day\n    value_column: v\n    aggregation: sum\n";
     let out = calibrate_native(&input(&dir, colon));

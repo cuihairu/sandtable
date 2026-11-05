@@ -1019,9 +1019,9 @@ mod tests {
         assert_eq!(v["candidates"][0]["model.warrior.attack"], 90.0);
         assert_eq!(v["targets"][0]["metric"], "win_rate");
 
-        let v = sweep_plan_native(EXP_YAML, 1).unwrap();
-        assert_eq!(v["replicates"], 1, "覆盖生效(粗筛语义,同 CLI)");
-        assert_eq!(v["sims"], 3);
+        // ST-AUD-01:R=1 单点无法给置信区间,覆盖到 1 必须拒绝(全入口 R≥2)。
+        let e = sweep_plan_native(EXP_YAML, 1).unwrap_err();
+        assert!(e.contains("replicates 必须 ≥ 2"), "{e}");
 
         let e = sweep_plan_native(
             "schema_version: '1'\nscenario: {population: 40, duration: '3d', seed: 7}\n",
@@ -1187,9 +1187,13 @@ mod tests {
         let rec = &v["recommendation"];
         assert_eq!(rec["param"], "model.warrior.attack");
         assert_eq!(rec["baseline"], 100.0, "默认 attack 基线");
-        // win_rate∈[0,1] 不会全 FAIL(CI 只会 PASS 或越过上界的 BORDERLINE)
-        // → 至少存在一个可行段;3 天 toy 配置 CI 宽,端点不预设
-        assert!(rec["interval"].is_array(), "{rec}");
+        // R=2 + 3 天 toy 配置 CI 宽 → 全部格点 BORDERLINE,无可推荐区间
+        // (ST-AUD-01:退化/宽 CI 不再冒充 PASS)。区间可为 null,但必须给出原因。
+        if rec["interval"].is_array() {
+            assert!(rec["interval"].as_array().unwrap().len() == 2, "{rec}");
+        } else {
+            assert!(rec["interval"].is_null(), "{rec}");
+        }
         assert!(rec["confidence"].is_string());
         assert!(!rec["reasons"].as_array().unwrap().is_empty());
         assert_eq!(
@@ -1218,7 +1222,7 @@ mod tests {
         "  elite: 1\n",
         "  mutation_rate: 0.3\n",
         "  mutation_scale: 0.2\n",
-        "  replicates: 1\n",
+        "  replicates: 2\n",
         "  parameters:\n",
         "    model.warrior.attack: {min: 20, max: 200}\n",
         "  targets:\n",
@@ -1232,9 +1236,10 @@ mod tests {
     fn optimize_evolutionary_shape_and_budget() {
         let v = optimize_native(OPT_YAML).unwrap();
         assert_eq!(v["spec"]["mode"], "evolutionary");
-        // 评估账:population + generations × (population − elite) = 4 + 2×3
+        // 评估账:population + generations × (population − elite) = 4 + 2×3 = 10
+        // 候选;total_sims = evaluated × replicates(2)= 20。
         assert_eq!(v["evaluated"], 10);
-        assert_eq!(v["total_sims"], 10);
+        assert_eq!(v["total_sims"], 20);
         assert_eq!(v["all"].as_array().unwrap().len(), 10);
         // 逐代统计:初始种群 + 每代一条(共 generations + 1 = 3)
         assert_eq!(v["history"].as_array().unwrap().len(), 3);
@@ -1255,8 +1260,8 @@ mod tests {
         let dual = concat!(
             "schema_version: '1'\n",
             "scenario: {population: 20, duration: '3d', seed: 42}\n",
-            "sweep:\n  replicates: 1\n  parameters:\n    model.warrior.attack: {min: 90, max: 110, step: 10}\n  targets:\n    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n",
-            "optimize:\n  mode: evolutionary\n  population: 4\n  generations: 2\n  replicates: 1\n",
+            "sweep:\n  replicates: 2\n  parameters:\n    model.warrior.attack: {min: 90, max: 110, step: 10}\n  targets:\n    - {metric: win_rate, min: 0.0, max: 1.0, kind: hard}\n",
+            "optimize:\n  mode: evolutionary\n  population: 4\n  generations: 2\n  replicates: 2\n",
         );
         assert!(
             optimize_native(dual).is_err(),

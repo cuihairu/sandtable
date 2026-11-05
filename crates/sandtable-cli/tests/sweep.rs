@@ -86,7 +86,7 @@ fn sweep_failed_candidates_annotated() {
         r#"schema_version: "1"
 scenario: {population: 100, duration: "5d"}
 sweep:
-  replicates: 1
+  replicates: 2
   parameters:
     model.combat.p_hit: {min: 0.8, max: 1.2, step: 0.2}
 "#,

@@ -397,10 +397,24 @@ impl System<World, SimEvent> for GachaRollSystem<'_> {
         let actor = &mut world.actors[actor_id as usize];
         let mut rng = DayRng::new(seed, actor_id, 0);
         let hits_before = actor.gacha_hits;
-        let pulls = gacha::pull_until_featured(&mut rng, actor, gc);
-        world
-            .agg
-            .record_gacha(pulls, actor.gacha_hits - hits_before);
+        // validate 已保证 base_rate 下限/保底,正常配置不会触达 MAX_GACHA_PULLS;
+        // 若配置异常(防御纵深)仍触达,按会话超限记为该玩家本次未命中,
+        // 不中断整次仿真(与「配置错误静默丢弃」相反:这是运行时不可能路径)。
+        match gacha::pull_until_featured(&mut rng, actor, gc) {
+            Ok(pulls) => {
+                world
+                    .agg
+                    .record_gacha(pulls, actor.gacha_hits - hits_before);
+            }
+            Err(e) => {
+                // 防御:记录一次超限并终止该玩家会话,避免单玩家拖垮全局。
+                world.agg.record_gacha(
+                    crate::config::MAX_GACHA_PULLS,
+                    actor.gacha_hits - hits_before,
+                );
+                debug_assert!(false, "抽卡会话超限(应为 validate 前置拦截): {e}");
+            }
+        }
     }
 }
 

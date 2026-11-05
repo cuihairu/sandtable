@@ -3,7 +3,7 @@
 // 聚合层不存在跨指标共用轴;比例差用百分点 pp、绝对量用本地化单位(formatMetric
 // 显示层唯一换算口径)。纯聚合数据 + SVG(图表性能铁则),无插值、无合成点。
 import type { JSX } from 'react'
-import { effectDomain } from '../../lib/abEffect.ts'
+import { abFacetNoteKey, effectDomain } from '../../lib/abEffect.ts'
 import type { AbFacet } from '../../lib/abEffect.ts'
 import { metricLabel, metricUnit } from '../../lib/metricMeta.ts'
 import { fmtNumber } from '../../lib/i18n/format.ts'
@@ -48,7 +48,7 @@ export function AbEffectChart({ facets, format, sourceTitle }: AbEffectChartProp
           <text x={W - RIGHT} y={H - 10} textAnchor="end" className="chart-text">{summary}</text>
         </svg>
         <figcaption className="note">
-          {t(locale, f.significant ? 'analysis.abFacetSignificant' : 'analysis.abFacetOverlap')}
+          {t(locale, abFacetNoteKey(f))}
           {' · '}{t(locale, 'analysis.abFacetRel', {
             rel: f.relativeChangePct === null ? t(locale, 'analysis.unavailable') : `${fmtNumber(locale, f.relativeChangePct, { maxFractionDigits: 1 })}%`,
           })}

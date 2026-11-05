@@ -96,8 +96,10 @@ pub struct OptimSpec {
 impl OptimSpec {
     /// 校验寻优定义本身(路径合法性、范围、预算账、模式与目标形状)。
     pub fn validate(&self) -> Result<(), Error> {
-        if self.replicates == 0 {
-            return Err(Error::Config("optimize.replicates 必须 ≥ 1".into()));
+        if self.replicates < 2 {
+            return Err(Error::Config(
+                "optimize.replicates 必须 ≥ 2(单点无法给出置信区间)".into(),
+            ));
         }
         if self.parameters.is_empty() {
             return Err(Error::Config("optimize.parameters 不能为空".into()));
@@ -1270,7 +1272,7 @@ mod tests {
             "  mode: pareto\n",
             "  population: 4\n",
             "  generations: 2\n",
-            "  replicates: 1\n",
+            "  replicates: 2\n",
             "  parameters:\n",
             "    model.warrior.attack: {min: 60, max: 160}\n",
             "  targets:\n",

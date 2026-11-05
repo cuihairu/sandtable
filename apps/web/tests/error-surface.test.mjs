@@ -129,12 +129,12 @@ if (!existsSync(pkgNode)) {
     await assert.rejects(
       async () =>
         wasm.sweep_plan(
-          BASE + 'sweep:\n  replicates: 1\n  parameters:\n    model.combat.p_hit: {min: 0, max: 2, step: 0.01}\n',
+          BASE + 'sweep:\n  replicates: 2\n  parameters:\n    model.combat.p_hit: {min: 0, max: 2, step: 0.01}\n',
           0,
         ),
       (e) => {
         assert.match(String(e), /参数错误/, '预算是参数错误,不是运行失败')
-        assert.match(String(e), /201 超出 Web 预算 200/, '真实任务数与预算上限都在场')
+        assert.match(String(e), /402 超出 Web 预算 200/, '真实任务数与预算上限都在场')
         assert.match(String(e), /更大实验走 CLI/, '给出可行动指引')
         return true
       },

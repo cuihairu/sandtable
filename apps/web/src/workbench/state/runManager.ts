@@ -334,6 +334,25 @@ function startNextQueued(): void {
       activeControls.delete(job.id)
       queuedBackends.delete(job.id)
       applyOutcome(job.id, out)
+    }, (err: unknown) => {
+      // WB-07.17 · ST-AUD-12:终局 promise 拒绝(backend reject / hooks.update 抛错)
+      // 不得永久占死并发槽——失败分支同样删除控制引用、落 failed 终态并续跑队列。
+      activeControls.delete(job.id)
+      queuedBackends.delete(job.id)
+      applyOutcome(job.id, {
+        status: 'failed',
+        errorClass: 'run',
+        message: err instanceof Error ? err.message : String(err),
+        results: [],
+        recommendation: null,
+        recommendationError: null,
+        comparison: null,
+        comparisons: null,
+        comparisonErrors: null,
+        arms: null,
+        sim: null,
+        boundary: null,
+      })
     })
     emit()
   }

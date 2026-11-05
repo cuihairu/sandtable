@@ -51,7 +51,7 @@ fn report_merges_sources_single_file() {
             "schema_version: \"1\"\n",
             "scenario: {population: 30, duration: \"7d\"}\n",
             "sweep:\n",
-            "  replicates: 1\n",
+            "  replicates: 2\n",
             "  parameters:\n",
             "    model.warrior.attack: {min: 90, max: 110, step: 10}\n",
             "  targets:\n",

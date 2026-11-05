@@ -250,7 +250,7 @@ fn model_mc_simulation_matches_analytic() {
     for i in 0..n {
         let mut rng = DayRng::new(20261031, i, 0);
         let mut a = new_actor(i);
-        sim_mean += pull_until_hit(&mut rng, &mut a, &cfg) as f64;
+        sim_mean += pull_until_hit(&mut rng, &mut a, &cfg).unwrap() as f64;
     }
     sim_mean /= n as f64;
     // σ ≈ √E[T²]−E[T]² ≈ 23 → SE ≈ 23/√20000 ≈ 0.16,给 0.6 余量
@@ -436,7 +436,7 @@ fn weapon_epitomized_path_featured() {
     for i in 0..n {
         let mut rng = DayRng::new(20261101, i, 0);
         let mut a = new_actor(i);
-        let pulls = pull_until_featured(&mut rng, &mut a, &cfg);
+        let pulls = pull_until_featured(&mut rng, &mut a, &cfg).unwrap();
         sum_stars += a.gacha_hits as f64;
         sum_pulls += pulls as f64;
         worst = worst.max(pulls);
@@ -470,7 +470,7 @@ fn character_fifty_fifty_guarantee() {
     for i in 0..n {
         let mut rng = DayRng::new(20261031, i, 0);
         let mut a = new_actor(i);
-        worst = worst.max(pull_until_featured(&mut rng, &mut a, &cfg));
+        worst = worst.max(pull_until_featured(&mut rng, &mut a, &cfg).unwrap());
     }
     assert!(worst <= 180, "角色 50/50 最坏 {worst} 应 ≤ 180(2×90)");
 }
@@ -488,8 +488,8 @@ fn featured_layer_does_not_perturb_5star_path() {
         let mut r2 = DayRng::new(9, i, 0);
         let mut a1 = new_actor(i);
         let mut a2 = new_actor(i);
-        let p1 = pull_until_hit(&mut r1, &mut a1, &plain);
-        let p2 = pull_until_hit(&mut r2, &mut a2, &featured);
+        let p1 = pull_until_hit(&mut r1, &mut a1, &plain).unwrap();
+        let p2 = pull_until_hit(&mut r2, &mut a2, &featured).unwrap();
         assert_eq!(p1, p2, "定轨层不应改 5★ 抽数路径:i={i}");
         assert_eq!(a1.gacha_pulls, a2.gacha_pulls);
         assert_eq!(a1.gacha_hits, a2.gacha_hits);

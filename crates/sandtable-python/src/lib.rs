@@ -506,9 +506,9 @@ mod tests {
             .iter()
             .all(|r| r["status"] == "ok"));
 
-        let v = sweep_run_native(EXP_YAML, 1).unwrap();
-        assert_eq!(v["replicates"], 1, "覆盖生效(粗筛语义,同 CLI)");
-        assert_eq!(v["sims"], 3);
+        // ST-AUD-01:R=1 单点无法给置信区间,覆盖到 1 必须拒绝(全入口 R≥2)。
+        let e = sweep_run_native(EXP_YAML, 1).unwrap_err();
+        assert!(e.contains("replicates 必须 ≥ 2"), "{e}");
 
         // 配置错误候选照常上报,不静默丢弃(文档 12 章):轴取注册表路径但候选
         // 值非法(population=0 触发 validate 失败)→ 候选项级 config_error;
@@ -542,7 +542,11 @@ mod tests {
         let rec = &out["recommendation"];
         assert_eq!(rec["param"], "model.warrior.attack");
         assert_eq!(rec["baseline"], 100.0, "默认 attack 基线");
-        assert!(rec["interval"].is_array(), "{rec}");
+        if rec["interval"].is_array() {
+            assert_eq!(rec["interval"].as_array().unwrap().len(), 2, "{rec}");
+        } else {
+            assert!(rec["interval"].is_null(), "{rec}");
+        }
         assert!(rec["confidence"].is_string());
         assert_eq!(
             out["elasticities"].as_array().unwrap().len(),

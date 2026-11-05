@@ -39,7 +39,13 @@ pub fn hit_rate(cfg: &GachaConfig, since_hit: u64) -> f64 {
 
 /// 一次抽卡会话:逐抽直到首次命中(会话语义:抽数 KPI 即"出到即止"的
 /// 期望抽数 E[T]),更新 actor 的计数状态,返回本次消耗的抽数。
-pub fn pull_until_hit(rng: &mut DayRng, actor: &mut Actor, cfg: &GachaConfig) -> u64 {
+/// 超 [`crate::config::MAX_GACHA_PULLS`] 返回结构化错误(防御纵深,
+/// validate 已保证 base_rate 下限/保底,正常配置不会触达)。
+pub fn pull_until_hit(
+    rng: &mut DayRng,
+    actor: &mut Actor,
+    cfg: &GachaConfig,
+) -> crate::Result<u64> {
     let before = actor.gacha_pulls;
     loop {
         let p = hit_rate(cfg, actor.gacha_since_hit);
@@ -47,9 +53,15 @@ pub fn pull_until_hit(rng: &mut DayRng, actor: &mut Actor, cfg: &GachaConfig) ->
         if rng.chance(Purpose::Gacha, p) {
             actor.gacha_hits += 1;
             actor.gacha_since_hit = 0;
-            return actor.gacha_pulls - before;
+            return Ok(actor.gacha_pulls - before);
         }
         actor.gacha_since_hit += 1;
+        if actor.gacha_pulls - before > crate::config::MAX_GACHA_PULLS {
+            return Err(crate::Error::Config(format!(
+                "抽卡会话超过最大抽数 {}",
+                crate::config::MAX_GACHA_PULLS
+            )));
+        }
     }
 }
 
@@ -67,14 +79,18 @@ pub fn featured_is_guaranteed(cfg: &GachaConfig, off_featured: u64) -> bool {
 /// 角色池 `featured_rate = 0.5` / `featured_guarantee = 1`(50/50,歪后必 UP);
 /// 武器池 Version 5.0 起 `0.375` / `1`(双 UP 各 37.5%,所定单武器,最坏 160 抽;
 /// 此前 2 点最坏 240);常驻池 `0` / `0`(无定轨)。
-pub fn pull_until_featured(rng: &mut DayRng, actor: &mut Actor, cfg: &GachaConfig) -> u64 {
+pub fn pull_until_featured(
+    rng: &mut DayRng,
+    actor: &mut Actor,
+    cfg: &GachaConfig,
+) -> crate::Result<u64> {
     if cfg.featured_rate <= 0.0 {
         return pull_until_hit(rng, actor, cfg);
     }
     let before = actor.gacha_pulls;
     loop {
         // 5★ 率面与定轨无关:先走独立 5★ 命中会话,再判定是否为目标。
-        pull_until_hit(rng, actor, cfg);
+        pull_until_hit(rng, actor, cfg)?;
         let p = if featured_is_guaranteed(cfg, actor.gacha_off_featured) {
             1.0
         } else {
@@ -82,9 +98,15 @@ pub fn pull_until_featured(rng: &mut DayRng, actor: &mut Actor, cfg: &GachaConfi
         };
         if rng.chance(Purpose::GachaFeatured, p) {
             actor.gacha_off_featured = 0;
-            return actor.gacha_pulls - before;
+            return Ok(actor.gacha_pulls - before);
         }
         actor.gacha_off_featured += 1;
+        if actor.gacha_pulls - before > crate::config::MAX_GACHA_PULLS {
+            return Err(crate::Error::Config(format!(
+                "抽卡会话超过最大抽数 {}",
+                crate::config::MAX_GACHA_PULLS
+            )));
+        }
     }
 }
 
@@ -142,7 +164,7 @@ mod tests {
         for i in 0..50u64 {
             let mut rng = DayRng::new(7, i, 0);
             let mut a = new_actor(i);
-            pull_until_hit(&mut rng, &mut a, &cfg(0.02, 80, 0, 0.0));
+            pull_until_hit(&mut rng, &mut a, &cfg(0.02, 80, 0, 0.0)).unwrap();
             assert_eq!(a.gacha_hits, 1);
             assert!(
                 a.gacha_pulls <= 80,
@@ -163,7 +185,7 @@ mod tests {
         let mut rng = DayRng::new(7, 3, 0);
         let mut a = new_actor(3);
         for _ in 0..3 {
-            pull_until_hit(&mut rng, &mut a, &c);
+            pull_until_hit(&mut rng, &mut a, &c).unwrap();
             assert_eq!(a.gacha_since_hit, 0);
         }
         assert_eq!(a.gacha_hits, 3);
@@ -185,7 +207,7 @@ mod tests {
                 .map(|i| {
                     let mut rng = DayRng::new(7, i, 0);
                     let mut a = new_actor(i);
-                    pull_until_hit(&mut rng, &mut a, c);
+                    pull_until_hit(&mut rng, &mut a, c).unwrap();
                     a.gacha_pulls as f64
                 })
                 .sum::<f64>()
@@ -205,7 +227,7 @@ mod tests {
             .map(|i| {
                 let mut rng = DayRng::new(42, i, 0);
                 let mut a = new_actor(i);
-                pull_until_hit(&mut rng, &mut a, &c);
+                pull_until_hit(&mut rng, &mut a, &c).unwrap();
                 a.gacha_pulls as f64
             })
             .sum::<f64>()
@@ -224,7 +246,7 @@ mod tests {
             .map(|i| {
                 let mut rng = DayRng::new(42, i, 0);
                 let mut a = new_actor(i);
-                pull_until_hit(&mut rng, &mut a, &c);
+                pull_until_hit(&mut rng, &mut a, &c).unwrap();
                 a.gacha_pulls as f64
             })
             .sum::<f64>()
@@ -254,8 +276,8 @@ mod tests {
             let mut a1 = new_actor(i);
             let mut a2 = new_actor(i);
             assert_eq!(
-                pull_until_featured(&mut r1, &mut a1, &plain),
-                pull_until_hit(&mut r2, &mut a2, &plain)
+                pull_until_featured(&mut r1, &mut a1, &plain).unwrap(),
+                pull_until_hit(&mut r2, &mut a2, &plain).unwrap()
             );
             assert_eq!(a1.gacha_off_featured, 0);
         }
@@ -272,7 +294,7 @@ mod tests {
         for i in 0..200u64 {
             let mut rng = DayRng::new(11, i, 0);
             let mut a = new_actor(i);
-            pull_until_featured(&mut rng, &mut a, &c);
+            pull_until_featured(&mut rng, &mut a, &c).unwrap();
             assert!(
                 a.gacha_hits >= 1 && a.gacha_hits <= 2,
                 "hits={}",
@@ -298,13 +320,27 @@ mod tests {
             .map(|i| {
                 let mut rng = DayRng::new(42, i, 0);
                 let mut a = new_actor(i);
-                pull_until_featured(&mut rng, &mut a, &c);
+                pull_until_featured(&mut rng, &mut a, &c).unwrap();
                 a.gacha_hits as f64
             })
             .sum::<f64>()
             / n as f64;
         // E[#5★] = 1/0.5 = 2,σ=√2 → SE≈0.03,给 0.25 余量
         assert!((mean_hits - 2.0).abs() < 0.25, "E[#5★]=2,实测 {mean_hits}");
+    }
+
+    /// ST-AUD-03:base_rate 极低(无保底)时单会话超 `MAX_GACHA_PULLS`
+    /// 返回结构化错误,而非无限循环——防御纵深生效。
+    #[test]
+    fn session_capped_at_max_pulls() {
+        // 故意构造无保底 + 低于 validate 下限的 base_rate(直接调函数,
+        // 绕过 validate,验证函数自身防御)。
+        let c = cfg(1e-9, 0, 0, 0.0);
+        let mut rng = DayRng::new(7, 0, 0);
+        let mut a = new_actor(0);
+        let err = pull_until_hit(&mut rng, &mut a, &c).unwrap_err();
+        assert!(err.to_string().contains("最大抽数"), "应报超限错误: {err}");
+        assert!(a.gacha_pulls <= crate::config::MAX_GACHA_PULLS + 1);
     }
 
     fn new_actor(id: u64) -> Actor {

@@ -157,15 +157,16 @@ if (!existsSync(pkgNode)) {
       assert.equal(rows.length, 3)
       assert.ok(rows.every((r) => r.result?.status === 'ok'), '三候选全 ok')
       const outcome = overallOutcome(rows[0].result)
-      assert.equal(outcome.overall, 'pass', '内核判定机器口径 pass(枚举值不翻译)')
+      // ST-AUD-01:该 toy 配置下 win_rate 配对差 CI 零宽退化 → 内核 BORDERLINE。
+      assert.equal(outcome.overall, 'borderline', '内核判定机器口径原样(枚举值不翻译)')
       // 判定摘要:词典模板按语言落位,hard/overall 槽位是机器判定,soft 缺席走本语言「无软约束」
       const expectSummary = dict['analysis.feasibilitySummary']
-        .replace('{hard}', 'pass')
+        .replace('{hard}', 'borderline')
         .replace('{soft}', dict['analysis.noSoftConstraint'])
-        .replace('{overall}', 'pass')
+        .replace('{overall}', 'borderline')
       const { feasibility, statText } = await import('../src/workbench/analysis/resultModel.ts')
       assert.equal(feasibility(rows[0], locale), expectSummary)
-      assert.ok(expectSummary.includes('pass'), '摘要携带真实内核判定')
+      assert.ok(expectSummary.includes('borderline'), '摘要携带真实内核判定')
       // 统计行:百分比口径 + CI + n,不出现「不可用」
       const stat = rows[0].result.stats.get('win_rate')
       const statLine = statText(stat, 'win_rate', locale)
