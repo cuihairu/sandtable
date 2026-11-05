@@ -30,23 +30,19 @@ fn input(dir: &Path, mapping: &str) -> CalibrationInput {
 fn calibrate_aggregates_and_compares_kernel_kpis() {
     let dir = temp_dir("aggregate");
     fs::create_dir_all(&dir).unwrap();
-    let run = core::sim::run(&load(SCENARIO).unwrap(), 0);
     fs::write(
         dir.join("daily.csv"),
         "date,cohort_day,retained,active\nA,3,98,100\nB,3,99,100\n",
     )
     .unwrap();
-    let mapping = format!(
-        "anchors:\n  win_rate: {{observed: {}}}\n  retention_d3: {{observed: 0.985}}\nseries:\n  win_rate:\n    file: daily.csv\n    day_column: cohort_day\n    value_column: retained\n    denominator_column: active\n    aggregation: ratio\n",
-        run.win_rate
-    );
-    let output = calibrate_native(&input(&dir, &mapping)).unwrap();
+    let mapping = "anchors:\n  retention_d3: {observed: 0.985}\nseries:\n  win_rate:\n    file: daily.csv\n    day_column: cohort_day\n    value_column: retained\n    denominator_column: active\n    aggregation: ratio\n";
+    let output = calibrate_native(&input(&dir, mapping)).unwrap();
 
     let win = output["rows"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|row| row["anchor"] == "win_rate" && row["day"].is_null())
+        .find(|row| row["anchor"] == "retention_d3" && row["day"].is_null())
         .unwrap();
     assert_eq!(win["verdict"], "PASS", "{win}");
     assert_eq!(win["replicates"], 2);
@@ -95,6 +91,22 @@ fn calibrate_rejects_bad_mapping_zero_and_path_escape() {
     let escape = "series:\n  win_rate:\n    file: ../ok.csv\n    day_column: cohort_day\n    value_column: v\n    aggregation: sum\n";
     let err = calibrate_native(&input(&dir, escape)).unwrap_err();
     assert!(err.contains("路径必须留在数据目录内"), "{err}");
+
+    // Windows 盘符:join 会整体替换路径,必须显式拒绝(I-009)。
+    let drive = "series:\n  win_rate:\n    file: C:/Windows/win.ini\n    day_column: cohort_day\n    value_column: v\n    aggregation: sum\n";
+    let err = calibrate_native(&input(&dir, drive)).unwrap_err();
+    assert!(err.contains("路径必须留在数据目录内"), "{err}");
+
+    // 绝对 POSIX 路径同样拒绝(I-009)。
+    let abs = "series:\n  win_rate:\n    file: /etc/passwd\n    day_column: cohort_day\n    value_column: v\n    aggregation: sum\n";
+    let err = calibrate_native(&input(&dir, abs)).unwrap_err();
+    assert!(err.contains("路径必须留在数据目录内"), "{err}");
+
+    // 错误信息不回显原始单元格值(I-009)。
+    fs::write(dir.join("bad.csv"), "cohort_day,v\n3,not-a-number\n").unwrap();
+    let bad = "series:\n  win_rate:\n    file: bad.csv\n    day_column: cohort_day\n    value_column: v\n    aggregation: sum\n";
+    let err = calibrate_native(&input(&dir, bad)).unwrap_err();
+    assert!(!err.contains("not-a-number"), "{err}");
 }
 
 #[test]

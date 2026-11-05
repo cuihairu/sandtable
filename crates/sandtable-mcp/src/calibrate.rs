@@ -127,12 +127,25 @@ fn require_existing_dir(raw: &str) -> Result<std::path::PathBuf, String> {
 }
 
 fn read_csv_rows(dir: &Path, file: &str) -> Result<Vec<BTreeMap<String, String>>, String> {
+    if file.is_empty() {
+        return Err("mapping 文件路径不可为空".into());
+    }
     if file.contains("..") || file.starts_with('/') || file.starts_with('\\') {
-        return Err(format!("mapping 文件路径必须留在数据目录内: {file}"));
+        return Err("mapping 文件路径必须留在数据目录内".into());
+    }
+    let bytes = file.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' {
+        // Windows 盘符(如 C:/x.csv):join 会整体替换路径,直接拒绝。
+        return Err("mapping 文件路径必须留在数据目录内".into());
     }
     let path = dir.join(file);
-    let text =
-        std::fs::read_to_string(&path).map_err(|e| format!("读 {} 失败: {e}", path.display()))?;
+    let resolved = path
+        .canonicalize()
+        .map_err(|_| "mapping 文件不可读".to_string())?;
+    if !resolved.starts_with(dir) {
+        return Err("mapping 文件路径必须留在数据目录内".into());
+    }
+    let text = std::fs::read_to_string(&resolved).map_err(|_| "mapping 文件不可读".to_string())?;
     let mut result = Vec::new();
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -155,7 +168,7 @@ fn read_csv_rows(dir: &Path, file: &str) -> Result<Vec<BTreeMap<String, String>>
 
 fn parse_day(raw: &str, file: &str) -> Result<u32, String> {
     raw.parse::<u32>()
-        .map_err(|_| format!("{file}: 日轴必须是 ≥ 1 的整数,得到 {raw:?}"))
+        .map_err(|_| format!("{file}: 日轴必须是 ≥ 1 的整数"))
         .and_then(|day| {
             if day == 0 {
                 Err(format!("{file}: 日轴从 1 开始"))
@@ -167,7 +180,7 @@ fn parse_day(raw: &str, file: &str) -> Result<u32, String> {
 
 fn parse_f64(raw: &str, what: &str) -> Result<f64, String> {
     raw.parse::<f64>()
-        .map_err(|_| format!("{what}: 不是合法数值 {raw:?}"))
+        .map_err(|_| format!("{what}: 不是合法数值"))
 }
 
 fn read_series(

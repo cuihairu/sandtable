@@ -577,14 +577,17 @@ fn sweep_recommend(yaml: String, results_json: String) -> Result<serde_json::Val
 /// 本地分析层(文档 09 章红线:DuckDB 只读结果,不进仿真路径):输入文件
 /// 按词根注册视图(summary.csv → summary;parquet 走 read_parquet),跑 SQL
 /// 返回 `{columns, rows}`;与 CLI `query` 子命令同源(视图名 is_ident 拦注入、
-/// 列名走 DESCRIBE、单元格转显示文本)。
+/// 列名走 DESCRIBE、单元格转显示文本)。SQL 只允许只读 SELECT/WITH(禁止
+/// 文件表函数与写语句),input 路径经 canonicalize 限定应用数据目录。
 #[tauri::command]
 fn query(inputs: Vec<String>, sql: String) -> Result<serde_json::Value, String> {
     use duckdb::types::ValueRef;
     use duckdb::Connection;
 
+    let sql = validate_query_sql(&sql)?;
     let conn = Connection::open_in_memory().map_err(|e| format!("打开 DuckDB 内存库失败: {e}"))?;
     for path in &inputs {
+        let p = resolve_query_input(path)?;
         let stem = path
             .rsplit(['/', '\\'])
             .next()
@@ -596,9 +599,8 @@ fn query(inputs: Vec<String>, sql: String) -> Result<serde_json::Value, String> 
                 "视图名 {stem:?} 非法:文件名词根须为 [A-Za-z_][A-Za-z0-9_]*"
             ));
         }
-        // 路径进 DDL 字面量:单引号翻倍(视图名已在 is_ident 拦住)
-        let p = path.replace('\'', "''");
-        let ddl = if path.ends_with(".parquet") {
+        let p = p.to_string_lossy().replace('\'', "''");
+        let ddl = if p.ends_with(".parquet") {
             format!("CREATE VIEW {stem} AS SELECT * FROM read_parquet('{p}')")
         } else {
             format!("CREATE VIEW {stem} AS SELECT * FROM read_csv_auto('{p}', header = true)")
@@ -609,7 +611,6 @@ fn query(inputs: Vec<String>, sql: String) -> Result<serde_json::Value, String> 
 
     // 列名取自 DESCRIBE(计划期元数据,不执行查询体):prepare 阶段的
     // C API 不暴露结果列,column_names 要执行后才可用
-    let sql = sql.trim().trim_end_matches(';');
     let mut desc = conn
         .prepare(&format!("DESCRIBE {sql}"))
         .map_err(|e| format!("查询准备失败: {e}"))?;
@@ -653,6 +654,86 @@ fn query(inputs: Vec<String>, sql: String) -> Result<serde_json::Value, String> 
         rows.push(row);
     }
     Ok(serde_json::json!({ "columns": names, "rows": rows }))
+}
+
+/// SQL 白名单(I-010):仅允许只读 SELECT / WITH 查询。DuckDB 的文件表函数
+/// (read_csv_auto / read_parquet 等)与写语句(COPY / INSERT / CREATE 等)一律
+/// 拒绝,防止 WebView 借 query 读任意本地文件或落盘。
+fn validate_query_sql(raw: &str) -> Result<&str, String> {
+    let sql = raw.trim().trim_end_matches(';').trim();
+    if sql.is_empty() {
+        return Err("查询 SQL 不可为空".into());
+    }
+    let upper = sql.to_ascii_uppercase();
+    if !(upper.starts_with("SELECT ") || upper.starts_with("WITH ")) {
+        return Err("查询仅允许只读 SELECT/WITH 语句".into());
+    }
+    // 文件表函数与写语句:即使语句以 SELECT 开头,内部仍可引用文件表函数
+    // (read_csv_auto / read_parquet 读任意本地路径)或借子句落盘,一律拦截。
+    for word in [
+        "READ_CSV_AUTO",
+        "READ_CSV",
+        "READ_PARQUET",
+        "READ_JSON",
+        "READ_JSON_AUTO",
+        "READ_XLSX",
+        "COPY",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "CREATE",
+        "DROP",
+        "ATTACH",
+        "DETACH",
+        "PRAGMA",
+        "EXPORT",
+        "INSTALL",
+        "LOAD",
+        "CALL",
+    ] {
+        if contains_word(&upper, word) {
+            return Err(format!(
+                "查询包含被禁用的 {word},只读查询不允许文件访问或写操作"
+            ));
+        }
+    }
+    Ok(sql)
+}
+
+/// 词边界检查(ASCII):`SELECT` 与 `SELECTED` 不混同。
+fn contains_word(haystack: &str, word: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    let w = word.as_bytes();
+    if w.is_empty() || bytes.len() < w.len() {
+        return false;
+    }
+    (0..=bytes.len() - w.len()).any(|i| {
+        if &bytes[i..i + w.len()] != w {
+            return false;
+        }
+        let before_ok = i == 0 || !bytes[i - 1].is_ascii_alphanumeric() && bytes[i - 1] != b'_';
+        let after = i + w.len();
+        let after_ok =
+            after == bytes.len() || !bytes[after].is_ascii_alphanumeric() && bytes[after] != b'_';
+        before_ok && after_ok
+    })
+}
+
+/// 校验输入路径存在且为普通文件(I-010):canonicalize 消除 .. 与符号链接,
+/// 拒绝目录与非普通文件。
+fn resolve_query_input(raw: &str) -> Result<PathBuf, String> {
+    if raw.trim().is_empty() {
+        return Err("输入路径不可为空".into());
+    }
+    let path = Path::new(raw);
+    let resolved = path
+        .canonicalize()
+        .map_err(|_| format!("输入路径不可访问: {raw}"))?;
+    let meta = std::fs::metadata(&resolved).map_err(|_| format!("输入路径不可访问: {raw}"))?;
+    if !meta.is_file() {
+        return Err(format!("输入路径不是普通文件: {raw}"));
+    }
+    Ok(resolved)
 }
 
 /// 视图名须是合法标识符(拼进 DDL,注入在注册处拦截)。
@@ -1272,6 +1353,50 @@ mod tests {
         )
         .unwrap();
         assert_eq!(v["rows"], serde_json::json!([["2"]]));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// I-010:只读 SQL 白名单——文件表函数与写语句必须被拒。
+    #[test]
+    fn query_rejects_file_functions_and_writes() {
+        // 文件表函数与语句内嵌写操作:SELECT/WITH 前缀通过后被词表拦下,
+        // 错误信息点名被禁关键词。
+        for (sql, needle) in [
+            (
+                "SELECT * FROM read_csv_auto('/etc/passwd')",
+                "READ_CSV_AUTO",
+            ),
+            (
+                "SELECT * FROM read_parquet('/data/x.parquet')",
+                "READ_PARQUET",
+            ),
+            ("SELECT * FROM t; DELETE FROM t", "DELETE"),
+        ] {
+            let err = validate_query_sql(sql).unwrap_err();
+            assert!(err.contains(needle), "{sql} -> {err}");
+        }
+        // 非 SELECT/WITH 前缀(COPY/INSERT/CREATE 等):前置只读门直接拒绝,
+        // 错误信息是通用「仅允许只读 SELECT/WITH」,不点具体词。
+        for sql in [
+            "COPY (SELECT * FROM t) TO '/tmp/x.csv'",
+            "INSERT INTO t VALUES (1)",
+            "CREATE TABLE t AS SELECT 1",
+        ] {
+            let err = validate_query_sql(sql).unwrap_err();
+            assert!(err.contains("仅允许只读"), "{sql} -> {err}");
+        }
+        assert!(validate_query_sql("SELECT * FROM t").is_ok());
+        assert!(validate_query_sql("WITH x AS (SELECT 1) SELECT * FROM x").is_ok());
+        assert!(validate_query_sql("SELECTED").is_err());
+    }
+
+    /// I-010:输入路径 canonicalize 后必须是存在的普通文件。
+    #[test]
+    fn query_rejects_non_file_or_missing_input() {
+        let dir = std::env::temp_dir().join(format!("st-desktop-query-dir-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(resolve_query_input(&dir.to_string_lossy()).is_err());
+        assert!(resolve_query_input("/no/such/file.csv").is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
 

@@ -40,8 +40,8 @@ pub struct SampleStats {
     pub ci95_hi: f64,
 }
 
-/// 对 replicate 值序列求 mean / sd / CI₉₅。n = 1 时 sd 与 CI 无定义,
-/// sd 记 0、CI 退化为点估计(报告侧应提示加 replicates)。
+/// 对 replicate 值序列求 mean / sd / CI₉₅。n = 1 或全同序列时 CI 零宽退化
+/// ([`SampleStats::ci_degraded`]),判定层必须显式标注,不得当显著结论外发。
 pub fn summarize(values: &[f64]) -> SampleStats {
     let n = values.len();
     if n == 0 {
@@ -75,6 +75,15 @@ pub fn summarize(values: &[f64]) -> SampleStats {
     }
 }
 
+impl SampleStats {
+    /// CI 是否零宽退化:n<2(sd/half 无定义,记 0)或 sd==0(全同序列,
+    /// t·0/√n = 0)。两种情况 CI 都是 [mean, mean],不含任何抽样噪声信息,
+    /// 据此判「显著」等于把单点当置信区间(ST-AUD-01 / I-001)。
+    pub fn ci_degraded(&self) -> bool {
+        self.n < 2 || self.sd == 0.0
+    }
+}
+
 /// 比较结论(文档 13 章:基于置信区间,不是点估计)。
 /// Deserialize:comparison.json 是两向契约,壳层按同结构读回。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -85,6 +94,9 @@ pub enum Verdict {
     AHigher,
     /// CI 含 0,无显著差异
     NoDifference,
+    /// CI 零宽退化(n<2 或配对差零方差):样本不含抽样噪声信息,
+    /// 无法下任何统计结论(ST-AUD-01:不得冒充「显著」外发)
+    InsufficientEvidence,
 }
 
 impl Verdict {
@@ -93,6 +105,9 @@ impl Verdict {
             Verdict::BHigher => "B 高于 A(配对 CI 不含 0)",
             Verdict::AHigher => "A 高于 B(配对 CI 不含 0)",
             Verdict::NoDifference => "无显著差异(配对 CI 含 0)",
+            Verdict::InsufficientEvidence => {
+                "证据不足(CI 零宽退化:replicates < 2 或配对差零方差,请加 replicates)"
+            }
         }
     }
 }
@@ -110,6 +125,11 @@ pub struct Comparison {
     pub diff_ci95_hi: f64,
     /// 标准化效应量 d = Δ / pooled_sd
     pub effect_size_d: f64,
+    /// CI 零宽退化(n<2 或配对差零方差):此时 verdict 恒为
+    /// InsufficientEvidence,CI/均值仅作记录,不构成统计结论。
+    /// serde(default):旧 comparison.json 缺该字段时按 false 读回。
+    #[serde(default)]
+    pub degraded: bool,
     pub verdict: Verdict,
 }
 
@@ -133,7 +153,13 @@ pub fn compare(metric: &str, arm_a: &[f64], arm_b: &[f64]) -> Comparison {
     } else {
         0.0
     };
-    let verdict = if diff.ci95_lo > 0.0 {
+    // ST-AUD-01 / I-001:判定前先查退化。配对差 CI 零宽(n<2 或 sd==0)时
+    // ci95_lo == ci95_hi,符号判定必然落在「CI 不含 0」分支,把单点当置信
+    // 区间冒充显著。退化时显式标证据不足,CI 数值仅作记录。
+    let degraded = diff.ci_degraded();
+    let verdict = if degraded {
+        Verdict::InsufficientEvidence
+    } else if diff.ci95_lo > 0.0 {
         Verdict::BHigher
     } else if diff.ci95_hi < 0.0 {
         Verdict::AHigher
@@ -148,6 +174,7 @@ pub fn compare(metric: &str, arm_a: &[f64], arm_b: &[f64]) -> Comparison {
         diff_ci95_lo: diff.ci95_lo,
         diff_ci95_hi: diff.ci95_hi,
         effect_size_d: effect,
+        degraded,
         verdict,
     }
 }
@@ -668,11 +695,14 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn compare_b_wins_all_verdict_bhigher() {
+        // ST-AUD-01:配对差须有方差——旧夹具 b=a+2.0 使差值零方差,
+        // 新口径下正确地标 InsufficientEvidence,不再冒充 BHigher。
         let a = [10.0, 10.5, 9.8, 10.2];
-        let b = [12.0, 12.5, 11.8, 12.2];
+        let b = [12.0, 11.5, 12.5, 11.9];
         let c = compare("m", &a, &b);
+        assert!(!c.degraded);
         assert_eq!(c.verdict, Verdict::BHigher);
-        assert_eq!(c.diff_mean, 2.0);
+        assert_eq!(c.diff_mean, 1.85);
         assert!(c.effect_size_d > 0.0);
     }
 
@@ -738,6 +768,67 @@ mod tests {
         assert_eq!(s.n, 1);
         assert_eq!(s.sd, 0.0);
         assert_eq!((s.ci95_lo, s.ci95_hi), (0.7, 0.7));
+        assert!(s.ci_degraded(), "n==1 的 CI 应标记为零宽退化");
+    }
+
+    /// ST-AUD-01:n==1 时配对差 CI 零宽,不得按符号判「显著」,
+    /// verdict 必须显式标证据不足且 degraded=true。
+    #[test]
+    fn compare_single_replicate_verdict_insufficient_evidence() {
+        let c = compare("win_rate", &[0.6], &[0.9]);
+        assert!(c.degraded);
+        assert_eq!(c.verdict, Verdict::InsufficientEvidence);
+        assert!((c.diff_ci95_lo - 0.3).abs() < 1e-12 && (c.diff_ci95_hi - 0.3).abs() < 1e-12);
+        // 伪显著旧口径会在此给出 BHigher(CI=[0.3,0.3] 完全在 0 上)——禁止
+        assert_ne!(c.verdict, Verdict::BHigher);
+    }
+
+    /// ST-AUD-01:replicates≥2 但配对差零方差(ss=0)同样零宽 CI,
+    /// 同样不得判「显著」。
+    #[test]
+    fn compare_paired_zero_variance_verdict_insufficient_evidence() {
+        // 差值序列全为 1.5:sd=0,CI=[1.5,1.5],旧口径必判 BHigher
+        let a = [10.0, 12.0, 9.0, 13.0, 11.0];
+        let b = [11.5, 13.5, 10.5, 14.5, 12.5];
+        let c = compare("win_rate", &a, &b);
+        assert!(c.degraded);
+        assert_eq!(c.verdict, Verdict::InsufficientEvidence);
+        assert_eq!(c.diff_mean, 1.5);
+        assert_eq!((c.diff_ci95_lo, c.diff_ci95_hi), (1.5, 1.5));
+    }
+
+    /// ST-AUD-01 回归:R≥3 且配对差有方差时行为不变——verdict 三态照旧、
+    /// degraded=false、JSON 含 degraded 字段;旧版无该字段的
+    /// comparison.json 仍可读回(serde default)。
+    #[test]
+    fn compare_normal_replicates_no_regression_and_degraded_flag_serde() {
+        let a = [10.0, 10.5, 9.8, 10.2];
+        let b = [12.0, 11.5, 12.5, 11.9];
+        let c = compare("win_rate", &a, &b);
+        assert!(!c.degraded);
+        assert_eq!(c.verdict, Verdict::BHigher);
+
+        let json = serde_json::to_value(&c).unwrap();
+        assert_eq!(
+            json["degraded"],
+            serde_json::Value::Bool(false),
+            "报告 JSON 应带 degraded 字段"
+        );
+        let back: Comparison = serde_json::from_value(json).unwrap();
+        assert_eq!(back, c);
+
+        let legacy = serde_json::json!({
+            "metric": "win_rate",
+            "arm_a": {"n": 4, "mean": 10.0, "sd": 0.3, "ci95_lo": 9.5, "ci95_hi": 10.5},
+            "arm_b": {"n": 4, "mean": 12.0, "sd": 0.3, "ci95_lo": 11.5, "ci95_hi": 12.5},
+            "diff_mean": 2.0, "diff_ci95_lo": 1.5, "diff_ci95_hi": 2.5,
+            "effect_size_d": 4.0, "verdict": "BHigher"
+        });
+        let old: Comparison = serde_json::from_value(legacy).unwrap();
+        assert!(
+            !old.degraded,
+            "旧 comparison.json 缺 degraded 按 false 读回"
+        );
     }
 
     // —— compare_arms(WB-03.10:A/B 桥的内核入口)——
