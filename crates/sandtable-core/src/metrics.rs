@@ -39,8 +39,9 @@ pub struct DayStat {
     pub sink_ratio: f64,
     /// G(d):日结时存续玩家金币存量总和
     pub gold_supply: i64,
-    /// (G(d) − G(d−1)) / max(G(d−1), 1)
-    pub inflation: f64,
+    /// (G(d) − G(d−1)) / max(G(d−1), 1)。第 1 天无 G(d−1),
+    /// 无定义显式记 `None`(I-008:不得填 4800 这类绝对存量伪值)。
+    pub inflation: Option<f64>,
     /// 产出的人均值(按当日活跃)
     pub income_per_active: f64,
     /// 回收的人均值(按当日活跃)
@@ -294,7 +295,14 @@ impl RunAggregator {
         snapshot_powers: &[i64],
         cohort_final: Option<&[CohortStat]>,
     ) {
-        let inflation = (supply - self.prev_supply) as f64 / self.prev_supply.max(1) as f64;
+        // I-008 / ST-AUD-08:day==1 无 G(d−1),inflation 无定义。
+        // 旧口径 prev_supply.max(1) 把绝对存量当增长率(supply/1),黄金
+        // 快照实测 4800.0;现在显式 None,聚合层已按 day==1 缺席。
+        let inflation = if day == 1 {
+            None
+        } else {
+            Some((supply - self.prev_supply) as f64 / self.prev_supply.max(1) as f64)
+        };
         let sink_ratio = self.cur.gold_spent as f64 / self.cur.gold_earned.max(1) as f64;
         let stat = DayStat {
             day,
@@ -323,10 +331,15 @@ impl RunAggregator {
             upgrades: self.cur.upgrades,
         };
         if day >= 2 {
-            self.inflation_sum += inflation;
+            self.inflation_sum += inflation.unwrap_or(0.0);
             self.inflation_days += 1;
         }
-        self.inflation_last = inflation;
+        // inflation_last:最后一天;days==1 时无定义记 0(I-008)。
+        self.inflation_last = if day == 1 {
+            0.0
+        } else {
+            inflation.unwrap_or(0.0)
+        };
         self.sink_ratio_sum += sink_ratio;
         self.prev_supply = supply;
 

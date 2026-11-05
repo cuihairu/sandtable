@@ -550,7 +550,7 @@ fn eval_expr(e: &Expr, env: &[f64]) -> f64 {
         Expr::Div(a, b) => {
             let d = ev(b);
             if d == 0.0 {
-                0.0
+                f64::NAN
             } else {
                 ev(a) / d
             }
@@ -558,7 +558,7 @@ fn eval_expr(e: &Expr, env: &[f64]) -> f64 {
         Expr::Rem(a, b) => {
             let d = ev(b);
             if d == 0.0 {
-                0.0
+                f64::NAN
             } else {
                 ev(a) % d
             }
@@ -594,15 +594,35 @@ fn eval_expr(e: &Expr, env: &[f64]) -> f64 {
         Expr::Call(builtin, args) => {
             let a = |i: usize| eval_expr(&args[i], env);
             match builtin {
-                Builtin::Min => a(0).min(a(1)),
-                Builtin::Max => a(0).max(a(1)),
-                Builtin::Clamp => a(0).max(a(1)).min(a(2)),
+                // NaN 必须显式传播:Rust f64::min/max 忽略 NaN(静默洗值),
+                // I-016 要求非有限输入不得被 max/min/clamp 洗成有限值。
+                Builtin::Min => nan_propagate2(a(0), a(1), f64::min),
+                Builtin::Max => nan_propagate2(a(0), a(1), f64::max),
+                Builtin::Clamp => nan_propagate3(a(0), a(1), a(2)),
                 Builtin::Floor => a(0).floor(),
                 Builtin::Ceil => a(0).ceil(),
                 Builtin::Abs => a(0).abs(),
                 Builtin::Round => a(0).round(),
             }
         }
+    }
+}
+
+/// 二元运算的 NaN 显式传播(f64::min/max 本身忽略 NaN,须先检查)。
+fn nan_propagate2(a: f64, b: f64, op: fn(f64, f64) -> f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else {
+        op(a, b)
+    }
+}
+
+/// clamp(x, lo, hi) 的 NaN 显式传播(任一元 NaN 即 NaN)。
+fn nan_propagate3(x: f64, lo: f64, hi: f64) -> f64 {
+    if x.is_nan() || lo.is_nan() || hi.is_nan() {
+        f64::NAN
+    } else {
+        x.max(lo).min(hi)
     }
 }
 
@@ -697,10 +717,13 @@ mod tests {
     }
 
     #[test]
-    fn div_by_zero_returns_zero() {
-        assert_eq!(eval_str("1/0"), 0.0);
-        assert_eq!(eval_str("5%0"), 0.0);
-        assert_eq!(eval_str("1/0 + 5"), 5.0);
+    fn div_by_zero_returns_nan_propagates() {
+        // I-016:除零 / 非有限输入显式 NaN,不得被洗成有限值
+        assert!(eval_str("1/0").is_nan());
+        assert!(eval_str("5%0").is_nan());
+        assert!(eval_str("1/0 + 5").is_nan());
+        assert!(eval_str("max(1/0, 5)").is_nan());
+        assert!(eval_str("clamp(1/0, 0, 1)").is_nan());
     }
 
     #[test]

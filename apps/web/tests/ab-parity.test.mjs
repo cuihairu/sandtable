@@ -100,7 +100,6 @@ if (!existsSync(pkgNode)) {
     const sda = sampleSd(xa)
     const sdb = sampleSd(xb)
     const sdd = sampleSd(diffs)
-    const pooled = Math.sqrt(((R - 1) * sda ** 2 + (R - 1) * sdb ** 2) / (2 * R - 2))
 
     close(cmp.arm_a.mean, mean(xa), 'arm_a.mean')
     close(cmp.arm_a.sd, sda, 'arm_a.sd')
@@ -112,7 +111,7 @@ if (!existsSync(pkgNode)) {
     close(cmp.diff_mean, mean(xb) - mean(xa), '配对差值均值 = 两臂均值之差')
     close(cmp.diff_ci95_lo, mean(diffs) - halfWidth(diffs), '配对差 CI 下限')
     close(cmp.diff_ci95_hi, mean(diffs) + halfWidth(diffs), '配对差 CI 上限')
-    close(cmp.effect_size_d, pooled > 0 ? mean(diffs) / pooled : 0, '效应量 d = Δ / pooled_sd')
+    close(cmp.effect_size_d, sdd > 0 ? mean(diffs) / sdd : 0, '效应量 d_z = Δ / s_d(配对口径)')
     assert.equal(cmp.verdict, verdictFromCi(cmp.diff_ci95_lo, cmp.diff_ci95_hi), '判定由配对 CI 是否含 0 决定')
 
     // 6 · 走的是配对 t 区间(df = R−1),不是正态近似:用 CI 宽度反推临界值

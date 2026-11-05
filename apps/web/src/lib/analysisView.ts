@@ -97,7 +97,7 @@ export function configErrorOf(view: CandidateView): string | null {
 
 /* —— WB-08.08 · 内核判定透传:hard/soft 分组与整体聚合 —— */
 
-export type KernelVerdict = 'pass' | 'borderline' | 'fail'
+export type KernelVerdict = 'pass' | 'borderline' | 'fail' | 'missing'
 
 export type OverallVerdict = {
   /** 硬约束聚合:fail > borderline > pass;无硬约束 = null(不编造) */
@@ -107,7 +107,7 @@ export type OverallVerdict = {
   overall: KernelVerdict | null
 }
 
-const RANK: Record<KernelVerdict, number> = { pass: 0, borderline: 1, fail: 2 }
+const RANK: Record<KernelVerdict, number> = { pass: 0, borderline: 1, fail: 2, missing: 3 }
 const worst = (a: KernelVerdict | null, b: KernelVerdict): KernelVerdict =>
   a !== null && RANK[a] >= RANK[b] ? a : b
 

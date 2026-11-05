@@ -53,11 +53,11 @@ earned(d)    = total gold gained by all players that day (combat drops + rewards
 spent(d)     = total gold consumed by all players that day (level-ups + other sinks)
 G(d)         = total gold held by all surviving players at end-of-day d
 
-inflation(d)  = (G(d) − G(d−1)) / max(G(d−1), 1)        —— primary convention: daily growth rate of the stock
+inflation(d)  = (G(d) − G(d−1)) / max(G(d−1), 1)        —— primary convention: daily growth rate of the stock; d=1 has no G(0), undefined (recorded as None/empty, never a fake absolute-stock value)
 sink_ratio(d) = spent(d) / max(earned(d), 1)             —— auxiliary convention: spend-to-earn ratio; < 1 means the economy is net-minting
 ```
 
-The MVP has no price system, so inflation is defined as the **daily growth rate of total gold** (the primary convention), with sink_ratio output alongside as a diagnostic. Constraints (e.g. `inflation ≤ 0.05`) bind to the primary convention. The reporting window uses two numbers: the 30-day cumulative growth rate and the daily average growth rate.
+The MVP has no price system, so inflation is defined as the **daily growth rate of total gold** (the primary convention), with sink_ratio output alongside as a diagnostic. Day 1 has no G(d−1), so inflation is undefined and explicitly absent from the daily series and aggregate view (I-008: the old convention used the absolute stock G(1)/1 as the growth rate, measured as 4800.0 in the golden snapshot). Constraints (e.g. `inflation ≤ 0.05`) bind to the primary convention; `inflation_last` is likewise undefined when days=1. The reporting window uses two numbers: the 30-day cumulative growth rate and the daily average growth rate.
 
 ### Retention and churn
 
@@ -110,7 +110,7 @@ sd    = sample standard deviation (m_r)
 CI₉₅  = mean ± t(0.975, R−1) · sd / √R
 ```
 
-**Effect size**: A/B comparisons report Δ = mean_B − mean_A together with both sides' CIs, plus the standardized effect d = Δ / pooled_sd. The combination of |d| and the CIs forms the criteria for [recommendation confidence](./15-recommendation.md).
+**Effect size**: A/B comparisons report Δ = mean_B − mean_A together with both sides' CIs, plus the paired standardized effect d_z = Δ / s_d (s_d is the standard deviation of the paired differences B_r − A_r, consistent with the paired-difference CI). The combination of |d_z| and the CIs forms the criteria for [recommendation confidence](./15-recommendation.md).
 
 ## Constraint verdicts: confidence-interval based, not point estimates
 

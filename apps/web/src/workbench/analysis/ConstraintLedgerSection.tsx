@@ -67,6 +67,7 @@ export function ConstraintLedgerSection({ views, targets, runId }: ConstraintLed
                       pass: row.pass,
                       borderline: row.borderline,
                       fail: row.fail,
+                      missing: row.missing,
                       judged: row.judged,
                     })}
                   </td>

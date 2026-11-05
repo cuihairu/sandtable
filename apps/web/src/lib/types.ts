@@ -234,7 +234,7 @@ export interface SweepAxis {
   step: number
 }
 
-export type ConstraintVerdict = 'pass' | 'borderline' | 'fail'
+export type ConstraintVerdict = 'pass' | 'borderline' | 'fail' | 'missing'
 
 export interface SweepTarget {
   metric: MetricKey

@@ -21,6 +21,7 @@ const VERDICT_LABEL: Record<ConstraintVerdict, string> = {
   pass: 'PASS',
   borderline: 'BORDER',
   fail: 'FAIL',
+  missing: 'MISSING',
 }
 
 const CONFIDENCE_LABEL: Record<string, string> = {

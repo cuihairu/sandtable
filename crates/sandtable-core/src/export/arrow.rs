@@ -89,8 +89,8 @@ pub fn day_stats_batch(m: &RunMetrics) -> ArrowResult<RecordBatch> {
         Arc::new(Int64Array::from_iter_values(
             m.day_stats.iter().map(|d| d.gold_supply),
         )),
-        Arc::new(Float64Array::from_iter_values(
-            m.day_stats.iter().map(|d| d.inflation),
+        Arc::new(Float64Array::from(
+            m.day_stats.iter().map(|d| d.inflation).collect::<Vec<_>>(),
         )),
         Arc::new(Float64Array::from_iter_values(
             m.day_stats.iter().map(|d| d.income_per_active),

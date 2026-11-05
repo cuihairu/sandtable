@@ -121,8 +121,8 @@ pub fn oat_elasticity(
         let delta_eff = span / (2.0 * p0.abs());
         for key in MetricKey::ALL {
             let (Some(sm), Some(sp)) = (
-                stat_at(spec, results, i, gm, key),
-                stat_at(spec, results, i, gp, key),
+                stat_at(spec, base, results, i, gm, key),
+                stat_at(spec, base, results, i, gp, key),
             ) else {
                 out.push(unusable(&p.path, key, SensNote::MissingMetric));
                 continue;
@@ -236,17 +236,36 @@ fn bracket(slice: &[f64], p0: f64, delta: f64) -> Option<(f64, f64)> {
 }
 
 /// 切片上轴值等于 v 的候选的指标统计。
+/// `base` 提供非轴维的基线向量;只有该向量(非轴维全部≈基线)上的候选
+/// 才能命中(I-007:防 OAT 在多维 Grid 下取到非基线切片)。
 pub(crate) fn stat_at<'a>(
     spec: &SweepSpec,
+    base: &SimConfig,
     results: &'a [CandidateResult],
     axis: usize,
     v: f64,
     key: MetricKey,
 ) -> Option<&'a SampleStats> {
     let path = &spec.parameters[axis].path;
-    let r = results
+    let baselines: Vec<Option<f64>> = spec
+        .parameters
         .iter()
-        .find(|r| r.values.get(path).is_some_and(|x| approx(*x, v)))?;
+        .map(|p| read_numeric(base, &p.path).ok())
+        .collect();
+    let r = results.iter().find(|r| {
+        // 非轴维必须≈基线(与 baseline_slice 同一条纪律)
+        for (j, pj) in spec.parameters.iter().enumerate() {
+            if j == axis {
+                continue;
+            }
+            match (r.values.get(&pj.path), baselines[j]) {
+                (Some(v), Some(b)) if approx(*v, b) => {}
+                _ => return false,
+            }
+        }
+        // 轴维匹配目标值
+        r.values.get(path).is_some_and(|x| approx(*x, v))
+    })?;
     r.metric_stats
         .iter()
         .find(|(k, _)| *k == key)
@@ -402,6 +421,41 @@ mod tests {
         let e = win_rate(oat_elasticity(&spec, &base, &results, DEFAULT_DELTA));
         assert_eq!(e.note, SensNote::Ok, "d=80 切片应可分");
         assert!((e.e - 1.0).abs() < 1e-9);
+    }
+
+    /// I-007 回归:基线不是网格端点(defense=85,网格 {80,90})时,
+    /// 旧 stat_at 只按轴值 find,会命中第一个 defense 值候选的 attack=90
+    /// (无论 defense 是否≈基线)——在多维 Grid 下读到非基线切片。
+    /// 新口径校验非轴维≈基线:候选集里没有 d≈85 的,必须返回 None,
+    /// 不得静默取到 d=80 或 d=90 的非基线候选。
+    #[test]
+    fn stat_at_other_dim_baseline_not_grid_endpoint() {
+        let mut spec = spec_1d();
+        spec.parameters.push(ParamRange {
+            path: "model.warrior.defense".into(),
+            min: 80.0,
+            max: 90.0,
+            step: 10.0,
+        });
+        // 基线 defense=85(非网格值):候选 {80,90} 都≠85 → 无合法切片
+        let mut base = SimConfig::default();
+        base.warrior.defense = 85;
+        let mut results = Vec::new();
+        for a in [90.0, 100.0, 110.0] {
+            for d in [80.0, 90.0] {
+                results.push(result(
+                    &[("model.warrior.attack", a), ("model.warrior.defense", d)],
+                    2.0 * a,
+                    1e-3,
+                ));
+            }
+        }
+        let st = stat_at(&spec, &base, &results, 0, 90.0, MetricKey::WinRate);
+        assert!(st.is_none(), "基线不在网格上,不得命中非基线候选");
+        // 基线恰在网格值(80)时,d=80 切片可命中——保证新过滤不误伤合法路径
+        base.warrior.defense = 80;
+        let st = stat_at(&spec, &base, &results, 0, 90.0, MetricKey::WinRate);
+        assert!(st.is_some(), "基线在网格点上,d=80 切片应可命中");
     }
 
     /// 指标基线为 0:相对弹性无定义,如实标注。

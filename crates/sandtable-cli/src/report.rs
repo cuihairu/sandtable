@@ -699,12 +699,14 @@ fn section_sweep(body: &mut String, src: &Sources) {
                     "pass" => "pass",
                     "borderline" => "borderline",
                     "fail" => "fail",
+                    "missing" => "missing",
                     _ => "",
                 };
                 let txt = match verdict {
                     "pass" => "PASS",
                     "borderline" => "BORDERLINE",
                     "fail" => "FAIL",
+                    "missing" => "MISSING",
                     _ => "—",
                 };
                 body.push_str(&format!("<td class=\"{cls}\">{txt}</td>"));

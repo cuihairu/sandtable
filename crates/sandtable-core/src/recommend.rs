@@ -109,7 +109,7 @@ pub fn recommend_axis(
     // 每条 hard 约束的可行段
     let mut segments = Vec::new();
     for t in &hard {
-        let seg = feasible_segment(spec, results, axis, t, &axis_vals, baseline);
+        let seg = feasible_segment(spec, base, results, axis, t, &axis_vals, baseline);
         let bounds = match (t.min, t.max) {
             (Some(min), Some(max)) => format!("[{min}, {max}]"),
             (Some(min), None) => format!("≥ {min}"),
@@ -225,6 +225,7 @@ fn path_for<'a>(_t: &Target, spec: &'a SweepSpec, axis: usize) -> &'a String {
 /// pass/非 pass 相邻格点之间线性插值(插值对象是越界侧的统计序列)。
 fn feasible_segment(
     spec: &SweepSpec,
+    base: &SimConfig,
     results: &[CandidateResult],
     axis: usize,
     t: &Target,
@@ -233,7 +234,7 @@ fn feasible_segment(
 ) -> Segment {
     let judged: Vec<Option<ConstraintVerdict>> = axis_vals
         .iter()
-        .map(|v| stat_at(spec, results, axis, *v, t.metric).map(|s| judge(t, s)))
+        .map(|v| stat_at(spec, base, results, axis, *v, t.metric).map(|s| judge(t, s)))
         .collect();
     let borderline = judged
         .iter()
@@ -279,6 +280,7 @@ fn feasible_segment(
                 axis_vals[l - 1],
                 axis_vals[l],
                 spec,
+                base,
                 results,
                 axis,
                 t,
@@ -295,6 +297,7 @@ fn feasible_segment(
                 axis_vals[r + 1],
                 axis_vals[r],
                 spec,
+                base,
                 results,
                 axis,
                 t,
@@ -327,6 +330,7 @@ fn crossing(
     p_out: f64,
     p_in: f64,
     spec: &SweepSpec,
+    base: &SimConfig,
     results: &[CandidateResult],
     axis: usize,
     t: &Target,
@@ -337,7 +341,7 @@ fn crossing(
         return p_in;
     };
     let get = |p: f64| {
-        stat_at(spec, results, axis, p, t.metric)
+        stat_at(spec, base, results, axis, p, t.metric)
             .map(|s| match side {
                 Side::Lo => s.ci95_lo,
                 Side::Hi => s.ci95_hi,

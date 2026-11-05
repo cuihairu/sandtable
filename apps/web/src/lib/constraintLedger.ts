@@ -18,6 +18,8 @@ export type ConstraintLedgerRow = {
   pass: number
   borderline: number
   fail: number
+  /** 运行期指标缺席(内核 verdict=missing):显式缺席,不当失败 */
+  missing: number
   /** 通过占比 = pass / judged;judged = 0 缺席(null),不写 0 */
   passShare: number | null
   /** 最紧候选:mean 到任一阈值的最小距离(负 = 越界) */
@@ -50,11 +52,11 @@ export function constraintLedger(
   views: readonly CandidateView[],
   targets: readonly SweepTarget[],
 ): ConstraintLedgerRow[] {
-  const totals = new Map<string, { judged: number; unjudged: number; pass: number; borderline: number; fail: number; worst: { distance: number; mean: number } | null }>()
+  const totals = new Map<string, { judged: number; unjudged: number; pass: number; borderline: number; fail: number; missing: number; worst: { distance: number; mean: number } | null }>()
   const touch = (key: string) => {
     let entry = totals.get(key)
     if (!entry) {
-      entry = { judged: 0, unjudged: 0, pass: 0, borderline: 0, fail: 0, worst: null }
+      entry = { judged: 0, unjudged: 0, pass: 0, borderline: 0, fail: 0, missing: 0, worst: null }
       totals.set(key, entry)
     }
     return entry
@@ -72,6 +74,10 @@ export function constraintLedger(
         continue
       }
       for (const hit of hits) {
+        if (hit.verdict === 'missing') {
+          entry.missing += 1
+          continue
+        }
         entry.judged += 1
         if (hit.verdict === 'pass') entry.pass += 1
         else if (hit.verdict === 'borderline') entry.borderline += 1
@@ -86,6 +92,10 @@ export function constraintLedger(
       const key = targetKey(outcome)
       if (judgedKeys.has(key) || keys.includes(key)) continue
       const entry = touch(key)
+      if (outcome.verdict === 'missing') {
+        entry.missing += 1
+        continue
+      }
       entry.judged += 1
       if (outcome.verdict === 'pass') entry.pass += 1
       else if (outcome.verdict === 'borderline') entry.borderline += 1
@@ -107,7 +117,7 @@ export function constraintLedger(
   }
 
   return ordered.map((target) => {
-    const entry = totals.get(targetKey(target)) ?? { judged: 0, unjudged: views.length, pass: 0, borderline: 0, fail: 0, worst: null }
+    const entry = totals.get(targetKey(target)) ?? { judged: 0, unjudged: views.length, pass: 0, borderline: 0, fail: 0, missing: 0, worst: null }
     return {
       metric: target.metric,
       kind: target.kind,
@@ -118,6 +128,7 @@ export function constraintLedger(
       pass: entry.pass,
       borderline: entry.borderline,
       fail: entry.fail,
+      missing: entry.missing,
       passShare: entry.judged > 0 ? entry.pass / entry.judged : null,
       worstDistance: entry.worst?.distance ?? null,
       worstMean: entry.worst?.mean ?? null,

@@ -19,6 +19,11 @@ fn f(v: f64) -> String {
     format!("{v:.6}")
 }
 
+/// 可选浮点的 CSV 渲染:无定义记空串(与 JSON null 同义),不填 0。
+fn f_opt(v: Option<f64>) -> String {
+    v.map(f).unwrap_or_default()
+}
+
 /// 日序列 CSV。首行为表头,列与 DayStat 字段一致。
 pub fn day_csv(m: &RunMetrics) -> String {
     let mut out = String::new();
@@ -41,7 +46,7 @@ pub fn day_csv(m: &RunMetrics) -> String {
             d.gold_spent.to_string(),
             f(d.sink_ratio),
             d.gold_supply.to_string(),
-            f(d.inflation),
+            f_opt(d.inflation),
             f(d.income_per_active),
             f(d.spending_per_active),
             f(d.mean_power),

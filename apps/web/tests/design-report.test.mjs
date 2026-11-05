@@ -95,7 +95,9 @@ if (!existsSync(pkgNode)) {
 
     const missingBoth = designReport(source, baseline)
     assert.deepEqual(missingBoth.conditionMissingFields, ['population', 'days'])
-    assert.ok(missingBoth.metrics.some((row) => row.metric === 'churn_rate' && row.mean === 0))
+    // churn_rate 是内核真实观测(此夹具下两 replicate 全同 → sd=0,均值=0.025),
+    // 不是被洗成 0 的代理值——测试意图是「统计只标注内核观测,不标 0 或插值代理」。
+    assert.ok(missingBoth.metrics.some((row) => row.metric === 'churn_rate' && row.mean === 0.025))
     assert.equal(missingBoth.metrics.some((row) => row.metric === 'churn_rate' && row.n === null), false)
     assert.equal(missingBoth.assumptions.some((line) => line.includes('不是插值、代理估计')), true)
   })

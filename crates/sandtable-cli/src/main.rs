@@ -482,21 +482,23 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                 .filter(|r| matches!(r.status, core::sweep::CandidateStatus::Ok))
                 .count();
             let failed = results.len() - ok;
-            let (mut n_pass, mut n_border, mut n_fail) = (0usize, 0usize, 0usize);
+            let (mut n_pass, mut n_border, mut n_fail, mut n_missing) =
+                (0usize, 0usize, 0usize, 0usize);
             for r in &results {
                 for o in &r.target_outcomes {
                     match o.verdict {
                         core::sweep::ConstraintVerdict::Pass => n_pass += 1,
                         core::sweep::ConstraintVerdict::Borderline => n_border += 1,
                         core::sweep::ConstraintVerdict::Fail => n_fail += 1,
+                        core::sweep::ConstraintVerdict::Missing => n_missing += 1,
                     }
                 }
             }
             println!("完成:{ok} 成功 / {failed} 配置错误,耗时 {:.2?}", elapsed);
             if !spec.targets.is_empty() {
                 println!(
-                    "约束判定:PASS {n_pass} · BORDERLINE {n_border} · FAIL {n_fail}(共 {} 项)",
-                    n_pass + n_border + n_fail
+                    "约束判定:PASS {n_pass} · BORDERLINE {n_border} · FAIL {n_fail} · MISSING {n_missing}(共 {} 项)",
+                    n_pass + n_border + n_fail + n_missing
                 );
             }
 

@@ -6,7 +6,7 @@
 //! 误差远小于样本噪声。
 //!
 //! A/B 比较:两臂同 replicate 用同一种子(CRN 配对),主报告配对差值的
-//! 置信区间与标准化效应量 d = Δ / pooled_sd。
+//! 置信区间与配对效应量 d_z = Δ / s_d(分子分母同源于配对差序列)。
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -125,7 +125,9 @@ pub struct Comparison {
     pub diff_mean: f64,
     pub diff_ci95_lo: f64,
     pub diff_ci95_hi: f64,
-    /// 标准化效应量 d = Δ / pooled_sd
+    /// 标准化配对效应量 d_z = Δ / s_d(配对差序列均值 / 标准差;
+    /// 与配对差 CI 同源,独立双样本 pooled_sd 与配对纪律冲突已被
+    /// ST-AUD-05 移除)
     pub effect_size_d: f64,
     /// CI 零宽退化(n<2 或配对差零方差):此时 verdict 恒为
     /// InsufficientEvidence,CI/均值仅作记录,不构成统计结论。
@@ -186,16 +188,11 @@ pub fn compare(metric: &str, arm_a: &[f64], arm_b: &[f64]) -> Comparison {
     let diff = summarize(&diffs);
     let sa = summarize(arm_a);
     let sb = summarize(arm_b);
-    let pooled_sd = if arm_a.len() + arm_b.len() > 2 {
-        let na = arm_a.len() as f64;
-        let nb = arm_b.len() as f64;
-        let num = (na - 1.0) * sa.sd.powi(2) + (nb - 1.0) * sb.sd.powi(2);
-        (num / (na + nb - 2.0)).sqrt()
-    } else {
-        0.0
-    };
-    let effect = if pooled_sd > 0.0 {
-        diff.mean / pooled_sd
+    // ST-AUD-05 / I-005:CRN 配对设计的效应量口径必须与配对差 CI 同源
+    // (d_z = Δ / s_d)。旧 pooled_sd 是独立双样本公式,ρ→1 时 s_d → |sa−sb|
+    // 但 pooled_sd 不随之塌缩,系统性低估配对效应且口径与 CI 分叉。
+    let effect = if diff.sd > 0.0 {
+        diff.mean / diff.sd
     } else {
         0.0
     };
@@ -645,7 +642,7 @@ pub fn daily_aggregate_metrics(
                 inflation: if *day == 1 {
                     None
                 } else {
-                    metric_stats(&stats.iter().map(|d| d.inflation).collect::<Vec<_>>())
+                    metric_stats(&stats.iter().filter_map(|d| d.inflation).collect::<Vec<_>>())
                 },
                 income_per_active: metric_stats(
                     &stats
@@ -758,6 +755,24 @@ mod tests {
         let b = [10.5, 11.5, 9.5, 12.5, 10.8, 11.0, 12.0, 10.0];
         let c = compare("m", &a, &b);
         assert_eq!(c.verdict, Verdict::NoDifference);
+    }
+
+    /// I-005 / ST-AUD-05:CRN 配对设计的效应量必须用 d_z = Δ/s_d,
+    /// 与配对差 CI 同源;不得再用独立双样本 pooled_sd(口径分叉)。
+    #[test]
+    fn compare_effect_size_is_paired_dz() {
+        // 构造配对差 d = b - a = {1,2,3,4},mean=2.5,sd≈1.291 → d_z≈1.936
+        let a = [10.0, 10.0, 10.0, 10.0];
+        let b = [11.0, 12.0, 13.0, 14.0];
+        let c = compare("m", &a, &b);
+        let expected = 2.5 / c.arm_b.sd; // d_z = Δ/s_d(because a sd=0)
+        assert!(
+            (c.effect_size_d - expected).abs() < 1e-12,
+            "effect_size_d 应等于 d_z=Δ/s_d,got {} expected {}",
+            c.effect_size_d,
+            expected
+        );
+        assert!(c.effect_size_d.is_finite());
     }
 
     #[test]
@@ -1091,7 +1106,7 @@ mod tests {
                     gold_spent: 50,
                     sink_ratio: 0.5,
                     gold_supply: 50,
-                    inflation: if day == 1 { -1.0 } else { 0.25 },
+                    inflation: if day == 1 { None } else { Some(0.25) },
                     income_per_active: 2.5,
                     spending_per_active: 1.25,
                     mean_power: 10.0 + day as f64,

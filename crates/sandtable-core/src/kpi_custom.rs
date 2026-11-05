@@ -93,10 +93,22 @@ pub struct CustomKpiOutput {
 /// `MetricKey::ALL` 白名单,所以自定义 KPI 的口径与内置指标可比。
 pub fn evaluate(expression: &str, results: &[RunMetrics]) -> Result<CustomKpiOutput, crate::Error> {
     let (formula, vars) = compile_checked(expression)?;
+    let used_var_names = var_names(&formula, &vars);
 
     let per_replicate: Vec<Option<f64>> = results
         .iter()
         .map(|run| {
+            // 求值前逐个检查 used_vars 的 extract;任一 None 直接 None,
+            // 不允许 NaN 进入 max/min/clamp/除零等可洗成有限值的路径。
+            if used_var_names.iter().any(|name| {
+                MetricKey::ALL
+                    .iter()
+                    .find(|key| key.name() == *name)
+                    .and_then(|key| key.extract(run))
+                    .is_none()
+            }) {
+                return None;
+            }
             // 变量顺序与 MetricKey::ALL 对齐;缺席记 NaN,求值后归 None
             let env: Vec<f64> = MetricKey::ALL
                 .iter()
@@ -116,10 +128,7 @@ pub fn evaluate(expression: &str, results: &[RunMetrics]) -> Result<CustomKpiOut
         } else {
             None
         },
-        used_vars: var_names(&formula, &vars)
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+        used_vars: used_var_names.into_iter().map(str::to_string).collect(),
         per_replicate,
         n_used,
         schema_version: KPI_SCHEMA_VERSION,
@@ -292,5 +301,14 @@ mod tests {
             err.contains("not_a_metric"),
             "求值路径同样走编译校验,实得 {err}"
         );
+    }
+
+    #[test]
+    fn missing_used_var_short_circuits_to_none_even_if_formula_would_wash_nan() {
+        // gacha_pulls_to_hit 在本夹具恒 None;旧路径 NaN 经 max(...,0) 洗成
+        // 0.0 并计入 n_used(I-016),新路径在求值前就拦截。
+        let out = evaluate("max(gacha_pulls_to_hit, 0)", &[run(0, Some(0.9), 0.6)]).unwrap();
+        assert_eq!(out.per_replicate, vec![None]);
+        assert_eq!(out.n_used, 0);
     }
 }

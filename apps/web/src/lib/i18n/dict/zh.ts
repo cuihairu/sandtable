@@ -770,7 +770,7 @@ export const zh = {
   'analysis.ledgerColShare': '通过占比',
   'analysis.ledgerColTightest': '最紧候选',
   'analysis.ledgerColUnjudged': '未判定',
-  'analysis.ledgerVerdicts': 'pass {pass} · borderline {borderline} · fail {fail}(判定 {judged})',
+  'analysis.ledgerVerdicts': 'pass {pass} · borderline {borderline} · fail {fail} · 缺席 {missing}(判定 {judged})',
   'analysis.ledgerTightest': '余量 {distance} · 均值 {mean}',
   'analysis.ledgerNoBound': '无界',
   'analysis.ledgerScaleNote': '阈值与余量按指标自身单位显示(比例类为 0–1 内核口径);余量为负 = 已越界。',

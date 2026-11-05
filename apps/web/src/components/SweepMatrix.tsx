@@ -8,6 +8,7 @@ const VERDICT_LABEL: Record<ConstraintVerdict, string> = {
   pass: 'PASS',
   borderline: 'BORDER',
   fail: 'FAIL',
+  missing: 'MISSING',
 }
 
 function fmtVal(v: number): string {

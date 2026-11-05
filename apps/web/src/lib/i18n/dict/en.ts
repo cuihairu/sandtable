@@ -769,7 +769,7 @@ export const en = {
   'analysis.ledgerColShare': 'Pass share',
   'analysis.ledgerColTightest': 'Tightest candidate',
   'analysis.ledgerColUnjudged': 'Unjudged',
-  'analysis.ledgerVerdicts': 'pass {pass} · borderline {borderline} · fail {fail} (judged {judged})',
+  'analysis.ledgerVerdicts': 'pass {pass} · borderline {borderline} · fail {fail} · missing {missing} (judged {judged})',
   'analysis.ledgerTightest': 'slack {distance} · mean {mean}',
   'analysis.ledgerNoBound': 'unbounded',
   'analysis.ledgerScaleNote': 'Bounds and slack are shown in the metric’s own unit (ratio metrics use the kernel 0–1 caliber); a negative slack means the bound is already violated.',

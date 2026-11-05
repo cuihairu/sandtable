@@ -238,7 +238,7 @@ if (!existsSync(pkgNode)) {
     'sweep:',
     '  replicates: 2',
     '  parameters:',
-    '    model.warrior.attack: {min: 90, max: 110, step: 10}',
+    '    model.warrior.attack: {min: 170, max: 190, step: 10}',
     '  targets:',
     '    - {metric: win_rate, min: 0.0, max: 2.0, kind: hard}',
     '    - {metric: gold_per_player, min: 1.0, kind: soft}',

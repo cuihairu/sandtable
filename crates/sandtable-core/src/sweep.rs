@@ -133,6 +133,9 @@ pub enum ConstraintVerdict {
     Borderline,
     /// CI 完全落在约束区间外
     Fail,
+    /// 指标在运行期缺席(如 gacha_pulls_to_hit 未产出)。I-006:显式
+    /// 记 missing,不得静默丢弃约束让候选误报 Ok。
+    Missing,
 }
 
 impl ConstraintVerdict {
@@ -141,6 +144,7 @@ impl ConstraintVerdict {
             ConstraintVerdict::Pass => "PASS",
             ConstraintVerdict::Borderline => "BORDERLINE",
             ConstraintVerdict::Fail => "FAIL",
+            ConstraintVerdict::Missing => "MISSING",
         }
     }
 }
@@ -149,6 +153,12 @@ impl ConstraintVerdict {
 pub fn judge(target: &Target, s: &SampleStats) -> ConstraintVerdict {
     let (lo, hi) = target.bounds();
     debug_assert!(lo <= hi, "约束下界大于上界");
+    // ST-AUD-01:I-001 残余——退化样本(n<2 或 CI 零宽)不含抽样噪声信息,
+    // 不得据 CI 判 PASS/FAIL(那是把单点当置信区间)。归入 BORDERLINE
+    // (「无法结论,加 replicates」语义,与前端既有三态处理一致)。
+    if s.ci_degraded() {
+        return ConstraintVerdict::Borderline;
+    }
     if s.ci95_lo >= lo && s.ci95_hi <= hi {
         ConstraintVerdict::Pass
     } else if s.ci95_hi < lo || s.ci95_lo > hi {
@@ -176,8 +186,16 @@ pub struct SweepSpec {
 impl SweepSpec {
     /// 校验扫描定义本身(路径合法性、范围、replicates)。
     pub fn validate(&self) -> Result<(), Error> {
-        if self.replicates == 0 {
-            return Err(Error::Config("sweep.replicates 必须 ≥ 1".into()));
+        if self.replicates < 2 {
+            return Err(Error::Config(
+                "sweep.replicates 必须 ≥ 2(单点无法给出置信区间)".into(),
+            ));
+        }
+        if self.replicates > crate::config::MAX_SWEEP_REPLICATES {
+            return Err(Error::Config(format!(
+                "sweep.replicates 不能超过 {}(核心 replicates 上界)",
+                crate::config::MAX_SWEEP_REPLICATES
+            )));
         }
         if self.parameters.is_empty() {
             return Err(Error::Config("sweep.parameters 不能为空".into()));
@@ -355,6 +373,24 @@ pub struct TargetOutcome {
     pub verdict: ConstraintVerdict,
 }
 
+/// 生成运行期指标缺席的 TargetOutcome(stats 为空样本占位,判定=Missing)。
+fn missing_outcome(t: &Target) -> TargetOutcome {
+    TargetOutcome {
+        metric: t.metric.name().to_string(),
+        kind: t.kind,
+        min: t.min,
+        max: t.max,
+        stats: SampleStats {
+            n: 0,
+            mean: 0.0,
+            sd: 0.0,
+            ci95_lo: 0.0,
+            ci95_hi: 0.0,
+        },
+        verdict: ConstraintVerdict::Missing,
+    }
+}
+
 /// 运行一个候选:应用参数 → validate → R 个 replicate → 汇总 → 判定。
 /// 纯函数:不改输入;线程安全(候选间可并行,文档 11 章)。
 pub fn run_candidate(
@@ -400,15 +436,17 @@ pub fn run_candidate(
     let target_outcomes = spec
         .targets
         .iter()
-        .filter_map(|t| {
-            stat_of(t.metric).map(|s| TargetOutcome {
-                metric: t.metric.name().to_string(),
-                kind: t.kind,
-                min: t.min,
-                max: t.max,
-                stats: s.clone(),
-                verdict: judge(t, s),
-            })
+        .map(|t| {
+            stat_of(t.metric)
+                .map(|s| TargetOutcome {
+                    metric: t.metric.name().to_string(),
+                    kind: t.kind,
+                    min: t.min,
+                    max: t.max,
+                    stats: s.clone(),
+                    verdict: judge(t, s),
+                })
+                .unwrap_or_else(|| missing_outcome(t))
         })
         .collect();
 
@@ -588,7 +626,7 @@ mod tests {
                     step: 1.0,
                 },
             ],
-            replicates: 1,
+            replicates: 2,
             samples: 0,
             targets: vec![],
         };
@@ -725,11 +763,21 @@ mod tests {
         let s = SampleStats {
             n: 5,
             mean: 0.01,
+            sd: 0.01,
+            ci95_lo: 0.0,
+            ci95_hi: 0.02,
+        };
+        assert_eq!(judge(&t, &s), ConstraintVerdict::Pass);
+        // ST-AUD-01:I-001 残余——零宽退化(n=1 或 CI lo==hi)不得判 PASS,
+        // 统一归 BORDERLINE(「无法结论」语义)。
+        let degenerate = SampleStats {
+            n: 5,
+            mean: 0.01,
             sd: 0.0,
             ci95_lo: 0.01,
             ci95_hi: 0.01,
         };
-        assert_eq!(judge(&t, &s), ConstraintVerdict::Pass);
+        assert_eq!(judge(&t, &degenerate), ConstraintVerdict::Borderline);
         assert_eq!(
             Target::centered(MetricKey::WinRate, 0.5, 0.1, TargetKind::Soft).bounds(),
             (0.45, 0.55)
@@ -873,6 +921,55 @@ mod tests {
         // defense 是 i64 允许负?查 apply_numeric:i64 无 unsigned 检查 → 走 validate?初始防御负数 validate 未拦。
         // 这里只断言:要么 ConfigError 要么 Ok,不 panic(行为明确即可)
         let _ = run_candidate(&base, &spec, &neg);
+    }
+
+    /// I-006 回归:运行期指标缺席(如 gacha_pulls_to_hit 在 gacha 未配置时
+    /// extract=None)不得把硬约束静默丢弃——target_outcomes 必须仍含该
+    /// 约束,verdict=Missing(显式缺席,候选不得误报全 Ok)。
+    #[test]
+    fn run_candidate_missing_runtime_metric_explicit_missing_not_dropped() {
+        let base = SimConfig {
+            players: 50,
+            days: 5,
+            ..SimConfig::default()
+        };
+        let mut spec = grid_spec();
+        spec.replicates = 2;
+        spec.targets = vec![
+            Target {
+                metric: MetricKey::GachaPullsToHit,
+                min: Some(0.0),
+                max: Some(200.0),
+                kind: TargetKind::Hard,
+            },
+            Target {
+                metric: MetricKey::WinRate,
+                min: Some(0.0),
+                max: Some(1.0),
+                kind: TargetKind::Hard,
+            },
+        ];
+        let cands = spec.plan(1).unwrap();
+        let r = run_candidate(&base, &spec, &cands[0]);
+        assert!(matches!(r.status, CandidateStatus::Ok));
+        // 两条 target 都必须在场:gacha 缺席 → Missing,win_rate 在场 → 判定
+        assert_eq!(r.target_outcomes.len(), 2, "缺席约束不得被静默丢弃");
+        let gacha = r
+            .target_outcomes
+            .iter()
+            .find(|o| o.metric == "gacha_pulls_to_hit")
+            .expect("gacha 约束应显式在场");
+        assert_eq!(gacha.verdict, ConstraintVerdict::Missing);
+        assert_eq!(gacha.stats.n, 0);
+        let win = r
+            .target_outcomes
+            .iter()
+            .find(|o| o.metric == "win_rate")
+            .expect("win_rate 约束应照常判定");
+        assert!(matches!(
+            win.verdict,
+            ConstraintVerdict::Pass | ConstraintVerdict::Borderline
+        ));
     }
 
     #[test]
