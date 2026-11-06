@@ -43,8 +43,9 @@ export interface PowerSnapshot {
 // 与 core::metrics::RunMetrics 逐键同构(WB-03.01 对照补全;原先只声明了
 // 6/25 键)。窗口外留存指标(retention_d3/d7/d14/d30)内核以 null 表达不可
 // 用,非 0 填空(完整可空语义是 WB-03.02);seed 为 u64,安全整数边界是
-// WB-03.08。gacha_pulls_to_hit / loot_gold_per_player 是 skip_serializing_if
-// 型 Option:配置未启用 gacha/loot 时整键省略(≠ null),故为可选字段。
+// WB-03.08。inflation_last / gacha_pulls_to_hit / loot_gold_per_player 是
+// skip_serializing_if 型 Option:无定义或配置未启用时整键省略(≠ null),
+// 故为可选字段。
 export interface RunMetrics {
   config_hash: string
   players: number
@@ -65,7 +66,7 @@ export interface RunMetrics {
   gold_earned_total: number
   gold_spent_total: number
   sink_ratio_mean: number
-  inflation_last: number | null
+  inflation_last?: number
   inflation_daily_mean: number
   whale_gold_share: number
   gacha_pulls_to_hit?: number

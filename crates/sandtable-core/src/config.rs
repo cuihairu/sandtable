@@ -45,12 +45,14 @@ pub const MIN_GACHA_BASE_RATE: f64 = 1e-4;
 /// 都因配置异常失效,单会话也不会无限循环。超出返回结构化错误。
 pub const MAX_GACHA_PULLS: u64 = 1_000_000;
 
-/// 无定轨 featured 层的最小目标概率(2026-11-06 审核发现):`featured_rate > 0`
-/// 且 `featured_guarantee == 0` 时,目标判定退化为每 5★ 独立几何,期望
-/// `1/featured_rate` 次 5★;`featured_rate` 趋 0 时单会话期望抽数失控
-/// (可达 `MAX_GACHA_PULLS` 上限)。取与 [`MIN_GACHA_BASE_RATE`] 同值 1e-4
-/// (期望 1 万次 5★),与真实卡池(≥0.375)相比极度保守,仍杜绝天文数字循环。
-pub const MIN_GACHA_FEATURED_RATE: f64 = 1e-4;
+/// 无定轨 featured 层的组合概率下界(2026-11-06 审核发现):目标判定退化
+/// 为每 5★ 独立几何(概率 `featured_rate`),5★ 本身又是每抽独立几何
+/// (概率 `base_rate`)。无保底时抽到所定目标的总概率 = `base_rate ×
+/// featured_rate`,期望抽数 = `1/(base_rate × featured_rate)`。两个各取
+/// `MIN_GACHA_BASE_RATE=1e-4` 时乘积 `1e-8`,期望 `1e8` 抽,远超
+/// `MAX_GACHA_PULLS=1e6`。取乘积下限 `1e-6`(期望 1e6 抽,恰在上限内),
+/// 与真实卡池(≥0.375×≥0.02=7.5e-3)相比仍极度保守。
+pub const MIN_GACHA_TARGET_RATE: f64 = 1e-6;
 
 /// 扫描/寻优 replicates 核心上界(I-011 / ST-AUD-11):壳层可再收紧
 /// (Web 64、MCP 4096、桌面 64),core 统一兜底避免 u32::MAX 级分配。
@@ -778,6 +780,39 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
             )));
         }
     }
+    // 2026-11-06 审核发现:有限正增长率 alone 不够——`1e308.powi(63)` 会
+    // 溢出为 Inf,再经 `as i64` 饱和为 `i64::MAX`。按最高使用层校验派生值,
+    // 确保几何曲线本身保持在经济数值上界内,而不是只看增长率字面值。
+    let highest_tier = cfg.dungeon.tiers - 1;
+    if cfg.dungeon.tier_table.is_none() {
+        for (name, base) in [
+            ("m_hp", d.m_hp),
+            ("m_attack", d.m_attack),
+            ("m_defense", d.m_defense),
+        ] {
+            let highest = base as f64 * d.tier_growth.powi(highest_tier as i32);
+            if !highest.is_finite() || highest > MAX_ECONOMY_VALUE as f64 {
+                return Err(Error::Config(format!(
+                    "dungeon.{name} × tier_growth^{highest_tier} 必须不超过 {MAX_ECONOMY_VALUE}(最高层派生值溢出会饱和为 i64::MAX)"
+                )));
+            }
+        }
+    }
+    for (name, base, growth) in [
+        ("reward_gold", d.reward_gold, d.reward_gold_growth),
+        ("reward_xp", d.reward_xp, d.reward_xp_growth),
+    ] {
+        if base == 0 {
+            continue;
+        }
+        let highest = base as f64 * growth.powi(highest_tier as i32);
+        if !highest.is_finite() || highest > MAX_ECONOMY_VALUE as f64 {
+            return Err(Error::Config(format!(
+                "dungeon.{name} × {}_growth^{highest_tier} 必须不超过 {MAX_ECONOMY_VALUE}(最高层派生值溢出会饱和为 i64::MAX)",
+                name
+            )));
+        }
+    }
     if cfg.whale_gain_mult <= 0 || cfg.whale_gain_mult > MAX_ECONOMY_VALUE {
         return Err(Error::Config(format!(
             "model.whale_gain_mult 必须在 (0, {MAX_ECONOMY_VALUE}] 区间(负数或溢出量级会污染经济指标)"
@@ -905,12 +940,16 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
         // 独立几何(期望 1/featured_rate 次 5★),featured_rate 趋 0 时单会话
         // 期望抽数可达 MAX_GACHA_PULLS 上限。必须有目标概率下限(与
         // MIN_GACHA_BASE_RATE 同值),否则合法配置会触达抽卡会话上限。
+        // 2026-11-06 审核发现:无定轨时目标判定为每 5★ 独立几何,但总概率
+        // = base_rate × featured_rate,两个各取下限 1e-4 时乘积 1e-8,期望
+        // 1e8 抽仍超 MAX_GACHA_PULLS。须组合约束(单一 featured_rate 下限
+        // 不足以保证不超限)。
         if gacha.featured_rate > 0.0
             && gacha.featured_guarantee == 0
-            && gacha.featured_rate < MIN_GACHA_FEATURED_RATE
+            && gacha.base_rate * gacha.featured_rate < MIN_GACHA_TARGET_RATE
         {
             return Err(Error::Config(format!(
-                "model.gacha.featured_rate 不能低于 {MIN_GACHA_FEATURED_RATE}(无定轨时目标判定为每 5★ 独立几何,过低会让单会话期望抽数失控)"
+                "model.gacha.base_rate × featured_rate 不能低于 {MIN_GACHA_TARGET_RATE}(无定轨时目标判定为每 5★ 独立几何,组合概率过低会让单会话期望抽数失控)"
             )));
         }
     }
@@ -950,8 +989,19 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
             "cohort_weights 不能为负(负占比会反向分群)".into(),
         ));
     }
-    if cfg.cohort_weights.iter().sum::<f64>() <= 0.0 {
+    let cohort_sum = cfg.cohort_weights.iter().sum::<f64>();
+    if cohort_sum <= 0.0 {
         return Err(Error::Config("cohort_weights 之和必须大于 0".into()));
+    }
+    // 2026-11-06 审核发现:分群配比必须归一。world::new 按 `roll < w0` /
+    // `roll < w0+w1` / else 三分,`roll ∈ [0,1)`;和 > 1 时 whale 桶
+    // `roll ≥ w0+w1` 可能为空(如 [0.5,0.5,0.5] 和 1.5,whale 恒 0 玩家),
+    // 和 < 1 时尾段无人——配比与仿真不符。须显式要求和 = 1(容差取
+    // 1e-9,容纳默认 [0.60,0.30,0.10] 的 f64 求和误差 1.1e-16)。
+    if (cohort_sum - 1.0).abs() > 1e-9 {
+        return Err(Error::Config(
+            "cohort_weights 之和必须等于 1(归一化占比,当前和 != 1 会令分群桶失真)".into(),
+        ));
     }
     for c in Cohort::ALL {
         let b = cfg.behavior.for_cohort(c);
@@ -1145,10 +1195,15 @@ mod tests {
             gacha: Some(Default::default()),
             ..SimConfig::default()
         };
+        // 无定轨组合约束按 base_rate × featured_rate 下界校验,把 base_rate
+        // 钉在下限,确保 featured_rate 侧单独触发(默认 base_rate=0.02 会
+        // 掩盖组合越界)。
+        cfg.gacha.as_mut().unwrap().base_rate = MIN_GACHA_BASE_RATE;
 
         assert!(validate(&cfg).is_ok());
 
-        cfg.gacha.as_mut().unwrap().featured_rate = f64::NAN;
+        cfg.gacha.as_mut().unwrap().featured_rate =
+            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 0.5;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("featured_rate"), "{msg}");
 
@@ -1173,21 +1228,27 @@ mod tests {
         cfg.gacha.as_mut().unwrap().featured_rate = 1.0;
         assert!(validate(&cfg).is_ok());
 
-        // 2026-11-06 审核发现:featured_rate 极小且 featured_guarantee=0
-        // 时目标判定为每 5★ 独立几何(期望 1/featured_rate 次 5★),
-        // 单会话期望抽数可达 MAX_GACHA_PULLS 上限。无定轨时必须有目标
-        // 概率下限,否则合法配置会触达抽卡会话上限。
-        cfg.gacha.as_mut().unwrap().featured_rate = MIN_GACHA_FEATURED_RATE * 0.5;
+        // 2026-11-06 审核发现:无定轨时目标命中概率为
+        // base_rate × featured_rate;两个下限相乘仅 1e-8,期望 1e8 抽
+        // 仍会超出单会话上限。组合概率低于 1e-6 必须拒绝。
         cfg.gacha.as_mut().unwrap().featured_guarantee = 0;
+        cfg.gacha.as_mut().unwrap().base_rate = MIN_GACHA_BASE_RATE;
+        cfg.gacha.as_mut().unwrap().featured_rate =
+            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 0.5;
         let msg = validate(&cfg).unwrap_err().to_string();
-        assert!(msg.contains("featured_rate"), "{msg}");
+        assert!(msg.contains("base_rate × featured_rate"), "{msg}");
 
-        cfg.gacha.as_mut().unwrap().featured_rate = MIN_GACHA_FEATURED_RATE;
+        cfg.gacha.as_mut().unwrap().featured_rate =
+            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 1.01;
         assert!(validate(&cfg).is_ok());
 
-        cfg.gacha.as_mut().unwrap().featured_rate = MIN_GACHA_FEATURED_RATE * 0.5;
+        cfg.gacha.as_mut().unwrap().featured_rate =
+            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 0.5;
         cfg.gacha.as_mut().unwrap().featured_guarantee = 1;
-        assert!(validate(&cfg).is_ok(), "有定轨时不受无定轨下限约束");
+        match validate(&cfg) {
+            Ok(()) => {}
+            Err(err) => panic!("有定轨时不受无定轨下限约束: {err}"),
+        }
     }
 
     /// 练级环耦合(阻力 #4 显式性):产出面与行为带互相咬合,单边给出报错。
@@ -1731,6 +1792,68 @@ mod tests {
         assert!(validate(&cfg).is_err(), "warrior hp 上界越界应拒");
 
         // 默认配置仍合法
+        assert!(validate(&SimConfig::default()).is_ok());
+    }
+
+    /// 2026-11-06 审核发现:有限正增长率 alone 不够——`tier_growth=1e308`
+    /// 与 `tiers=64` 时 `1e308.powi(63)` 溢出为 Inf,怪物三维经 `as i64`
+    /// 饱和为 `i64::MAX`。必须按最高层派生值拒载。
+    #[test]
+    fn validate_tier_growth_derived_overflow() {
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 64,
+                tier_growth: 1e308,
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("tier_growth^63"), "{msg}");
+
+        // 增长率有限但派生值刚过经济上界也拒
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 64,
+                tier_growth: 2.0,
+                m_hp: MAX_ECONOMY_VALUE,
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        assert!(validate(&cfg).is_err());
+
+        // reward 面同口径:增长派生值溢出拒
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 64,
+                reward_gold: 1,
+                reward_gold_growth: 1e308,
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        assert!(validate(&cfg).is_err());
+    }
+
+    /// 2026-11-06 审核发现:分群权重和必须归一。`[0.5,0.5,0.5]` 和 1.5
+    /// 会让 whale 桶恒空;和 < 1 时尾段无人。显式要求和 = 1。
+    #[test]
+    fn validate_cohort_weights_normalized() {
+        let cfg = SimConfig {
+            cohort_weights: [0.5, 0.5, 0.5],
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("等于 1"), "{msg}");
+
+        let cfg = SimConfig {
+            cohort_weights: [0.3, 0.3, 0.3],
+            ..SimConfig::default()
+        };
+        assert!(validate(&cfg).is_err());
+
+        // 默认 [0.60, 0.30, 0.10] 精确归一,放行
         assert!(validate(&SimConfig::default()).is_ok());
     }
 }
