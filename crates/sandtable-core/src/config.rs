@@ -950,31 +950,47 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
                 "model.gacha.featured_rate 必须在 [0, 1] 内的有限数".into(),
             ));
         }
-        // 目标命中尾部界(2026-11-07 复审整改,统一覆盖定轨/无定轨):过检
-        // 配置要求单会话目标命中期望数下界 ≥ 100,触限概率 ≤ e^{-100},使
-        // sim 层的超限处置(记为该玩家未命中并继续,`sim.rs` 防御纵深)保持
-        // 其「运行时不可能路径」注释成立;validate 不改 sim 的截断语义。
-        // - 会话 5★ 数下界:有硬保底每 pity_hard 抽必出一个(≥ MAX/pity_hard);
-        //   无硬保底按期望(≥ MAX × base_rate);
-        // - 每 5★ 命中概率下界:直中 featured_rate;有定轨时任取
-        //   featured_guarantee 连歪后必中,平均 ≥ 1/featured_guarantee。
-        // 特例还原:无定轨 + 无硬保底时即 base_rate × featured_rate ≥
-        // MIN_GACHA_TARGET_RATE(2026-11-06 审核发现的原始动机:两个各取
-        // 下限 1e-4 的因子乘积 1e-8,触限概率趋于 1,单看 featured_rate
-        // 或单看 base_rate 都拦不住)。
+        // 目标命中尾部界(2026-11-07 第四轮复审整改,分支化给出可证明的界):
+        // 过检配置要求单会话触限概率 ≤ e^{-100},使 sim 层的超限处置(记为
+        // 该玩家未命中并继续,`sim.rs` 防御纵深)保持其「运行时不可能路径」
+        // 注释成立;validate 不改 sim 的截断语义。会话内 off_featured 从 0
+        // 起(会话只在命中后结束),各分支:
+        // - 有硬保底:会话 5★ 数是确定值 N = MAX/pity_hard(软保底只增不减)。
+        //   定轨(g ≥ 1)且 N ≥ g+1 时,前 g+1 个 5★ 必含一次命中(前 g 个
+        //   全歪则第 g+1 个定轨必中),溢出不可能;否则溢出概率 =
+        //   (1-featured_rate)^N ≤ e^{-featured_rate·N},要求
+        //   featured_rate × N ≥ MAX × MIN_GACHA_TARGET_RATE。
+        // - 无硬保底:5★ 数 X ~ Bin(MAX, base_rate)(软保底只增不减),
+        //   μ = MAX × base_rate 是期望不是下界,不能当确定值用(反例:
+        //   g=1、base=1e-4、f=1e-100 在第三轮口径下边界放行,实际溢出概率
+        //   ≈ 101·e^{-100} > e^{-100})。无定轨(g=0):溢出 = 全程无命中,
+        //   P = (1-base×f)^MAX ≤ e^{-μ·f},要求 μ × featured_rate ≥
+        //   MAX × MIN_GACHA_TARGET_RATE(2026-11-06 审核发现的原始动机:
+        //   两因子各取下限 1e-4 时乘积 1e-8,触限概率趋于 1,单看一侧拦不住);
+        //   有定轨:溢出 ⊆ {X ≤ g}(前 g+1 个 5★ 必含一次命中),当
+        //   g+1 ≤ μ/2 时 P(X ≤ μ/2) ≤ e^{-μ/8}(multiplicative Chernoff),
+        //   要求 μ ≥ 2(g+1) 且 μ ≥ 800。
+        let threshold = MAX_GACHA_PULLS as f64 * MIN_GACHA_TARGET_RATE;
         if gacha.featured_rate > 0.0 {
-            let per_star = match gacha.featured_guarantee {
-                0 => gacha.featured_rate,
-                g => gacha.featured_rate.max(1.0 / g as f64),
-            };
-            let stars_floor = if gacha.pity_hard > 0 {
-                MAX_GACHA_PULLS as f64 / gacha.pity_hard as f64
+            let ok = if let Some(n_stars) = MAX_GACHA_PULLS.checked_div(gacha.pity_hard) {
+                let n_stars = n_stars as f64;
+                // g+1 用 saturating:g = u64::MAX 时普通加法溢出(debug panic /
+                // release 回绕为 0,会让「定轨必触发」恒真放行,第五轮复审)。
+                let g_plus_1 = gacha.featured_guarantee.saturating_add(1) as f64;
+                (gacha.featured_guarantee >= 1 && n_stars >= g_plus_1)
+                    || gacha.featured_rate * n_stars >= threshold
             } else {
-                MAX_GACHA_PULLS as f64 * gacha.base_rate
+                let mu = MAX_GACHA_PULLS as f64 * gacha.base_rate;
+                if gacha.featured_guarantee == 0 {
+                    mu * gacha.featured_rate >= threshold
+                } else {
+                    let g_plus_1 = gacha.featured_guarantee as f64 + 1.0;
+                    mu >= 2.0 * g_plus_1 && mu >= 800.0
+                }
             };
-            if stars_floor * per_star < 100.0 {
+            if !ok {
                 return Err(Error::Config(format!(
-                    "model.gacha 目标命中率过低:单会话目标命中期望数下界({stars_floor:.2} × {per_star:.2})不足 100,触限概率不可忽略(过检配置要求触限概率 ≤ e^-100;5★ 数下界 = 无硬保底 {MAX_GACHA_PULLS} × base_rate / 有硬保底 {MAX_GACHA_PULLS} ÷ pity_hard;每 5★ 命中概率 = max(featured_rate, 1/featured_guarantee))"
+                    "model.gacha 目标命中率过低:单会话触限概率无法压到 e^-100 以下(无硬保底无定轨要求 base_rate × featured_rate ≥ MIN_GACHA_TARGET_RATE;有硬保底按确定 5★ 数 {MAX_GACHA_PULLS}/pity_hard 估,定轨必触发或 featured_rate × 5★ 数 ≥ {threshold};无硬保底有定轨按 Chernoff 要求 μ ≥ max(2(g+1), 800))"
                 )));
             }
         }
@@ -1269,6 +1285,9 @@ mod tests {
         assert!(validate(&cfg).is_ok());
 
         cfg.gacha.as_mut().unwrap().featured_rate = 0.5;
+        // 有定轨(g=1)走 Chernoff 分支:μ = MAX × base_rate ≥ max(2(g+1), 800)
+        // 即可,featured_rate 不进入该分支(定轨必触发的路径与直中概率无关)。
+        cfg.gacha.as_mut().unwrap().base_rate = 0.02;
         cfg.gacha.as_mut().unwrap().featured_guarantee = 1;
         match validate(&cfg) {
             Ok(()) => {}
@@ -1861,49 +1880,69 @@ mod tests {
         assert!(validate(&cfg).is_err());
     }
 
-    /// 2026-11-07 复审整改:统一守卫 = 会话目标命中期望数下界 ≥ 100
-    /// (5★ 数下界 × 每 5★ 命中概率下界),覆盖定轨与无定轨、有硬保底与
-    /// 无硬保底——上轮按 featured_guarantee == 0 分派,带定轨配置可绕过
-    /// 尾部约束(g=1e6 时定轨永不生效,触限概率趋近 1)。
+    /// 2026-11-07 复审整改:目标守卫分支化,各分支给出可证明的 ≤ e^{-100}
+    /// 触限界——有硬保底按确定 5★ 数(定轨必触发或直中尾部界),无硬保底
+    /// 无定轨按乘积(μ·f),无硬保底有定轨按 Chernoff(μ ≥ max(2(g+1), 800),
+    /// 期望不是确定下界,上轮 1/g 口径的边界反例已封堵)。
     #[test]
     fn validate_gacha_hard_pity_featured_bound() {
         let mut cfg = SimConfig {
             gacha: Some(Default::default()),
             ..SimConfig::default()
         };
-        // 有硬保底:5★ 数下界 = MAX/pity_hard,base_rate 不参与判定面。
-        // base_rate 最低档 × featured 2e-4 × pity_hard=1:命中下界 1e6 × 2e-4
-        // = 200 ≥ 100:放行(乘积口径会误拒:2e-8 远低于乘积下限)。
+        // 有硬保底:pity=1 时会话 5★ 数确定 = MAX(每抽一个),直中尾部界
+        // 2e-4 × 1e6 = 200 ≥ 100:放行(base_rate 不进入该分支)。
         cfg.gacha.as_mut().unwrap().base_rate = MIN_GACHA_BASE_RATE;
         cfg.gacha.as_mut().unwrap().featured_rate = 2e-4;
         cfg.gacha.as_mut().unwrap().pity_hard = 1;
         assert!(validate(&cfg).is_ok());
 
-        // featured_rate 再降一个量级:命中下界 0.1 < 100,拒绝。
+        // featured_rate 再降两个量级:直中尾部界 0.1 < 100,拒绝。
         cfg.gacha.as_mut().unwrap().featured_rate = 1e-7;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("featured_rate"), "{msg}");
 
-        // 无硬保底时 5★ 数下界回到 MAX × base_rate,同配置拒绝(乘积口径
-        // 等价:2e-8 < MIN_GACHA_TARGET_RATE)。
+        // 无硬保底无定轨:μ × f = 100 × 2e-4 = 0.02 < 100,拒绝。
         cfg.gacha.as_mut().unwrap().featured_rate = 2e-4;
         cfg.gacha.as_mut().unwrap().pity_hard = 0;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("目标命中率过低"), "{msg}");
 
-        // 2026-11-07 第三轮审核发现(定轨绕过):featured_guarantee 巨大时
-        // 定轨永不生效——base 1e-4、f 1e-6、g=1e6、无保底,百万抽内期望
-        // 仅约 100 个 5★、期望命中 1e-4,触限概率趋近 1,必须拒绝。
+        // 第三轮审核发现的定轨绕过(base 1e-4、f 1e-6、g=1e6、无保底):
+        // μ=100 不满足 μ ≥ 2(g+1),拒绝。
         cfg.gacha.as_mut().unwrap().featured_rate = 1e-6;
         cfg.gacha.as_mut().unwrap().featured_guarantee = 1_000_000;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("目标命中率过低"), "{msg}");
 
-        // 同样的巨定轨配高命中概率时放行:5★ 数下界 100 × 每星命中 1(g=1
-        // 平均每星必中)= 100 ≥ 100;真实卡池(角色 g=1、武器 g≤2、常驻
-        // featured_rate=0)均远高于该下界。
-        cfg.gacha.as_mut().unwrap().featured_guarantee = 1;
+        // 同攻击家族配足 μ:base 0.02 → μ = 2e4,取 g=9000 时 μ ≥ 2(g+1)=1.8e4
+        // 且 μ ≥ 800,放行(溢出 ⊆ {5★ ≤ g},Chernoff 界成立)。
+        cfg.gacha.as_mut().unwrap().base_rate = 0.02;
+        cfg.gacha.as_mut().unwrap().featured_guarantee = 9_000;
         assert!(validate(&cfg).is_ok());
+
+        // 上轮反例族(g=1、base=1e-4、f=1e-100、无保底,第三轮口径边界放行)
+        // 现被 μ ≥ 800 拒绝。
+        cfg.gacha.as_mut().unwrap().base_rate = MIN_GACHA_BASE_RATE;
+        cfg.gacha.as_mut().unwrap().featured_rate = 1e-100;
+        cfg.gacha.as_mut().unwrap().featured_guarantee = 1;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("目标命中率过低"), "{msg}");
+
+        // 但有硬保底时定轨必触发:pity=90、g=1、f=1e-100,5★ 数 11111 ≥ 2,
+        // 前 2 个 5★ 必含一次定轨命中,溢出不可能,放行。
+        cfg.gacha.as_mut().unwrap().pity_hard = 90;
+        assert!(validate(&cfg).is_ok());
+
+        // 第五轮复审(u64 溢出边界):g = u64::MAX 时 g+1 溢出——saturating
+        // 后 g+1 = u64::MAX,N 永远小于它,走直中尾部界拒绝;两个构建档都
+        // 不得 panic。
+        cfg.gacha.as_mut().unwrap().featured_guarantee = u64::MAX;
+        assert!(validate(&cfg).is_err());
+
+        cfg.gacha.as_mut().unwrap().pity_hard = 0;
+        cfg.gacha.as_mut().unwrap().base_rate = 0.02;
+        assert!(validate(&cfg).is_err());
     }
 
     /// 2026-11-07 复审整改:显式层表全行给定 gold/xp 时几何回退值不被使用
