@@ -28,6 +28,9 @@ duckdb = { version = "1.20000.1", default-features = false, features = ["bundled
 # 项目打包(文档 09 章):.sandtable 归档,只开 deflate,不背多余编码
 zip = { version = "9", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
+# XLSX 读取层(校准观测数据 + 工作簿回读,calibration-design「Excel 数据源」):
+# xlsx 事实标准读库,纯 Rust、零 Excel 安装;只读,不引写端
+calamine = "0.38"
 
 # 分析脚本执行面:超时杀进程组(analyze.rs,仅 unix)
 [target.'cfg(unix)'.dependencies]
