@@ -798,19 +798,27 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
             }
         }
     }
-    for (name, base, growth) in [
-        ("reward_gold", d.reward_gold, d.reward_gold_growth),
-        ("reward_xp", d.reward_xp, d.reward_xp_growth),
-    ] {
-        if base == 0 {
-            continue;
-        }
-        let highest = base as f64 * growth.powi(highest_tier as i32);
-        if !highest.is_finite() || highest > MAX_ECONOMY_VALUE as f64 {
-            return Err(Error::Config(format!(
-                "dungeon.{name} × {}_growth^{highest_tier} 必须不超过 {MAX_ECONOMY_VALUE}(最高层派生值溢出会饱和为 i64::MAX)",
-                name
-            )));
+    // 2026-11-07 复审整改:显式层表全行给定 gold/xp 时,几何回退值不被使用
+    // (combat::monster_of 按行内显式值取数),此时不按派生值拒绝——回退兜底
+    // 仅服务表外越界层,不在本守卫范围。部分行缺省时回退仍参与行为,照常校验。
+    let explicit_rewards = cfg.dungeon.tier_table.as_ref().is_some_and(|rows| {
+        !rows.is_empty() && rows.iter().all(|r| r.gold.is_some() && r.xp.is_some())
+    });
+    if !explicit_rewards {
+        for (name, base, growth) in [
+            ("reward_gold", d.reward_gold, d.reward_gold_growth),
+            ("reward_xp", d.reward_xp, d.reward_xp_growth),
+        ] {
+            if base == 0 {
+                continue;
+            }
+            let highest = base as f64 * growth.powi(highest_tier as i32);
+            if !highest.is_finite() || highest > MAX_ECONOMY_VALUE as f64 {
+                return Err(Error::Config(format!(
+                    "dungeon.{name} × {}_growth^{highest_tier} 必须不超过 {MAX_ECONOMY_VALUE}(最高层派生值溢出会饱和为 i64::MAX)",
+                    name
+                )));
+            }
         }
     }
     if cfg.whale_gain_mult <= 0 || cfg.whale_gain_mult > MAX_ECONOMY_VALUE {
@@ -937,20 +945,31 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
             ));
         }
         // 无定轨 featured 层(featured_guarantee == 0):目标判定退化为每 5★
-        // 独立几何(期望 1/featured_rate 次 5★),featured_rate 趋 0 时单会话
-        // 期望抽数可达 MAX_GACHA_PULLS 上限。必须有目标概率下限(与
-        // MIN_GACHA_BASE_RATE 同值),否则合法配置会触达抽卡会话上限。
-        // 2026-11-06 审核发现:无定轨时目标判定为每 5★ 独立几何,但总概率
-        // = base_rate × featured_rate,两个各取下限 1e-4 时乘积 1e-8,期望
-        // 1e8 抽仍超 MAX_GACHA_PULLS。须组合约束(单一 featured_rate 下限
-        // 不足以保证不超限)。
-        if gacha.featured_rate > 0.0
-            && gacha.featured_guarantee == 0
-            && gacha.base_rate * gacha.featured_rate < MIN_GACHA_TARGET_RATE
-        {
-            return Err(Error::Config(format!(
-                "model.gacha.base_rate × featured_rate 不能低于 {MIN_GACHA_TARGET_RATE}(无定轨时目标判定为每 5★ 独立几何,组合概率过低会让单会话期望抽数失控)"
-            )));
+        // 独立几何,下限守卫按硬保底分派(2026-11-07 复审整改):
+        // - 无硬保底(pity_hard == 0):期望抽数 = 1/(base_rate × featured_rate),
+        //   组合概率低于 MIN_GACHA_TARGET_RATE 即期望超出 MAX_GACHA_PULLS,
+        //   拒绝。这是期望口径的配置体检——尾部随机波动仍可能触限,由运行时
+        //   会话上限兜底报错,validate 不承诺逐会话不触限;
+        // - 有硬保底:每 pity_hard 抽必出一个 5★(pulls-per-5★ ≤ pity_hard),
+        //   目标命中期望抽数 ≤ pity_hard / featured_rate。此时 base_rate 不
+        //   进入目标判定面,按乘积下限拒绝会误伤「低 base_rate 不影响行为」
+        //   的合法配置,改按 pity_hard / featured_rate ≤ MAX_GACHA_PULLS 校验。
+        //   (2026-11-06 审核发现的原始动机不变:无硬保底时两个各取下限
+        //   1e-4 的因子乘积 1e-8,期望 1e8 抽仍超上限,单一 featured_rate
+        //   下限不足以拦截,必须看组合。)
+        if gacha.featured_rate > 0.0 && gacha.featured_guarantee == 0 {
+            if gacha.pity_hard == 0 {
+                if gacha.base_rate * gacha.featured_rate < MIN_GACHA_TARGET_RATE {
+                    return Err(Error::Config(format!(
+                        "model.gacha.base_rate × featured_rate 不能低于 {MIN_GACHA_TARGET_RATE}(无硬保底时目标判定为每 5★ 独立几何,组合概率过低会让单会话期望抽数超出 {MAX_GACHA_PULLS})"
+                    )));
+                }
+            } else if (gacha.pity_hard as f64) / gacha.featured_rate > MAX_GACHA_PULLS as f64 {
+                return Err(Error::Config(format!(
+                    "model.gacha.featured_rate 过低:pity_hard {} 下目标期望抽数 pity_hard/featured_rate 超出 {MAX_GACHA_PULLS}(有硬保底时目标判定按 pity_hard/featured_rate 估界,base_rate 不参与)",
+                    gacha.pity_hard
+                )));
+            }
         }
     }
     // 概率面统一有限性与区间校验(审核整改 P1):NaN 与越界概率会静默改写
@@ -1834,6 +1853,76 @@ mod tests {
             ..SimConfig::default()
         };
         assert!(validate(&cfg).is_err());
+    }
+
+    /// 2026-11-07 复审整改:硬保底下的无定轨目标下限按 pity_hard/featured_rate
+    /// 估界,base_rate 不参与——乘积口径会误伤「低 base_rate 不影响目标判定」
+    /// 的合法配置(硬保底已把 pulls-per-5★ 钉在 pity_hard 内)。
+    #[test]
+    fn validate_gacha_hard_pity_featured_bound() {
+        let mut cfg = SimConfig {
+            gacha: Some(Default::default()),
+            ..SimConfig::default()
+        };
+        cfg.gacha.as_mut().unwrap().base_rate = 0.6;
+        cfg.gacha.as_mut().unwrap().featured_rate = 1e-6;
+        cfg.gacha.as_mut().unwrap().pity_hard = 1;
+        // 乘积 6e-7 < 1e-6,但硬保底估界 1/1e-6 = 1e6 ≤ MAX_GACHA_PULLS:放行。
+        assert!(validate(&cfg).is_ok());
+
+        // featured_rate 再降一个量级:期望 1e7 抽超上限,拒绝。
+        cfg.gacha.as_mut().unwrap().featured_rate = 1e-7;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("featured_rate"), "{msg}");
+
+        // 无硬保底时同配置仍按乘积口径拒绝(组合约束不放松)。
+        cfg.gacha.as_mut().unwrap().pity_hard = 0;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("base_rate × featured_rate"), "{msg}");
+    }
+
+    /// 2026-11-07 复审整改:显式层表全行给定 gold/xp 时几何回退值不被使用
+    /// (combat::monster_of 按行内显式值取数),不按派生值拒绝合法配置;
+    /// 部分行缺省时回退仍参与行为,照常校验。
+    #[test]
+    fn validate_explicit_tier_table_skips_derived_reward_check() {
+        let rows = |gold: Option<i64>, xp: Option<i64>| -> Vec<TierRow> {
+            (0..64)
+                .map(|_| TierRow {
+                    hp: 10,
+                    attack: 1,
+                    defense: 1,
+                    gold,
+                    xp,
+                })
+                .collect()
+        };
+        // 全行显式产出:即便增长率荒谬(回退值不被使用)也放行。
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 64,
+                reward_gold_growth: 1e308,
+                tier_table: Some(rows(Some(100), Some(50))),
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        assert!(validate(&cfg).is_ok());
+
+        // 有一行缺省产出:几何回退参与行为,荒谬增长率照常拒绝。
+        let mut partial = rows(Some(100), Some(50));
+        partial[10].gold = None;
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 64,
+                reward_gold_growth: 1e308,
+                tier_table: Some(partial),
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("reward_gold"), "{msg}");
     }
 
     /// 2026-11-06 审核发现:分群权重和必须归一。`[0.5,0.5,0.5]` 和 1.5
