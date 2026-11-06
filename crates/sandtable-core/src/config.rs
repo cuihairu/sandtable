@@ -45,14 +45,20 @@ pub const MIN_GACHA_BASE_RATE: f64 = 1e-4;
 /// 都因配置异常失效,单会话也不会无限循环。超出返回结构化错误。
 pub const MAX_GACHA_PULLS: u64 = 1_000_000;
 
-/// 无定轨 featured 层的组合概率下界(2026-11-06 审核发现):目标判定退化
-/// 为每 5★ 独立几何(概率 `featured_rate`),5★ 本身又是每抽独立几何
-/// (概率 `base_rate`)。无保底时抽到所定目标的总概率 = `base_rate ×
-/// featured_rate`,期望抽数 = `1/(base_rate × featured_rate)`。两个各取
-/// `MIN_GACHA_BASE_RATE=1e-4` 时乘积 `1e-8`,期望 `1e8` 抽,远超
-/// `MAX_GACHA_PULLS=1e6`。取乘积下限 `1e-6`(期望 1e6 抽,恰在上限内),
-/// 与真实卡池(≥0.375×≥0.02=7.5e-3)相比仍极度保守。
-pub const MIN_GACHA_TARGET_RATE: f64 = 1e-6;
+/// 无定轨 featured 层的组合概率下界(2026-11-06 审核发现,2026-11-07 复审
+/// 收紧):目标判定退化为每 5★ 独立几何(概率 `featured_rate`),5★ 本身
+/// 又是每抽独立几何(概率 `base_rate`)。无保底时抽到所定目标的总概率 =
+/// `base_rate × featured_rate`。两个各取 `MIN_GACHA_BASE_RATE=1e-4` 时乘积
+/// `1e-8`,期望 `1e8` 抽,远超 `MAX_GACHA_PULLS=1e6`。
+///
+/// 下限取 `100 / MAX_GACHA_PULLS = 1e-4`,这是**尾部界**而不只是期望界:
+/// 过检配置单会话触限概率 ≤ e^{-100}(≈3.7e-44),使 sim 层的会话超限处置
+/// (记为该玩家未命中并继续,见 `sim.rs`)保持其注释声明的「运行时不可能
+/// 路径」语义——期望口径的下限(如旧值 1e-6)在乘积恰为下限时触限概率
+/// 高达 1/e,不满足该前提。与真实卡池(≥0.375×≥0.02=7.5e-3)相比仍极度
+/// 保守。本常量是统一守卫(validate 中「会话目标命中期望数下界 ≥ 100」)
+/// 在无定轨 + 无硬保底特例下的乘积形式,守卫本身按一般形式实现。
+pub const MIN_GACHA_TARGET_RATE: f64 = 1e-4;
 
 /// 扫描/寻优 replicates 核心上界(I-011 / ST-AUD-11):壳层可再收紧
 /// (Web 64、MCP 4096、桌面 64),core 统一兜底避免 u32::MAX 级分配。
@@ -798,19 +804,27 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
             }
         }
     }
-    for (name, base, growth) in [
-        ("reward_gold", d.reward_gold, d.reward_gold_growth),
-        ("reward_xp", d.reward_xp, d.reward_xp_growth),
-    ] {
-        if base == 0 {
-            continue;
-        }
-        let highest = base as f64 * growth.powi(highest_tier as i32);
-        if !highest.is_finite() || highest > MAX_ECONOMY_VALUE as f64 {
-            return Err(Error::Config(format!(
-                "dungeon.{name} × {}_growth^{highest_tier} 必须不超过 {MAX_ECONOMY_VALUE}(最高层派生值溢出会饱和为 i64::MAX)",
-                name
-            )));
+    // 2026-11-07 复审整改:显式层表全行给定 gold/xp 时,几何回退值不被使用
+    // (combat::monster_of 按行内显式值取数),此时不按派生值拒绝——回退兜底
+    // 仅服务表外越界层,不在本守卫范围。部分行缺省时回退仍参与行为,照常校验。
+    let explicit_rewards = cfg.dungeon.tier_table.as_ref().is_some_and(|rows| {
+        !rows.is_empty() && rows.iter().all(|r| r.gold.is_some() && r.xp.is_some())
+    });
+    if !explicit_rewards {
+        for (name, base, growth) in [
+            ("reward_gold", d.reward_gold, d.reward_gold_growth),
+            ("reward_xp", d.reward_xp, d.reward_xp_growth),
+        ] {
+            if base == 0 {
+                continue;
+            }
+            let highest = base as f64 * growth.powi(highest_tier as i32);
+            if !highest.is_finite() || highest > MAX_ECONOMY_VALUE as f64 {
+                return Err(Error::Config(format!(
+                    "dungeon.{name} × {}_growth^{highest_tier} 必须不超过 {MAX_ECONOMY_VALUE}(最高层派生值溢出会饱和为 i64::MAX)",
+                    name
+                )));
+            }
         }
     }
     if cfg.whale_gain_mult <= 0 || cfg.whale_gain_mult > MAX_ECONOMY_VALUE {
@@ -936,21 +950,49 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
                 "model.gacha.featured_rate 必须在 [0, 1] 内的有限数".into(),
             ));
         }
-        // 无定轨 featured 层(featured_guarantee == 0):目标判定退化为每 5★
-        // 独立几何(期望 1/featured_rate 次 5★),featured_rate 趋 0 时单会话
-        // 期望抽数可达 MAX_GACHA_PULLS 上限。必须有目标概率下限(与
-        // MIN_GACHA_BASE_RATE 同值),否则合法配置会触达抽卡会话上限。
-        // 2026-11-06 审核发现:无定轨时目标判定为每 5★ 独立几何,但总概率
-        // = base_rate × featured_rate,两个各取下限 1e-4 时乘积 1e-8,期望
-        // 1e8 抽仍超 MAX_GACHA_PULLS。须组合约束(单一 featured_rate 下限
-        // 不足以保证不超限)。
-        if gacha.featured_rate > 0.0
-            && gacha.featured_guarantee == 0
-            && gacha.base_rate * gacha.featured_rate < MIN_GACHA_TARGET_RATE
-        {
-            return Err(Error::Config(format!(
-                "model.gacha.base_rate × featured_rate 不能低于 {MIN_GACHA_TARGET_RATE}(无定轨时目标判定为每 5★ 独立几何,组合概率过低会让单会话期望抽数失控)"
-            )));
+        // 目标命中尾部界(2026-11-07 第四轮复审整改,分支化给出可证明的界):
+        // 过检配置要求单会话触限概率 ≤ e^{-100},使 sim 层的超限处置(记为
+        // 该玩家未命中并继续,`sim.rs` 防御纵深)保持其「运行时不可能路径」
+        // 注释成立;validate 不改 sim 的截断语义。会话内 off_featured 从 0
+        // 起(会话只在命中后结束),各分支:
+        // - 有硬保底:会话 5★ 数是确定值 N = MAX/pity_hard(软保底只增不减)。
+        //   定轨(g ≥ 1)且 N ≥ g+1 时,前 g+1 个 5★ 必含一次命中(前 g 个
+        //   全歪则第 g+1 个定轨必中),溢出不可能;否则溢出概率 =
+        //   (1-featured_rate)^N ≤ e^{-featured_rate·N},要求
+        //   featured_rate × N ≥ MAX × MIN_GACHA_TARGET_RATE。
+        // - 无硬保底:5★ 数 X ~ Bin(MAX, base_rate)(软保底只增不减),
+        //   μ = MAX × base_rate 是期望不是下界,不能当确定值用(反例:
+        //   g=1、base=1e-4、f=1e-100 在第三轮口径下边界放行,实际溢出概率
+        //   ≈ 101·e^{-100} > e^{-100})。无定轨(g=0):溢出 = 全程无命中,
+        //   P = (1-base×f)^MAX ≤ e^{-μ·f},要求 μ × featured_rate ≥
+        //   MAX × MIN_GACHA_TARGET_RATE(2026-11-06 审核发现的原始动机:
+        //   两因子各取下限 1e-4 时乘积 1e-8,触限概率趋于 1,单看一侧拦不住);
+        //   有定轨:溢出 ⊆ {X ≤ g}(前 g+1 个 5★ 必含一次命中),当
+        //   g+1 ≤ μ/2 时 P(X ≤ μ/2) ≤ e^{-μ/8}(multiplicative Chernoff),
+        //   要求 μ ≥ 2(g+1) 且 μ ≥ 800。
+        let threshold = MAX_GACHA_PULLS as f64 * MIN_GACHA_TARGET_RATE;
+        if gacha.featured_rate > 0.0 {
+            let ok = if let Some(n_stars) = MAX_GACHA_PULLS.checked_div(gacha.pity_hard) {
+                let n_stars = n_stars as f64;
+                // g+1 用 saturating:g = u64::MAX 时普通加法溢出(debug panic /
+                // release 回绕为 0,会让「定轨必触发」恒真放行,第五轮复审)。
+                let g_plus_1 = gacha.featured_guarantee.saturating_add(1) as f64;
+                (gacha.featured_guarantee >= 1 && n_stars >= g_plus_1)
+                    || gacha.featured_rate * n_stars >= threshold
+            } else {
+                let mu = MAX_GACHA_PULLS as f64 * gacha.base_rate;
+                if gacha.featured_guarantee == 0 {
+                    mu * gacha.featured_rate >= threshold
+                } else {
+                    let g_plus_1 = gacha.featured_guarantee as f64 + 1.0;
+                    mu >= 2.0 * g_plus_1 && mu >= 800.0
+                }
+            };
+            if !ok {
+                return Err(Error::Config(format!(
+                    "model.gacha 目标命中率过低:单会话触限概率无法压到 e^-100 以下(无硬保底无定轨要求 base_rate × featured_rate ≥ MIN_GACHA_TARGET_RATE;有硬保底按确定 5★ 数 {MAX_GACHA_PULLS}/pity_hard 估,定轨必触发或 featured_rate × 5★ 数 ≥ {threshold};无硬保底有定轨按 Chernoff 要求 μ ≥ max(2(g+1), 800))"
+                )));
+            }
         }
     }
     // 概率面统一有限性与区间校验(审核整改 P1):NaN 与越界概率会静默改写
@@ -1229,21 +1271,23 @@ mod tests {
         assert!(validate(&cfg).is_ok());
 
         // 2026-11-06 审核发现:无定轨时目标命中概率为
-        // base_rate × featured_rate;两个下限相乘仅 1e-8,期望 1e8 抽
-        // 仍会超出单会话上限。组合概率低于 1e-6 必须拒绝。
+        // base_rate × featured_rate;两个下限相乘仅 1e-8,触限概率趋于 1。
+        // 2026-11-07 复审:统一守卫要求会话目标命中期望数下界 ≥ 100
+        // (触限概率 ≤ e^{-100});无定轨 + 无硬保底特例即乘积 ≥ 100/MAX。
         cfg.gacha.as_mut().unwrap().featured_guarantee = 0;
         cfg.gacha.as_mut().unwrap().base_rate = MIN_GACHA_BASE_RATE;
-        cfg.gacha.as_mut().unwrap().featured_rate =
-            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 0.5;
+        cfg.gacha.as_mut().unwrap().featured_rate = 0.5;
         let msg = validate(&cfg).unwrap_err().to_string();
-        assert!(msg.contains("base_rate × featured_rate"), "{msg}");
+        assert!(msg.contains("目标命中率过低"), "{msg}");
 
-        cfg.gacha.as_mut().unwrap().featured_rate =
-            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 1.01;
+        // featured_rate 拉满:命中期望下界恰为 100,放行(边界取 < 严格比较)。
+        cfg.gacha.as_mut().unwrap().featured_rate = 1.0;
         assert!(validate(&cfg).is_ok());
 
-        cfg.gacha.as_mut().unwrap().featured_rate =
-            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 0.5;
+        cfg.gacha.as_mut().unwrap().featured_rate = 0.5;
+        // 有定轨(g=1)走 Chernoff 分支:μ = MAX × base_rate ≥ max(2(g+1), 800)
+        // 即可,featured_rate 不进入该分支(定轨必触发的路径与直中概率无关)。
+        cfg.gacha.as_mut().unwrap().base_rate = 0.02;
         cfg.gacha.as_mut().unwrap().featured_guarantee = 1;
         match validate(&cfg) {
             Ok(()) => {}
@@ -1834,6 +1878,115 @@ mod tests {
             ..SimConfig::default()
         };
         assert!(validate(&cfg).is_err());
+    }
+
+    /// 2026-11-07 复审整改:目标守卫分支化,各分支给出可证明的 ≤ e^{-100}
+    /// 触限界——有硬保底按确定 5★ 数(定轨必触发或直中尾部界),无硬保底
+    /// 无定轨按乘积(μ·f),无硬保底有定轨按 Chernoff(μ ≥ max(2(g+1), 800),
+    /// 期望不是确定下界,上轮 1/g 口径的边界反例已封堵)。
+    #[test]
+    fn validate_gacha_hard_pity_featured_bound() {
+        let mut cfg = SimConfig {
+            gacha: Some(Default::default()),
+            ..SimConfig::default()
+        };
+        // 有硬保底:pity=1 时会话 5★ 数确定 = MAX(每抽一个),直中尾部界
+        // 2e-4 × 1e6 = 200 ≥ 100:放行(base_rate 不进入该分支)。
+        cfg.gacha.as_mut().unwrap().base_rate = MIN_GACHA_BASE_RATE;
+        cfg.gacha.as_mut().unwrap().featured_rate = 2e-4;
+        cfg.gacha.as_mut().unwrap().pity_hard = 1;
+        assert!(validate(&cfg).is_ok());
+
+        // featured_rate 再降两个量级:直中尾部界 0.1 < 100,拒绝。
+        cfg.gacha.as_mut().unwrap().featured_rate = 1e-7;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("featured_rate"), "{msg}");
+
+        // 无硬保底无定轨:μ × f = 100 × 2e-4 = 0.02 < 100,拒绝。
+        cfg.gacha.as_mut().unwrap().featured_rate = 2e-4;
+        cfg.gacha.as_mut().unwrap().pity_hard = 0;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("目标命中率过低"), "{msg}");
+
+        // 第三轮审核发现的定轨绕过(base 1e-4、f 1e-6、g=1e6、无保底):
+        // μ=100 不满足 μ ≥ 2(g+1),拒绝。
+        cfg.gacha.as_mut().unwrap().featured_rate = 1e-6;
+        cfg.gacha.as_mut().unwrap().featured_guarantee = 1_000_000;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("目标命中率过低"), "{msg}");
+
+        // 同攻击家族配足 μ:base 0.02 → μ = 2e4,取 g=9000 时 μ ≥ 2(g+1)=1.8e4
+        // 且 μ ≥ 800,放行(溢出 ⊆ {5★ ≤ g},Chernoff 界成立)。
+        cfg.gacha.as_mut().unwrap().base_rate = 0.02;
+        cfg.gacha.as_mut().unwrap().featured_guarantee = 9_000;
+        assert!(validate(&cfg).is_ok());
+
+        // 上轮反例族(g=1、base=1e-4、f=1e-100、无保底,第三轮口径边界放行)
+        // 现被 μ ≥ 800 拒绝。
+        cfg.gacha.as_mut().unwrap().base_rate = MIN_GACHA_BASE_RATE;
+        cfg.gacha.as_mut().unwrap().featured_rate = 1e-100;
+        cfg.gacha.as_mut().unwrap().featured_guarantee = 1;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("目标命中率过低"), "{msg}");
+
+        // 但有硬保底时定轨必触发:pity=90、g=1、f=1e-100,5★ 数 11111 ≥ 2,
+        // 前 2 个 5★ 必含一次定轨命中,溢出不可能,放行。
+        cfg.gacha.as_mut().unwrap().pity_hard = 90;
+        assert!(validate(&cfg).is_ok());
+
+        // 第五轮复审(u64 溢出边界):g = u64::MAX 时 g+1 溢出——saturating
+        // 后 g+1 = u64::MAX,N 永远小于它,走直中尾部界拒绝;两个构建档都
+        // 不得 panic。
+        cfg.gacha.as_mut().unwrap().featured_guarantee = u64::MAX;
+        assert!(validate(&cfg).is_err());
+
+        cfg.gacha.as_mut().unwrap().pity_hard = 0;
+        cfg.gacha.as_mut().unwrap().base_rate = 0.02;
+        assert!(validate(&cfg).is_err());
+    }
+
+    /// 2026-11-07 复审整改:显式层表全行给定 gold/xp 时几何回退值不被使用
+    /// (combat::monster_of 按行内显式值取数),不按派生值拒绝合法配置;
+    /// 部分行缺省时回退仍参与行为,照常校验。
+    #[test]
+    fn validate_explicit_tier_table_skips_derived_reward_check() {
+        let rows = |gold: Option<i64>, xp: Option<i64>| -> Vec<TierRow> {
+            (0..64)
+                .map(|_| TierRow {
+                    hp: 10,
+                    attack: 1,
+                    defense: 1,
+                    gold,
+                    xp,
+                })
+                .collect()
+        };
+        // 全行显式产出:即便增长率荒谬(回退值不被使用)也放行。
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 64,
+                reward_gold_growth: 1e308,
+                tier_table: Some(rows(Some(100), Some(50))),
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        assert!(validate(&cfg).is_ok());
+
+        // 有一行缺省产出:几何回退参与行为,荒谬增长率照常拒绝。
+        let mut partial = rows(Some(100), Some(50));
+        partial[10].gold = None;
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 64,
+                reward_gold_growth: 1e308,
+                tier_table: Some(partial),
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("reward_gold"), "{msg}");
     }
 
     /// 2026-11-06 审核发现:分群权重和必须归一。`[0.5,0.5,0.5]` 和 1.5
