@@ -45,14 +45,19 @@ pub const MIN_GACHA_BASE_RATE: f64 = 1e-4;
 /// 都因配置异常失效,单会话也不会无限循环。超出返回结构化错误。
 pub const MAX_GACHA_PULLS: u64 = 1_000_000;
 
-/// 无定轨 featured 层的组合概率下界(2026-11-06 审核发现):目标判定退化
-/// 为每 5★ 独立几何(概率 `featured_rate`),5★ 本身又是每抽独立几何
-/// (概率 `base_rate`)。无保底时抽到所定目标的总概率 = `base_rate ×
-/// featured_rate`,期望抽数 = `1/(base_rate × featured_rate)`。两个各取
-/// `MIN_GACHA_BASE_RATE=1e-4` 时乘积 `1e-8`,期望 `1e8` 抽,远超
-/// `MAX_GACHA_PULLS=1e6`。取乘积下限 `1e-6`(期望 1e6 抽,恰在上限内),
-/// 与真实卡池(≥0.375×≥0.02=7.5e-3)相比仍极度保守。
-pub const MIN_GACHA_TARGET_RATE: f64 = 1e-6;
+/// 无定轨 featured 层的组合概率下界(2026-11-06 审核发现,2026-11-07 复审
+/// 收紧):目标判定退化为每 5★ 独立几何(概率 `featured_rate`),5★ 本身
+/// 又是每抽独立几何(概率 `base_rate`)。无保底时抽到所定目标的总概率 =
+/// `base_rate × featured_rate`。两个各取 `MIN_GACHA_BASE_RATE=1e-4` 时乘积
+/// `1e-8`,期望 `1e8` 抽,远超 `MAX_GACHA_PULLS=1e6`。
+///
+/// 下限取 `100 / MAX_GACHA_PULLS = 1e-4`,这是**尾部界**而不只是期望界:
+/// 过检配置单会话触限概率 ≤ e^{-100}(≈3.7e-44),使 sim 层的会话超限处置
+/// (记为该玩家未命中并继续,见 `sim.rs`)保持其注释声明的「运行时不可能
+/// 路径」语义——期望口径的下限(如旧值 1e-6)在乘积恰为下限时触限概率
+/// 高达 1/e,不满足该前提。与真实卡池(≥0.375×≥0.02=7.5e-3)相比仍极度
+/// 保守。
+pub const MIN_GACHA_TARGET_RATE: f64 = 1e-4;
 
 /// 扫描/寻优 replicates 核心上界(I-011 / ST-AUD-11):壳层可再收紧
 /// (Web 64、MCP 4096、桌面 64),core 统一兜底避免 u32::MAX 级分配。
@@ -945,28 +950,32 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
             ));
         }
         // 无定轨 featured 层(featured_guarantee == 0):目标判定退化为每 5★
-        // 独立几何,下限守卫按硬保底分派(2026-11-07 复审整改):
-        // - 无硬保底(pity_hard == 0):期望抽数 = 1/(base_rate × featured_rate),
-        //   组合概率低于 MIN_GACHA_TARGET_RATE 即期望超出 MAX_GACHA_PULLS,
-        //   拒绝。这是期望口径的配置体检——尾部随机波动仍可能触限,由运行时
-        //   会话上限兜底报错,validate 不承诺逐会话不触限;
-        // - 有硬保底:每 pity_hard 抽必出一个 5★(pulls-per-5★ ≤ pity_hard),
-        //   目标命中期望抽数 ≤ pity_hard / featured_rate。此时 base_rate 不
-        //   进入目标判定面,按乘积下限拒绝会误伤「低 base_rate 不影响行为」
-        //   的合法配置,改按 pity_hard / featured_rate ≤ MAX_GACHA_PULLS 校验。
+        // 独立几何,下限守卫按硬保底分派(2026-11-07 复审整改),统一用
+        // **尾部界**口径——过检配置单会话触限概率 ≤ e^{-100},使 sim 层的
+        // 超限处置(记为该玩家未命中并继续,`sim.rs` 防御纵深)保持其
+        // 「运行时不可能路径」注释成立;validate 不改 sim 的截断语义:
+        // - 无硬保底(pity_hard == 0):触限概率 = (1-p)^MAX ≈ e^{-p·MAX},
+        //   p = base_rate × featured_rate ≥ 100/MAX(= MIN_GACHA_TARGET_RATE)
+        //   即可;
+        // - 有硬保底:pulls-per-5★ ≤ pity_hard,会话内 5★ 数 ≥ MAX/pity_hard,
+        //   触限概率 ≈ e^{-featured_rate·MAX/pity_hard},要求
+        //   featured_rate·MAX ≥ 100·pity_hard。base_rate 不进入目标判定面,
+        //   按乘积下限拒绝会误伤「低 base_rate 不影响行为」的合法配置。
         //   (2026-11-06 审核发现的原始动机不变:无硬保底时两个各取下限
-        //   1e-4 的因子乘积 1e-8,期望 1e8 抽仍超上限,单一 featured_rate
-        //   下限不足以拦截,必须看组合。)
+        //   1e-4 的因子乘积 1e-8,触限概率趋于 1,单一 featured_rate 下限
+        //   不足以拦截,必须看组合。)
         if gacha.featured_rate > 0.0 && gacha.featured_guarantee == 0 {
             if gacha.pity_hard == 0 {
                 if gacha.base_rate * gacha.featured_rate < MIN_GACHA_TARGET_RATE {
                     return Err(Error::Config(format!(
-                        "model.gacha.base_rate × featured_rate 不能低于 {MIN_GACHA_TARGET_RATE}(无硬保底时目标判定为每 5★ 独立几何,组合概率过低会让单会话期望抽数超出 {MAX_GACHA_PULLS})"
+                        "model.gacha.base_rate × featured_rate 不能低于 {MIN_GACHA_TARGET_RATE}(无硬保底时目标判定为每 5★ 独立几何,组合概率过低会让单会话触限概率不可忽略,超出 {MAX_GACHA_PULLS})"
                     )));
                 }
-            } else if (gacha.pity_hard as f64) / gacha.featured_rate > MAX_GACHA_PULLS as f64 {
+            } else if gacha.featured_rate * (MAX_GACHA_PULLS as f64)
+                < 100.0 * gacha.pity_hard as f64
+            {
                 return Err(Error::Config(format!(
-                    "model.gacha.featured_rate 过低:pity_hard {} 下目标期望抽数 pity_hard/featured_rate 超出 {MAX_GACHA_PULLS}(有硬保底时目标判定按 pity_hard/featured_rate 估界,base_rate 不参与)",
+                    "model.gacha.featured_rate 过低:pity_hard {} 下目标触限概率不可忽略(要求 featured_rate × {MAX_GACHA_PULLS} ≥ 100 × pity_hard;有硬保底时目标判定按 5★ 间隔 ≤ pity_hard 估界,base_rate 不参与)",
                     gacha.pity_hard
                 )));
             }
@@ -1249,20 +1258,19 @@ mod tests {
 
         // 2026-11-06 审核发现:无定轨时目标命中概率为
         // base_rate × featured_rate;两个下限相乘仅 1e-8,期望 1e8 抽
-        // 仍会超出单会话上限。组合概率低于 1e-6 必须拒绝。
+        // 仍会超出单会话上限。2026-11-07 复审收紧:下限 = 100/MAX
+        // (= MIN_GACHA_TARGET_RATE),过检配置触限概率 ≤ e^{-100}。
         cfg.gacha.as_mut().unwrap().featured_guarantee = 0;
         cfg.gacha.as_mut().unwrap().base_rate = MIN_GACHA_BASE_RATE;
-        cfg.gacha.as_mut().unwrap().featured_rate =
-            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 0.5;
+        cfg.gacha.as_mut().unwrap().featured_rate = 0.5;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("base_rate × featured_rate"), "{msg}");
 
-        cfg.gacha.as_mut().unwrap().featured_rate =
-            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 1.01;
+        // featured_rate 拉满:乘积恰在下限,放行(边界取 < 严格比较)。
+        cfg.gacha.as_mut().unwrap().featured_rate = 1.0;
         assert!(validate(&cfg).is_ok());
 
-        cfg.gacha.as_mut().unwrap().featured_rate =
-            MIN_GACHA_TARGET_RATE / MIN_GACHA_BASE_RATE * 0.5;
+        cfg.gacha.as_mut().unwrap().featured_rate = 0.5;
         cfg.gacha.as_mut().unwrap().featured_guarantee = 1;
         match validate(&cfg) {
             Ok(()) => {}
@@ -1855,8 +1863,9 @@ mod tests {
         assert!(validate(&cfg).is_err());
     }
 
-    /// 2026-11-07 复审整改:硬保底下的无定轨目标下限按 pity_hard/featured_rate
-    /// 估界,base_rate 不参与——乘积口径会误伤「低 base_rate 不影响目标判定」
+    /// 2026-11-07 复审整改:硬保底下的无定轨目标下限按 5★ 间隔 ≤ pity_hard
+    /// 估界(featured_rate × MAX ≥ 100 × pity_hard,尾部 ≤ e^{-100}),
+    /// base_rate 不参与——乘积口径会误伤「低 base_rate 不影响目标判定」
     /// 的合法配置(硬保底已把 pulls-per-5★ 钉在 pity_hard 内)。
     #[test]
     fn validate_gacha_hard_pity_featured_bound() {
@@ -1864,18 +1873,20 @@ mod tests {
             gacha: Some(Default::default()),
             ..SimConfig::default()
         };
-        cfg.gacha.as_mut().unwrap().base_rate = 0.6;
-        cfg.gacha.as_mut().unwrap().featured_rate = 1e-6;
+        // base_rate 最低档 × featured 2e-4:乘积 2e-8 远低于乘积下限,但硬
+        // 保底估界 2e-4 × 1e6 = 200 ≥ 100 × 1:放行(base_rate 不参与)。
+        cfg.gacha.as_mut().unwrap().base_rate = MIN_GACHA_BASE_RATE;
+        cfg.gacha.as_mut().unwrap().featured_rate = 2e-4;
         cfg.gacha.as_mut().unwrap().pity_hard = 1;
-        // 乘积 6e-7 < 1e-6,但硬保底估界 1/1e-6 = 1e6 ≤ MAX_GACHA_PULLS:放行。
         assert!(validate(&cfg).is_ok());
 
-        // featured_rate 再降一个量级:期望 1e7 抽超上限,拒绝。
+        // featured_rate 再降一个量级:触限概率不可忽略,拒绝。
         cfg.gacha.as_mut().unwrap().featured_rate = 1e-7;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("featured_rate"), "{msg}");
 
         // 无硬保底时同配置仍按乘积口径拒绝(组合约束不放松)。
+        cfg.gacha.as_mut().unwrap().featured_rate = 2e-4;
         cfg.gacha.as_mut().unwrap().pity_hard = 0;
         let msg = validate(&cfg).unwrap_err().to_string();
         assert!(msg.contains("base_rate × featured_rate"), "{msg}");
