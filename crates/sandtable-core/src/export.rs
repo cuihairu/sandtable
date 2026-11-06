@@ -97,11 +97,19 @@ pub fn summary_text(m: &RunMetrics) -> String {
         "gold_earned     {}  spent {}",
         m.gold_earned_total, m.gold_spent_total
     );
-    let _ = writeln!(
-        s,
-        "inflation       日均 {:.4}  末日 {:.4}   sink_ratio 均值 {:.4}",
-        m.inflation_daily_mean, m.inflation_last, m.sink_ratio_mean
-    );
+    if let Some(inflation_last) = m.inflation_last {
+        let _ = writeln!(
+            s,
+            "inflation       日均 {:.4}  末日 {:.4}   sink_ratio 均值 {:.4}",
+            m.inflation_daily_mean, inflation_last, m.sink_ratio_mean
+        );
+    } else {
+        let _ = writeln!(
+            s,
+            "inflation       日均 {:.4}  末日 无定义   sink_ratio 均值 {:.4}",
+            m.inflation_daily_mean, m.sink_ratio_mean
+        );
+    }
     let _ = writeln!(
         s,
         "whale_gold_share{:.4}  (MVP 无付费语义)",

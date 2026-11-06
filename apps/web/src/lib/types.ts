@@ -65,7 +65,7 @@ export interface RunMetrics {
   gold_earned_total: number
   gold_spent_total: number
   sink_ratio_mean: number
-  inflation_last: number
+  inflation_last: number | null
   inflation_daily_mean: number
   whale_gold_share: number
   gacha_pulls_to_hit?: number

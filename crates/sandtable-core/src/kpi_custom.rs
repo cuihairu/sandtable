@@ -165,7 +165,7 @@ mod tests {
             gold_spent_total: 500,
             whale_gold_share: 0.1,
             inflation_daily_mean: 0.0,
-            inflation_last: 0.0,
+            inflation_last: None,
             sink_ratio_mean: 0.5,
             gacha_pulls_to_hit: None,
             loot_gold_per_player: None,

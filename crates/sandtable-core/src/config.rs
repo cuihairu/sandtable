@@ -45,6 +45,13 @@ pub const MIN_GACHA_BASE_RATE: f64 = 1e-4;
 /// 都因配置异常失效,单会话也不会无限循环。超出返回结构化错误。
 pub const MAX_GACHA_PULLS: u64 = 1_000_000;
 
+/// 无定轨 featured 层的最小目标概率(2026-11-06 审核发现):`featured_rate > 0`
+/// 且 `featured_guarantee == 0` 时,目标判定退化为每 5★ 独立几何,期望
+/// `1/featured_rate` 次 5★;`featured_rate` 趋 0 时单会话期望抽数失控
+/// (可达 `MAX_GACHA_PULLS` 上限)。取与 [`MIN_GACHA_BASE_RATE`] 同值 1e-4
+/// (期望 1 万次 5★),与真实卡池(≥0.375)相比极度保守,仍杜绝天文数字循环。
+pub const MIN_GACHA_FEATURED_RATE: f64 = 1e-4;
+
 /// 扫描/寻优 replicates 核心上界(I-011 / ST-AUD-11):壳层可再收紧
 /// (Web 64、MCP 4096、桌面 64),core 统一兜底避免 u32::MAX 级分配。
 /// 取 10_000——真实实验量级(2–400)的 25 倍余量,仍杜绝 4e9 级分配。
@@ -710,6 +717,34 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
             crate::rng::MAX_ROUND_SLOTS
         )));
     }
+    if cfg.combat.max_rounds == 0 {
+        return Err(Error::Config(
+            "combat.max_rounds 不能为 0(0 会让全部战斗判负)".into(),
+        ));
+    }
+    if !cfg.combat.ratio_k.is_finite() || cfg.combat.ratio_k <= 0.0 {
+        return Err(Error::Config(
+            "combat.ratio_k 必须为有限正数(仅 ratio 口径生效)".into(),
+        ));
+    }
+    if cfg.churn.stall_days == 0 {
+        return Err(Error::Config(
+            "churn.stall_days 不能为 0(0 会让 idle_streak >= 0 恒真,流失率失真)".into(),
+        ));
+    }
+    if cfg.warrior.attack <= 0 || cfg.warrior.defense <= 0 || cfg.warrior.hp <= 0 {
+        return Err(Error::Config(
+            "warrior.attack/defense/hp 必须为正(战力与存活需正数)".into(),
+        ));
+    }
+    if cfg.warrior.attack > MAX_ECONOMY_VALUE
+        || cfg.warrior.defense > MAX_ECONOMY_VALUE
+        || cfg.warrior.hp > MAX_ECONOMY_VALUE
+    {
+        return Err(Error::Config(format!(
+            "warrior.attack/defense/hp 不能超过 {MAX_ECONOMY_VALUE}(战力运算上界)"
+        )));
+    }
     if cfg.dungeon.tiers == 0 || cfg.dungeon.tiers > 64 {
         return Err(Error::Config("tiers 必须在 1..=64".into()));
     }
@@ -717,6 +752,31 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
         return Err(Error::Config(
             "reward_gold / reward_xp 不能为负(负奖励会让经济面 u64 回绕)".into(),
         ));
+    }
+    // I-014:怪物数值与成长倍率必须有限为正,否则 powi/乘积会塌成 NaN/Inf
+    // 再经 as i64 洗成有限值(战力/掉落/分位数全错)。逐字段显式拦截。
+    let d = &cfg.dungeon;
+    for (name, v) in [
+        ("m_hp", d.m_hp),
+        ("m_attack", d.m_attack),
+        ("m_defense", d.m_defense),
+    ] {
+        if v <= 0 || v > MAX_ECONOMY_VALUE {
+            return Err(Error::Config(format!(
+                "dungeon.{name} 必须在 (0, {MAX_ECONOMY_VALUE}] 区间(正数且有上界)"
+            )));
+        }
+    }
+    for (name, v) in [
+        ("tier_growth", d.tier_growth),
+        ("reward_gold_growth", d.reward_gold_growth),
+        ("reward_xp_growth", d.reward_xp_growth),
+    ] {
+        if !v.is_finite() || v <= 0.0 {
+            return Err(Error::Config(format!(
+                "dungeon.{name} 必须为有限正数(负/零/NaN 会让逐层数值塌陷)"
+            )));
+        }
     }
     if cfg.whale_gain_mult <= 0 || cfg.whale_gain_mult > MAX_ECONOMY_VALUE {
         return Err(Error::Config(format!(
@@ -841,6 +901,18 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
                 "model.gacha.featured_rate 必须在 [0, 1] 内的有限数".into(),
             ));
         }
+        // 无定轨 featured 层(featured_guarantee == 0):目标判定退化为每 5★
+        // 独立几何(期望 1/featured_rate 次 5★),featured_rate 趋 0 时单会话
+        // 期望抽数可达 MAX_GACHA_PULLS 上限。必须有目标概率下限(与
+        // MIN_GACHA_BASE_RATE 同值),否则合法配置会触达抽卡会话上限。
+        if gacha.featured_rate > 0.0
+            && gacha.featured_guarantee == 0
+            && gacha.featured_rate < MIN_GACHA_FEATURED_RATE
+        {
+            return Err(Error::Config(format!(
+                "model.gacha.featured_rate 不能低于 {MIN_GACHA_FEATURED_RATE}(无定轨时目标判定为每 5★ 独立几何,过低会让单会话期望抽数失控)"
+            )));
+        }
     }
     // 概率面统一有限性与区间校验(审核整改 P1):NaN 与越界概率会静默改写
     // 行为——NaN 比较恒假恰好越过下面的范围检查,> 1 的流失概率变成必然
@@ -872,6 +944,11 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
     }
     if cfg.cohort_weights.iter().any(|&w| !(w.is_finite())) {
         return Err(Error::Config("cohort_weights 含非有限值".into()));
+    }
+    if cfg.cohort_weights.iter().any(|&w| w < 0.0) {
+        return Err(Error::Config(
+            "cohort_weights 不能为负(负占比会反向分群)".into(),
+        ));
     }
     if cfg.cohort_weights.iter().sum::<f64>() <= 0.0 {
         return Err(Error::Config("cohort_weights 之和必须大于 0".into()));
@@ -1095,6 +1172,22 @@ mod tests {
 
         cfg.gacha.as_mut().unwrap().featured_rate = 1.0;
         assert!(validate(&cfg).is_ok());
+
+        // 2026-11-06 审核发现:featured_rate 极小且 featured_guarantee=0
+        // 时目标判定为每 5★ 独立几何(期望 1/featured_rate 次 5★),
+        // 单会话期望抽数可达 MAX_GACHA_PULLS 上限。无定轨时必须有目标
+        // 概率下限,否则合法配置会触达抽卡会话上限。
+        cfg.gacha.as_mut().unwrap().featured_rate = MIN_GACHA_FEATURED_RATE * 0.5;
+        cfg.gacha.as_mut().unwrap().featured_guarantee = 0;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("featured_rate"), "{msg}");
+
+        cfg.gacha.as_mut().unwrap().featured_rate = MIN_GACHA_FEATURED_RATE;
+        assert!(validate(&cfg).is_ok());
+
+        cfg.gacha.as_mut().unwrap().featured_rate = MIN_GACHA_FEATURED_RATE * 0.5;
+        cfg.gacha.as_mut().unwrap().featured_guarantee = 1;
+        assert!(validate(&cfg).is_ok(), "有定轨时不受无定轨下限约束");
     }
 
     /// 练级环耦合(阻力 #4 显式性):产出面与行为带互相咬合,单边给出报错。
@@ -1537,6 +1630,105 @@ mod tests {
             let msg = validate(&cfg).unwrap_err().to_string();
             assert!(msg.contains("training"), "{xp}/{gold}: {msg}");
         }
+
+        // 默认配置仍合法
+        assert!(validate(&SimConfig::default()).is_ok());
+    }
+
+    /// ST-AUD-14 / I-014:数值槽统一有限 + 区间门。怪物/成长倍率/战斗/
+    /// 流失/分群占比/角色三维的 NaN、Inf、负值、零值、上界越界全部
+    /// 返回结构化 ConfigError,不放行到仿真(防 powi/乘积塌成 NaN/Inf
+    /// 再经 as i64 洗成有限值,或 cohort 反向/失真)。
+    #[test]
+    fn validate_numeric_slots_unified_gates() {
+        // dungeon 怪物三维:零/负/上界越界均拒
+        for v in [0, -1] {
+            let cfg = SimConfig {
+                dungeon: DungeonConfig {
+                    m_hp: v,
+                    ..DungeonConfig::default()
+                },
+                ..SimConfig::default()
+            };
+            let msg = validate(&cfg).unwrap_err().to_string();
+            assert!(msg.contains("m_hp"), "{msg}");
+        }
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                m_hp: MAX_ECONOMY_VALUE + 1,
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        assert!(validate(&cfg).is_err(), "m_hp 上界越界应拒");
+
+        // dungeon 成长倍率:NaN / Inf / 0 / 负均拒(有限正数才放行)
+        for (name, v) in [
+            ("tier_growth", f64::NAN),
+            ("tier_growth", f64::INFINITY),
+            ("tier_growth", 0.0),
+            ("tier_growth", -1.3),
+            ("reward_gold_growth", f64::NAN),
+            ("reward_xp_growth", f64::NEG_INFINITY),
+        ] {
+            let cfg = SimConfig {
+                dungeon: DungeonConfig {
+                    tier_growth: if name == "tier_growth" { v } else { 1.3 },
+                    reward_gold_growth: if name == "reward_gold_growth" { v } else { 1.4 },
+                    reward_xp_growth: if name == "reward_xp_growth" { v } else { 1.4 },
+                    ..DungeonConfig::default()
+                },
+                ..SimConfig::default()
+            };
+            assert!(validate(&cfg).is_err(), "{name}={v} 应拒");
+        }
+
+        // combat.max_rounds:0 拒;churn.stall_days:0 拒
+        let cfg = SimConfig {
+            combat: CombatConfig {
+                max_rounds: 0,
+                ..CombatConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("max_rounds"), "{msg}");
+        let cfg = SimConfig {
+            churn: ChurnConfig {
+                stall_days: 0,
+                ..ChurnConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("stall_days"), "{msg}");
+
+        // cohort_weights:负占比拒([-0.5,1.0,0.5] 原合法但分群失真)
+        let cfg = SimConfig {
+            cohort_weights: [-0.5, 1.0, 0.5],
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("cohort_weights"), "{msg}");
+
+        // warrior 三维:零/上界越界拒(正且有限才放行)
+        let cfg = SimConfig {
+            warrior: WarriorConfig {
+                attack: 0,
+                ..WarriorConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("warrior"), "{msg}");
+        let cfg = SimConfig {
+            warrior: WarriorConfig {
+                hp: MAX_ECONOMY_VALUE + 1,
+                ..WarriorConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        assert!(validate(&cfg).is_err(), "warrior hp 上界越界应拒");
 
         // 默认配置仍合法
         assert!(validate(&SimConfig::default()).is_ok());

@@ -101,6 +101,12 @@ impl OptimSpec {
                 "optimize.replicates 必须 ≥ 2(单点无法给出置信区间)".into(),
             ));
         }
+        if self.replicates > crate::config::MAX_SWEEP_REPLICATES {
+            return Err(Error::Config(format!(
+                "optimize.replicates 不能超过 {}(核心 replicates 上界)",
+                crate::config::MAX_SWEEP_REPLICATES
+            )));
+        }
         if self.parameters.is_empty() {
             return Err(Error::Config("optimize.parameters 不能为空".into()));
         }
@@ -981,6 +987,16 @@ mod tests {
         s.population = 400;
         s.generations = 100;
         assert!(s.validate().is_err(), "预算上限");
+        // 2026-11-06 审核发现:寻优校验只限制 replicates 下限,未应用
+        // 核心上限 MAX_SWEEP_REPLICATES;run_candidate 直接按 spec.replicates
+        // 跑 R 次仿真,超大 replicates 仍可触发巨量分配。
+        let mut s = spec();
+        s.replicates = crate::config::MAX_SWEEP_REPLICATES + 1;
+        let msg = s.validate().unwrap_err().to_string();
+        assert!(msg.contains("replicates"), "{msg}");
+        let mut s = spec();
+        s.replicates = crate::config::MAX_SWEEP_REPLICATES;
+        assert!(s.validate().is_ok(), "上限本身合法");
         // 合法 spec 应通过
         assert!(spec().validate().is_ok());
     }

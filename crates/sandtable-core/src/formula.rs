@@ -564,12 +564,14 @@ fn eval_expr(e: &Expr, env: &[f64]) -> f64 {
             }
         }
         Expr::Pow(a, b) => ev(a).powf(ev(b)),
-        Expr::Lt(a, b) => bool_as_f64(ev(a) < ev(b)),
-        Expr::Le(a, b) => bool_as_f64(ev(a) <= ev(b)),
-        Expr::Gt(a, b) => bool_as_f64(ev(a) > ev(b)),
-        Expr::Ge(a, b) => bool_as_f64(ev(a) >= ev(b)),
-        Expr::Eq(a, b) => bool_as_f64(ev(a) == ev(b)),
-        Expr::Ne(a, b) => bool_as_f64(ev(a) != ev(b)),
+        // 比较运算对 NaN 显式传播:Rust f64 比较忽略 NaN(恒假),会把
+        // 除零等产生的 NaN 洗成 0.0;I-016 要求非有限输入不得被洗成有限值。
+        Expr::Lt(a, b) => nan_compare(ev(a), ev(b), |x, y| x < y),
+        Expr::Le(a, b) => nan_compare(ev(a), ev(b), |x, y| x <= y),
+        Expr::Gt(a, b) => nan_compare(ev(a), ev(b), |x, y| x > y),
+        Expr::Ge(a, b) => nan_compare(ev(a), ev(b), |x, y| x >= y),
+        Expr::Eq(a, b) => nan_compare(ev(a), ev(b), |x, y| x == y),
+        Expr::Ne(a, b) => nan_compare(ev(a), ev(b), |x, y| x != y),
         Expr::And(a, b) => {
             if truthy(ev(a)) && truthy(ev(b)) {
                 1.0
@@ -631,6 +633,16 @@ fn bool_as_f64(b: bool) -> f64 {
         1.0
     } else {
         0.0
+    }
+}
+
+/// 比较运算的 NaN 显式传播(与 [`nan_propagate2`] 同口径):任一元 NaN 即
+/// NaN,不把 NaN 洗成 0.0/1.0。
+fn nan_compare(a: f64, b: f64, op: fn(f64, f64) -> bool) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else {
+        bool_as_f64(op(a, b))
     }
 }
 
@@ -724,6 +736,15 @@ mod tests {
         assert!(eval_str("1/0 + 5").is_nan());
         assert!(eval_str("max(1/0, 5)").is_nan());
         assert!(eval_str("clamp(1/0, 0, 1)").is_nan());
+        // 2026-11-06 审核发现:比较运算对 NaN 显式传播。旧路径 `1/0 > 0`
+        // 中 `NaN > 0` 恒假被洗成 0.0,现在必须保持 NaN。
+        assert!(eval_str("1/0 > 0").is_nan());
+        assert!(eval_str("1/0 >= 0").is_nan());
+        assert!(eval_str("1/0 < 0").is_nan());
+        assert!(eval_str("1/0 <= 0").is_nan());
+        assert!(eval_str("1/0 == 0").is_nan());
+        assert!(eval_str("1/0 != 0").is_nan());
+        assert!(eval_str("(1/0 > 0) + 1").is_nan());
     }
 
     #[test]

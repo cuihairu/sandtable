@@ -106,8 +106,9 @@ pub struct RunMetrics {
     pub whale_gold_share: f64,
     /// 日 inflation 序列(d ≥ 2)的均值
     pub inflation_daily_mean: f64,
-    /// 最后一天的 inflation
-    pub inflation_last: f64,
+    /// 最后一天的 inflation;days==1 无 G(d−1),无定义记 `None`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inflation_last: Option<f64>,
     /// 日 sink_ratio 序列均值
     pub sink_ratio_mean: f64,
     /// 抽卡 KPI(文档 24 章 R2):期望抽数 E[T] = 总抽数 / 总命中(每 actor
@@ -179,7 +180,7 @@ pub struct RunAggregator {
     sink_ratio_sum: f64,
     inflation_sum: f64,
     inflation_days: u64,
-    inflation_last: f64,
+    inflation_last: Option<f64>,
     gacha_pulls_total: u64,
     gacha_hits_total: u64,
     loot_gold_total: u64,
@@ -209,7 +210,7 @@ impl RunAggregator {
             sink_ratio_sum: 0.0,
             inflation_sum: 0.0,
             inflation_days: 0,
-            inflation_last: 0.0,
+            inflation_last: None,
             gacha_pulls_total: 0,
             gacha_hits_total: 0,
             loot_gold_total: 0,
@@ -337,12 +338,7 @@ impl RunAggregator {
             self.inflation_sum += inflation.unwrap_or(0.0);
             self.inflation_days += 1;
         }
-        // inflation_last:最后一天;days==1 时无定义记 0(I-008)。
-        self.inflation_last = if day == 1 {
-            0.0
-        } else {
-            inflation.unwrap_or(0.0)
-        };
+        self.inflation_last = inflation;
         self.sink_ratio_sum += sink_ratio;
         self.prev_supply = supply;
 
@@ -496,6 +492,25 @@ mod tests {
         assert_eq!(m.retention_d7, Some(0.0));
         assert!(m.retention_d14.is_none()); // 超出运行天数
         assert_eq!(m.power_snapshots.len(), 3); // 快照日 1/3/7 ⊆ 运行窗口
+    }
+
+    /// 2026-11-06 审核发现:单日仿真(days==1)的 inflation_last 无定义,
+    /// 旧路径记 0 并随汇总导出,消费者会误认为末日通胀率为零。现在
+    /// days==1 时显式 None(与 day==1 的 inflation 同口径,不进 JSON)。
+    #[test]
+    fn inflation_last_undefined_when_single_day() {
+        let cfg = SimConfig {
+            players: 4,
+            days: 1,
+            ..SimConfig::default()
+        };
+        let mut agg = RunAggregator::new(&cfg);
+        for _ in 0..4 {
+            agg.mark_active(1, false);
+        }
+        agg.end_day(1, 4, 0, &[], None);
+        let m = agg.finish(&cfg, 0, cfg.base_seed);
+        assert_eq!(m.inflation_last, None, "days==1 时 inflation_last 无定义");
     }
 
     /// 审核发现 2026-11-04:纯经验掉落(gold 全 0、xp>0,validate 合法)时
