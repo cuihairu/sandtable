@@ -538,7 +538,7 @@
       核证 2026-10-30：范围 d034efb..HEAD 仅含 ab9e995（docs 提交，只改 todo.md，为
       BLOCKED 条目加「BLOCKED复核 2026-10-30」注释）。实测与声明一致：open PR/issue=0
       （gh 实测 []）、本机无 JMP/Origin 二进制（which/find 无，仅系统 setjmp.h）、无
-      Power BI/Tableau、Linux 无 DISPLAY/GUI（DISPLAY=/WAYLAND 均空）、仓内仅 examples/
+      Power BI/Tableau、本机 Linux 无 DISPLAY/GUI（DISPLAY=/WAYLAND 均空；Windows GUI 走查在真机 openclaw/imac 执行）、仓内仅 examples/
       合成示例（sim-out 为示例仿真输出，无真实运营数据）；git diff --check 净；无业务
       代码改动，无缺陷需修复。
 - [x] 审核发现：本轮 diff 未见问题（ab9e995..HEAD）。
