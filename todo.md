@@ -465,6 +465,8 @@
 
 ## 已完成(一行证据:hash + 测试/运行条数,过程细节见 desktop-package.yml 注释与 docs 18)
 
+- [x] XLSX 导入 → calibrate 校准直通 + 往返闭环(2026-11-06,72fcafa + 61bb5b5 + 7de8450): CLI calamine 读取层(`crates/sandtable-cli/src/xlsx.rs`,与 CSV 读取同构:多表选择缺省第一张、表头行映射、错误单元格带行列号不回显值)+ MCP `sandtable_calibrate` 数据源扩 `.xlsx`(`crates/sandtable-mcp/src/calibrate.rs:60` sheet 字段、`:102` 路径边界先于载体白名单、`:182` read_table_rows 双载体),与 CSV 同 mapping 语义,等价性测试锁定同一观测行 `.csv`/`.xlsx` 输出逐字段一致(`crates/sandtable-mcp/src/calibrate/tests_xlsx.rs` 4 项:逐字段等价、sheet 缺省取第一张+缺表列出可用名、边界(CSV+sheet 拒/空 sheet 名/其它载体拒/穿越/垃圾文件归不可读)、workbook 导出→改 daily win_rate 观测列→回读校准 7 天锚点逐字);文档 calibration-design §2(en/zh)+ 09 章「往返闭环:导出→改→回读」写清可改列(daily 观测数值列可改、day 轴与列集不动、manifest/metric_dictionary 不可改、配置接入仍 CSV)+ README(en/zh)MCP 特性行。门禁:`cargo test --workspace` 35 套件 391 passed / 0 failed + `cargo fmt --all --check` 净 + `cargo clippy --workspace --all-targets --all-features -- -D warnings` 零告警。
+
 - [x] CI 平衡回归(已代决(巡检代决),2026-10-15,决策记录 docs/方向项定义草案.md §4,5552dbc): 案例 KPI 水平断言进 `crates/sandtable-cli/tests/cases.rs`(churn/win_rate/均等级锚值 ±10% 带,retention_d7 取硬约束下限 0.9,gacha-pity 不锚——已有闭式对账),KPI 测 + core 157 测全绿
 - [x] 可视化系统图与策划工作流(已代决(巡检代决),2026-10-15,决策记录 docs/方向项定义草案.md §4,5552dbc): `crates/sandtable-core/examples/system_graph.rs` 探测真实调度面出 SVG(docs/assets/systems/system-graph.svg,docs 04 引用)+ 策划工作流五步导览进 docs 21 + docs 19 测试层登记,docs:build 绿
 - [x] 游戏引擎 Adapter(已代决(巡检 R1),2026-10-14,59538ee): `crates/sandtable-engine` 引擎无关 JSON 契约(导出有效值纪律 + 参考导入器 + 回流约定),roundtrip 19 测 + workspace 全绿;理由:五决策点均属产品方向/设计取舍且有明确推荐,不涉版本发布、License、付费、素材授权或人工验收
