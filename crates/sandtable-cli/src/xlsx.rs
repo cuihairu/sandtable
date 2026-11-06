@@ -15,7 +15,15 @@
 //!   定位所需的最小信息(与校准层「错误不回显原始数据值」同一纪律);
 //! - 表头行默认第 1 行;`header_row` 之上的行整行跳过,不参与校验;
 //! - 字符串不做 trim:与 `workbook::read_csv` 同口径,trim 语义归调用方
-//!   (校准层对 CSV 与 XLSX 两条入口做同一套 trim)。
+//!   (校准层对 CSV 与 XLSX 两条入口做同一套 trim);
+//! - 坐标一律按工作表绝对口径:calamine 的 `Range` 以有效区域左上角为原点
+//!   (`get` 取相对坐标),而用户的表可以把有效区域放在任意格起步(首行留空
+//!   后从 B2 开始是常见形态)。表头行号(1 基)与错误报错的行号 + 列标都按
+//!   绝对坐标换算,与 Excel 里所见一致;
+//! - 单元格预算:`height × width` 超过 [`MAX_XLSX_CELLS`] 拒绝读取。calamine
+//!   按有效区域稠密分配,远离主体的散落单元格会放大分配;预算是我们自己
+//!   下游展开(字符串行)的事后护栏——calamine 内部分配在读入时已发生,
+//!   本地 `data_dir` 只读本地文件的威胁模型下接受这一边界。
 
 use std::fmt;
 use std::path::Path;
@@ -44,6 +52,10 @@ impl fmt::Display for XlsxReadError {
 }
 
 impl std::error::Error for XlsxReadError {}
+
+/// 单工作表读取预算(height × width,单元格数)。正常校准观测表远小于此;
+/// 触线几乎总是「远离主体的散落单元格把有效区域撑大」。
+const MAX_XLSX_CELLS: usize = 2_000_000;
 
 /// 工作表清单(按工作簿内顺序)。
 pub fn sheet_names(path: &Path) -> Result<Vec<String>, XlsxReadError> {
@@ -101,9 +113,23 @@ pub fn read_sheet(
             path.display()
         )));
     }
-    if height < header_row {
+    let cells = height.saturating_mul(width);
+    if cells > MAX_XLSX_CELLS {
         return Err(XlsxReadError::Content(format!(
-            "{} [{name}] 表头行 {header_row} 超出数据范围(共 {height} 行)",
+            "{} [{name}] 单元格数 {cells} 超出读取预算 {MAX_XLSX_CELLS}(工作表过大,或含远离主体的散落单元格)",
+            path.display()
+        )));
+    }
+    // calamine 的 Range 以有效区域左上角为原点(get 取相对坐标);对外一律
+    // 换算成工作表绝对坐标,表头行号与错误报错的行号 + 列标都按绝对口径,
+    // 与 Excel 里所见一致(2026-11-07 审核:相对坐标会把 B2 起步的表错位)。
+    let (start_row, start_col) = range.start().unwrap_or((0, 0));
+    let (start_row, start_col) = (start_row as usize, start_col as usize);
+    let total_rows = start_row + height;
+    let total_cols = start_col + width;
+    if header_row > total_rows {
+        return Err(XlsxReadError::Content(format!(
+            "{} [{name}] 表头行 {header_row} 超出数据范围(共 {total_rows} 行)",
             path.display()
         )));
     }
@@ -130,14 +156,27 @@ pub fn read_sheet(
         }
     };
 
-    let header: Vec<String> = (0..width)
-        .map(|col| cell_text(range.get((header_row - 1, col)), header_row - 1, col))
+    // 有效区域之外的格(含有效区域上方/左侧的整行整列)按空单元格处理。
+    let cell_at = |abs_row: usize, abs_col: usize| -> Option<&Data> {
+        if abs_row >= start_row
+            && abs_row < start_row + height
+            && abs_col >= start_col
+            && abs_col < start_col + width
+        {
+            range.get((abs_row - start_row, abs_col - start_col))
+        } else {
+            None
+        }
+    };
+
+    let header: Vec<String> = (0..total_cols)
+        .map(|col| cell_text(cell_at(header_row - 1, col), header_row - 1, col))
         .collect();
-    let mut rows: Vec<Vec<String>> = Vec::with_capacity(height.saturating_sub(header_row));
-    for row in header_row..height {
+    let mut rows: Vec<Vec<String>> = Vec::with_capacity(total_rows - header_row);
+    for row in header_row..total_rows {
         rows.push(
-            (0..width)
-                .map(|col| cell_text(range.get((row, col)), row, col))
+            (0..total_cols)
+                .map(|col| cell_text(cell_at(row, col), row, col))
                 .collect(),
         );
     }
@@ -383,6 +422,66 @@ mod tests {
             matches!(err, XlsxReadError::Unreadable(_)),
             "垃圾文件应归 Unreadable: {err}"
         );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 有效区域从 B2 起步(首行首列留空是用户文件的常见形态):calamine 的
+    /// Range.get 取相对坐标,读取必须换算回工作表绝对坐标——表头行号、
+    /// 数据行号、错误报错的行号 + 列标都与 Excel 所见一致(2026-11-07 审核)。
+    const OFFSET_SHEET_XML: &str = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+        "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">",
+        "<sheetData>",
+        "<row r=\"2\"><c r=\"B2\" t=\"inlineStr\"><is><t>day</t></is></c>",
+        "<c r=\"C2\" t=\"inlineStr\"><is><t>win_rate</t></is></c></row>",
+        "<row r=\"3\"><c r=\"B3\"><v>1</v></c><c r=\"C3\"><v>0.5</v></c></row>",
+        "<row r=\"5\"><c r=\"B5\"><v>2</v></c><c r=\"C5\"><v>0.985</v></c></row>",
+        "</sheetData></worksheet>"
+    );
+
+    const OFFSET_ERROR_SHEET_XML: &str = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+        "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">",
+        "<sheetData>",
+        "<row r=\"2\"><c r=\"B2\" t=\"inlineStr\"><is><t>day</t></is></c></row>",
+        "<row r=\"3\"><c r=\"B3\"><v>1</v></c></row>",
+        "<row r=\"4\"><c r=\"C4\" t=\"e\"><v>#REF!</v></c></row>",
+        "</sheetData></worksheet>"
+    );
+
+    #[test]
+    fn offset_used_range_reads_by_absolute_coordinates() {
+        let dir = temp_dir("offset");
+        fs::create_dir_all(&dir).unwrap();
+        let base = dir.join("base.xlsx");
+        write_book(&base, vec![table("anchor", &["a"], &[&["1"]])]);
+
+        let offset = dir.join("offset.xlsx");
+        patch_sheet1(&base, &offset, OFFSET_SHEET_XML);
+        // 表头在第 2 行(绝对);第 1 行在有效区域之外,整行为空。
+        let header_row_1 = read_sheet(&offset, None, 1).unwrap();
+        assert_eq!(header_row_1.0, vec![String::new(), String::new(), String::new()]);
+        // 表头行 = 绝对第 2 行:B2/C2;数据 = 绝对第 3 行起,有效区域外的
+        // 行 4 与列 A 按空处理。
+        let (header, rows) = read_sheet(&offset, None, 2).unwrap();
+        assert_eq!(header, vec![String::new(), "day".into(), "win_rate".into()]);
+        assert_eq!(
+            rows,
+            vec![
+                vec![String::new(), "1".into(), "0.5".into()],
+                vec![String::new(), String::new(), String::new()],
+                vec![String::new(), "2".into(), "0.985".into()],
+            ]
+        );
+
+        // 错误单元格报绝对坐标:C4 → 第 4 行 C 列(不是相对的第 3 行 B 列)。
+        let error = dir.join("offset_error.xlsx");
+        patch_sheet1(&base, &error, OFFSET_ERROR_SHEET_XML);
+        let err = read_sheet(&error, None, 2).unwrap_err();
+        let message = err.to_string();
+        assert!(matches!(err, XlsxReadError::Content(_)), "{message}");
+        assert!(message.contains("第 4 行 C 列"), "{message}");
+        assert!(!message.contains("#REF!"), "{message}");
         fs::remove_dir_all(&dir).ok();
     }
 }
