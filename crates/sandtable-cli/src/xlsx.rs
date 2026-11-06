@@ -20,10 +20,12 @@
 //!   (`get` 取相对坐标),而用户的表可以把有效区域放在任意格起步(首行留空
 //!   后从 B2 开始是常见形态)。表头行号(1 基)与错误报错的行号 + 列标都按
 //!   绝对坐标换算,与 Excel 里所见一致;
-//! - 单元格预算:`height × width` 超过 [`MAX_XLSX_CELLS`] 拒绝读取。calamine
-//!   按有效区域稠密分配,远离主体的散落单元格会放大分配;预算是我们自己
-//!   下游展开(字符串行)的事后护栏——calamine 内部分配在读入时已发生,
-//!   本地 `data_dir` 只读本地文件的威胁模型下接受这一边界。
+//! - 单元格预算:实际展开尺寸(有效区域起点偏移 + 区域大小)超过
+//!   [`MAX_XLSX_CELLS`] 拒绝读取。calamine 按有效区域稠密分配,远离主体的
+//!   散落单元格会放大分配;预算是我们自己下游展开(字符串行)的事后护栏
+//!   ——calamine 内部分配在读入时已发生,本地 `data_dir` 只读本地文件的
+//!   威胁模型下接受这一边界。预算必须含起点偏移:单个 XFD1048576 散点的
+//!   有效区域只有 1×1,展开却是 16384 × 1048576。
 
 use std::fmt;
 use std::path::Path;
@@ -53,8 +55,9 @@ impl fmt::Display for XlsxReadError {
 
 impl std::error::Error for XlsxReadError {}
 
-/// 单工作表读取预算(height × width,单元格数)。正常校准观测表远小于此;
-/// 触线几乎总是「远离主体的散落单元格把有效区域撑大」。
+/// 单工作表读取预算(实际展开尺寸:含起点偏移的行 × 列,单元格数)。
+/// 正常校准观测表远小于此;触线几乎总是「远离主体的散落单元格把有效
+/// 区域撑大」。
 const MAX_XLSX_CELLS: usize = 2_000_000;
 
 /// 工作表清单(按工作簿内顺序)。
@@ -113,13 +116,6 @@ pub fn read_sheet(
             path.display()
         )));
     }
-    let cells = height.saturating_mul(width);
-    if cells > MAX_XLSX_CELLS {
-        return Err(XlsxReadError::Content(format!(
-            "{} [{name}] 单元格数 {cells} 超出读取预算 {MAX_XLSX_CELLS}(工作表过大,或含远离主体的散落单元格)",
-            path.display()
-        )));
-    }
     // calamine 的 Range 以有效区域左上角为原点(get 取相对坐标);对外一律
     // 换算成工作表绝对坐标,表头行号与错误报错的行号 + 列标都按绝对口径,
     // 与 Excel 里所见一致(2026-11-07 审核:相对坐标会把 B2 起步的表错位)。
@@ -127,6 +123,16 @@ pub fn read_sheet(
     let (start_row, start_col) = (start_row as usize, start_col as usize);
     let total_rows = start_row + height;
     let total_cols = start_col + width;
+    // 预算按实际展开尺寸(含起点偏移)计:单个远端散点的有效区域只有
+    // 1×1,展开却是 total_rows × total_cols,预算漏掉偏移会被这种表绕过
+    // (2026-11-07 复审)。
+    let cells = total_rows.saturating_mul(total_cols);
+    if cells > MAX_XLSX_CELLS {
+        return Err(XlsxReadError::Content(format!(
+            "{} [{name}] 单元格数 {cells} 超出读取预算 {MAX_XLSX_CELLS}(工作表过大,或含远离主体的散落单元格)",
+            path.display()
+        )));
+    }
     if header_row > total_rows {
         return Err(XlsxReadError::Content(format!(
             "{} [{name}] 表头行 {header_row} 超出数据范围(共 {total_rows} 行)",
@@ -485,6 +491,33 @@ mod tests {
         assert!(matches!(err, XlsxReadError::Content(_)), "{message}");
         assert!(message.contains("第 4 行 C 列"), "{message}");
         assert!(!message.contains("#REF!"), "{message}");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 远端散点:有效区域只有 1×1,展开尺寸是 20000 × 300 ≈ 6M —— 预算
+    /// 必须按含起点偏移的展开尺寸计,否则这种表绕过预算直接撑爆展开
+    /// (2026-11-07 复审)。
+    const FAR_CELL_SHEET_XML: &str = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+        "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">",
+        "<sheetData>",
+        "<row r=\"20000\"><c r=\"KX20000\"><v>1</v></c></row>",
+        "</sheetData></worksheet>"
+    );
+
+    #[test]
+    fn far_flung_cell_budget_covers_expansion_size() {
+        let dir = temp_dir("far");
+        fs::create_dir_all(&dir).unwrap();
+        let base = dir.join("base.xlsx");
+        write_book(&base, vec![table("anchor", &["a"], &[&["1"]])]);
+
+        let far = dir.join("far.xlsx");
+        patch_sheet1(&base, &far, FAR_CELL_SHEET_XML);
+        let err = read_sheet(&far, None, 1).unwrap_err();
+        let message = err.to_string();
+        assert!(matches!(err, XlsxReadError::Content(_)), "{message}");
+        assert!(message.contains("超出读取预算"), "{message}");
         fs::remove_dir_all(&dir).ok();
     }
 }
