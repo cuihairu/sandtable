@@ -1,8 +1,9 @@
 //! 本地数据校准对账(todo「数据分析面」step ①)。
 //!
-//! 安全边界:只读 [`CalibrationInput::data_dir`] 下的 CSV;配置与映射均由
-//! 调用方传入;输出只含聚合残差,不回显原始行。数据不做网络访问,也不做
-//! 拟合——后者复用既有 sweep / optimize 管线。
+//! 安全边界:只读 [`CalibrationInput::data_dir`] 下的观测文件(.csv / .xlsx,
+//! 后者复用 sandtable-cli 的 calamine 读取层);配置与映射均由调用方传入;
+//! 输出只含聚合残差,不回显原始行。数据不做网络访问,也不做拟合——后者复用
+//! 既有 sweep / optimize 管线。
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -10,6 +11,7 @@ use std::path::Path;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use sandtable_cli::xlsx;
 use sandtable_core as core;
 
 /// MCP 交互预算:避免代理在工具调用中请求全量多 replicate 重算。
@@ -23,7 +25,7 @@ pub const MAX_CALIBRATION_ANCHORS: usize = 10_000;
 const BAND_REL: f64 = 0.10;
 const RETENTION_FLOOR: f64 = 0.90;
 
-/// 校准输入。`data_dir` 是本地只读数据目录;CSV 文件路径不跨目录展开。
+/// 校准输入。`data_dir` 是本地只读数据目录;观测文件(.csv / .xlsx)路径不跨目录展开。
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct CalibrationInput {
     pub yaml: String,
@@ -53,6 +55,9 @@ struct ObservedValue {
 #[derive(Debug, Deserialize)]
 struct SeriesMapping {
     file: String,
+    /// 工作表名:仅 .xlsx 数据源可用;缺省取第一张表。
+    #[serde(default)]
+    sheet: Option<String>,
     day_column: String,
     value_column: String,
     denominator_column: Option<String>,
@@ -93,6 +98,24 @@ fn parse_mapping(raw: &str) -> Result<Mapping, String> {
                 "mapping.series.{name} 的 file/day_column/value_column 不可为空"
             ));
         }
+        // 路径边界先于载体白名单(绝对路径/穿越报边界,不报格式)。
+        require_in_data_dir(&series.file)?;
+        // 载体显式声明:按扩展名白名单(.csv / .xlsx),其它格式拒绝而不是猜。
+        let carrier = series.file.to_ascii_lowercase();
+        if !carrier.ends_with(".csv") && !carrier.ends_with(".xlsx") {
+            return Err(format!("mapping.series.{name} 仅支持 .csv / .xlsx 数据源"));
+        }
+        // sheet 是工作簿概念:CSV 没有工作表,结构期即拒绝;空名与列名同一纪律。
+        if let Some(sheet) = series.sheet.as_deref() {
+            if sheet.is_empty() {
+                return Err(format!("mapping.series.{name} sheet 不可为空字符串"));
+            }
+            if !carrier.ends_with(".xlsx") {
+                return Err(format!(
+                    "mapping.series.{name} 只有 .xlsx 数据源才能指定 sheet"
+                ));
+            }
+        }
         if series.denominator_column.is_some() && series.aggregation != Aggregation::Ratio {
             return Err(format!(
                 "mapping.series.{name} 只有 ratio 聚合才能指定 denominator_column"
@@ -112,21 +135,10 @@ fn require_positive(value: f64, what: &str) -> Result<(), String> {
     }
 }
 
-fn require_existing_dir(raw: &str) -> Result<std::path::PathBuf, String> {
-    let path = Path::new(raw);
-    let meta =
-        std::fs::metadata(path).map_err(|e| format!("数据路径不可访问 {}: {e}", path.display()))?;
-    if !meta.is_dir() {
-        return Err(format!(
-            "数据路径不是目录: {}(calibrate 只读本地目录)",
-            path.display()
-        ));
-    }
-    path.canonicalize()
-        .map_err(|e| format!("数据路径规范化失败 {}: {e}", path.display()))
-}
-
-fn read_csv_rows(dir: &Path, file: &str) -> Result<Vec<BTreeMap<String, String>>, String> {
+/// mapping 文件路径的字符串级边界:空、穿越、盘符、绝对路径一律拒绝。
+/// 结构校验期(parse_mapping)与读取期(read_table_rows)共用同一套口径,
+/// 路径边界先于载体白名单——`/etc/passwd` 报边界而不是报格式。
+fn require_in_data_dir(file: &str) -> Result<(), String> {
     if file.is_empty() {
         return Err("mapping 文件路径不可为空".into());
     }
@@ -148,6 +160,34 @@ fn read_csv_rows(dir: &Path, file: &str) -> Result<Vec<BTreeMap<String, String>>
     if file.starts_with('/') || file.starts_with('\\') {
         return Err("mapping 文件路径必须留在数据目录内".into());
     }
+    Ok(())
+}
+
+fn require_existing_dir(raw: &str) -> Result<std::path::PathBuf, String> {
+    let path = Path::new(raw);
+    let meta =
+        std::fs::metadata(path).map_err(|e| format!("数据路径不可访问 {}: {e}", path.display()))?;
+    if !meta.is_dir() {
+        return Err(format!(
+            "数据路径不是目录: {}(calibrate 只读本地目录)",
+            path.display()
+        ));
+    }
+    path.canonicalize()
+        .map_err(|e| format!("数据路径规范化失败 {}: {e}", path.display()))
+}
+
+/// 读一张观测表为字符串行字典,CSV 与 XLSX 两条入口同一产出:
+/// 表头/单元格值 trim、列缺失按名查、行序保持。xlsx 只是载体,聚合语义零变化。
+fn read_table_rows(
+    dir: &Path,
+    file: &str,
+    sheet: Option<&str>,
+) -> Result<Vec<BTreeMap<String, String>>, String> {
+    if file.is_empty() {
+        return Err("mapping 文件路径不可为空".into());
+    }
+    require_in_data_dir(file)?;
     let path = dir.join(file);
     let resolved = path
         .canonicalize()
@@ -155,18 +195,44 @@ fn read_csv_rows(dir: &Path, file: &str) -> Result<Vec<BTreeMap<String, String>>
     if !resolved.starts_with(dir) {
         return Err("mapping 文件路径必须留在数据目录内".into());
     }
-    let text = std::fs::read_to_string(&resolved).map_err(|_| "mapping 文件不可读".to_string())?;
+    let (headers, records): (Vec<String>, Vec<Vec<String>>) =
+        if file.to_ascii_lowercase().ends_with(".xlsx") {
+            // 读端双口径:文件打不开只报「不可读」,不展开 zip/XML 内部错误;
+            // 内容级错误(缺工作表、错误单元格带行列号)原样透传给最终用户。
+            let (header, rows) = xlsx::read_sheet(&resolved, sheet, 1).map_err(|e| match e {
+                xlsx::XlsxReadError::Unreadable(_) => "mapping 文件不可读".to_string(),
+                xlsx::XlsxReadError::Content(message) => message,
+            })?;
+            (header, rows)
+        } else {
+            // CSV 没有 sheet 概念;结构校验已拦,这里兜底防御。
+            if sheet.is_some() {
+                return Err("只有 .xlsx 数据源才能指定 sheet".into());
+            }
+            let text =
+                std::fs::read_to_string(&resolved).map_err(|_| "mapping 文件不可读".to_string())?;
+            let mut reader = csv::ReaderBuilder::new()
+                .has_headers(true)
+                .flexible(true)
+                .from_reader(text.as_bytes());
+            let headers = reader
+                .headers()
+                .map_err(|e| format!("读 {} 表头失败: {e}", path.display()))?
+                .iter()
+                .map(|h| h.to_string())
+                .collect::<Vec<_>>();
+            let records = reader
+                .records()
+                .map(|record| -> Result<Vec<String>, String> {
+                    let record =
+                        record.map_err(|e| format!("读 {} 行失败: {e}", path.display()))?;
+                    Ok(record.iter().map(|v| v.to_string()).collect::<Vec<_>>())
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            (headers, records)
+        };
     let mut result = Vec::new();
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .flexible(true)
-        .from_reader(text.as_bytes());
-    let headers = reader
-        .headers()
-        .map_err(|e| format!("读 {} 表头失败: {e}", path.display()))?
-        .clone();
-    for record in reader.records() {
-        let record = record.map_err(|e| format!("读 {} 行失败: {e}", path.display()))?;
+    for record in records {
         let mut row = BTreeMap::new();
         for (header, value) in headers.iter().zip(record.iter()) {
             row.insert(header.trim().to_string(), value.trim().to_string());
@@ -198,7 +264,7 @@ fn read_series(
     name: &str,
     mapping: &SeriesMapping,
 ) -> Result<BTreeMap<u32, f64>, String> {
-    let rows = read_csv_rows(dir, &mapping.file)?;
+    let rows = read_table_rows(dir, &mapping.file, mapping.sheet.as_deref())?;
     let mut grouped: BTreeMap<u32, (f64, Option<f64>)> = BTreeMap::new();
     for row in rows {
         let day_raw = row
@@ -448,3 +514,6 @@ pub fn calibrate_native(input: &CalibrationInput) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tests_xlsx;

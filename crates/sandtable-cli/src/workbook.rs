@@ -109,8 +109,9 @@ fn xml_escape(text: &str) -> String {
     out
 }
 
-/// 0 基列号 → Excel 列标(A、Z、AA)。
-fn col_letter(index: usize) -> String {
+/// 0 基列号 → Excel 列标(A、Z、AA)。写入端与读回端(xlsx 模块错误
+/// 定位)共用同一套列标,保证错误行号在 Excel 里直接可寻址。
+pub fn col_letter(index: usize) -> String {
     let mut out = String::new();
     let mut n = index;
     loop {
@@ -130,6 +131,15 @@ impl Sheet {
             header,
             rows: Vec::new(),
         }
+    }
+
+    /// 从表头 + 文本行构造一张表:逐字段数值推断(与 `push_rows` 同口径)。
+    /// 供往返回写(模拟用户在 Excel 里改完观测列再打包)与测试使用;
+    /// 产物主装配路径仍走 `build`,不经过这里。
+    pub fn from_table(name: &str, header: Vec<String>, rows: Vec<Vec<String>>) -> Self {
+        let mut sheet = Sheet::new(name, header);
+        sheet.push_rows(rows);
+        sheet
     }
 
     /// 文本行入表:逐字段转单元格(数值字段成真数值)。
@@ -196,6 +206,12 @@ pub struct Workbook {
 }
 
 impl Workbook {
+    /// 从给定表装配工作簿(sheets 顺序即工作表顺序)。`Workbook::write`
+    /// 的空表守卫、表名合法化在这里同样生效。
+    pub fn from_sheets(sheets: Vec<Sheet>) -> Self {
+        Workbook { sheets }
+    }
+
     pub fn sheet_count(&self) -> usize {
         self.sheets.len()
     }

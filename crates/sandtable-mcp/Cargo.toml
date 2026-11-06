@@ -22,6 +22,9 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 serde_yaml_ng = "0.10"
 csv = "1.4"
 anyhow = "1"
+# XLSX 观测数据入口与往返测试的读取/写入面:复用 CLI 的 xlsx 读取层与
+# workbook 打包(同一套表语义,不在壳层间复制实现)
+sandtable-cli = { path = "../sandtable-cli" }
 
 [dev-dependencies]
 # e2e:官方客户端 + 子进程传输,真 spawn 本 crate 二进制走 stdio 握手

@@ -9,6 +9,9 @@ use super::*;
 const SCENARIO: &str =
     "schema_version: \"1\"\nscenario: {population: 100, duration: \"7d\", seed: 7}\n";
 
+/// 兄弟测试模块(tests_xlsx)复用同一场景:CSV 与 XLSX 等价性要同一份仿真输入。
+pub(crate) const XLSX_SCENARIO: &str = SCENARIO;
+
 fn temp_dir(tag: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

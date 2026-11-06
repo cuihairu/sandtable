@@ -16,7 +16,8 @@ mod params;
 mod project;
 mod report;
 mod scaffold;
-mod workbook;
+
+use sandtable_cli::workbook;
 
 #[derive(Parser)]
 #[command(

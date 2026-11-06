@@ -527,8 +527,12 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn truthy(v: f64) -> bool {
-    v != 0.0
+fn truthy(v: f64) -> Option<bool> {
+    if v.is_nan() {
+        None
+    } else {
+        Some(v != 0.0)
+    }
 }
 
 fn eval_expr(e: &Expr, env: &[f64]) -> f64 {
@@ -537,13 +541,11 @@ fn eval_expr(e: &Expr, env: &[f64]) -> f64 {
         Expr::Const(v) => *v,
         Expr::Var(i) => env.get(*i as usize).copied().unwrap_or(f64::NAN),
         Expr::Neg(x) => -ev(x),
-        Expr::Not(x) => {
-            if truthy(ev(x)) {
-                0.0
-            } else {
-                1.0
-            }
-        }
+        Expr::Not(x) => match truthy(ev(x)) {
+            Some(true) => 0.0,
+            Some(false) => 1.0,
+            None => f64::NAN,
+        },
         Expr::Add(a, b) => ev(a) + ev(b),
         Expr::Sub(a, b) => ev(a) - ev(b),
         Expr::Mul(a, b) => ev(a) * ev(b),
@@ -572,27 +574,29 @@ fn eval_expr(e: &Expr, env: &[f64]) -> f64 {
         Expr::Ge(a, b) => nan_compare(ev(a), ev(b), |x, y| x >= y),
         Expr::Eq(a, b) => nan_compare(ev(a), ev(b), |x, y| x == y),
         Expr::Ne(a, b) => nan_compare(ev(a), ev(b), |x, y| x != y),
-        Expr::And(a, b) => {
-            if truthy(ev(a)) && truthy(ev(b)) {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        Expr::Or(a, b) => {
-            if truthy(ev(a)) || truthy(ev(b)) {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        Expr::Ternary(c, t, f) => {
-            if truthy(ev(c)) {
-                ev(t)
-            } else {
-                ev(f)
-            }
-        }
+        Expr::And(a, b) => match truthy(ev(a)) {
+            Some(false) => 0.0,
+            Some(true) => match truthy(ev(b)) {
+                Some(true) => 1.0,
+                Some(false) => 0.0,
+                None => f64::NAN,
+            },
+            None => f64::NAN,
+        },
+        Expr::Or(a, b) => match truthy(ev(a)) {
+            Some(true) => 1.0,
+            Some(false) => match truthy(ev(b)) {
+                Some(true) => 1.0,
+                Some(false) => 0.0,
+                None => f64::NAN,
+            },
+            None => f64::NAN,
+        },
+        Expr::Ternary(c, t, f) => match truthy(ev(c)) {
+            Some(true) => ev(t),
+            Some(false) => ev(f),
+            None => f64::NAN,
+        },
         Expr::Call(builtin, args) => {
             let a = |i: usize| eval_expr(&args[i], env);
             match builtin {
@@ -745,6 +749,22 @@ mod tests {
         assert!(eval_str("1/0 == 0").is_nan());
         assert!(eval_str("1/0 != 0").is_nan());
         assert!(eval_str("(1/0 > 0) + 1").is_nan());
+    }
+
+    /// 2026-11-06 审核发现:比较产生的 NaN 作为逻辑条件时不能再被 truthy
+    /// 洗成有效值。NOT/AND/OR/三元任一路径都必须保持缺失语义。
+    #[test]
+    fn nan_condition_remains_nan_in_logic_gates() {
+        assert!(eval_str("!(1/0 > 0)").is_nan());
+        assert!(eval_str("(1/0 > 0) && 1").is_nan());
+        assert!(eval_str("1 && (1/0 > 0)").is_nan());
+        assert!(eval_str("(1/0 > 0) || 0").is_nan());
+        assert!(eval_str("0 || (1/0 > 0)").is_nan());
+        assert!(eval_str("(1/0 > 0) ? 1 : 0").is_nan());
+
+        // 条件含 NaN 时整个三元保持缺失;确定性分支仍短路
+        assert!(eval_str("(1/0 > 0) && 1 ? 4 : 5").is_nan());
+        assert_eq!(eval_str("0 || 1 ? 6 : 1/0"), 6.0);
     }
 
     #[test]

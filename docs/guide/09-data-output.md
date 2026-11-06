@@ -189,6 +189,16 @@ The workbook is **read-only data delivery**, not a configuration entrance: it re
 
 The workbook keeps the evaluation red line on the intake side unchanged: mapping sheet structures back onto the nested YAML config tree remains **not recommended**, and the flat `params.csv` channel stays the only configuration path. The reader is provided as a zero-dependency template — `scripts/templates/workbook_sheets.py` (`list` / `dump <sheet>` / `check`) reads the workbook with the Python standard library alone, relying on the single-header-row / real-numeric-cell contract above; it needs no pandas or openpyxl.
 
+### Roundtrip: export → edit → read back (calibration)
+
+「Read-only delivery」 describes the export side — the pipeline reads artifacts without recomputation — not a ban on users editing what they receive. Observation data is allowed to flow back: the closed loop is `sandtable workbook` exports `sandbox.xlsx` → edit the **observation value columns** in Excel → read back through the MCP `sandtable_calibrate` tool with a series mapping pointing at the edited sheet. The edited values land in the per-day anchors verbatim, and equivalence is locked by test: the same observation rows carried as `.xlsx` and as `.csv` produce byte-identical calibration output (see [calibration design](../calibration-design.md) §2).
+
+Editable boundary, stated precisely — the calibration loader reads only the sheet a series mapping names, matched by column names:
+
+- **`daily` observation value columns: editable.** These are the observed KPIs being calibrated against (e.g. `win_rate`, `income_per_active`). The `day` axis column and the column *set* must stay untouched — columns are matched by name, so renaming or deleting a mapped column is a hard error, not a silent skip;
+- **`manifest` / `metric_dictionary`: never edit.** Self-description and the kernel metric dictionary. They are not observation input; edits there have no calibration effect and only mislead the audit trail;
+- **Configuration intake stays CSV-only.** The workbook gaining an observation read-back channel does not reopen multi-sheet → config-tree mapping; the flat `params.csv` channel remains the only configuration path.
+
 ## Analysis-side interfaces
 
 - Keep the quality of CSV / Parquet output (when the feature is enabled) so notebook analysis flows smoothly;
