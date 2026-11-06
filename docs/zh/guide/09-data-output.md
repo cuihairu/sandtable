@@ -190,6 +190,16 @@ sandtable workbook experiment-out/ --out workflow.xlsx
 
 工作簿保持接入侧评估红线不变:把分表结构映射回 YAML 嵌套配置树依旧**不推荐**,扁平 `params.csv` 通道仍是唯一配置路径。读回端以零依赖模板提供——`scripts/templates/workbook_sheets.py`(`list` / `dump <表>` / `check`)纯 Python 标准库即可读,依赖上文的单行表头 / 真数值单元格契约,不需要 pandas 或 openpyxl。
 
+### 往返闭环:导出 → 改 → 回读(校准)
+
+「只读交付」说的是导出侧——流水线读产物不重算——不是禁止用户编辑拿到的数据。观测数据允许回流:闭环是 `sandtable workbook` 导出 `sandbox.xlsx` → 在 Excel 里改**观测数值列** → 经 MCP `sandtable_calibrate` 工具回读(series mapping 指向被编辑的工作表)。编辑值逐字落进逐日锚点,等价性由测试锁定:同一份观测行分别以 `.xlsx` 与 `.csv` 为载体,产出逐字节一致的校准输出(见[校准设计](../calibration-design.md) §2)。
+
+可改边界逐条说清——校准装载器只读 series mapping 指名的那张表,按列名匹配:
+
+- **`daily` 的观测数值列:可改。** 这些是被校准的观测 KPI(如 `win_rate`、`income_per_active`)。`day` 轴列与列集必须不动——列按名匹配,改名或删除被映射的列是硬错误,不是静默跳过;
+- **`manifest` / `metric_dictionary`:不可改。** 自描述与内核指标字典,不是观测输入;改它们不产生任何校准效果,只会污染对账轨迹;
+- **配置接入仍只走 CSV。** 工作簿获得观测回读通道,不重开「多 sheet → 配置树映射」;扁平 `params.csv` 通道仍是唯一配置路径。
+
 ## 分析侧接口
 
 - 保证 CSV / Parquet(feature 启用时)输出质量,使 notebook 分析顺畅;
