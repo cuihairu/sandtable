@@ -3887,6 +3887,7 @@ dependencies = [
  "csv",
  "rayon",
  "rmcp",
+ "sandtable-cli",
  "sandtable-core",
  "serde",
  "serde_json",
