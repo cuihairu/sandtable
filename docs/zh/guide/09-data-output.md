@@ -192,7 +192,7 @@ sandtable workbook experiment-out/ --out workflow.xlsx
 
 ### 往返闭环:导出 → 改 → 回读(校准)
 
-「只读交付」说的是导出侧——流水线读产物不重算——不是禁止用户编辑拿到的数据。观测数据允许回流:闭环是 `sandtable workbook` 导出 `sandbox.xlsx` → 在 Excel 里改**观测数值列** → 经 MCP `sandtable_calibrate` 工具回读(series mapping 指向被编辑的工作表)。编辑值逐字落进逐日锚点,等价性由测试锁定:同一份观测行分别以 `.xlsx` 与 `.csv` 为载体,产出逐字节一致的校准输出(见[校准设计](../calibration-design.md) §2)。
+「只读交付」说的是导出侧——流水线读产物不重算——不是禁止用户编辑拿到的数据。观测数据允许回流:闭环是 `sandtable workbook` 导出 `sandbox.xlsx` → 在 Excel 里改**观测数值列** → 经 MCP `sandtable_calibrate` 工具回读(series mapping 指向被编辑的工作表)。编辑值逐值落进逐日锚点(数值一致,经最短往返数值文本;不保留单元格原始数字格式),等价性由测试锁定:同一份观测行分别以 `.xlsx` 与 `.csv` 为载体,产出逐字节一致的校准输出(见[校准设计](../calibration-design.md) §2)。
 
 可改边界逐条说清——校准装载器只读 series mapping 指名的那张表,按列名匹配:
 

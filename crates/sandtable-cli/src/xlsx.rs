@@ -460,7 +460,10 @@ mod tests {
         patch_sheet1(&base, &offset, OFFSET_SHEET_XML);
         // 表头在第 2 行(绝对);第 1 行在有效区域之外,整行为空。
         let header_row_1 = read_sheet(&offset, None, 1).unwrap();
-        assert_eq!(header_row_1.0, vec![String::new(), String::new(), String::new()]);
+        assert_eq!(
+            header_row_1.0,
+            vec![String::new(), String::new(), String::new()]
+        );
         // 表头行 = 绝对第 2 行:B2/C2;数据 = 绝对第 3 行起,有效区域外的
         // 行 4 与列 A 按空处理。
         let (header, rows) = read_sheet(&offset, None, 2).unwrap();
