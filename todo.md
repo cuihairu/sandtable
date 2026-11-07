@@ -805,4 +805,5 @@
 
 ## 策划向设计工具（2026-11-08 用户令，方向已拍板=做 sandtable 策划友好面）
 
-- [ ] ST-WB-011 [P1] 策划友好可视化模型编辑面：市场调研结论（Machinations 十年/itembase/免费单点工具一堆=红海，不重新发明；差异化在 sandtable 确定性内核+CRN 对照+CI95）——把现有 Web 工作台（apps/web/src/workbench/ 已有 designer/params/analysis 等页）升级为策划可直接编辑的可视化模型：① loot table / gacha 保底 / 行为画像用表单+图形编辑而非手写 YAML（scenario 结构已有 config 校验，转表单映射）；② 参数变更实时跑核，出分布图（histogram + CI95 + CRN 对照差），复用内核零改动；③ 拖拽式依赖图（economy/combat 流）复用现有 designer 页；④ 验收=策划（非工程师）走查：不写 YAML 建一个含 loot+gacha 的场景并出对比报告。
+- [x] ST-WB-011 [P1] 策划友好可视化模型编辑面：市场调研结论（Machinations 十年/itembase/免费单点工具一堆=红海，不重新发明；差异化在 sandtable 确定性内核+CRN 对照+CI95）——把现有 Web 工作台（apps/web/src/workbench/ 已有 designer/params/analysis 等页）升级为策划可直接编辑的可视化模型：① loot table / gacha 保底 / 行为画像用表单+图形编辑而非手写 YAML（scenario 结构已有 config 校验，转表单映射）；② 参数变更实时跑核，出分布图（histogram + CI95 + CRN 对照差），复用内核零改动；③ 拖拽式依赖图（economy/combat 流）复用现有 designer 页；④ 验收=策划（非工程师）走查：不写 YAML 建一个含 loot+gacha 的场景并出对比报告。
+  - 落地（2026-11-08）：抽签编辑器（GachaEditor，6 字段+预检+diff+写回 model.gacha）、画像编辑器（BehaviorEditor，三群体表+练级产出面，两段写回）、实时预览（LivePreviewPanel，防抖 400ms 直跑 WASM 核，直方图/双臂+配对差 CI95/verdict 全出自内核 kpi_eval+abCompare，前端零重算）、模型数据流依赖图（DependencyGraph，7 节点 7 边，纯视觉拖拽）。零内核/后端改动、零新依赖。走查 22 断言 0 页面错误；证据 docs/review/2026-11-08-st-wb-011.md + shots-after/st-wb-011/（4 截图）；测试 25 新用例，无 wasm 切片 206/206、pkg-node 130/130、tsc/oxlint/vite build 绿。已知边界：预览为瞬时态不落盘、i18n 就地双语未进 dict、依赖图不做连线编辑。

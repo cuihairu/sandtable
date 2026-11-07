@@ -7,6 +7,7 @@ import {
   renameLootItem, reviewLoot, setLootReward, setLootWeight,
 } from './lootYaml.ts'
 import { kernelCheck } from './paramsLogic.ts'
+import { yamlToValue } from './yamlValue.ts'
 import { useLocale } from '../state/localeStore.ts'
 
 type DraftState = { text: string; checking: boolean; approved: boolean; kernelError: string | null }
@@ -146,41 +147,4 @@ function parseLoot(source: string): Parsed {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'YAML 无效' }
   }
-}
-
-function yamlToValue(source: string): Record<string, unknown> {
-  const root: Record<string, unknown> = {}
-  const stack: Array<{ indent: number; value: Record<string, unknown> }> = [{ indent: -2, value: root }]
-  for (const raw of source.split('\n')) {
-    const comment = raw.indexOf('#')
-    const visible = comment === -1 ? raw : raw.slice(0, comment)
-    if (visible.trim() === '') continue
-    const indent = visible.length - visible.trimStart().length
-    const match = /^([^:]+):\s*(.*)$/.exec(visible.trim())
-    if (!match) continue
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop()
-    const key = match[1].trim()
-    if (match[2] === '') {
-      const child: Record<string, unknown> = {}
-      stack[stack.length - 1].value[key] = child
-      stack.push({ indent, value: child })
-    } else stack[stack.length - 1].value[key] = parseScalar(match[2])
-  }
-  return root
-}
-
-function parseScalar(raw: string): unknown {
-  if (raw === 'true') return true
-  if (raw === 'false') return false
-  if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw)
-  const flow = /^\{(.*)\}$/.exec(raw)
-  if (flow) {
-    const value: Record<string, unknown> = {}
-    for (const part of flow[1].split(',')) {
-      const pair = part.split(':')
-      if (pair.length === 2) value[pair[0].trim()] = parseScalar(pair[1].trim())
-    }
-    return value
-  }
-  return raw.replace(/^['"]|['"]$/g, '')
 }

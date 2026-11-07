@@ -495,14 +495,19 @@ function yamlScalar(value: unknown): string {
 
 function lootToModelYaml(loot: unknown): string | null {
   if (loot === null || typeof loot !== 'object') return null
-  const lines = Object.entries(loot as Record<string, unknown>).map(([childKey, child]) => {
+  return modelChildToModelYaml('loot', loot as Record<string, unknown>)
+}
+
+/** model 直接子节的整段序列化(标量/一层嵌套映射;列表不支持 → null)。 */
+function modelChildToModelYaml(childKey: string, value: Record<string, unknown>): string | null {
+  const lines = Object.entries(value).map(([key, child]) => {
     if (child !== null && typeof child === 'object' && !Array.isArray(child)) {
       const nested = yamlScalarMap(child as Record<string, unknown>, 6)
-      return nested === null ? null : `    ${childKey}:\n${nested}`
+      return nested === null ? null : `    ${key}:\n${nested}`
     }
-    return `    ${childKey}: ${yamlScalar(child)}`
+    return `    ${key}: ${yamlScalar(child)}`
   })
-  return lines.includes(null) ? null : ['  loot:', ...lines].join('\n')
+  return lines.includes(null) ? null : [`  ${childKey}:`, ...lines].join('\n')
 }
 
 function yamlScalarMap(value: Record<string, unknown>, indent: number): string | null {
@@ -702,12 +707,43 @@ export function applyTierTable(yaml: string, rows: readonly TierTableRow[]): App
 /** 把掉落配置整段写回 model.loot;已有节剪切保留注释前一行,缺段追加文件尾。
  * loot 是结构化整体,整段替换避免编辑过程中留下 on_victory/rewards 半配置。 */
 export function applyLootConfig(yaml: string, loot: unknown): ApplyOutcome {
+  return applyModelChildSection(yaml, 'loot', lootToModelYaml(loot), 'loot')
+}
+
+/** 抽签配置整段写回 model.gacha(手术边界与 loot 同)。 */
+export function applyGachaConfig(yaml: string, gacha: unknown): ApplyOutcome {
+  return applyModelChildSection(
+    yaml, 'gacha',
+    gacha === null || typeof gacha !== 'object' ? null : modelChildToModelYaml('gacha', gacha as Record<string, unknown>),
+    'gacha',
+  )
+}
+
+/** 行为画像整段写回 model.behavior(三群体嵌套映射,手术边界同)。 */
+export function applyBehaviorConfig(yaml: string, behavior: unknown): ApplyOutcome {
+  return applyModelChildSection(
+    yaml, 'behavior',
+    behavior === null || typeof behavior !== 'object' ? null : modelChildToModelYaml('behavior', behavior as Record<string, unknown>),
+    'behavior',
+  )
+}
+
+/** 训练收益整段写回 model.training(手术边界同)。 */
+export function applyTrainingConfig(yaml: string, training: unknown): ApplyOutcome {
+  return applyModelChildSection(
+    yaml, 'training',
+    training === null || typeof training !== 'object' ? null : modelChildToModelYaml('training', training as Record<string, unknown>),
+    'training',
+  )
+}
+
+/** model.<child> 共用手术:存在(整段替换)/缺段(插 model 节尾)/缺 model(显式错)/malformed(行号错)。 */
+function applyModelChildSection(yaml: string, childKey: string, block: string | null, label: string): ApplyOutcome {
   const lines = yaml.split('\n')
   const parsed = parseConfig(yaml)
   if (parsed.errors.length > 0) return { ok: false, error: `第 ${parsed.errors[0].line} 行:${parsed.errors[0].message}` }
-  const block = lootToModelYaml(loot)
-  if (block === null) return { ok: false, error: 'loot: 无法序列化为受支持 YAML' }
-  const section = parsed.sections.find((item) => item.path === 'model.loot')
+  if (block === null) return { ok: false, error: `${label}: 无法序列化为受支持 YAML` }
+  const section = parsed.sections.find((item) => item.path === `model.${childKey}`)
   if (section) {
     lines.splice(section.startLine - 1, section.endLine - section.startLine + 1, block)
     return { ok: true, yaml: lines.join('\n') }

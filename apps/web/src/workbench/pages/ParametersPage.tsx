@@ -34,6 +34,9 @@ import { ParamMetaPanel } from '../project/ParamMetaPanel.tsx'
 import { GrowthCurveEditor } from '../params/GrowthCurveEditor.tsx'
 import { FormulaEditor } from '../params/FormulaEditor.tsx'
 import { LootTableEditor } from '../params/LootTableEditor.tsx'
+import { GachaEditor } from '../params/GachaEditor.tsx'
+import { BehaviorEditor } from '../params/BehaviorEditor.tsx'
+import { LivePreviewPanel } from '../params/LivePreviewPanel.tsx'
 import { StageRulesEditor } from '../params/StageRulesEditor.tsx'
 import { ParamImportWizard } from '../params/ParamImportWizard.tsx'
 import { t } from '../../lib/i18n/index.ts'
@@ -56,6 +59,8 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
   const [growthOpen, setGrowthOpen] = useState(false)
   const [formulaOpen, setFormulaOpen] = useState(false)
   const [lootOpen, setLootOpen] = useState(false)
+  const [gachaOpen, setGachaOpen] = useState(false)
+  const [behaviorOpen, setBehaviorOpen] = useState(false)
   const [stagesOpen, setStagesOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const view = paramYamlView(state)
@@ -263,6 +268,16 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
     notify('success', locale.startsWith('en') ? 'Stage rules written to the candidate draft' : '阶段规则已写入候选草稿')
   }
 
+  const applyGacha = (yaml: string): void => {
+    dispatch({ type: 'param/write', yaml })
+    notify('success', locale.startsWith('en') ? 'Gacha rules written to the candidate draft' : '抽签规则已写入候选草稿')
+  }
+
+  const applyBehavior = (yaml: string): void => {
+    dispatch({ type: 'param/write', yaml })
+    notify('success', locale.startsWith('en') ? 'Behavior profile written to the candidate draft' : '行为画像已写入候选草稿')
+  }
+
   const applyParamImport = async (edits: Array<{ path: string; text: string }>): Promise<void> => {
     const scratch = applyParamEdits(view.cand, edits)
     if (!scratch.ok) {
@@ -385,6 +400,8 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         <button className="btn" onClick={() => setGrowthOpen(true)}>{t(locale, 'params.growth.open')}</button>
         <button className="btn" onClick={() => setFormulaOpen(true)}>{locale.startsWith('en') ? 'Formula editor' : '公式编辑器'}</button>
         <button className="btn" onClick={() => setLootOpen(true)}>{locale.startsWith('en') ? 'Loot editor' : '掉落编辑器'}</button>
+        <button className="btn" onClick={() => setGachaOpen(true)}>{locale.startsWith('en') ? 'Gacha editor' : '抽签编辑器'}</button>
+        <button className="btn" onClick={() => setBehaviorOpen(true)}>{locale.startsWith('en') ? 'Behavior editor' : '画像编辑器'}</button>
         <button className="btn" onClick={() => setStagesOpen(true)}>{locale.startsWith('en') ? 'Stage rules editor' : '阶段规则编辑器'}</button>
       </div>
       {paramSelected.length > 0 && (
@@ -462,6 +479,7 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
           locale={locale}
         />
       </div>
+      <LivePreviewPanel />
       <GrowthCurveEditor
         key={`${view.cand}`}
         open={growthOpen}
@@ -487,6 +505,24 @@ export function ParametersPage({ state, onRequestResetAll }: ParametersPageProps
         baseYaml={view.base}
         candidateYaml={view.cand}
         onApply={applyStageRules}
+        onSaveVersion={saveStructuredVersion}
+      />
+      <GachaEditor
+        key={`${view.cand}`}
+        open={gachaOpen}
+        onClose={() => setGachaOpen(false)}
+        baseYaml={view.base}
+        candidateYaml={view.cand}
+        onApply={applyGacha}
+        onSaveVersion={saveStructuredVersion}
+      />
+      <BehaviorEditor
+        key={`${view.cand}`}
+        open={behaviorOpen}
+        onClose={() => setBehaviorOpen(false)}
+        baseYaml={view.base}
+        candidateYaml={view.cand}
+        onApply={applyBehavior}
         onSaveVersion={saveStructuredVersion}
       />
       <StageRulesEditor

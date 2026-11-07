@@ -556,6 +556,9 @@ export interface GachaConfig {
   pity_hard: number
   pity_soft_start: number
   pity_soft_step: number
+  // UP 角色歪率/定轨:内核 serde default 0 且 ==0.0 时 YAML 省略;0=无 UP/无定轨。
+  featured_rate?: number
+  featured_guarantee?: number
 }
 
 export interface SimConfig {

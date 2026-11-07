@@ -74,3 +74,24 @@
   .wb-app .lang-switch .key-label{ display: none; }
   .wb-app .lang-switch .lang-code{ display: inline; }
 }
+
+/* ST-WB-011 · 策划友好编辑面:gacha 表单字段、实时预览图、依赖图 */
+.wb-app .growth-fields{ display:grid; grid-template-columns:repeat(2, minmax(140px, 1fr)); gap:10px 14px; }
+.wb-app .growth-fields label{ display:grid; gap:4px; font-size:12px; color:var(--wb-muted); }
+.wb-app .growth-fields input{ width:100%; min-height:28px; padding:4px 8px; }
+.wb-app .live-controls{ display:flex; gap:14px; align-items:end; margin:10px 0 4px; flex-wrap:wrap; }
+.wb-app .live-controls label{ display:grid; gap:4px; font-size:12px; color:var(--wb-muted); }
+.wb-app .live-controls select{ min-height:28px; padding:3px 6px; }
+.wb-app .live-figures .mini-chart{ height:150px; }
+.wb-app .live-hist-bar{ fill:#7fb7b8; stroke:#5f9d9e; }
+.wb-app .live-ci-line{ stroke:#17696b; stroke-width:2; }
+.wb-app .live-ci-point{ fill:#17696b; }
+.wb-app .live-paired-point{ fill:#8c5b09; }
+.wb-app .live-zero-line{ stroke:var(--wb-muted); stroke-dasharray:4 3; }
+.wb-app .graph-canvas{ width:100%; height:auto; display:block; border:1px solid var(--wb-line); border-radius:4px; background:#fbfdfd; }
+.wb-app .graph-edge{ stroke:#9eb0b8; stroke-width:1.5; }
+.wb-app .graph-node{ cursor:grab; }
+.wb-app .graph-node:active{ cursor:grabbing; }
+.wb-app .graph-node rect{ fill:#eef7f7; stroke:#b4d6d7; }
+.wb-app .graph-node:hover rect{ fill:#e0f0f0; }
+.wb-app .graph-node-label{ font-size:12px; fill:#222c30; pointer-events:none; }

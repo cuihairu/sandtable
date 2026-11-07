@@ -31,6 +31,7 @@ import { KpiConstraintTable } from '../designer/KpiConstraintTable.tsx'
 import { RunPlanSidebar } from '../designer/RunPlanSidebar.tsx'
 import type { PlanState } from '../designer/RunPlanSidebar.tsx'
 import { SweepDesignPreview } from '../designer/SweepDesignPreview.tsx'
+import { DependencyGraph } from '../designer/DependencyGraph.tsx'
 import {
   designErrors, factorRowError, sweepModeOf,
   scenarioStats, kpiAvailability, createSubmitGuard, createPlanGate,
@@ -546,6 +547,18 @@ export function DesignerPage({ state }: { state: WorkbenchState }): JSX.Element 
             onKindChange={onKpiKind}
             onThresholdChange={onThreshold}
           />
+
+          {/* ST-WB-011 · 模型数据流依赖图(设计器向):拖拽整理,位置不进模型 */}
+          <section className="form-section">
+            <div className="form-section-heading">
+              <h2>{locale.startsWith('en') ? 'Model data flow' : '模型数据流'}</h2>
+              <span className="badge">{locale.startsWith('en') ? 'View · drag to rearrange' : '视图 · 可拖拽整理'}</span>
+            </div>
+            <p className="note">{locale.startsWith('en')
+              ? 'How combat, economy, gacha, loot, training, progression and churn feed each other. Layout is a view aid only.'
+              : '战斗、经济、抽签、掉落、练级、成长与流失的数据流向;布局只是视图辅助,不改模型。'}</p>
+            <DependencyGraph />
+          </section>
         </div>
         <RunPlanSidebar
           design={design}
