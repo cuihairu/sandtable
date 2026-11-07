@@ -802,3 +802,7 @@
 
 - [ ] LAY-014 [P1] `apps/web/src/lib/wasm.ts` 名称暗示浏览器 WASM，但实际按宿主分发 Tauri invoke 与 Worker/WASM，并在同一文件包含本地查询入口（apps/web/src/lib/wasm.ts:48）。
 - [ ] LAY-015 [P1] `crates/sandtable-cli/src/analyze.rs` 执行脚本级只读策略，但根据 `scripts/scripting-design.md` 的脚本层设计，脚本分析边界不在 CLI 外壳内（crates/sandtable-cli/src/analyze.rs:107）。
+
+## 策划向设计工具（2026-11-08 用户令，方向已拍板=做 sandtable 策划友好面）
+
+- [ ] ST-WB-011 [P1] 策划友好可视化模型编辑面：市场调研结论（Machinations 十年/itembase/免费单点工具一堆=红海，不重新发明；差异化在 sandtable 确定性内核+CRN 对照+CI95）——把现有 Web 工作台（apps/web/src/workbench/ 已有 designer/params/analysis 等页）升级为策划可直接编辑的可视化模型：① loot table / gacha 保底 / 行为画像用表单+图形编辑而非手写 YAML（scenario 结构已有 config 校验，转表单映射）；② 参数变更实时跑核，出分布图（histogram + CI95 + CRN 对照差），复用内核零改动；③ 拖拽式依赖图（economy/combat 流）复用现有 designer 页；④ 验收=策划（非工程师）走查：不写 YAML 建一个含 loot+gacha 的场景并出对比报告。
