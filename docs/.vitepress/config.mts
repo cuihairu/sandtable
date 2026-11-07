@@ -66,7 +66,9 @@ export default withMermaid(
                   { text: '19 · Testing Strategy', link: '/guide/19-testing' },
                   { text: '20 · Design Principles and Vision', link: '/guide/20-principles-vision' },
                   { text: '21 · Real-Config Validation: The Pokémon Case', link: '/guide/21-pokemon-case' },
-                  { text: '22 · Web', link: '/guide/22-web' }
+                  { text: '22 · Web', link: '/guide/22-web' },
+                  { text: '27 · Architecture Layers', link: '/guide/27-architecture-layers' },
+                  { text: '28 · Glossary', link: '/guide/28-glossary' }
                 ]
               },
               {
@@ -160,7 +162,9 @@ export default withMermaid(
                   { text: '19 · 测试策略', link: '/zh/guide/19-testing' },
                   { text: '20 · 设计原则与愿景', link: '/zh/guide/20-principles-vision' },
                   { text: '21 · 真实配置验证:宝可梦案例', link: '/zh/guide/21-pokemon-case' },
-                  { text: '22 · Web 端', link: '/zh/guide/22-web' }
+                  { text: '22 · Web 端', link: '/zh/guide/22-web' },
+                  { text: '27 · 架构分层', link: '/zh/guide/27-architecture-layers' },
+                  { text: '28 · 术语表', link: '/zh/guide/28-glossary' }
                 ]
               },
               {

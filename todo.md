@@ -768,3 +768,37 @@
       核证 2026-11-06 属实：days==1 时内核 metrics 把 inflation_last 记 0.0 并随汇总导出，前端声明 `number | null` 但 JSON 实际省略该键（skip_serializing_if），消费端按类型取值会得到 undefined。修法=前端类型改 `inflation_last?: number`（可选字段，与 gacha_pulls_to_hit / loot_gold_per_player 同口径）。复核=`npx tsc -b` 净 + `cargo test --workspace` 全绿（file:apps/web/src/lib/types.ts:69）。
 - [ ] 审核发现：XLSX 读取把 calamine 非空区域的相对坐标当成工作表绝对坐标，首个非空单元格不在第 1 行或 A 列时会错读表头或报告错误的单元格位置（crates/sandtable-cli/src/xlsx.rs:133）。
 - [ ] 审核发现：读取 XLSX 前未限制工作表范围，少量相距极远的单元格（如 A1 和 XFD1048576）会使 calamine 分配覆盖整个矩形的稠密数组，导致 MCP 进程内存耗尽或终止（crates/sandtable-cli/src/xlsx.rs:95）。
+
+## 源码分层分析 2026-11-07
+
+### 抽象层清单
+
+- L1 场景与配置编译：解析/校验场景与实验 YAML，并编译为运行时 `SimConfig`（crates/sandtable-core/src/scenario.rs:98）。
+- L2 仿真核心：在内存 World 上以确定性事件与系统规则产出 replicate 指标（crates/sandtable-core/src/kernel.rs:123）。
+- L3 实验与统计：展开实验计划、聚合样本，并完成对照、优化、推荐与敏感性分析（crates/sandtable-core/src/experiment.rs:120）。
+- L4 输出契约与互操作：定义稳定产物格式，并在内部结果与文件/工作簿/引擎载荷之间转换（crates/sandtable-engine/src/contract.rs:35）。
+- L5 平台绑定：用 WASM、Python、MCP 和桌面原生命令暴露同一核心能力（crates/sandtable-wasm/src/lib.rs:188）。
+- L6 CLI 外壳：解析命令行、编排文件 I/O 与 run/report/query 工作流（crates/sandtable-cli/src/main.rs:33）。
+- L7 Web 工作台：维护浏览器/桌面 UI 的草稿、任务、进度、偏好与展示（apps/web/src/workbench/WorkbenchApp.tsx:129）。
+- L8 数据与查询：加载结果产物到 DuckDB，执行受边界约束的用户 SQL（apps/web/src/lib/duck.ts:20）。
+
+### 超大文件候选
+
+- [ ] LAY-001 [P1] 拆分 crates/sandtable-core/src/config.rs（2012 行）——编译结构、逐域校验与哈希同文件，配置边界已被多种外壳共同依赖（crates/sandtable-core/src/config.rs:647）。
+- [ ] LAY-002 [P1] 拆分 crates/sandtable-cli/src/main.rs（1827 行）——命令分发与多类文件读写/输出整形集中在一个入口（crates/sandtable-cli/src/main.rs:33）。
+- [ ] LAY-003 [P1] 拆分 apps/desktop/src-tauri/src/lib.rs（1495 行）——Tauri commands、任务进度注册和 DuckDB 查询同文件（apps/desktop/src-tauri/src/lib.rs:562）。
+- [ ] LAY-004 [P1] 拆分 crates/sandtable-wasm/src/lib.rs（1370 行）——多个能力的 native 语义与 wasm-bindgen 包装并列成单入口（crates/sandtable-wasm/src/lib.rs:188）。
+- [ ] LAY-005 [P1] 拆分 crates/sandtable-cli/src/report.rs（1333 行）——解析、HTML 外壳与 SVG 图表生成同文件（crates/sandtable-cli/src/report.rs:66）。
+- [ ] LAY-006 [P1] 拆分 apps/web/src/lib/i18n/dict/zh.ts（1326 行）——全站中文文案集中在单一词典（apps/web/src/lib/i18n/dict/zh.ts:19）。
+- [ ] LAY-007 [P1] 拆分 apps/web/src/lib/i18n/dict/en.ts（1322 行）——全站英文文案集中在单一词典（apps/web/src/lib/i18n/dict/en.ts:19）。
+- [ ] LAY-008 [P1] 拆分 crates/sandtable-core/src/scenario.rs（1320 行）——YAML 解析、注册表检查、实验加载器和示例模板同文件（crates/sandtable-core/src/scenario.rs:98）。
+- [ ] LAY-009 [P1] 拆分 crates/sandtable-core/src/optimize.rs（1318 行）——搜索策略、适应度、Pareto 与统计汇总集中在一处（crates/sandtable-core/src/optimize.rs:73）。
+- [ ] LAY-010 [P1] 拆分 crates/sandtable-core/src/experiment.rs（1245 行）——样本统计、对照判定、指标键与日聚合混杂（crates/sandtable-core/src/experiment.rs:120）。
+- [ ] LAY-011 [P1] 拆分 crates/sandtable-core/src/sim.rs（1126 行）——系统实现、事件类型、注册与调度同文件（crates/sandtable-core/src/sim.rs:153）。
+- [ ] LAY-012 [P1] 拆分 crates/sandtable-core/src/registry.rs（1007 行）——静态参数表、读写镜像与树检查集中（crates/sandtable-core/src/registry.rs:15）。
+- [ ] LAY-013 [P1] 拆分 apps/web/tests/execution.test.mjs（1252 行）——FSM、Worker 协议、执行引擎、队列和预算测试集中（apps/web/tests/execution.test.mjs:13）。
+
+### 目录/分类不合理处
+
+- [ ] LAY-014 [P1] `apps/web/src/lib/wasm.ts` 名称暗示浏览器 WASM，但实际按宿主分发 Tauri invoke 与 Worker/WASM，并在同一文件包含本地查询入口（apps/web/src/lib/wasm.ts:48）。
+- [ ] LAY-015 [P1] `crates/sandtable-cli/src/analyze.rs` 执行脚本级只读策略，但根据 `scripts/scripting-design.md` 的脚本层设计，脚本分析边界不在 CLI 外壳内（crates/sandtable-cli/src/analyze.rs:107）。
