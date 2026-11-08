@@ -766,8 +766,10 @@
       核证 2026-11-06 属实：truthy(v)=v!=0.0 对 NaN 恒真（NaN != 0 为 true），NOT/AND/OR/三元把比较产生的 NaN 当 truthy 洗成有效值。修法=truthy 返回 Option<bool>（NaN 即 None），NOT/AND/OR/三元任一路径遇 NaN 传播缺失；AND/OR 保留确定性短路（false && x → 0，true || x → 1）。复核=`cargo test -p sandtable-core` 227 全绿（含 nan_condition_remains_nan_in_logic_gates）+ `cargo test --workspace` 全绿（file:crates/sandtable-core/src/formula.rs:530）。
 - [x] 审核发现：单日运行的 inflation_last 在 JSON 中被省略，但前端类型声明为必有的 number 或 null，消费者按类型使用时实际会得到 undefined（apps/web/src/lib/types.ts:68）。
       核证 2026-11-06 属实：days==1 时内核 metrics 把 inflation_last 记 0.0 并随汇总导出，前端声明 `number | null` 但 JSON 实际省略该键（skip_serializing_if），消费端按类型取值会得到 undefined。修法=前端类型改 `inflation_last?: number`（可选字段，与 gacha_pulls_to_hit / loot_gold_per_player 同口径）。复核=`npx tsc -b` 净 + `cargo test --workspace` 全绿（file:apps/web/src/lib/types.ts:69）。
-- [ ] 审核发现：XLSX 读取把 calamine 非空区域的相对坐标当成工作表绝对坐标，首个非空单元格不在第 1 行或 A 列时会错读表头或报告错误的单元格位置（crates/sandtable-cli/src/xlsx.rs:133）。
-- [ ] 审核发现：读取 XLSX 前未限制工作表范围，少量相距极远的单元格（如 A1 和 XFD1048576）会使 calamine 分配覆盖整个矩形的稠密数组，导致 MCP 进程内存耗尽或终止（crates/sandtable-cli/src/xlsx.rs:95）。
+- [x] 审核发现：XLSX 读取把 calamine 非空区域的相对坐标当成工作表绝对坐标，首个非空单元格不在第 1 行或 A 列时会错读表头或报告错误的单元格位置（crates/sandtable-cli/src/xlsx.rs:133）。
+      核证 2026-11-07 属实：calamine `Range::get` 用相对有效区域起点的坐标，用户工作表常用区域从 B2 起算，直接当绝对坐标用会错读表头/错报行列。修法=读写一律换算回工作表绝对坐标（含起点偏移）。复核=`cargo test -p sandtable-cli` 8/8 全绿（含 offset_used_range_reads_by_absolute_coordinates）+ `cargo test --workspace` 399 全绿（file:crates/sandtable-cli/src/xlsx.rs:488，commit 2fd8114）。
+- [x] 审核发现：读取 XLSX 前未限制工作表范围，少量相距极远的单元格（如 A1 和 XFD1048576）会使 calamine 分配覆盖整个矩形的稠密数组，导致 MCP 进程内存耗尽或终止（crates/sandtable-cli/src/xlsx.rs:95）。
+      核证 2026-11-09 属实：下游预算（1e0d6bd）跑在 `worksheet_range` 之后，而 calamine `Range::from_sparse` 会按实际单元格包围盒稠密分配 vec——A1 + XFD1048576 两散点即 ~1.7e10 格数百 GB，进程在预算检查前已 OOM；`<dimension>` 可伪造不可依赖。修法=预读护栏：先经 `worksheet_cells_reader` 稀疏流扫出真实非空包围盒（绝对坐标含起点偏移），超 MAX_XLSX_CELLS 即拒，再放行稠密化。复核=`cargo test -p sandtable-cli` 8/8 全绿（含 extreme_far_apart_cells_rejected_before_dense_allocation，断言在稠密化前拒绝）+ `cargo test --workspace` 399 全绿（file:crates/sandtable-cli/src/xlsx.rs:566，commit 5abde4d）。
 
 ## 源码分层分析 2026-11-07
 
