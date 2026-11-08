@@ -21,11 +21,13 @@
 //!   后从 B2 开始是常见形态)。表头行号(1 基)与错误报错的行号 + 列标都按
 //!   绝对坐标换算,与 Excel 里所见一致;
 //! - 单元格预算:实际展开尺寸(有效区域起点偏移 + 区域大小)超过
-//!   [`MAX_XLSX_CELLS`] 拒绝读取。calamine 按有效区域稠密分配,远离主体的
-//!   散落单元格会放大分配;预算是我们自己下游展开(字符串行)的事后护栏
-//!   ——calamine 内部分配在读入时已发生,本地 `data_dir` 只读本地文件的
-//!   威胁模型下接受这一边界。预算必须含起点偏移:单个 XFD1048576 散点的
-//!   有效区域只有 1×1,展开却是 16384 × 1048576。
+//!   [`MAX_XLSX_CELLS`] 拒绝读取。预算在稠密化之前执行:先经
+//!   `worksheet_cells_reader` 稀疏扫一遍实际非空单元格的包围盒(绝对坐标,
+//!   含起点偏移),超预算即拒,再交给 `worksheet_range` 稠密化——calamine 的
+//!   `Range::from_sparse` 会分配整个包围盒,两个相距极远的散点
+//!   (A1 + XFD1048576)会撑出 ~1.7e10 格数百 GB,下游护栏拦不住进程 OOM。
+//!   预算必须含起点偏移:单个 XFD1048576 散点的有效区域只有 1×1,展开却是
+//!   16384 × 1048576。
 
 use std::fmt;
 use std::path::Path;
@@ -106,6 +108,45 @@ pub fn read_sheet(
         },
         None => first.as_str(),
     };
+    // 预读护栏:calamine 的 worksheet_range 经 Range::from_sparse 稠密分配
+    // 整个有效区域包围盒(两个相距极远的散点 A1 + XFD1048576 会撑出
+    // ~1.7e10 格、数百 GB,进程 OOM),下游预算在它之后才跑、拦不住。
+    // worksheet_cells_reader 按 XML 流稀疏产出非空单元格,先扫一遍取真实
+    // 包围盒(绝对坐标,含起点偏移),超预算即拒;预算通过后 worksheet_range
+    // 的稠密化被钳在 MAX_XLSX_CELLS 以内(2026-11-09 审核:原下游护栏不防
+    // 进程 OOM)。
+    let mut total_rows: usize = 0;
+    let mut total_cols: usize = 0;
+    let mut has_cells = false;
+    {
+        let mut reader = wb
+            .worksheet_cells_reader(name)
+            .map_err(|e| XlsxReadError::Unreadable(format!("{} 不可读: {e}", path.display())))?;
+        let mut max_row = 0u32;
+        let mut max_col = 0u32;
+        while let Some(cell) = reader
+            .next_cell()
+            .map_err(|e| XlsxReadError::Unreadable(format!("{} 不可读: {e}", path.display())))?
+        {
+            let (row, col) = cell.get_position();
+            has_cells = true;
+            max_row = max_row.max(row);
+            max_col = max_col.max(col);
+        }
+        if has_cells {
+            // 绝对坐标口径:包围盒从 A1(0,0) 起算,含起点偏移——与下游展开、
+            // 表头行号、错误报错行列一致。
+            total_rows = max_row as usize + 1;
+            total_cols = max_col as usize + 1;
+        }
+    }
+    let cells = total_rows.saturating_mul(total_cols);
+    if cells > MAX_XLSX_CELLS {
+        return Err(XlsxReadError::Content(format!(
+            "{} [{name}] 单元格数 {cells} 超出读取预算 {MAX_XLSX_CELLS}(工作表过大,或含远离主体的散落单元格)",
+            path.display()
+        )));
+    }
     let range = wb
         .worksheet_range(name)
         .map_err(|e| XlsxReadError::Unreadable(format!("{} 不可读: {e}", path.display())))?;
@@ -121,18 +162,6 @@ pub fn read_sheet(
     // 与 Excel 里所见一致(2026-11-07 审核:相对坐标会把 B2 起步的表错位)。
     let (start_row, start_col) = range.start().unwrap_or((0, 0));
     let (start_row, start_col) = (start_row as usize, start_col as usize);
-    let total_rows = start_row + height;
-    let total_cols = start_col + width;
-    // 预算按实际展开尺寸(含起点偏移)计:单个远端散点的有效区域只有
-    // 1×1,展开却是 total_rows × total_cols,预算漏掉偏移会被这种表绕过
-    // (2026-11-07 复审)。
-    let cells = total_rows.saturating_mul(total_cols);
-    if cells > MAX_XLSX_CELLS {
-        return Err(XlsxReadError::Content(format!(
-            "{} [{name}] 单元格数 {cells} 超出读取预算 {MAX_XLSX_CELLS}(工作表过大,或含远离主体的散落单元格)",
-            path.display()
-        )));
-    }
     if header_row > total_rows {
         return Err(XlsxReadError::Content(format!(
             "{} [{name}] 表头行 {header_row} 超出数据范围(共 {total_rows} 行)",
@@ -515,6 +544,35 @@ mod tests {
         let far = dir.join("far.xlsx");
         patch_sheet1(&base, &far, FAR_CELL_SHEET_XML);
         let err = read_sheet(&far, None, 1).unwrap_err();
+        let message = err.to_string();
+        assert!(matches!(err, XlsxReadError::Content(_)), "{message}");
+        assert!(message.contains("超出读取预算"), "{message}");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 审核原题:A1 与 XFD1048576 两个相距极远的散点。预读护栏必须在
+    /// worksheet_range 稠密化之前拒绝——否则 calamine 经 Range::from_sparse
+    /// 分配 ~1.7e10 格数百 GB,进程 OOM,下游护栏根本跑不到(2026-11-09)。
+    const EXTREME_CELL_SHEET_XML: &str = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
+        "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">",
+        "<sheetData>",
+        "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>x</t></is></c></row>",
+        "<row r=\"1048576\"><c r=\"XFD1048576\"><v>1</v></c></row>",
+        "</sheetData></worksheet>"
+    );
+
+    #[test]
+    fn extreme_far_apart_cells_rejected_before_dense_allocation() {
+        let dir = temp_dir("extreme");
+        fs::create_dir_all(&dir).unwrap();
+        let base = dir.join("base.xlsx");
+        write_book(&base, vec![table("anchor", &["a"], &[&["1"]])]);
+
+        let extreme = dir.join("extreme.xlsx");
+        patch_sheet1(&base, &extreme, EXTREME_CELL_SHEET_XML);
+        // 预读护栏拒绝,绝不触发 worksheet_range 的稠密分配。
+        let err = read_sheet(&extreme, None, 1).unwrap_err();
         let message = err.to_string();
         assert!(matches!(err, XlsxReadError::Content(_)), "{message}");
         assert!(message.contains("超出读取预算"), "{message}");
