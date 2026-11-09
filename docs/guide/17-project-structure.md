@@ -50,7 +50,7 @@ sandtable/
 │
 ├── apps/
 │   ├── web/                  # React + TS + Vite (landed: config editing → local simulation → KPI/curves/cohort table, zero chart libraries; project multi-config selector landed)
-│   └── desktop/              # Tauri 2 shell (Phase 7: src-tauri + direct core path connection, all 7 commands wired, native query already in the UI; Linux local machine first)
+│   └── desktop/              # Tauri 2 shell (Phase 7: src-tauri + direct core path connection, all 7 commands wired, native query already in the UI; Linux local machine first; lib.rs = run() entry + command-surface integration tests, commands split by domain into model / sim / sweep / optimize / query / window)
 │
 ├── examples/                 # Scenario and experiment YAML (pokemon / gacha-pity / pokemon-sweep etc.)
 │   └── python/               # Sidecar-mode examples (phase 0: kpi_report / daily_curves / parquet_analysis; zero-Rust-dependency fallback path)

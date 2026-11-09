@@ -16,10 +16,10 @@ title: 27 · 架构分层
 | 2 | 仿真核心 | 在内存 World 上运行确定性事件系统，并产出每个 replicate 的指标。 | `crates/sandtable-core/src/kernel.rs:123`; `crates/sandtable-core/src/world.rs:55` |
 | 3 | 实验与统计 | 扫描、优化、对照、代理模型和敏感性分析，把样本转化为可解释的统计决策。 | `crates/sandtable-core/src/experiment.rs:120`; `crates/sandtable-core/src/sweep.rs:174` |
 | 4 | 输出契约与互操作 | 定义稳定产物，并在内部结果与 JSON/CSV/Parquet/Arrow、项目包、XLSX、引擎输入之间转换。 | `crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35` |
-| 5 | 平台绑定 | 通过 WASM、Python、MCP 和桌面原生命令暴露同一套核心能力。 | `crates/sandtable-wasm/src/lib.rs:188`; `apps/desktop/src-tauri/src/lib.rs:71` |
+| 5 | 平台绑定 | 通过 WASM、Python、MCP 和桌面原生命令暴露同一套核心能力。 | `crates/sandtable-wasm/src/lib.rs:188`; `apps/desktop/src-tauri/src/sim.rs:66` |
 | 6 | CLI 外壳 | 解析进程参数，编排文件 I/O，执行 run/report/query 工作流并输出命令结果。 | `crates/sandtable-cli/src/args.rs:16`; `crates/sandtable-cli/src/args.rs:22` |
 | 7 | Web 工作台 | 在浏览器/桌面 UI 中维护项目草稿、执行任务、进度、语言和展示状态。 | `apps/web/src/workbench/WorkbenchApp.tsx:129`; `apps/web/src/workbench/state/executor.ts:131` |
-| 8 | 数据与查询 | 把结果产物加载进进程内 DuckDB，执行用户 SQL 并整形输出。 | `apps/web/src/lib/duck.ts:20`; `apps/desktop/src-tauri/src/lib.rs:600` |
+| 8 | 数据与查询 | 把结果产物加载进进程内 DuckDB，执行用户 SQL 并整形输出。 | `apps/web/src/lib/duck.ts:20`; `apps/desktop/src-tauri/src/query.rs:7` |
 
 ## 模块清单、状态、通道、配置与生命周期
 
@@ -82,8 +82,8 @@ title: 27 · 架构分层
 ### 8. 数据与查询
 
 - **模块：** 浏览器 `lib/duck.ts` + DuckDB-Wasm；桌面 `query` command + duckdb-rs；CLI `query` 子命令。
-- **状态：** 从所选 CSV/Parquet 产物加载的 DuckDB 内存表或文件。浏览器注册字节缓冲并创建会话表（`apps/web/src/lib/duck.ts:20`、`:84`）；桌面通过 shell command 暴露本地路径（`apps/desktop/src-tauri/src/lib.rs:600`）。
-- **调用面：** UI SQL 输入 → 查询适配器 → DuckDB → 类型化列/表。桌面红线限制本地文件只读 `SELECT`/`WITH`（`apps/desktop/src-tauri/src/lib.rs:562`）。
+- **状态：** 从所选 CSV/Parquet 产物加载的 DuckDB 内存表或文件。浏览器注册字节缓冲并创建会话表（`apps/web/src/lib/duck.ts:20`、`:84`）；桌面通过 shell command 暴露本地路径（`apps/desktop/src-tauri/src/query.rs:7`）。
+- **调用面：** UI SQL 输入 → 查询适配器 → DuckDB → 类型化列/表。桌面红线限制本地文件只读 `SELECT`/`WITH`（`apps/desktop/src-tauri/src/query.rs:83`）。
 - **配置输入：** 文件输入、表名规则、SQL 文本，以及 shell 提供的行数/输出限制。
 - **生命周期：** 注册/加载 → 执行查询 → 整形结果 → 注销或保留到会话结束。该层不改写源配置或实验真值。
 
@@ -96,7 +96,7 @@ title: 27 · 架构分层
 5. **LAY-005：交换格式在边界集中所有。** 导出与 engine contract 独立于执行定义产物形状和校验（`crates/sandtable-core/src/export.rs:13`；`crates/sandtable-engine/src/contract.rs:35`）。消费者读取稳定文件时不需要引入内核内部或重跑仿真。
 6. **LAY-006：绑定是能力门面。** WASM 把校验后的调用转发给 native 函数，不维护第二套实现（`crates/sandtable-wasm/src/lib.rs:3`）；桌面直接调 core（`apps/desktop/src-tauri/src/lib.rs:3`）。传输、预算、进度和序列化留在宿主侧，可分别替换。
 7. **LAY-007：短命进程与持久 UI 会话分离。** CLI 在 `crates/sandtable-cli/src/main.rs:87` 分发单条 argv 命令后返回；Web Workbench 在 `apps/web/src/workbench/state/projectDoc.ts:672` 恢复 `localStorage` 中的任务/草稿。常驻 UI 状态机需要取消、重试和协议版本，而一次性命令不需要。
-8. **LAY-008：查询有独立加载/执行边界。** 浏览器在 `apps/web/src/lib/duck.ts:84` 把 CSV/Parquet 缓冲注册为 DuckDB 表；桌面在 `apps/desktop/src-tauri/src/lib.rs:562` 限制本地文件 SQL 为只读 `SELECT`/`WITH`。这样既允许分析查询，又不给分析代码改写源产物的权限。
+8. **LAY-008：查询有独立加载/执行边界。** 浏览器在 `apps/web/src/lib/duck.ts:84` 把 CSV/Parquet 缓冲注册为 DuckDB 表；桌面在 `apps/desktop/src-tauri/src/query.rs:83` 限制本地文件 SQL 为只读 `SELECT`/`WITH`。这样既允许分析查询，又不给分析代码改写源产物的权限。
 
 ## 五壳层契约矩阵
 

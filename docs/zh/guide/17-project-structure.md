@@ -51,7 +51,7 @@ sandtable/
 │
 ├── apps/
 │   ├── web/                  # React + TS + Vite(已落地:配置编辑 → 本地仿真 → KPI/曲线/分群表,零图表库;项目多配置选择器已落地)
-│   └── desktop/              # Tauri 2 壳(Phase 7:src-tauri + core path 直连,命令面 7 个全接线,native query 已入 UI;Linux 本机先行)
+│   └── desktop/              # Tauri 2 壳(Phase 7:src-tauri + core path 直连,命令面 7 个全接线,native query 已入 UI;Linux 本机先行;lib.rs = 入口 run() + 命令面集成测试,命令按域拆分 model / sim / sweep / optimize / query / window)
 │
 ├── examples/                 # 场景与实验 YAML(pokemon / gacha-pity / pokemon-sweep 等)
 │   └── python/               # 外挂模式示例(阶段 0:kpi_report / daily_curves / parquet_analysis;零 Rust 依赖回退路径)

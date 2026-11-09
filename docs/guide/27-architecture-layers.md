@@ -16,10 +16,10 @@ This page records the responsibilities that already exist in the source tree. A 
 | 2 | Simulation Core | Run deterministic event-driven systems over an in-memory world and produce per-replicate metrics. | `crates/sandtable-core/src/kernel.rs:123`; `crates/sandtable-core/src/world.rs:55` |
 | 3 | Experiment & Statistics | Sweep, optimize, compare, fit surrogates, and turn samples into statistically interpreted decisions. | `crates/sandtable-core/src/experiment.rs:120`; `crates/sandtable-core/src/sweep.rs:174` |
 | 4 | Output Contract & Interop | Define stable artifacts and convert between internal results, JSON/CSV/Parquet/Arrow, project archives, XLSX, and engine inputs. | `crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35` |
-| 5 | Platform Bindings | Expose the same core capabilities through WASM, Python, MCP, and desktop-native commands. | `crates/sandtable-wasm/src/lib.rs:188`; `apps/desktop/src-tauri/src/lib.rs:71` |
+| 5 | Platform Bindings | Expose the same core capabilities through WASM, Python, MCP, and desktop-native commands. | `crates/sandtable-wasm/src/lib.rs:188`; `apps/desktop/src-tauri/src/sim.rs:66` |
 | 6 | CLI Shell | Parse process arguments, orchestrate file I/O, run/report/query workflows, and emit command results. | `crates/sandtable-cli/src/args.rs:16`; `crates/sandtable-cli/src/args.rs:22` |
 | 7 | Web Workbench | Maintain project drafts, execution jobs, progress, locales, and presentation in the browser/desktop UI. | `apps/web/src/workbench/WorkbenchApp.tsx:129`; `apps/web/src/workbench/state/executor.ts:131` |
-| 8 | Data & Query | Load result artifacts into an in-process DuckDB surface and execute user SQL with output shaping. | `apps/web/src/lib/duck.ts:20`; `apps/desktop/src-tauri/src/lib.rs:600` |
+| 8 | Data & Query | Load result artifacts into an in-process DuckDB surface and execute user SQL with output shaping. | `apps/web/src/lib/duck.ts:20`; `apps/desktop/src-tauri/src/query.rs:7` |
 
 ## Inventory, state, channels, configuration, and lifecycle
 
@@ -82,8 +82,8 @@ This page records the responsibilities that already exist in the source tree. A 
 ### 8. Data & Query
 
 - **Modules:** browser `lib/duck.ts` and DuckDB-Wasm; desktop `query` command with duckdb-rs; CLI `query` subcommand.
-- **State:** DuckDB in-memory tables/files loaded from selected CSV/Parquet artifacts. The browser path registers buffers and creates session tables (`apps/web/src/lib/duck.ts:20`, `:84`); desktop exposes local paths through its shell command (`apps/desktop/src-tauri/src/lib.rs:600`).
-- **Call surface:** UI SQL input → query adapter → DuckDB → typed columns/tables. The desktop red line restricts local files to read-only `SELECT`/`WITH` SQL (`apps/desktop/src-tauri/src/lib.rs:562`).
+- **State:** DuckDB in-memory tables/files loaded from selected CSV/Parquet artifacts. The browser path registers buffers and creates session tables (`apps/web/src/lib/duck.ts:20`, `:84`); desktop exposes local paths through its shell command (`apps/desktop/src-tauri/src/query.rs:7`).
+- **Call surface:** UI SQL input → query adapter → DuckDB → typed columns/tables. The desktop red line restricts local files to read-only `SELECT`/`WITH` SQL (`apps/desktop/src-tauri/src/query.rs:83`).
 - **Configuration input:** file inputs, table naming rules, SQL text, and row/output limits supplied by the shell.
 - **Lifecycle:** register/load → execute query → shape result → unregister or keep for the session. This layer never writes source configuration or experimental truth.
 
@@ -96,7 +96,7 @@ This page records the responsibilities that already exist in the source tree. A 
 5. **LAY-005 — Own interchange formats at a boundary.** Export and engine-contract code define artifact shapes and validation separately from execution (`crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35`). Consumers can read stable files without importing kernel internals or re-running a simulation.
 6. **LAY-006 — Keep bindings as capability facades.** WASM forwards validated calls to native functions instead of adding a second implementation (`crates/sandtable-wasm/src/lib.rs:3`), and desktop invokes core directly (`apps/desktop/src-tauri/src/lib.rs:3`). Transport, budgets, progress, and serialization stay host-specific and replaceable.
 7. **LAY-007 — Separate short-lived processes from persistent UI sessions.** The CLI dispatches one argv command and dispatches (`crates/sandtable-cli/src/main.rs:87`), whereas the Web Workbench restores persisted jobs and drafts in `localStorage` (`apps/web/src/workbench/state/projectDoc.ts:672`). A resident UI state machine has cancellation, retry, and protocol-version needs that a one-shot command does not.
-8. **LAY-008 — Put query behind a load/execute boundary.** Browser query registers CSV/Parquet buffers into DuckDB tables at `apps/web/src/lib/duck.ts:84`; desktop constrains local-file SQL to read-only `SELECT`/`WITH` at `apps/desktop/src-tauri/src/lib.rs:562`. This contains arbitrary SQL access without giving analysis code authority to mutate source artifacts.
+8. **LAY-008 — Put query behind a load/execute boundary.** Browser query registers CSV/Parquet buffers into DuckDB tables at `apps/web/src/lib/duck.ts:84`; desktop constrains local-file SQL to read-only `SELECT`/`WITH` at `apps/desktop/src-tauri/src/query.rs:83`. This contains arbitrary SQL access without giving analysis code authority to mutate source artifacts.
 
 ## Shell contract matrix
 
