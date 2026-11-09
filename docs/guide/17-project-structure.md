@@ -43,7 +43,7 @@ sandtable/
 │   │                         # (CSV / meta / parquet shaping), query (read-only DuckDB),
 │   │                         # surrogate / disttest / recommend + analyze / params /
 │   │                         # project / report / scaffold; lib.rs + workbook + xlsx
-│   ├── sandtable-wasm/       # wasm-bindgen thin bindings (landed: validate_config / run_simulation; native pure functions carry the logic, the wasm layer only wraps — equivalence with the CLI locked by tests)
+│   ├── sandtable-wasm/       # wasm-bindgen thin bindings (landed: validate_config / run_simulation; native pure functions carry the logic, the wasm layer only wraps — equivalence with the CLI locked by tests; lib.rs = entry + integration tests, bindings split by domain into validate / run / sweep / params / kpi / compare / optimize)
 │   ├── sandtable-python/     # pyo3 thin bindings (landed: load / run / sweep / recommend / params read-only surface + the phase-3 day-granularity read-state callback run_with_day_hook; same two-layer structure as wasm, independently implemented, wheel built with maturin, py_parity locked against the CLI)
 │   ├── sandtable-engine/     # Engine-agnostic JSON contract thin shell (landed: contract export with the effective-value discipline / reference importer / backflow convention; core path depends on pure functions, roundtrip regression locked, examples/export_pokemon.rs minimal runnable)
 │   └── sandtable-mcp/        # MCP server in Rust (landed: official rmcp SDK over stdio, calls core natively — no wasm/Node hop; tools sandtable_validate / sandtable_run / sandtable_plan_sweep / sandtable_analyze / sandtable_calibrate; kernel errors pass through as tool-level errors, interaction budget caps reject oversized runs)

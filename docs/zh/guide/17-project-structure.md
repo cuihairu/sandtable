@@ -44,7 +44,7 @@ sandtable/
 │   │                         # (CSV / meta / parquet 整形)、query(DuckDB 只读查询)、
 │   │                         # surrogate / disttest / recommend 与 analyze / params /
 │   │                         # project / report / scaffold;lib.rs + workbook + xlsx
-│   ├── sandtable-wasm/       # wasm-bindgen 薄绑定(已落地:validate_config / run_simulation;native 纯函数承逻辑,wasm 层只包装,与 CLI 等价有测试锁死)
+│   ├── sandtable-wasm/       # wasm-bindgen 薄绑定(已落地:validate_config / run_simulation;native 纯函数承逻辑,wasm 层只包装,与 CLI 等价有测试锁死;lib.rs = 入口 + 集成测试,绑定按域拆 validate / run / sweep / params / kpi / compare / optimize)
 │   ├── sandtable-python/     # pyo3 薄绑定(已落地:load / run / sweep / recommend / params 只读面 + 阶段 3 日粒度读态回调 run_with_day_hook;同 wasm 双层结构独立实现,maturin 出 wheel,py_parity 与 CLI 锁死)
 │   └── sandtable-engine/     # 引擎无关 JSON 契约薄壳(已落地:契约导出(有效值纪律)/ 参考导入器 / 回流约定;core path 依赖纯函数,roundtrip 回归锁死,examples/export_pokemon.rs 最小可跑)
 │   └── sandtable-mcp/        # Rust 版 MCP 服务器(已落地:官方 rmcp SDK + stdio,原生直调 core——不经 wasm/Node;工具五枚 sandtable_validate / sandtable_run / sandtable_plan_sweep / sandtable_analyze / sandtable_calibrate;内核错误以 tool-level error 原文透传,交互预算上限拒绝超大运行)

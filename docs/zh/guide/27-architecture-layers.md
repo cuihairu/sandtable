@@ -16,7 +16,7 @@ title: 27 · 架构分层
 | 2 | 仿真核心 | 在内存 World 上运行确定性事件系统，并产出每个 replicate 的指标。 | `crates/sandtable-core/src/kernel.rs:123`; `crates/sandtable-core/src/world.rs:55` |
 | 3 | 实验与统计 | 扫描、优化、对照、代理模型和敏感性分析，把样本转化为可解释的统计决策。 | `crates/sandtable-core/src/experiment.rs:120`; `crates/sandtable-core/src/sweep.rs:174` |
 | 4 | 输出契约与互操作 | 定义稳定产物，并在内部结果与 JSON/CSV/Parquet/Arrow、项目包、XLSX、引擎输入之间转换。 | `crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35` |
-| 5 | 平台绑定 | 通过 WASM、Python、MCP 和桌面原生命令暴露同一套核心能力。 | `crates/sandtable-wasm/src/lib.rs:188`; `apps/desktop/src-tauri/src/sim.rs:66` |
+| 5 | 平台绑定 | 通过 WASM、Python、MCP 和桌面原生命令暴露同一套核心能力。 | `crates/sandtable-wasm/src/validate.rs:39`; `apps/desktop/src-tauri/src/sim.rs:66` |
 | 6 | CLI 外壳 | 解析进程参数，编排文件 I/O，执行 run/report/query 工作流并输出命令结果。 | `crates/sandtable-cli/src/args.rs:16`; `crates/sandtable-cli/src/args.rs:22` |
 | 7 | Web 工作台 | 在浏览器/桌面 UI 中维护项目草稿、执行任务、进度、语言和展示状态。 | `apps/web/src/workbench/WorkbenchApp.tsx:129`; `apps/web/src/workbench/state/executor.ts:131` |
 | 8 | 数据与查询 | 把结果产物加载进进程内 DuckDB，执行用户 SQL 并整形输出。 | `apps/web/src/lib/duck.ts:20`; `apps/desktop/src-tauri/src/query.rs:7` |
