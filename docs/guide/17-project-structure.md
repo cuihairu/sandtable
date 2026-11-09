@@ -39,7 +39,14 @@ sandtable/
 │   │       ├── sweep.rs       # Grid / random / LHS sweep engine
 │   │       ├── sensitivity.rs # OAT elasticity
 │   │       ├── recommend.rs   # Single-axis interpolation recommendation
-│   │       ├── optimize.rs    # Evolutionary + Pareto optimization
+│   │       ├── optimize/      # Evolutionary + Pareto optimization (split by domain: spec / fitness / ranking / result / engine)
+│   │       │   ├── mod.rs     # Entry + re-exports (optimize::* paths unchanged)
+│   │       │   ├── spec.rs    # Direction / Objective / OptimMode / OptimSpec + spec self-check
+│   │       │   ├── fitness.rs # Lexicographic fitness + non-dominated sorting
+│   │       │   ├── ranking.rs # Pareto ranking + crowding distance
+│   │       │   ├── result.rs  # OptimResult / GenerationStats
+│   │       │   ├── engine.rs  # Evolutionary + Pareto search drivers
+│   │       │   └── tests.rs
 │   │       ├── surrogate.rs   # Random-forest surrogate (read-only over sweep artifacts)
 │   │       ├── disttest.rs    # χ² distribution test (data plane of the disttest subcommand)
 │   │       ├── export.rs      # Output rendering (JSON / CSV / human-readable; Arrow lives in export/arrow.rs)

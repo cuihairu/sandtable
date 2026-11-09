@@ -40,7 +40,14 @@ sandtable/
 │   │       ├── sweep.rs       # 网格 / 随机 / LHS 扫描引擎
 │   │       ├── sensitivity.rs # OAT 弹性
 │   │       ├── recommend.rs   # 单轴插值推荐
-│   │       ├── optimize.rs    # 进化 + Pareto 寻优
+│   │       ├── optimize/      # 进化 + Pareto 寻优(按域拆 spec / fitness / ranking / result / engine)
+│   │       │   ├── mod.rs     # 入口 + 再导出(optimize::* 路径不变)
+│   │       │   ├── spec.rs    # Direction / Objective / OptimMode / OptimSpec + spec 自校验
+│   │       │   ├── fitness.rs # 字典序适应度 + 非支配排序
+│   │       │   ├── ranking.rs # Pareto 排名 + 拥挤距离
+│   │       │   ├── result.rs  # OptimResult / GenerationStats
+│   │       │   ├── engine.rs  # 进化 + Pareto 搜索驱动
+│   │       │   └── tests.rs
 │   │       ├── surrogate.rs   # 随机森林代理(只读 sweep 产物)
 │   │       ├── disttest.rs    # χ² 分布检验(disttest 子命令数据面)
 │   │       ├── export.rs      # 输出渲染(JSON / CSV / 人类可读;Arrow 在 export/arrow.rs)
