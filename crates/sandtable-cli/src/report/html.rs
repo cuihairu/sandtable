@@ -1,112 +1,12 @@
-//! HTML 报告(Phase 5,文档 9/10 章):读已落盘产物 → 单文件自包含 HTML。
-//!
-//! 纪律:
-//! - 只读文件,不重新仿真(与 `query` 同一条:产物 → 报告,仿真路径之外);
-//! - 发现什么渲染什么,缺失的板块跳过,页首列出实际读取的源;
-//! - 输出内联 CSS + 手写内联 SVG,无 CDN、无 JS,离线双击可开;
-//! - 一个源文件都找不到则报错(调用方走退出码 2)。
+//! 报告渲染面:HTML 外壳 + 各板块(字符串拼接,无模板引擎)。
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context};
 use sandtable_core as core;
 use serde_json::Value;
 
-/// 可识别的产物文件名(目录发现顺序)。
-const KNOWN: [&str; 5] = [
-    "report.json",
-    "comparison.json",
-    "sweep.json",
-    "rec.json",
-    "days.csv",
-];
-
-/// 已发现的源。JSON 按内容分类,文件名只是提示。
-#[derive(Default)]
-struct Sources {
-    reports: Vec<Value>,
-    comparisons: Vec<Value>,
-    sweeps: Vec<Value>,
-    recs: Vec<Value>,
-    days: Vec<String>,
-    /// 页首展示的实际读取清单
-    found: Vec<String>,
-}
-
-impl Sources {
-    fn push_json(&mut self, name: &str, v: Value) {
-        // 分类看内容,不依赖文件名(report.json 与 sweep.json 都有 results)
-        let kind = if v.get("comparison").is_some() {
-            1
-        } else if v.get("recommendation").is_some() || v.get("elasticities").is_some() {
-            2
-        } else if v.get("spec").is_some() && v.get("results").is_some() {
-            3
-        } else if v.get("results").is_some() {
-            0
-        } else {
-            return;
-        };
-        self.found.push(name.to_string());
-        match kind {
-            1 => self.comparisons.push(v),
-            2 => self.recs.push(v),
-            3 => self.sweeps.push(v),
-            _ => self.reports.push(v),
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.found.is_empty()
-    }
-}
-
-/// 渲染报告。输入是目录(发现约定文件)或直接给的产物文件。
-pub fn render(inputs: &[PathBuf]) -> anyhow::Result<String> {
-    let mut src = Sources::default();
-    for input in inputs {
-        if input.is_dir() {
-            for name in KNOWN {
-                let p = input.join(name);
-                if p.is_file() {
-                    load(&mut src, &p)?;
-                }
-            }
-        } else if input.is_file() {
-            load(&mut src, input)?;
-        } else {
-            bail!("{} 不存在", input.display());
-        }
-    }
-    if src.is_empty() {
-        bail!("给定路径中没有报告源(可识别:{})", KNOWN.join(" / "));
-    }
-    Ok(page(&src))
-}
-
-fn load(src: &mut Sources, path: &Path) -> anyhow::Result<()> {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.display().to_string());
-    let text =
-        std::fs::read_to_string(path).with_context(|| format!("读取 {} 失败", path.display()))?;
-    if name.ends_with(".json") || text.trim_start().starts_with('{') {
-        let v: Value =
-            serde_json::from_str(&text).with_context(|| format!("{} 解析失败", path.display()))?;
-        src.push_json(&name, v);
-    } else if name.ends_with(".csv") {
-        // 目前只出按天时序图(约定 days.csv);其他 CSV 不是报告源
-        if name == "days.csv" {
-            src.found.push(name);
-            src.days.push(text);
-        }
-    }
-    Ok(())
-}
-
-// ---------------------------------------------------------------- HTML 骨架
+use super::data::{days_col, days_frame, stat_map, Sources, Stat};
+use super::svg::{svg_bars, svg_chart, Chart, Series};
 
 const SHELL: &str = r#"<!DOCTYPE html>
 <html lang="zh-CN">
@@ -149,7 +49,7 @@ footer{margin-top:44px;border-top:1px solid var(--line);padding-top:10px;font-si
 </html>
 "#;
 
-fn page(src: &Sources) -> String {
+pub(crate) fn page(src: &Sources) -> String {
     let mut body = String::new();
     section_overview(&mut body, src);
     section_kpi(&mut body, src);
@@ -172,7 +72,7 @@ fn page(src: &Sources) -> String {
         .replace("{body}", &body)
 }
 
-fn esc(s: &str) -> String {
+pub(crate) fn esc(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -188,7 +88,7 @@ fn esc(s: &str) -> String {
 }
 
 /// 数值展示:大数少小数位、小数保 4 位,列宽稳定。
-fn f(v: f64) -> String {
+pub(crate) fn f(v: f64) -> String {
     if v == 0.0 {
         "0".into()
     } else if v.abs() >= 100.0 {
@@ -202,7 +102,7 @@ fn f(v: f64) -> String {
 
 /// 总览块(原计划 Phase 7:Dashboard):run 身份一屏读全——规模 / 时长 /
 /// replicates / 种子 / 版本 / config_hash。取第一份 report 的 meta 与首 replicate。
-fn section_overview(body: &mut String, src: &Sources) {
+pub(crate) fn section_overview(body: &mut String, src: &Sources) {
     let Some(r) = src.reports.first() else {
         return;
     };
@@ -285,7 +185,7 @@ fn section_overview(body: &mut String, src: &Sources) {
 
 /// 分群画像(原计划 Phase 7:Population Analysis):按 report 聚合三分群——
 /// 人数取首 replicate(人口结构固定),流失率跨 replicate 合并,均值跨 replicate 平均。
-fn section_population(body: &mut String, src: &Sources) {
+pub(crate) fn section_population(body: &mut String, src: &Sources) {
     for r in &src.reports {
         let Some(results) = r.get("results").and_then(Value::as_array) else {
             continue;
@@ -399,7 +299,7 @@ const KPIS: [(&str, &str); 8] = [
     ("sink_ratio_mean", "sink_ratio 均值"),
 ];
 
-fn section_kpi(body: &mut String, src: &Sources) {
+pub(crate) fn section_kpi(body: &mut String, src: &Sources) {
     let results: Vec<&Value> = src
         .reports
         .iter()
@@ -435,7 +335,7 @@ fn section_kpi(body: &mut String, src: &Sources) {
 /// 群体分位曲线(原计划 Phase 7:Population Analysis 的分布面):
 /// power_snapshots 的 p50/p90/p99 随快照日三线同轴;快照日是抽样点非逐天,
 /// 各 replicate 的同日分位取平均。
-fn section_power_dist(body: &mut String, src: &Sources) {
+pub(crate) fn section_power_dist(body: &mut String, src: &Sources) {
     for r in &src.reports {
         let Some(results) = r.get("results").and_then(Value::as_array) else {
             continue;
@@ -516,7 +416,7 @@ fn verdict_text(v: &str) -> &'static str {
     }
 }
 
-fn section_compare(body: &mut String, src: &Sources) {
+pub(crate) fn section_compare(body: &mut String, src: &Sources) {
     for c in &src.comparisons {
         let Some(cmp) = c.get("comparison") else {
             continue;
@@ -559,33 +459,7 @@ fn section_compare(body: &mut String, src: &Sources) {
 
 // --------------------------------------------------------------- 扫描板块
 
-/// 单条指标统计:name → (mean, ci95_lo, ci95_hi)。
-type Stat = (String, (f64, f64, f64));
-
-/// 单条候选的指标统计(name → mean / CI)。
-fn stat_map(r: &Value) -> Vec<Stat> {
-    r.get("metric_stats")
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|e| {
-                    let name = e.get(0)?.as_str()?.to_string();
-                    let s = e.get(1)?;
-                    Some((
-                        name,
-                        (
-                            s.get("mean")?.as_f64()?,
-                            s.get("ci95_lo")?.as_f64()?,
-                            s.get("ci95_hi")?.as_f64()?,
-                        ),
-                    ))
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn section_sweep(body: &mut String, src: &Sources) {
+pub(crate) fn section_sweep(body: &mut String, src: &Sources) {
     for sw in &src.sweeps {
         let spec = sw.get("spec");
         let results = match sw.get("results").and_then(Value::as_array) {
@@ -731,7 +605,7 @@ fn section_sweep(body: &mut String, src: &Sources) {
 }
 
 /// 单轴扫描折线图:每指标一图,均值折线 + CI 须;推荐与扫描同轴时叠基线与可行区间带。
-fn section_sweep_charts(
+pub(crate) fn section_sweep_charts(
     body: &mut String,
     src: &Sources,
     results: &[Value],
@@ -806,7 +680,7 @@ fn fnum(v: Option<&Value>) -> String {
         .unwrap_or_else(|| "—".into())
 }
 
-fn section_recommend(body: &mut String, src: &Sources) {
+pub(crate) fn section_recommend(body: &mut String, src: &Sources) {
     for r in &src.recs {
         body.push_str("<h2>敏感性与推荐</h2>\n");
         if let Some(els) = r.get("elasticities").and_then(Value::as_array) {
@@ -911,33 +785,8 @@ fn section_recommend(body: &mut String, src: &Sources) {
 
 // ----------------------------------------------------------- 按天时序板块
 
-/// days.csv 解析为(表头, 数值行);行长度不齐或解析失败的行丢弃。
-fn days_frame(csv: &str) -> Option<(Vec<&str>, Vec<Vec<f64>>)> {
-    let mut lines = csv.lines();
-    let header = lines.next()?;
-    let cols: Vec<&str> = header.split(',').collect();
-    if cols.len() < 2 {
-        return None;
-    }
-    let rows: Vec<Vec<f64>> = lines
-        .filter_map(|l| {
-            let cells: Vec<&str> = l.split(',').collect();
-            (cells.len() == cols.len())
-                .then(|| cells.iter().map(|c| c.trim().parse::<f64>().ok()).collect())
-                .flatten()
-        })
-        .collect();
-    (!rows.is_empty()).then_some((cols, rows))
-}
-
-/// 按列名取数值列。
-fn days_col(cols: &[&str], rows: &[Vec<f64>], name: &str) -> Option<Vec<f64>> {
-    let i = cols.iter().position(|c| *c == name)?;
-    Some(rows.iter().map(|r| r[i]).collect())
-}
-
 /// days.csv → 每数值列一张小折线图(各列自持 y 范围,量纲不互扰)。
-fn section_days(body: &mut String, src: &Sources) {
+pub(crate) fn section_days(body: &mut String, src: &Sources) {
     for csv in &src.days {
         let Some((cols, rows)) = days_frame(csv) else {
             continue;
@@ -967,7 +816,7 @@ fn section_days(body: &mut String, src: &Sources) {
 
 /// 经济流(原计划 Phase 7:Economy Flow):产出 vs 消耗双线(同量纲共用 y 轴)
 /// + 累计汇总(合计 sink = Σ消耗 / Σ产出)。
-fn section_economy(body: &mut String, src: &Sources) {
+pub(crate) fn section_economy(body: &mut String, src: &Sources) {
     for csv in &src.days {
         let Some((cols, rows)) = days_frame(csv) else {
             continue;
@@ -1027,7 +876,7 @@ fn section_economy(body: &mut String, src: &Sources) {
 
 /// 成长曲线(原计划 Phase 7:Progression Curve):平均战力按天(存量)+
 /// 升级次数累计(节奏;战力与升级次数量纲悬殊,分图各持 y 轴,不硬画双轴)。
-fn section_progression(body: &mut String, src: &Sources) {
+pub(crate) fn section_progression(body: &mut String, src: &Sources) {
     for csv in &src.days {
         let Some((cols, rows)) = days_frame(csv) else {
             continue;
@@ -1075,313 +924,3 @@ fn section_progression(body: &mut String, src: &Sources) {
 }
 
 // ------------------------------------------------------------ 手写 SVG 图
-
-/// 分群条形图(竖条):类目轴 + 零基线,值标注条顶。与折线图共用画幅常量。
-fn svg_bars(
-    title: &str,
-    cats: &[&str],
-    vals: &[f64],
-    color: &str,
-    fmt: &dyn Fn(f64) -> String,
-) -> String {
-    const W: f64 = 460.0;
-    const H: f64 = 190.0;
-    const PL: f64 = 56.0;
-    const PR: f64 = 14.0;
-    const PT: f64 = 34.0;
-    const PB: f64 = 34.0;
-    let n = cats.len().min(vals.len());
-    if n == 0 {
-        return format!("<div class=\"mut\">{}:无数据</div>", esc(title));
-    }
-    let max = vals[..n].iter().copied().fold(0.0_f64, f64::max).max(1e-12);
-    let y1 = max * 1.12;
-    let sy = |y: f64| PT + (1.0 - y / y1) * (H - PT - PB);
-    let slot = (W - PL - PR) / n as f64;
-    let mut g = String::new();
-    for i in 0..n {
-        let v = vals[i].max(0.0);
-        let bx = PL + slot * i as f64 + slot * 0.18;
-        let bw = slot * 0.64;
-        let by = sy(v);
-        g.push_str(&format!(
-            "<rect x=\"{bx:.1}\" y=\"{by:.1}\" width=\"{bw:.1}\" height=\"{:.1}\" fill=\"{color}\" opacity=\"0.85\"/>",
-            H - PB - by
-        ));
-        let cx = bx + bw / 2.0;
-        g.push_str(&format!(
-            "<text x=\"{cx:.1}\" y=\"{ty:.1}\" font-size=\"9.5\" fill=\"#1f2328\" text-anchor=\"middle\">{}</text>",
-            fmt(vals[i]),
-            ty = (by - 5.0).max(PT + 8.0)
-        ));
-        g.push_str(&format!(
-            "<text x=\"{cx:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#656d76\" text-anchor=\"middle\">{}</text>",
-            esc(cats[i]),
-            ty = H - PB + 14.0
-        ));
-    }
-    g.push_str(&format!(
-        "<line x1=\"{pl}\" y1=\"{yb}\" x2=\"{pr}\" y2=\"{yb}\" stroke=\"#d8dee4\" stroke-width=\"1\"/>",
-        pl = PL,
-        pr = W - PR,
-        yb = H - PB
-    ));
-    g.push_str(&format!(
-        "<text x=\"{lx:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#656d76\" text-anchor=\"end\">{}</text>",
-        fmt(0.0),
-        lx = PL - 6.0,
-        ty = H - PB
-    ));
-    g.push_str(&format!(
-        "<text x=\"{x:.1}\" y=\"17\" font-size=\"11\" fill=\"#1f2328\" font-weight=\"600\" text-anchor=\"middle\">{}</text>",
-        esc(title),
-        x = (PL + W - PR) / 2.0
-    ));
-    format!("<svg viewBox=\"0 0 {W} {H}\" role=\"img\">{g}</svg>")
-}
-
-struct Series<'a> {
-    /// 图例文字;None = 不进图例(单序列图的标题已表意)
-    label: Option<&'a str>,
-    ys: &'a [f64],
-    color: &'a str,
-}
-
-struct Chart<'a> {
-    title: &'a str,
-    x_label: &'a str,
-    xs: &'a [f64],
-    /// 多序列共用 x 轴与 y 量纲;CI 须挂在首序列上
-    series: Vec<Series<'a>>,
-    /// 每点 CI 须 (lo, hi);None = 无须
-    ci: Option<&'a [(f64, f64)]>,
-    /// 基线(虚线)与可行区间带,随 x 轴量纲
-    mark: Option<(f64, Option<(f64, f64)>)>,
-}
-
-fn svg_chart(c: &Chart) -> String {
-    const W: f64 = 460.0;
-    const H: f64 = 190.0;
-    const PL: f64 = 56.0;
-    const PR: f64 = 14.0;
-    const PT: f64 = 34.0;
-    const PB: f64 = 34.0;
-    if c.xs.is_empty() || c.series.is_empty() || c.series.iter().all(|s| s.ys.is_empty()) {
-        return format!("<div class=\"mut\">{}:无数据</div>", esc(c.title));
-    }
-    let n = c.xs.len();
-    let mut x0 = f64::INFINITY;
-    let mut x1 = f64::NEG_INFINITY;
-    let mut y0 = f64::INFINITY;
-    let mut y1 = f64::NEG_INFINITY;
-    for i in 0..n {
-        x0 = x0.min(c.xs[i]);
-        x1 = x1.max(c.xs[i]);
-    }
-    for s in &c.series {
-        for &y in s.ys.iter().take(n) {
-            y0 = y0.min(y);
-            y1 = y1.max(y);
-        }
-    }
-    if let Some(ci) = c.ci {
-        for &(lo, hi) in &ci[..n.min(ci.len())] {
-            y0 = y0.min(lo);
-            y1 = y1.max(hi);
-        }
-    }
-    if let Some((b, band)) = c.mark {
-        // 基线与区间带是 x 轴(参数)量纲,纳入范围免裁剪
-        x0 = x0.min(b);
-        x1 = x1.max(b);
-        if let Some((a, d)) = band {
-            x0 = x0.min(a);
-            x1 = x1.max(d);
-        }
-    }
-    if x0 == x1 {
-        x0 -= 0.5;
-        x1 += 0.5;
-    }
-    if (y1 - y0).abs() < f64::EPSILON {
-        y0 -= 0.5;
-        y1 += 0.5;
-    } else {
-        let pad = (y1 - y0) * 0.06;
-        y0 -= pad;
-        y1 += pad;
-    }
-    let sx = |x: f64| PL + (x - x0) / (x1 - x0) * (W - PL - PR);
-    let sy = |y: f64| PT + (1.0 - (y - y0) / (y1 - y0)) * (H - PT - PB);
-    let mut g = String::new();
-    if let Some((_, Some((a, d)))) = c.mark {
-        let (rx0, rx1) = (sx(a).max(PL), sx(d).min(W - PR));
-        if rx1 > rx0 {
-            g.push_str(&format!(
-                "<rect x=\"{rx0:.1}\" y=\"{PT}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"#0969da\" opacity=\"0.10\"/>",
-                w = rx1 - rx0,
-                h = H - PT - PB
-            ));
-        }
-    }
-    if let Some((b, _)) = c.mark {
-        let x = sx(b);
-        g.push_str(&format!(
-            "<line x1=\"{x:.1}\" y1=\"{PT}\" x2=\"{x:.1}\" y2=\"{yb:.1}\" stroke=\"#cf222e\" stroke-width=\"1\" stroke-dasharray=\"4 3\"/>",
-            yb = H - PB
-        ));
-        g.push_str(&format!(
-            "<text x=\"{x:.1}\" y=\"{ty:.1}\" font-size=\"9\" fill=\"#cf222e\" text-anchor=\"middle\">基线</text>",
-            ty = PT + 11.0
-        ));
-    }
-    if let Some(ci) = c.ci {
-        for (i, &(lo, hi)) in ci.iter().enumerate().take(n) {
-            let x = sx(c.xs[i]);
-            let (lo, hi) = (lo.max(y0), hi.min(y1));
-            let (ya, yb) = (sy(hi), sy(lo));
-            g.push_str(&format!(
-                "<line x1=\"{x:.1}\" y1=\"{ya:.1}\" x2=\"{x:.1}\" y2=\"{yb:.1}\" stroke=\"#9a6700\" stroke-width=\"1.4\" opacity=\"0.9\"/>"
-            ));
-            g.push_str(&format!(
-                "<line x1=\"{lx:.1}\" y1=\"{ya:.1}\" x2=\"{rx:.1}\" y2=\"{ya:.1}\" stroke=\"#9a6700\" stroke-width=\"1.4\" opacity=\"0.9\"/>",
-                lx = x - 3.0,
-                rx = x + 3.0
-            ));
-            g.push_str(&format!(
-                "<line x1=\"{lx:.1}\" y1=\"{yb:.1}\" x2=\"{rx:.1}\" y2=\"{yb:.1}\" stroke=\"#9a6700\" stroke-width=\"1.4\" opacity=\"0.9\"/>",
-                lx = x - 3.0,
-                rx = x + 3.0
-            ));
-        }
-    }
-    for (si, s) in c.series.iter().enumerate() {
-        let m = n.min(s.ys.len());
-        if m == 0 {
-            continue;
-        }
-        let poly: String = (0..m)
-            .map(|i| format!("{:.1},{:.1}", sx(c.xs[i]), sy(s.ys[i])))
-            .collect::<Vec<_>>()
-            .join(" ");
-        g.push_str(&format!(
-            "<polyline points=\"{poly}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" stroke-linejoin=\"round\"/>",
-            s.color,
-            if si == 0 { "1.8" } else { "1.6" }
-        ));
-        for i in 0..m {
-            let (x, y) = (sx(c.xs[i]), sy(s.ys[i]));
-            g.push_str(&format!(
-                "<circle cx=\"{x:.1}\" cy=\"{y:.1}\" r=\"2.6\" fill=\"{}\"/>",
-                s.color
-            ));
-        }
-    }
-    // 多序列图例:左上竖排,色块 + 文字
-    let labeled: Vec<&Series> = c.series.iter().filter(|s| s.label.is_some()).collect();
-    if labeled.len() > 1 {
-        for (i, s) in labeled.iter().enumerate() {
-            let ly = PT + 10.0 + i as f64 * 14.0;
-            g.push_str(&format!(
-                "<rect x=\"{lx:.1}\" y=\"{ly:.1}\" width=\"9\" height=\"9\" fill=\"{}\"/>",
-                s.color,
-                lx = PL + 8.0
-            ));
-            g.push_str(&format!(
-                "<text x=\"{lx:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#1f2328\">{}</text>",
-                esc(s.label.unwrap_or("")),
-                lx = PL + 21.0,
-                ty = ly + 8.5
-            ));
-        }
-    }
-    // 框线与刻度文字
-    g.push_str(&format!(
-        "<line x1=\"{pl}\" y1=\"{yb}\" x2=\"{pr}\" y2=\"{yb}\" stroke=\"#d8dee4\" stroke-width=\"1\"/>",
-        pl = PL,
-        pr = W - PR,
-        yb = H - PB
-    ));
-    g.push_str(&format!(
-        "<text x=\"{lx:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#656d76\" text-anchor=\"end\">{}</text>",
-        f(y1),
-        lx = PL - 6.0,
-        ty = PT + 8.0
-    ));
-    g.push_str(&format!(
-        "<text x=\"{lx:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#656d76\" text-anchor=\"end\">{}</text>",
-        f(y0),
-        lx = PL - 6.0,
-        ty = H - PB
-    ));
-    g.push_str(&format!(
-        "<text x=\"{x:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#656d76\" text-anchor=\"middle\">{}</text>",
-        f(c.xs[0]),
-        x = sx(c.xs[0]),
-        ty = H - PB + 14.0
-    ));
-    g.push_str(&format!(
-        "<text x=\"{x:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#656d76\" text-anchor=\"middle\">{}</text>",
-        f(c.xs[n - 1]),
-        x = sx(c.xs[n - 1]),
-        ty = H - PB + 14.0
-    ));
-    g.push_str(&format!(
-        "<text x=\"{x:.1}\" y=\"17\" font-size=\"11\" fill=\"#1f2328\" font-weight=\"600\" text-anchor=\"middle\">{}</text>",
-        esc(c.title),
-        x = (PL + W - PR) / 2.0
-    ));
-    g.push_str(&format!(
-        "<text x=\"{x:.1}\" y=\"{ty:.1}\" font-size=\"10\" fill=\"#656d76\" text-anchor=\"middle\">{}</text>",
-        esc(c.x_label),
-        x = (PL + W - PR) / 2.0,
-        ty = H - 6.0
-    ));
-    format!("<svg viewBox=\"0 0 {W} {H}\" role=\"img\">{g}</svg>")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    /// I-026 · HTML 分群画像与 report.json 一致性:某 replicate 缺该分群时
-    /// (索引错位/空群被省),均值除数必须跟实际匹配条目数——旧代码除以
-    /// results.len(),缺席把均值稀释一半;均值聚合走内核 summarize,
-    /// 流失率为合并口径(churned 合计 / count 合计)。
-    #[test]
-    fn population_means_divide_by_matched_entries() {
-        let report = json!({
-            "results": [
-                {
-                    "config_hash": "aaaaaaaa1111",
-                    "cohort_stats": [
-                        {"cohort": "casual", "count": 80, "churned": 8,
-                         "mean_level": 2.0, "mean_power": 100.0, "mean_gold": 10.0},
-                        {"cohort": "core", "count": 20, "churned": 2,
-                         "mean_level": 5.0, "mean_power": 200.0, "mean_gold": 40.0}
-                    ]
-                },
-                {
-                    "config_hash": "aaaaaaaa1111",
-                    "cohort_stats": [
-                        {"cohort": "casual", "count": 80, "churned": 16,
-                         "mean_level": 4.0, "mean_power": 140.0, "mean_gold": 30.0}
-                    ]
-                }
-            ]
-        });
-        let mut src = Sources::default();
-        src.push_json("report.json", report);
-        let mut body = String::new();
-        section_population(&mut body, &src);
-        // casual:两 replicate 齐,均值 = (2+4)/2 等;流失率合并 24/160 = 15%
-        assert!(body.contains(
-            "<tr><td>casual</td><td>80</td><td>15.00%</td><td>3.0000</td><td>120.00</td><td>20.0000</td></tr>"
-        ));
-        // core:仅 1 replicate 有,均值不得被 n=2 稀释(旧代码得 2.5000/100.00/20.0000)
-        assert!(body.contains(
-            "<tr><td>core</td><td>20</td><td>10.00%</td><td>5.0000</td><td>200.00</td><td>40.0000</td></tr>"
-        ));
-    }
-}
