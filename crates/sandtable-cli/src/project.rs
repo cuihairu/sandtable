@@ -23,6 +23,15 @@ const MANIFEST: &str = "manifest.json";
 /// 归档内固定时间戳(zip 格式起点 1980-01-01):打包产物只随内容变化。
 const FIXED_MTIME: (u16, u8, u8, u8, u8, u8) = (1980, 1, 1, 0, 0, 0);
 
+/// 归档资源上限(I-027 · zip bomb 防护):zip 声明的压缩尺寸与解压后尺寸
+/// 没有自然关系,小条目可膨胀到 GB 级直至 OOM。上限取「合法项目包的数倍」:
+/// 结果 JSON 单条至多数十 MB,manifest 是机器生成的小 JSON。
+const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+const MAX_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_TOTAL_BYTES: u64 = 128 * 1024 * 1024;
+/// 条目数上限(manifest 与归档同口径,归档多 1 件 manifest)
+const MAX_ENTRIES: usize = 4096;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum Kind {
@@ -235,13 +244,18 @@ pub fn pack(dir: &Path, out: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn read_entry(ar: &mut zip::ZipArchive<fs::File>, name: &str) -> anyhow::Result<Vec<u8>> {
-    let mut zr = ar
+fn read_entry(ar: &mut zip::ZipArchive<fs::File>, name: &str, max: u64) -> anyhow::Result<Vec<u8>> {
+    let zr = ar
         .by_name(name)
         .with_context(|| format!("归档读取 {name} 失败"))?;
+    // I-027 · take(max + 1) 探超限:多读 1 字节即停,不把炸弹整体载入内存
     let mut buf = Vec::new();
-    zr.read_to_end(&mut buf)
+    zr.take(max + 1)
+        .read_to_end(&mut buf)
         .with_context(|| format!("读取 {name} 失败"))?;
+    if buf.len() as u64 > max {
+        bail!("{name} 解压后 {} 字节,超上限 {max}", buf.len());
+    }
     Ok(buf)
 }
 
@@ -251,6 +265,14 @@ fn read_archive(path: &Path) -> anyhow::Result<(Manifest, BTreeMap<String, Vec<u
     let f = fs::File::open(path).with_context(|| format!("打开 {} 失败", path.display()))?;
     let mut ar = zip::ZipArchive::new(f)
         .with_context(|| format!("{} 不是有效的 zip 归档", path.display()))?;
+    // I-027 · 条目数上限先于 names 集合构建:central directory 可声明海量条目
+    if ar.len() > MAX_ENTRIES + 1 {
+        bail!(
+            "归档条目数 {} 超上限 {}(含 manifest)",
+            ar.len(),
+            MAX_ENTRIES
+        );
+    }
     let mut names: BTreeSet<String> = ar
         .file_names()
         .collect::<Result<BTreeSet<_>, _>>()
@@ -261,7 +283,7 @@ fn read_archive(path: &Path) -> anyhow::Result<(Manifest, BTreeMap<String, Vec<u
     if !names.remove(MANIFEST) {
         bail!("归档缺少 {MANIFEST}");
     }
-    let manifest_bytes = read_entry(&mut ar, MANIFEST)?;
+    let manifest_bytes = read_entry(&mut ar, MANIFEST, MAX_MANIFEST_BYTES)?;
     let text = std::str::from_utf8(&manifest_bytes).map_err(|_| anyhow!("{MANIFEST} 非 UTF-8"))?;
     let manifest: Manifest =
         serde_json::from_str(text).map_err(|e| anyhow!("{MANIFEST} 解析失败: {e}"))?;
@@ -275,6 +297,13 @@ fn read_archive(path: &Path) -> anyhow::Result<(Manifest, BTreeMap<String, Vec<u
         bail!("manifest name 不能为空");
     }
     let mut declared = BTreeSet::new();
+    if manifest.entries.len() > MAX_ENTRIES {
+        bail!(
+            "清单条目数 {} 超上限 {}",
+            manifest.entries.len(),
+            MAX_ENTRIES
+        );
+    }
     for e in &manifest.entries {
         if !declared.insert(e.path.as_str()) {
             bail!("清单路径重复: {}", e.path);
@@ -296,8 +325,14 @@ fn read_archive(path: &Path) -> anyhow::Result<(Manifest, BTreeMap<String, Vec<u
         );
     }
     let mut files = BTreeMap::new();
+    let mut total: u64 = 0;
     for e in &manifest.entries {
-        files.insert(e.path.clone(), read_entry(&mut ar, &e.path)?);
+        let bytes = read_entry(&mut ar, &e.path, MAX_ENTRY_BYTES)?;
+        total += bytes.len() as u64;
+        if total > MAX_TOTAL_BYTES {
+            bail!("归档解压总量 {} 字节,超上限 {MAX_TOTAL_BYTES}", total);
+        }
+        files.insert(e.path.clone(), bytes);
     }
     Ok((manifest, files))
 }

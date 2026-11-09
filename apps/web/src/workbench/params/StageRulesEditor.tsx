@@ -129,7 +129,11 @@ export function StageRulesEditor({ open, onClose, baseYaml, candidateYaml, onApp
         <span className="badge amber">{english ? 'Baseline read-only · candidate write' : '基线只读 · 候选写入'}</span>
         <button className="btn subtle" onClick={() => { onClose(); setDraft(emptyDraft) }}>{english ? 'Close' : '关闭'}</button>
       </div>
-      <p className="muted">{english ? `YAML path: ${STAGE_RULES_PATH}; the kernel is the final authority.` : `YAML 路径:${STAGE_RULES_PATH};内核是最终权威。`}</p>
+      <p className="muted">
+        {english
+          ? `YAML path: ${STAGE_RULES_PATH}. Not yet consumed by the kernel: the section passes shape validation only and does not affect simulation until the stage-rule mechanism lands (I-034).`
+          : `YAML 路径:${STAGE_RULES_PATH}。内核暂不消费该节(机制未落地):写入后仅通过形状校验,不影响仿真结果(I-034)。`}
+      </p>
       <div className="growth-grid">
         <table className="growth-table" aria-label={english ? 'Stage rules table' : '阶段规则表'}>
           <thead><tr>{['from', 'to', 'effect', 'chance', ''].map((field) => <th key={field}>{field}</th>)}</tr></thead>

@@ -110,6 +110,7 @@ export const en = {
   'common.confirmNavigateConfirm': 'Leave',
   'common.notifyCopied': 'Copied {rows} row(s) × {columns} column(s)',
   'common.copyFailed': 'Copy failed; use Ctrl+C instead',
+  'common.shortcutCopyScope': 'when params table focused',
   'params.columns': 'Columns',
   'params.copy': 'Copy',
   'params.pinLeft': 'Pin left',

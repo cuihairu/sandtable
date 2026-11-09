@@ -1290,7 +1290,15 @@ test('批量队列:全链路候选调用遵守单并发约束', async () => {
     })
   }
   await new Promise((resolve) => setTimeout(resolve, 1))
-  await new Promise((resolve) => setTimeout(resolve, 25))
+  // 完成性用有界轮询,不用固定 25ms 窗口:9 个候选 ×2ms 休眠的串行下限
+  // 18ms 贴着窗口上沿,高负载机器上「已全部完成」断言会假失败(本机
+  // HEAD 复测 12 次 8 次假失败;并发不变量由 peak 断言独立把关,轮询
+  // 不影响其语义)。超时后仍走断言,任务真挂起照常失败。
+  const deadline = Date.now() + 2000
+  while (Date.now() < deadline
+    && listJobs().some((job) => !['succeeded', 'failed', 'cancelled'].includes(job.status))) {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
   assert.equal(peak, 1, '三个任务始终最多一个候选执行')
   assert.equal(listJobs().every((job) => job.status === 'succeeded'), true)
   resetForTest()

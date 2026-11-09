@@ -98,6 +98,27 @@ title: 27 · 架构分层
 7. **LAY-007：短命进程与持久 UI 会话分离。** CLI 在 `crates/sandtable-cli/src/main.rs:33` 分发单条 argv 命令后返回；Web Workbench 在 `apps/web/src/workbench/state/projectDoc.ts:672` 恢复 `localStorage` 中的任务/草稿。常驻 UI 状态机需要取消、重试和协议版本，而一次性命令不需要。
 8. **LAY-008：查询有独立加载/执行边界。** 浏览器在 `apps/web/src/lib/duck.ts:84` 把 CSV/Parquet 缓冲注册为 DuckDB 表；桌面在 `apps/desktop/src-tauri/src/lib.rs:562` 限制本地文件 SQL 为只读 `SELECT`/`WITH`。这样既允许分析查询，又不给分析代码改写源产物的权限。
 
+## 五壳层契约矩阵
+
+五个壳层转发同一内核,但各自的装载入口、缺省值、错误面与预算互不相同
+(2026-11-09 记录,I-038)。改这张表的任何一格都是契约变更:同一 commit
+内同步本表。
+
+| 壳层 | 装载入口 | `replicates` 缺省 | 错误面 | 预算门 |
+| --- | --- | --- | --- | --- |
+| CLI | 一律 `scenario::load_str` | `simulate --replicates` = 1;`sweep --replicates` 可选覆盖 | stderr,`配置错误:` / `参数错误:` 前缀,配置错误退出码 2 | `MAX_CLI_REPLICATE_DAYS`(replicates × days) |
+| WASM(Web) | 校验:`load_config_str`(接受实验 YAML);执行:`load_str`(只收场景 YAML) | 必填,由 JS 调用方传入 | 字符串 reject,同前缀 | `MAX_REPLICATES = 64`;sweep 候选 × replicates ≤ 200 |
+| 桌面(Tauri) | 校验:`load_config_str`;执行:`load_str` | 必填(`run_simulation(yaml, replicates, on_progress)`) | `Err(String)`,同前缀 | `MAX_DESKTOP_REPLICATE_DAYS`(replicates × days);单次 replicates 上界与 WASM 64 对齐(ST-AUD-11 / I-011) |
+| Python | `scenario::load_str` | `replicates = 1`(`pyo3(signature)`) | `ValueError` | `MAX_PY_REPLICATE_DAYS`(replicates × days);`MAX_PY_SIM_WORK`(players × days × replicates) |
+| MCP | `scenario::load_str` | 必填(tool schema) | tool-level error,消息原文透传 | `run` ≤ 4096 replicates;`plan_sweep` ≤ 1000 次仿真;analyze 的 results JSON ≤ 64 MiB |
+
+错误形状说明:各壳层在唯一的 `load` 接缝给内核配置错误加 `配置错误:`
+前缀(参数校验为 `参数错误:`),再由各自传输层映射——CLI 落退出码 2 的
+stderr,Python 落 `ValueError`,MCP 落 tool-level error 且消息不改写,
+WASM 与桌面落字符串 reject。MCP 文档所称「原文透传」指壳层不改写内核
+消息;前缀在 `load` 一处添加。`to_tool_result` 对每次工具载荷序列化,
+序列化失败按内部错误如实上报,不再返回空串(I-038)。
+
 ## 术语表
 
 配套术语表见 [28 · 术语表](./28-glossary.md)。

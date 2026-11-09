@@ -11,7 +11,7 @@
 import { createId, ID_PREFIXES } from '../ids.ts'
 import type { JobId } from '../ids.ts'
 import * as logic from './jobLogic.ts'
-import type { ExecSpec, Job, RetryResume } from './jobLogic.ts'
+import type { ExecErrorClass, ExecSpec, Job, RetryResume } from './jobLogic.ts'
 import { startExec, resolveBackends, MAX_CANDIDATE_RESULTS_IN_MEMORY } from './executor.ts'
 import type { ExecBackends, ExecJobPatch, ExecOutcome } from './executor.ts'
 import { canTransition, terminalOutcome } from './execFsm.ts'
@@ -361,9 +361,17 @@ function startNextQueued(): void {
       // 不得永久占死并发槽——失败分支同样删除控制引用、落 failed 终态并续跑队列。
       activeControls.delete(job.id)
       queuedBackends.delete(job.id)
+      // I-036 · init 类错误保持可重试语义:Worker 协议错误经 executor 转发时
+      // 在 Error 上带 wClass('init' 可重试,重试初始化即重建 Worker);终态
+      // 若一律落 'run',恢复动作会误导用户去「修正配置」而非重试。
+      const wClass = (err as { wClass?: unknown }).wClass
+      const failedClass: ExecErrorClass =
+        wClass === 'init' || wClass === 'run' || wClass === 'budget' || wClass === 'bridge'
+          ? wClass
+          : 'run'
       applyOutcome(job.id, {
         status: 'failed',
-        errorClass: 'run',
+        errorClass: failedClass,
         message: err instanceof Error ? err.message : String(err),
         results: [],
         recommendation: null,

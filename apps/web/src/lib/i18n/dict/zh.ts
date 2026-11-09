@@ -110,6 +110,7 @@ export const zh = {
   'common.confirmNavigateConfirm': '离开',
   'common.notifyCopied': '已复制 {rows} 行 × {columns} 列',
   'common.copyFailed': '复制失败,请改用 Ctrl+C',
+  'common.shortcutCopyScope': '参数表聚焦时',
   'params.columns': '列',
   'params.copy': '复制',
   'params.pinLeft': '固定到左侧',

@@ -74,7 +74,11 @@ fn parse_results(results_json: &str, what: &str) -> Result<Vec<core::metrics::Ru
 fn to_tool_result(v: Result<Value, String>) -> Result<CallToolResult, ErrorData> {
     match v {
         Ok(v) => {
-            let text = serde_json::to_string(&v).unwrap_or_default();
+            // I-038 · 序列化失败不再静默空串:空串会被客户端当「成功但空结果」;
+            // serde_json 对无环 Value 实际不可失败,失败即内部不变量破坏,
+            // 如实走 tool-level error 通道
+            let text = serde_json::to_string(&v)
+                .map_err(|e| ErrorData::internal_error(format!("结果序列化失败: {e}"), None))?;
             Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
         }
         // 内核/配置错误原文透传(tool-level error,不在壳层改写)

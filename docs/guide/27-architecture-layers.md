@@ -98,6 +98,29 @@ This page records the responsibilities that already exist in the source tree. A 
 7. **LAY-007 — Separate short-lived processes from persistent UI sessions.** The CLI dispatches one argv command and returns (`crates/sandtable-cli/src/main.rs:33`), whereas the Web Workbench restores persisted jobs and drafts in `localStorage` (`apps/web/src/workbench/state/projectDoc.ts:672`). A resident UI state machine has cancellation, retry, and protocol-version needs that a one-shot command does not.
 8. **LAY-008 — Put query behind a load/execute boundary.** Browser query registers CSV/Parquet buffers into DuckDB tables at `apps/web/src/lib/duck.ts:84`; desktop constrains local-file SQL to read-only `SELECT`/`WITH` at `apps/desktop/src-tauri/src/lib.rs:562`. This contains arbitrary SQL access without giving analysis code authority to mutate source artifacts.
 
+## Shell contract matrix
+
+The five shells forward the same kernel, but each owns its own load entry,
+defaults, error surface, and budget (recorded 2026-11-09, I-038). Changing any
+cell is a contract change: update this table in the same commit.
+
+| Shell | Load entry | `replicates` default | Error surface | Budget gates |
+| --- | --- | --- | --- | --- |
+| CLI | `scenario::load_str` everywhere | `simulate --replicates` = 1; `sweep --replicates` optional override | stderr, `配置错误:` / `参数错误:` prefix, exit code 2 for config errors | `MAX_CLI_REPLICATE_DAYS` (replicates × days) |
+| WASM (web) | validate: `load_config_str` (accepts experiment YAML); run: `load_str` (scenario only) | required, passed by the JS caller | string rejection, same prefixes | `MAX_REPLICATES = 64`; sweep candidates × replicates ≤ 200 |
+| Desktop (Tauri) | validate: `load_config_str`; run: `load_str` | required (`run_simulation(yaml, replicates, on_progress)`) | `Err(String)`, same prefixes | `MAX_DESKTOP_REPLICATE_DAYS` (replicates × days); per-run replicates upper bound aligned with WASM 64 (ST-AUD-11 / I-011) |
+| Python | `scenario::load_str` | `replicates = 1` (`pyo3(signature)`) | `ValueError` | `MAX_PY_REPLICATE_DAYS` (replicates × days); `MAX_PY_SIM_WORK` (players × days × replicates) |
+| MCP | `scenario::load_str` | required (tool schema) | tool-level error, message passthrough | `run` ≤ 4096 replicates; `plan_sweep` ≤ 1000 simulations; analyze results JSON ≤ 64 MiB |
+
+Error-shape note: every shell prefixes kernel config errors with `配置错误:`
+(`参数错误:` for argument validation) at the single `load` seam, then its
+transport maps them — CLI to exit-code-2 stderr, Python to `ValueError`, MCP
+to a tool-level error whose message passes through unchanged, WASM and desktop
+to string rejections. The MCP docs' "passthrough" claim means the shell does
+not rewrite kernel messages; the prefix is added once in `load`.
+`to_tool_result` serializes each tool payload and reports a serialization
+failure as an internal error rather than an empty string (I-038).
+
 ## Glossary
 
 The companion term table is in [28 · Glossary](./28-glossary.md).

@@ -7,8 +7,10 @@
 //! - `--data` 申明的数据路径按只读输入对待:执行前后各做一次内容清单,
 //!   结束后不一致即失败退出——只读是「检测 + 失败」口径(本机无特权做
 //!   真只读挂载,不冒充语言级防写);
-//! - 超时(缺省 600s)杀整个进程组(退出码 124,同 GNU timeout 惯例),
-//!   不留孤儿进程。
+//! - 超时(缺省 600s)杀整个进程树(退出码 124,同 GNU timeout 惯例),
+//!   不留孤儿进程。平台差异:unix 走独立进程组 + killpg;windows 走
+//!   Job Object(kill-on-close),TerminateJobObject 覆盖全部后代——
+//!   TerminateProcess 只杀直接子进程,python 再派生的孙进程会漏杀。
 //!
 //! 红线(§5):本项目不做「运行他人脚本」的托管服务;服务端/多租户场景
 //! 用户自建容器隔离。脚本解释器是外部进程(缺省 python3),CLI 二进制
@@ -76,31 +78,94 @@ fn find_python() -> anyhow::Result<PathBuf> {
     bail!("未找到 python3 / python 解释器,请用 --python 指定")
 }
 
+/// 进程树载体(I-028):unix = 独立进程组;windows = Job Object,
+/// 句柄随载体存活,超时终止时一并关闭(kill-on-close 兜底)。
+struct GroupChild {
+    child: std::process::Child,
+    #[cfg(windows)]
+    job: windows_sys::Win32::Foundation::HANDLE,
+}
+
+impl GroupChild {
+    fn try_wait(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+        self.child.try_wait()
+    }
+
+    fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        self.child.wait()
+    }
+}
+
 #[cfg(unix)]
-fn spawn_in_group(command: &mut Command) -> std::io::Result<std::process::Child> {
+fn spawn_in_group(command: &mut Command) -> std::io::Result<GroupChild> {
     use std::os::unix::process::CommandExt;
     // 独立进程组:超时 kill 整组,不留 python 子进程孤儿
     command.process_group(0);
-    command.spawn()
+    Ok(GroupChild {
+        child: command.spawn()?,
+    })
 }
 
 #[cfg(windows)]
-fn spawn_in_group(command: &mut Command) -> std::io::Result<std::process::Child> {
-    command.spawn()
+fn spawn_in_group(command: &mut Command) -> std::io::Result<GroupChild> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+
+    let child = command.spawn()?;
+    let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+    if job.is_null() {
+        let mut child = child;
+        let _ = child.kill();
+        return Err(std::io::Error::last_os_error());
+    }
+    // kill-on-close:进程/句柄任一异常退出都兜底整树终止
+    // (windows-sys 结构体只有 Clone/Copy,零值构造走 mem::zeroed;字段全为
+    // 整数/指针,零初始化合法)
+    let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    let ok = unsafe {
+        SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        ) != 0
+            && AssignProcessToJobObject(job, child.as_raw_handle() as _) != 0
+    };
+    if !ok {
+        let mut child = child;
+        let _ = child.kill();
+        unsafe { CloseHandle(job) };
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(GroupChild { child, job })
 }
 
 #[cfg(unix)]
-fn kill_group(child: &mut std::process::Child) {
+fn kill_group(g: &mut GroupChild) {
     // 负 pid = 杀整个进程组;SIGKILL 不依赖进程配合
     unsafe {
-        libc::kill(-(child.id() as i32), libc::SIGKILL);
+        libc::kill(-(g.child.id() as i32), libc::SIGKILL);
     }
-    let _ = child.kill();
+    let _ = g.child.kill();
 }
 
 #[cfg(windows)]
-fn kill_group(child: &mut std::process::Child) {
-    let _ = child.kill();
+fn kill_group(g: &mut GroupChild) {
+    // Job 终止覆盖全部后代:直接 child 可能已退出而孙进程仍在跑,
+    // TerminateProcess(child.kill)只杀前者,杀不干净
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+    unsafe {
+        TerminateJobObject(g.job, 1);
+        CloseHandle(g.job);
+    }
+    let _ = g.child.kill();
 }
 
 /// 执行分析脚本,返回子进程退出码(超时返回 [`EXIT_TIMEOUT`])。
@@ -145,7 +210,7 @@ pub fn run(
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
-    let mut child =
+    let mut child: GroupChild =
         spawn_in_group(&mut cmd).with_context(|| format!("启动 {} 失败", interp.display()))?;
 
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);

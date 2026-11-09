@@ -16,5 +16,11 @@ edition = "2021"
 license = "Apache-2.0"
 
 [profile.release]
+# I-037 · release 取舍评估记录(2026-11-09,实测):opt-level 保持 3——内核
+# 是吞吐敏感面,降级到 z / s 会伤仿真性能,不采;strip = "debuginfo" 不采——
+# release 默认本就不产 debuginfo,实测 CLI 二进制 4935880 → 4936368 字节
+# (差异是同批 csv_field 改动,+488 B),strip 无收益,留了就是死配置;
+# wasm-opt 不在仓内强制:wasm-pack --release 在环境装有 binaryen 时自动
+# 应用,无则跳过(pkg ~0.97 MB,体积非瓶颈)。
 opt-level = 3
 lto = "thin"

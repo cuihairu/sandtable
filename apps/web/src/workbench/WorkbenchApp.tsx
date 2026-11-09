@@ -735,6 +735,7 @@ export default function WorkbenchApp(): JSX.Element {
         onToggleTasks={() => dispatch({ type: 'toggle-drawer' })}
         onShortcuts={() => patchOverlays({ shortcuts: true })}
         onResetLayout={() => dispatch({ type: 'layout/reset' })}
+        tasksOpen={state.drawerOpen}
         draftSaved={state.project ? unsavedKeys(state.objectDrafts).length === 0 : state.paramDraft.saved}
         draftSavedLabel={
           state.project
@@ -945,7 +946,9 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
     [t(locale, 'common.shortcutNativeUndo'), t(locale, 'common.shortcutNativeUndoHint')],
     [t(locale, 'common.shortcutSelectNext'), '↑ / ↓'],
     [t(locale, 'common.shortcutTabSwitch'), '← / → · Home / End'],
-    [t(localeSession.get(), 'params.copy'), 'Ctrl / ⌘ + C'],
+    // I-036 · 声明与实现对齐:Ctrl+C 在参数表聚焦时才生效(ParamTable
+    // onKeyDown),不是全局快捷键,声明须带作用域
+    [t(localeSession.get(), 'params.copy'), `Ctrl / ⌘ + C · ${t(localeSession.get(), 'common.shortcutCopyScope')}`],
     [t(locale, 'common.shortcutChartPoint'), 'Tab → Enter'],
     [t(locale, 'common.closeDialog'), 'Esc'],
   ]

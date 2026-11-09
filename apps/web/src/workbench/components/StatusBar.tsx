@@ -20,6 +20,8 @@ export type StatusBarProps = {
   draftSaved: boolean
   /** I-025 · 演示标注随选择派生(WorkbenchApp 传入),不再模块内恒真 */
   demoMode: boolean
+  /** I-036 · 任务抽屉真实开合态(aria-expanded 不再恒 false) */
+  tasksOpen: boolean
 }
 
 export function StatusBar({
@@ -30,6 +32,7 @@ export function StatusBar({
   draftSavedLabel,
   draftSaved,
   demoMode,
+  tasksOpen,
 }: StatusBarProps): JSX.Element {
   const locale = useLocale()
   const jobs = useSyncExternalStore(runManager.subscribe, runManager.listJobs)
@@ -52,7 +55,7 @@ export function StatusBar({
           {act.name}: {act.done}/{act.total}
         </span>
       )}
-      <button onClick={onToggleTasks} aria-expanded="false">
+      <button onClick={onToggleTasks} aria-expanded={tasksOpen}>
         <WbIcon name="terminal" />
         {active > 0 ? t(locale, 'common.tasksRunning') : t(locale, 'common.taskQueue')}
         <span className="task-count">{active || jobs.length}</span>

@@ -86,7 +86,16 @@ impl core::sim::DayHook for PyDayHook {
         let mut gold = Vec::with_capacity(world.actors.len());
         let mut churned = Vec::with_capacity(world.actors.len());
         for a in &world.actors {
-            cohort.push(u32::try_from(a.cohort.index()).unwrap());
+            // I-029 · unwrap 换钩子错误上报:索引异常不 panic(panic 跨 FFI
+            // 边界直接 abort 宿主进程),存 error 由 run 结束统一上报
+            let idx = match u32::try_from(a.cohort.index()) {
+                Ok(i) => i,
+                Err(e) => {
+                    self.error = Some(format!("cohort 索引超 u32 范围: {e}"));
+                    return;
+                }
+            };
+            cohort.push(idx);
             level.push(a.level);
             power.push(a.power);
             gold.push(a.gold);
@@ -234,8 +243,10 @@ fn value_to_py<'py>(py: Python<'py>, v: &Value) -> PyResult<Bound<'py, PyAny>> {
             } else if let Some(u) = n.as_u64() {
                 u.into_py_any(py)?.into_bound(py)
             } else {
+                // I-029 · expect 换错误返回:serde_json Number 理论上必为
+                // i64/u64/f64 之一,失配报 ValueError 不爆进程
                 n.as_f64()
-                    .expect("JSON number is i64/u64/f64")
+                    .ok_or_else(|| PyValueError::new_err("JSON 数值无法表示为 f64"))?
                     .into_py_any(py)?
                     .into_bound(py)
             }
@@ -258,7 +269,22 @@ fn value_to_py<'py>(py: Python<'py>, v: &Value) -> PyResult<Bound<'py, PyAny>> {
     })
 }
 
+/// 递归深度上限(I-029):与 serde_json 缺省递归限制同口径(128)——转换
+/// 结果终要过 JSON 边界进内核,超限嵌套本就过不去;同时也是循环引用
+/// (`l = [l]`)的终止条件,无界递归会栈溢出直接 abort 宿主进程,
+/// 连 Python 异常都来不及抛。
+const MAX_PY_DEPTH: usize = 128;
+
 fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
+    py_to_value_depth(obj, 0)
+}
+
+fn py_to_value_depth(obj: &Bound<'_, PyAny>, depth: usize) -> PyResult<Value> {
+    if depth > MAX_PY_DEPTH {
+        return Err(PyValueError::new_err(format!(
+            "嵌套过深(> {MAX_PY_DEPTH} 层,疑似循环引用;JSON 边界同限)"
+        )));
+    }
     if obj.is_none() {
         return Ok(Value::Null);
     }
@@ -285,7 +311,7 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     if let Ok(list) = obj.cast::<PyList>() {
         let mut out = Vec::with_capacity(list.len());
         for item in list.iter() {
-            out.push(py_to_value(&item)?);
+            out.push(py_to_value_depth(&item, depth + 1)?);
         }
         return Ok(Value::Array(out));
     }
@@ -297,7 +323,7 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
                 .map_err(|_| PyTypeError::new_err("字典键须为字符串(候选参数按路径寻址)"))?
                 .to_str()?
                 .to_string();
-            map.insert(key, py_to_value(&v)?);
+            map.insert(key, py_to_value_depth(&v, depth + 1)?);
         }
         return Ok(Value::Object(map));
     }
@@ -614,6 +640,48 @@ mod tests {
             // 任意对象
             let obj = py.eval(c"object()", None, None).unwrap();
             assert!(py_to_value(&obj).is_err());
+        });
+    }
+
+    /// I-029 · 循环引用与超深嵌套必须报 ValueError 终止,不得无界递归
+    /// 炸掉宿主进程栈(旧代码 l=[l] 直接 stack overflow abort)。
+    #[test]
+    fn converter_rejects_cycles_and_overdeep_nesting() {
+        Python::initialize();
+        Python::attach(|py| {
+            // 列表自引用 l = [l]
+            let list = PyList::empty(py);
+            list.append(&list).unwrap();
+            let err = py_to_value(list.as_any()).unwrap_err();
+            assert!(err.to_string().contains("疑似循环引用"), "{err}");
+            // 字典自引用 d["k"] = d
+            let dict = PyDict::new(py);
+            dict.set_item("k", &dict).unwrap();
+            assert!(py_to_value(dict.as_any()).is_err());
+            // 互引用 a = [b], b = {"x": a}
+            let a = PyList::empty(py);
+            let b = PyDict::new(py);
+            b.set_item("x", &a).unwrap();
+            a.append(&b).unwrap();
+            assert!(py_to_value(a.as_any()).is_err());
+            // 合法深嵌套(= 上限 128 层)仍通过:终止条件是 > 上限
+            let mut cur: Bound<'_, PyAny> = PyList::empty(py).into_any();
+            for _ in 0..MAX_PY_DEPTH {
+                let outer = PyList::empty(py);
+                outer.append(&cur).unwrap();
+                cur = outer.into_any();
+            }
+            let ok = py_to_value(&cur).unwrap();
+            let mut depth = 0;
+            let mut v = &ok;
+            while let Value::Array(inner) = v {
+                depth += 1;
+                if inner.is_empty() {
+                    break;
+                }
+                v = &inner[0];
+            }
+            assert_eq!(depth, MAX_PY_DEPTH + 1, "合法深嵌套不得误伤");
         });
     }
 

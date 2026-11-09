@@ -30,7 +30,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          targets: wasm32-unknown-unknown, x86_64-pc-windows-msvc
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2.9.3
@@ -54,6 +54,12 @@ jobs:
       # 架构红线(文档 04 章):核心必须保持纯 Rust,Phase 1 起持续可编译 WASM
       - name: WASM 编译门
         run: cargo check -p sandtable-core --target wasm32-unknown-unknown
+
+      # I-028 · Windows 交叉编译门:cfg(windows) 代码(analyze 的 Job Object
+      # 树杀)不进 Linux 主门,msvc 目标 check 兜底类型/feature 面(check 不
+      # 链接,无需 mingw);本仓无 Windows runner,这是唯一编译验证
+      - name: Windows 交叉编译门
+        run: cargo check -p sandtable-cli --target x86_64-pc-windows-msvc
 
       # Phase 6(文档 18 章):wasm 绑定可构建出 pkg(核心在 wasm32 下完整可用)
       - name: 安装 wasm-pack(官方预编译)

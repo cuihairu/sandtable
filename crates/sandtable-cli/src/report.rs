@@ -327,22 +327,30 @@ fn section_population(body: &mut String, src: &Sources) {
                 .filter_map(|a| a.get(i))
                 .filter(|c| c.get("cohort").and_then(Value::as_str) == Some(name))
                 .collect();
-            let fsum = |field: &str| -> f64 {
+            // I-026 · 均值除数必须跟条目数:某 replicate 缺该分群(索引错位或
+            // 空群被省)时,旧代码除以 results.len() 会把均值稀释。
+            // 均值走内核聚合 core::experiment::summarize(与 KPI 板块同口径)。
+            let vals = |field: &str| -> Vec<f64> {
                 per.iter()
                     .filter_map(|c| c.get(field).and_then(Value::as_f64))
-                    .sum()
+                    .collect()
             };
+            let mean_of = |field: &str| -> f64 { core::experiment::summarize(&vals(field)).mean };
             let count = cohorts[i]
                 .get("count")
                 .and_then(Value::as_f64)
                 .unwrap_or(0.0);
-            let churned = fsum("churned") / n as f64;
-            let denom = fsum("count") / n as f64;
             counts.push(count);
-            rates.push(if denom > 0.0 { churned / denom } else { 0.0 });
-            levels.push(fsum("mean_level") / n as f64);
-            powers.push(fsum("mean_power") / n as f64);
-            golds.push(fsum("mean_gold") / n as f64);
+            let churn_sum: f64 = vals("churned").iter().sum();
+            let denom_sum: f64 = vals("count").iter().sum();
+            rates.push(if denom_sum > 0.0 {
+                churn_sum / denom_sum
+            } else {
+                0.0
+            });
+            levels.push(mean_of("mean_level"));
+            powers.push(mean_of("mean_power"));
+            golds.push(mean_of("mean_gold"));
         }
 
         body.push_str("<table><thead><tr><th>分群</th><th>人数</th><th>流失率</th><th>平均等级</th><th>平均战力</th><th>平均金币</th></tr></thead><tbody>\n");
@@ -1330,4 +1338,50 @@ fn svg_chart(c: &Chart) -> String {
         ty = H - 6.0
     ));
     format!("<svg viewBox=\"0 0 {W} {H}\" role=\"img\">{g}</svg>")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// I-026 · HTML 分群画像与 report.json 一致性:某 replicate 缺该分群时
+    /// (索引错位/空群被省),均值除数必须跟实际匹配条目数——旧代码除以
+    /// results.len(),缺席把均值稀释一半;均值聚合走内核 summarize,
+    /// 流失率为合并口径(churned 合计 / count 合计)。
+    #[test]
+    fn population_means_divide_by_matched_entries() {
+        let report = json!({
+            "results": [
+                {
+                    "config_hash": "aaaaaaaa1111",
+                    "cohort_stats": [
+                        {"cohort": "casual", "count": 80, "churned": 8,
+                         "mean_level": 2.0, "mean_power": 100.0, "mean_gold": 10.0},
+                        {"cohort": "core", "count": 20, "churned": 2,
+                         "mean_level": 5.0, "mean_power": 200.0, "mean_gold": 40.0}
+                    ]
+                },
+                {
+                    "config_hash": "aaaaaaaa1111",
+                    "cohort_stats": [
+                        {"cohort": "casual", "count": 80, "churned": 16,
+                         "mean_level": 4.0, "mean_power": 140.0, "mean_gold": 30.0}
+                    ]
+                }
+            ]
+        });
+        let mut src = Sources::default();
+        src.push_json("report.json", report);
+        let mut body = String::new();
+        section_population(&mut body, &src);
+        // casual:两 replicate 齐,均值 = (2+4)/2 等;流失率合并 24/160 = 15%
+        assert!(body.contains(
+            "<tr><td>casual</td><td>80</td><td>15.00%</td><td>3.0000</td><td>120.00</td><td>20.0000</td></tr>"
+        ));
+        // core:仅 1 replicate 有,均值不得被 n=2 稀释(旧代码得 2.5000/100.00/20.0000)
+        assert!(body.contains(
+            "<tr><td>core</td><td>20</td><td>10.00%</td><td>5.0000</td><td>200.00</td><td>40.0000</td></tr>"
+        ));
+    }
 }

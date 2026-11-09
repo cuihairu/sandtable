@@ -40,8 +40,10 @@ pub fn chi_square(observed: &[f64], expected: &[f64]) -> Result<ChiSquare, Error
     if observed.len() < 2 {
         return Err(Error::Config("至少 2 个桶才能做 χ² 检验".into()));
     }
-    if expected.iter().any(|&e| e <= 0.0 || e.is_nan()) {
-        return Err(Error::Config("期望计数必须为正".into()));
+    // I-033 · is_finite 一并拦 +inf:原检查 `<= 0.0 || is_nan()` 放过 +inf,
+    // stat 计算 (o-e)²/e 得 inf/inf = NaN,静默产出 NaN 统计量
+    if expected.iter().any(|&e| !e.is_finite() || e <= 0.0) {
+        return Err(Error::Config("期望计数必须为正的有限数".into()));
     }
     let stat: f64 = observed
         .iter()
@@ -56,8 +58,10 @@ pub fn chi_square(observed: &[f64], expected: &[f64]) -> Result<ChiSquare, Error
     })
 }
 
-/// Cochran 桶合并:期望 < min_expected 的桶并入相邻桶(左优先,首桶并右),
-/// 逐轮到全桶达标或不足 2 桶。合并后 df 相应下降。
+/// Cochran 桶合并:期望 < min_expected 的桶并入相邻桶(I-033 注释更正:
+/// 选桶是**期望值最小优先**(`min_by` total_cmp,并列取索引小者),非从左
+/// 扫描;并入方向左优先,首桶并右),逐轮到全桶达标或不足 2 桶。合并后
+/// df 相应下降。
 pub fn merge_buckets(
     observed: &[f64],
     expected: &[f64],
@@ -297,6 +301,14 @@ mod tests {
         assert!(chi_square(&[1.0, 2.0], &[1.0, 2.0, 3.0]).is_err(), "不等长");
         assert!(chi_square(&[1.0, 2.0], &[1.0, 0.0]).is_err(), "零期望");
         assert!(chi_square(&[1.0, 2.0], &[1.0, -1.0]).is_err(), "负期望");
+        assert!(
+            chi_square(&[1.0, 2.0], &[1.0, f64::INFINITY]).is_err(),
+            "+inf 期望(I-033:放过会算出 NaN 统计量)"
+        );
+        assert!(
+            chi_square(&[1.0, 2.0], &[1.0, f64::NAN]).is_err(),
+            "NaN 期望"
+        );
     }
 
     #[test]

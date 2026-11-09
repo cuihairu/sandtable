@@ -222,3 +222,84 @@ fn project_rejects_directory_input() {
 
     fs::remove_dir_all(&dir).unwrap();
 }
+
+/// I-027 · zip bomb 防护:单条目解压上限、manifest 限长、条目数上限、
+/// 总字节上限,逐项用手工归档触发。
+#[test]
+fn project_rejects_zip_bomb_and_resource_abuse() {
+    let dir = temp_dir("bomb");
+    fs::create_dir_all(&dir).unwrap();
+    let opts = || {
+        zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+    };
+
+    // 1) 单条目炸弹:65 MiB 的 'a' 压缩后 ~65 KB,解压超单条上限被拒
+    //    (小压缩尺寸 + 巨大解压尺寸正是 zip bomb 形态)
+    let mf = r#"{"schema_version":"1","name":"bomb","entries":[{"path":"results/big.bin","kind":"result","sha256":"0"}]}"#;
+    let arc = dir.join("bomb.sandtable");
+    {
+        let f = fs::File::create(&arc).unwrap();
+        let mut zw = zip::ZipWriter::new(f);
+        zw.start_file("manifest.json", opts()).unwrap();
+        zw.write_all(mf.as_bytes()).unwrap();
+        zw.start_file("results/big.bin", opts()).unwrap();
+        let chunk = vec![b'a'; 1024 * 1024];
+        for _ in 0..65 {
+            zw.write_all(&chunk).unwrap();
+        }
+        zw.finish().unwrap();
+    }
+    let out = bin(&["project", "check", arc.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(stderr(&out).contains("超上限"), "{}", stderr(&out));
+
+    // 2) 总字节超限:三条各 45 MiB(单条合法),合计 135 MiB 超 128 MiB 总上限
+    let mf = r#"{"schema_version":"1","name":"total","entries":[
+        {"path":"results/a.bin","kind":"result","sha256":"0"},
+        {"path":"results/b.bin","kind":"result","sha256":"0"},
+        {"path":"results/c.bin","kind":"result","sha256":"0"}]}"#;
+    let arc = dir.join("total.sandtable");
+    {
+        let f = fs::File::create(&arc).unwrap();
+        let mut zw = zip::ZipWriter::new(f);
+        zw.start_file("manifest.json", opts()).unwrap();
+        zw.write_all(mf.as_bytes()).unwrap();
+        let chunk = vec![b'a'; 1024 * 1024];
+        for name in ["results/a.bin", "results/b.bin", "results/c.bin"] {
+            zw.start_file(name, opts()).unwrap();
+            for _ in 0..45 {
+                zw.write_all(&chunk).unwrap();
+            }
+        }
+        zw.finish().unwrap();
+    }
+    let out = bin(&["project", "check", arc.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(stderr(&out).contains("超上限"), "{}", stderr(&out));
+
+    // 3) manifest 超长:1 MiB 上限,读取阶段即拒(不进 JSON 解析)
+    let big_name = "x".repeat(2 * 1024 * 1024);
+    let mf = format!(r#"{{"schema_version":"1","name":"{big_name}","entries":[]}}"#);
+    let arc = dir.join("bigmf.sandtable");
+    hand_zip(&arc, &[("manifest.json", mf)]);
+    let out = bin(&["project", "check", arc.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(stderr(&out).contains("超上限"), "{}", stderr(&out));
+
+    // 4) 条目数超限:4098 件(> 上限 4096 + manifest),构建 names 前即拒
+    let arc = dir.join("many.sandtable");
+    let entries: Vec<(String, String)> = (0..4098)
+        .map(|i| (format!("scenarios/x{i}.yaml"), SCENARIO.into()))
+        .collect();
+    let refs: Vec<(&str, String)> = entries
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+    hand_zip(&arc, &refs);
+    let out = bin(&["project", "check", arc.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(stderr(&out).contains("条目数"), "{}", stderr(&out));
+
+    fs::remove_dir_all(&dir).unwrap();
+}

@@ -1361,8 +1361,9 @@ mod tests {
     }
 
     /// 掉落面校验(文档 24 章 R1):rate_mult 非正、空表名、全零权重、
-    /// 非有限负数逐项报错;合法表因结算未接入仿真被整体拒绝加载
-    /// (审核整改 P1);loot 缺省(None)不进 canonical JSON。
+    /// 非有限负数逐项报错;合法表正常加载(结算已接入仿真——注释曾写
+    /// 「未接入被拒」,与现实相反,I-033 更正);loot 缺省(None)不进
+    /// canonical JSON。
     #[test]
     fn validate_loot_section() {
         fn loot(

@@ -55,6 +55,10 @@ impl Default for ScenarioSection {
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 struct ModelSection {
+    // 注意(2026-11-09 I-034):`model.stage_rules` 有意无字段——工作台
+    // 编辑器写入的该节经 registry check_section 形状放行后,在此被 serde
+    // 静默丢弃(无 deny_unknown_fields),不进仿真;死配置现状已在
+    // registry 特例处与编辑器 UI 显式声明。
     warrior: WarriorConfig,
     whale_gain_mult: i64,
     combat: CombatConfig,
@@ -944,10 +948,10 @@ model:
         assert!(err.to_string().contains("hp"), "{err}");
     }
 
-    /// 掉落面(文档 24 章 R1):结算未接入仿真,配置了 loot 的 YAML 在
-    /// 加载期被拒(审核整改 P1:静默不生效是缺陷,拒绝加载显式报错);
-    /// serde 层与数值通道照常保留(结算系统立项后恢复可达);未配置时
-    /// 为 None(不进 canonical JSON)。契约改动见 docs/review 整改记录。
+    /// 掉落面(文档 24 章 R1):结算已接入仿真(loot_gold_per_player 等
+    /// 指标),配置了 loot 的 YAML 正常加载(注释曾写「未接入被拒」,与
+    /// 现实相反,I-033 更正);未配置时为 None(不进 canonical JSON)。
+    /// 契约改动见 docs/review 整改记录。
     #[test]
     fn loot_yaml_roundtrip() {
         // 配置了 loot(带 on_victory / rewards):结算已接入,加载通过

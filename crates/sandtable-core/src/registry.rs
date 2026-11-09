@@ -406,6 +406,9 @@ fn check_section(prefix: &str, v: &Value) -> Result<(), Error> {
         let key = key_str(k)?;
         let path = format!("{prefix}.{key}");
         if path == "model.stage_rules" {
+            // I-034 · 死配置声明:内核不消费该键(ModelSection 无对应字段),
+            // 这里只放行序列形状——工作台阶段规则编辑器是创作侧产物,写入
+            // YAML 后不进仿真。机制落地前,加载器如实在此声明现状。
             sub.as_sequence()
                 .ok_or_else(|| Error::Config(format!("{path}: 应为规则序列")))?;
         } else if SECTIONS.contains(&path.as_str()) {

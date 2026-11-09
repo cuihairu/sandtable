@@ -387,6 +387,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2.9.3
 
       - name: 构建 release CLI
+        # I-037 · 特性决策(2026-11-09 记录):headless 每日构建有意走默认
+        # 特性(无 parquet / duckdb / arrow)——分析导出属可选 feature,
+        # 每日 CLI 保持瘦身;需要 parquet/duckdb 的用户以
+        # `cargo build --release -p sandtable-cli --features parquet,duckdb`
+        # 自行构建(二进制面见 README/docs 09 章)。不是遗漏,是裁剪。
         run: cargo build --release -p sandtable-cli
 
       - name: 冒烟(--version / --help)
