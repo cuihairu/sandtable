@@ -19,6 +19,15 @@ mod scaffold;
 
 use sandtable_cli::workbook;
 
+/// 桌面 / CLI 扫描与寻优的仿真规模预算(文档 09/12 章;ST-AUD-17/19 / I-017/I-019,
+/// 桌面路径此前无规模 / 仿真量门,仅靠 core 候选与 replicates 上限兜底):
+/// - 规模门 `players × days ≤ core::config::MAX_SIM_SCALE`(五壳层共用同一常量);
+/// - 单候选驻留内存门 `replicates × days ≤ MAX_CLI_REPLICATE_DAYS`(每 replicate
+///   持 `days` 个 DayStats,rayon 并行时线程数份在飞,大 R × 大 days 即 OOM 源);
+/// - 总工作量门 [`core::sweep::sim_work`] ≤ [`MAX_CLI_SIM_WORK`](候选 × R × players × days)。
+pub const MAX_CLI_REPLICATE_DAYS: u64 = 2_000_000;
+pub const MAX_CLI_SIM_WORK: u64 = 1_000_000_000;
+
 #[derive(Parser)]
 #[command(
     name = "sandtable",
@@ -454,6 +463,33 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                     return Ok(std::process::ExitCode::from(2));
                 }
             }
+            // ST-AUD-17/19 / I-017/I-019:预算账在物化候选 **之前** 先算
+            // (candidate_count 纯计数不展开),统一 sim_work 口径收紧驻留内存
+            // (R × days)与总工作量(候选 × R × players × days)两扇门——桌面
+            // 路径此前仅靠 core 候选 / replicates 上限兜底,大 R × 大 days
+            // 仍会 OOM。规模门(players × days)已由 load_experiment_str →
+            // into_config → config::validate 统一把关,不重复判界。
+            let count = match spec.candidate_count() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("配置错误: {e}");
+                    return Ok(std::process::ExitCode::from(2));
+                }
+            };
+            let rd = core::sweep::sim_work(1, spec.replicates, 1, cfg.days);
+            if rd > MAX_CLI_REPLICATE_DAYS {
+                eprintln!(
+                    "参数错误: replicates × days = {rd} 超出驻留内存预算 {MAX_CLI_REPLICATE_DAYS}(调小 replicates 或 duration)"
+                );
+                return Ok(std::process::ExitCode::from(2));
+            }
+            let work = core::sweep::sim_work(count, spec.replicates, cfg.players, cfg.days);
+            if work > MAX_CLI_SIM_WORK {
+                eprintln!(
+                    "参数错误: 总仿真工作量 {work} 超出预算 {MAX_CLI_SIM_WORK}(调小网格 / replicates / population / duration)"
+                );
+                return Ok(std::process::ExitCode::from(2));
+            }
             let candidates = match spec.plan(cfg.base_seed) {
                 Ok(c) => c,
                 Err(e) => {
@@ -560,13 +596,27 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                     return Ok(std::process::ExitCode::from(2));
                 }
             }
+            // ST-AUD-17/19 / I-017/I-019:寻优同样收紧驻留内存 / 总工作量两扇门
+            // (候选数 = population × (generations + 1),同 validate 口径);
+            // 规模门由加载器统一把关。
+            let count = spec.population as usize * (spec.generations as usize + 1);
+            let rd = core::sweep::sim_work(1, spec.replicates, 1, cfg.days);
+            if rd > MAX_CLI_REPLICATE_DAYS {
+                eprintln!(
+                    "参数错误: replicates × days = {rd} 超出驻留内存预算 {MAX_CLI_REPLICATE_DAYS}(调小 replicates 或 duration)"
+                );
+                return Ok(std::process::ExitCode::from(2));
+            }
+            let work = core::sweep::sim_work(count, spec.replicates, cfg.players, cfg.days);
+            if work > MAX_CLI_SIM_WORK {
+                eprintln!(
+                    "参数错误: 总仿真工作量 {work} 超出预算 {MAX_CLI_SIM_WORK}(调小 population / generations / replicates / duration)"
+                );
+                return Ok(std::process::ExitCode::from(2));
+            }
             println!(
                 "寻优计划:{} 种群 × {} 代 × {} replicates(mode {:?},候选预算上限 {})",
-                spec.population,
-                spec.generations,
-                spec.replicates,
-                spec.mode,
-                spec.population as usize * (spec.generations as usize + 1),
+                spec.population, spec.generations, spec.replicates, spec.mode, count,
             );
             let t0 = std::time::Instant::now();
             let result = match core::optimize::optimize(&cfg, &spec) {

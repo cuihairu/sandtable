@@ -23,6 +23,22 @@ use crate::Error;
 /// 单个候选的规模上限(文档 12 章:网格设计先算成本账,这里硬性兜底)。
 pub const MAX_CANDIDATES: usize = 10_000;
 
+/// 统一仿真成本账(文档 12 章,ST-AUD-17 / I-017):一次扫描 / 寻优 / 单跑
+/// 的总仿真工作量 = 候选数 × replicates × players × days。饱和乘法防溢出,
+/// 绝不 panic。这是五壳层共用**同一**预算函数——各壳层以自己的预算常量
+/// (wasm 200、mcp 1000、cli 桌面级)调用本函数判定放行,不各自拼乘法。
+///
+/// 语义:1 个「工作量单位」= 1 个 replicate 跑 1 天 × 1 玩家。同时把
+/// 总时间(候选 × R × scale)与单候选驻留内存(R × days × DayStats,因
+/// 候选 ≥1、players ≥1 时有 R × days ≤ 总工作量)纳入同一条上界,
+/// 这正是审计要求的「候选数 × R × players × days」单账。
+pub fn sim_work(candidates: usize, replicates: u32, players: u32, days: u32) -> u64 {
+    (candidates as u64)
+        .saturating_mul(replicates as u64)
+        .saturating_mul(players as u64)
+        .saturating_mul(days as u64)
+}
+
 /// 扫描模式。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -50,10 +66,20 @@ pub struct ParamRange {
 }
 
 impl ParamRange {
-    /// 范围合法性(网格 / 随机共用):有限、step > 0、min ≤ max。
+    /// 范围合法性(网格 / 随机共用):有限、step > 0、min ≤ max、
+    /// 跨度有限(ST-AUD-17 / I-017:min=-1e308 与 max=1e308 各自有限且 min≤max,
+    /// 但 (max−min) 溢出为 inf,Random/LHS 采样 `min + r·(max−min)` 产出
+    /// inf/NaN 候选;网格点计数 `(max−min)/step` 也溢出)。跨度有限即
+    /// 拒绝 ±1e308 这类病态范围。
     fn check(&self) -> Result<(), Error> {
         if !(self.min.is_finite() && self.max.is_finite() && self.step.is_finite()) {
             return Err(Error::Config(format!("{}: 范围必须是有限数", self.path)));
+        }
+        if !(self.max - self.min).is_finite() {
+            return Err(Error::Config(format!(
+                "{}: 范围跨度 (max − min) 必须有限(当前 max−min 溢出为无穷,采样会产出 inf/NaN)",
+                self.path
+            )));
         }
         if self.step <= 0.0 {
             return Err(Error::Config(format!("{}: step 必须 > 0", self.path)));
@@ -234,6 +260,39 @@ impl SweepSpec {
             }
         }
         Ok(())
+    }
+
+    /// 候选计数(纯计算,不物化;ST-AUD-19 / I-019:壳层在 `plan()` **之前**
+    /// 先算预算账,避免「先展开 10k 候选再检查」的次序)。口径与 [`Self::plan`]
+    /// 的候选数一致(同校验同模式):Grid = 各维 `grid_point_count` 饱和乘积,
+    /// Random / LHS = samples。超过 [`MAX_CANDIDATES`] 即 Err(与 plan 同界)。
+    pub fn candidate_count(&self) -> Result<usize, Error> {
+        self.validate()?;
+        match self.mode {
+            SweepMode::Grid => {
+                let mut total: usize = 1;
+                for p in &self.parameters {
+                    let n = p.grid_point_count()?;
+                    total = total.saturating_mul(n);
+                    if total > MAX_CANDIDATES {
+                        return Err(Error::Config(format!(
+                            "网格候选数 {total} 超上限 {MAX_CANDIDATES}(文档 12 章:先算成本账,缩小范围或加大 step)"
+                        )));
+                    }
+                }
+                Ok(total)
+            }
+            SweepMode::Random | SweepMode::LatinHypercube => {
+                let n = self.samples as usize;
+                if n == 0 {
+                    return Err(Error::Config("sweep.samples 必须 ≥ 1(Random 模式)".into()));
+                }
+                if n > MAX_CANDIDATES {
+                    return Err(Error::Config(format!("采样数 {n} 超上限 {MAX_CANDIDATES}")));
+                }
+                Ok(n)
+            }
+        }
     }
 
     /// 生成候选列表(串行、确定性;Random 用 base_seed 派生采样流)。
@@ -545,6 +604,72 @@ mod tests {
             step: 0.0,
         };
         assert!(p.grid_points().is_err());
+    }
+
+    /// ST-AUD-17 / I-017:min/max 各自有限但 (max−min) 溢出为 inf 的病态范围
+    /// 必须拒绝——否则 Random/LHS 采样 `min + r·(max−min)` 与网格计数
+    /// `(max−min)/step` 都产出 inf/NaN 候选(修复前 ±1e308 全通过校验)。
+    #[test]
+    fn param_range_span_overflow_rejected() {
+        for (min, max) in [(-1e308, 1e308), (1e308, -1e308), (f64::MAX, -f64::MAX)] {
+            let p = ParamRange {
+                path: "model.warrior.attack".into(),
+                min,
+                max,
+                step: 1.0,
+            };
+            let msg = p.grid_point_count().unwrap_err().to_string();
+            assert!(msg.contains("跨度"), "{min}/{max}: {msg}");
+        }
+        // 跨度有限(即使端点大)仍合法
+        let p = ParamRange {
+            path: "model.warrior.attack".into(),
+            min: -1e6,
+            max: 1e6,
+            step: 1.0,
+        };
+        assert_eq!(p.grid_point_count().unwrap(), 2_000_001);
+    }
+
+    /// ST-AUD-17/19 / I-017/I-019:`candidate_count` 与 `plan` 候选数同口径
+    /// (grid/random/LHS 各模式),超限提前 Err;`sim_work` 饱和乘法不 panic。
+    #[test]
+    fn candidate_count_matches_plan_and_sim_work_saturates() {
+        // grid:3×3
+        assert_eq!(grid_spec().candidate_count().unwrap(), 9);
+        // random:samples
+        let mut r = grid_spec();
+        r.mode = SweepMode::Random;
+        r.samples = 7;
+        assert_eq!(r.candidate_count().unwrap(), 7);
+        // lhs:samples
+        let mut l = grid_spec();
+        l.mode = SweepMode::LatinHypercube;
+        l.samples = 11;
+        assert_eq!(l.candidate_count().unwrap(), 11);
+        // 与 plan 候选数一致(物化路径)
+        assert_eq!(
+            grid_spec().candidate_count().unwrap(),
+            grid_spec().plan(1).unwrap().len()
+        );
+        // 超上限提前拒绝
+        let mut big = grid_spec();
+        big.parameters = vec![ParamRange {
+            path: "model.warrior.attack".into(),
+            min: 0.0,
+            max: 1.0e12,
+            step: 1.0,
+        }];
+        assert!(big
+            .candidate_count()
+            .unwrap_err()
+            .to_string()
+            .contains("超上限"));
+        // sim_work:饱和乘法,极端输入不 panic、不出负数
+        assert_eq!(sim_work(3, 2, 100, 10), 6000);
+        let huge = sim_work(usize::MAX, u32::MAX, u32::MAX, u32::MAX);
+        assert_eq!(huge, u64::MAX);
+        assert_eq!(sim_work(0, 0, 0, 0), 0);
     }
 
     /// 预算先算账(审核整改 P1):计数与物化点数一致;超大范围在分配前

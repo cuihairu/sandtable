@@ -25,6 +25,13 @@ use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
 use sandtable_core as core;
 use serde_json::{json, Value};
 
+/// Python 扫描的仿真预算(ST-AUD-17/19 / I-017/I-019,与 CLI 同一口径,文档
+/// 12 章):桌面 / 实验粒度,规模门由加载器统一把关;此处收紧单候选驻留内存
+/// (R × days)与总工作量(候选 × R × players × days)。原生路径此前无任何
+/// 预算门(仅靠 core 候选 / replicates 上限),大 R × 大 days 会 OOM。
+pub const MAX_PY_REPLICATE_DAYS: u64 = 2_000_000;
+pub const MAX_PY_SIM_WORK: u64 = 1_000_000_000;
+
 // —— 内部装载(load → validate,与 wasm 绑定同构)——
 
 fn load_config(yaml: &str) -> Result<core::config::SimConfig, String> {
@@ -150,6 +157,24 @@ fn sweep_run_native(yaml: &str, replicates_override: u32) -> Result<Value, Strin
     if replicates_override > 0 {
         spec.replicates = replicates_override;
         spec.validate().map_err(|e| format!("配置错误: {e}"))?;
+    }
+    // ST-AUD-17/19 / I-017/I-019:预算账在 `plan()` **之前**先算(候选计数纯
+    // 计算不物化),统一 sim_work 口径收紧驻留内存(R × days)与总工作量
+    // (候选 × R × players × days);规模门由加载器统一把关。
+    let count = spec
+        .candidate_count()
+        .map_err(|e| format!("配置错误: {e}"))?;
+    let rd = core::sweep::sim_work(1, spec.replicates, 1, cfg.days);
+    if rd > MAX_PY_REPLICATE_DAYS {
+        return Err(format!(
+            "参数错误: replicates × days = {rd} 超出 Python 驻留内存预算 {MAX_PY_REPLICATE_DAYS}(调小 replicates 或 duration)"
+        ));
+    }
+    let work = core::sweep::sim_work(count, spec.replicates, cfg.players, cfg.days);
+    if work > MAX_PY_SIM_WORK {
+        return Err(format!(
+            "参数错误: 总仿真工作量 {work} 超出 Python 预算 {MAX_PY_SIM_WORK}(调小网格 / replicates / population / duration)"
+        ));
     }
     let candidates = spec
         .plan(cfg.base_seed)

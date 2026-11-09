@@ -28,6 +28,37 @@ struct ProgressEvent {
 /// 立即申请数十 GB(Vec::with_capacity)分配失败即 abort(不可捕获)。
 const MAX_REPLICATES: u32 = 64;
 
+/// 桌面扫描 / 寻优的仿真预算(ST-AUD-17/19 / I-017/I-019,与 CLI 同一口径,
+/// 文档 12 章):规模门由加载器统一把关;此处收紧单候选驻留内存
+/// (R × days,每 replicate 持 days 个 DayStats)与总工作量
+/// (候选 × R × players × days)。桌面 native 此前仅靠 core 候选 /
+/// replicates 上限兜底,大 R × 大 days 仍会 OOM。
+const MAX_DESKTOP_REPLICATE_DAYS: u64 = 2_000_000;
+const MAX_DESKTOP_SIM_WORK: u64 = 1_000_000_000;
+
+/// 扫描 / 寻优共用的预算门:驻留内存(R × days)+ 总工作量
+/// ([`sandtable_core::sweep::sim_work`] 统一账),超限 Err(消息与 CLI 同文)。
+fn check_sweep_budget(
+    candidates: usize,
+    replicates: u32,
+    players: u32,
+    days: u32,
+) -> Result<(), String> {
+    let rd = sandtable_core::sweep::sim_work(1, replicates, 1, days);
+    if rd > MAX_DESKTOP_REPLICATE_DAYS {
+        return Err(format!(
+            "参数错误: replicates × days = {rd} 超出驻留内存预算 {MAX_DESKTOP_REPLICATE_DAYS}(调小 replicates 或 duration)"
+        ));
+    }
+    let work = sandtable_core::sweep::sim_work(candidates, replicates, players, days);
+    if work > MAX_DESKTOP_SIM_WORK {
+        return Err(format!(
+            "参数错误: 总仿真工作量 {work} 超出预算 {MAX_DESKTOP_SIM_WORK}(调小网格 / replicates / population / duration)"
+        ));
+    }
+    Ok(())
+}
+
 /// 取消令牌:活动任务在 replicate 边界轮询。
 type CancelFlag = Arc<AtomicBool>;
 
@@ -341,13 +372,15 @@ fn metric_dictionary() -> Result<serde_json::Value, String> {
 /// 进化寻优(桌面命令):内核单次调用跑完整体 种群 × 代 寻优,与 CLI
 /// `optimize` 同源,返回 spec / evaluated / total_sims / best / best_fitness /
 /// history / all / front0(CLI opt.json 同构)。桌面 native 无 Web 预算门
-/// (与 sweep_plan 同口径,更大寻优本就是桌面定位);浏览器路径的预算红线
-/// 在 wasm `optimize_native` 单点拦截。
+/// (更大寻优本就是桌面定位),但按 [`MAX_DESKTOP_SIM_WORK`] 收紧驻留内存 /
+/// 总工作量;浏览器路径的预算红线在 wasm `optimize_native` 单点拦截。
 #[tauri::command]
 fn optimize(yaml: String) -> Result<serde_json::Value, String> {
     let (cfg, spec) =
         sandtable_core::scenario::load_optimize_str(&yaml).map_err(|e| format!("配置错误: {e}"))?;
     spec.validate().map_err(|e| format!("配置错误: {e}"))?;
+    let count = spec.population as usize * (spec.generations as usize + 1);
+    check_sweep_budget(count, spec.replicates, cfg.players, cfg.days)?;
     let result =
         sandtable_core::optimize::optimize(&cfg, &spec).map_err(|e| format!("配置错误: {e}"))?;
     serde_json::to_value(result).map_err(|e| format!("配置错误: {e}"))
@@ -499,8 +532,10 @@ fn cancel_run(state: State<'_, TaskRegistry>) -> bool {
 }
 
 /// 扫描计划:实验 YAML → `{config_hash, players, days, base_seed, replicates,
-/// mode, axes, candidates, targets, sims}`(无 Web 预算门;候选上限在
-/// SweepSpec::validate 内);与 wasm sweep_plan 同构。
+/// mode, axes, candidates, targets, sims}`(无 Web 预算门,桌面按
+/// [`MAX_DESKTOP_SIM_WORK`] 收紧;候选上限在 SweepSpec::validate 内);与 wasm
+/// sweep_plan 同构。ST-AUD-19 / I-019:预算账在 `plan()` **之前**先算
+/// (candidate_count 纯计数不物化)。
 #[tauri::command]
 fn sweep_plan(yaml: String, replicates_override: u32) -> Result<serde_json::Value, String> {
     let (cfg, mut spec) = sandtable_core::scenario::load_experiment_str(&yaml)
@@ -509,10 +544,14 @@ fn sweep_plan(yaml: String, replicates_override: u32) -> Result<serde_json::Valu
         spec.replicates = replicates_override;
         spec.validate().map_err(|e| format!("配置错误: {e}"))?;
     }
+    let count = spec
+        .candidate_count()
+        .map_err(|e| format!("配置错误: {e}"))?;
+    check_sweep_budget(count, spec.replicates, cfg.players, cfg.days)?;
     let candidates = spec
         .plan(cfg.base_seed)
         .map_err(|e| format!("配置错误: {e}"))?;
-    let sims = candidates.len() as u64 * spec.replicates as u64;
+    let sims = sandtable_core::sweep::sim_work(count, spec.replicates, 1, 1);
     Ok(serde_json::json!({
         "config_hash": sandtable_core::config::config_hash(&cfg),
         "players": cfg.players,
@@ -541,6 +580,8 @@ fn sweep_candidate_impl(
         .map_err(|e| format!("配置错误: {e}"))?;
     spec.replicates = replicates;
     spec.validate().map_err(|e| format!("配置错误: {e}"))?;
+    // 单候选同样吃驻留内存门(R × days)与单份工作量门(R × players × days)
+    check_sweep_budget(1, replicates, cfg.players, cfg.days)?;
     let values: std::collections::BTreeMap<String, f64> = serde_json::from_str(values_json)
         .map_err(|e| format!("参数错误: 候选参数解析失败: {e}"))?;
     serde_json::to_value(sandtable_core::sweep::run_candidate(&cfg, &spec, &values))

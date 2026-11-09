@@ -105,21 +105,26 @@ pub fn sweep_plan_native(
         spec.replicates = replicates_override;
         spec.validate().map_err(|e| format!("配置错误: {e}"))?;
     }
-    let candidates = spec
-        .plan(cfg.base_seed)
+    // ST-AUD-19 / I-019:预算账在 `plan()` **之前**先算(候选计数纯计算不物化,
+    // 与 CLI/MCP 同一 [`core::sweep::candidate_count`] 口径),不「先展开候选再检查」。
+    let count = spec
+        .candidate_count()
         .map_err(|e| format!("配置错误: {e}"))?;
-    let sims = candidates.len() as u64 * spec.replicates as u64;
+    let sims = core::sweep::sim_work(count, spec.replicates, 1, 1);
     if sims > MAX_SWEEP_SIMS {
         return Err(format!(
             "参数错误: 候选数 × replicates = {sims} 超出 Web 预算 {MAX_SWEEP_SIMS}(调小网格或 replicates 粗筛,更大实验走 CLI)"
         ));
     }
-    let scale = cfg.players as u64 * cfg.days as u64;
+    let scale = core::sweep::sim_work(1, 1, cfg.players, cfg.days);
     if scale > MAX_SWEEP_SIM_SCALE {
         return Err(format!(
             "参数错误: players × days = {scale} 超出 Web 预算 {MAX_SWEEP_SIM_SCALE}(Web 定位小中型仿真,更大实验走 CLI)"
         ));
     }
+    let candidates = spec
+        .plan(cfg.base_seed)
+        .map_err(|e| format!("配置错误: {e}"))?;
     Ok(json!({
         "config_hash": core::config::config_hash(&cfg),
         "players": cfg.players,

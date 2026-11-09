@@ -192,11 +192,24 @@ impl OptimSpec {
                 "optimize.mutation_scale 必须在 (0, 1](相对维宽的比例)".into(),
             ));
         }
-        // 成本账(文档 12 章):初始种群 + 每代子代,精英不重评
+        // 成本账(文档 12 章):初始种群 + 每代子代,精英不重评。候选数
+        // 本身 ≤ MAX_CANDIDATES;ST-AUD-17 / I-017 补 ×replicates 的**总仿真
+        // 工作量**账(原实现只按候选数封顶,未乘 R——wasm 做了、core 没做)。
+        // 核心上界为两条既有上限的复合(候选 ≤ MAX_CANDIDATES ∧ R ≤
+        // MAX_SWEEP_REPLICATES → 总仿真 ≤ 复合值),恒可达的保守兜底;
+        // 有效收紧由各壳层以 [`crate::sweep::sim_work`] 按自身预算常量判定。
         let total_candidates = self.population as usize * (self.generations as usize + 1);
         if total_candidates > MAX_CANDIDATES {
             return Err(Error::Config(format!(
                 "寻优候选数 {total_candidates}(population × (generations + 1))超上限 {MAX_CANDIDATES}(文档 12 章:先算成本账)"
+            )));
+        }
+        let total_sims = (total_candidates as u64).saturating_mul(self.replicates as u64);
+        let core_sims_cap =
+            (MAX_CANDIDATES as u64).saturating_mul(crate::config::MAX_SWEEP_REPLICATES as u64);
+        if total_sims > core_sims_cap {
+            return Err(Error::Config(format!(
+                "寻优总仿真 {total_sims}(候选 × replicates)超核心上界 {core_sims_cap}(文档 12 章:先算成本账)"
             )));
         }
         Ok(())

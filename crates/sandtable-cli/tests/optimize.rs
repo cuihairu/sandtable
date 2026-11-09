@@ -138,3 +138,82 @@ scenario: {population: 100, duration: "10d"}
         "错误应指向 optimize 节"
     );
 }
+
+/// ST-AUD-17/19 / I-017/I-019:寻优同样收紧规模 / 总工作量门(桌面路径此前
+/// 无门),超限退出码 2 并点名超限维度;规模内仍放行。
+#[test]
+fn optimize_enforces_scale_and_work_budgets() {
+    let dir = temp_dir("budget");
+    fs::create_dir_all(&dir).unwrap();
+
+    // 规模门:100 万 × 1d > 40 万
+    let exp = dir.join("big-scale.yaml");
+    fs::write(
+        &exp,
+        r#"schema_version: "1"
+scenario: {population: 1000000, duration: "1d"}
+optimize:
+  mode: evolutionary
+  population: 4
+  generations: 3
+  elite: 1
+  mutation_rate: 0.5
+  mutation_scale: 0.3
+  replicates: 2
+  parameters:
+    model.warrior.attack: {min: 100, max: 180, step: 20}
+  targets:
+    - metric: win_rate
+      min: 0.3
+"#,
+    )
+    .unwrap();
+    let out = run(&["optimize", exp.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("players"), "{stderr}");
+
+    // 总工作量门:种群 × (代+1) = 候选 ≤ 上限,但 × replicates × players × days
+    // 超限(100×100 候选 = 1e4 ≤ MAX_CANDIDATES,×100 R×100 players×30d = 3e9 > 1e9)
+    let exp = dir.join("big-work.yaml");
+    fs::write(
+        &exp,
+        r#"schema_version: "1"
+scenario: {population: 100, duration: "30d"}
+optimize:
+  mode: evolutionary
+  population: 100
+  generations: 99
+  elite: 1
+  mutation_rate: 0.5
+  mutation_scale: 0.3
+  replicates: 100
+  parameters:
+    model.warrior.attack: {min: 100, max: 180, step: 20}
+  targets:
+    - metric: win_rate
+      min: 0.3
+"#,
+    )
+    .unwrap();
+    let out = run(&["optimize", exp.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("总仿真工作量"), "{stderr}");
+
+    // 规模内仍放行(exp_yaml 基线写盘,--out 指向临时目录防污染仓库)
+    let exp = dir.join("ok.yaml");
+    fs::write(&exp, exp_yaml()).unwrap();
+    let out = dir.join("out");
+    let st = run(&[
+        "optimize",
+        exp.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    assert!(
+        st.status.success(),
+        "{:?}",
+        String::from_utf8_lossy(&st.stderr)
+    );
+}

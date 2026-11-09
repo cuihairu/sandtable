@@ -40,6 +40,22 @@ pub const MAX_RUN_REPLICATES: u32 = 4096;
 /// `sandtable_plan_sweep` 的仿真预算:候选数 × replicates ≤ 1000。
 pub const MAX_SWEEP_SIMS: u64 = 1000;
 
+/// `sandtable_analyze` 的 results_json 输入字节上限(ST-AUD-19 / I-019:
+/// 原无字节 / 条数上限,一次超大 results_json 可撑爆进程且无取消面)。
+/// 64 MiB 对合法用途(数千 replicate × 数十天)已很宽裕,超限拒绝并点名。
+pub const MAX_RESULTS_JSON_BYTES: usize = 64 * 1024 * 1024;
+
+/// 分析入口的 results_json 统一字节闸:超限直接 Err,不交给 serde 展开。
+fn check_results_json_size(s: &str, what: &str) -> Result<(), String> {
+    if s.len() > MAX_RESULTS_JSON_BYTES {
+        return Err(format!(
+            "参数错误: {what} JSON 体积 {} 字节超出上限 {MAX_RESULTS_JSON_BYTES}(调小 replicates / 天数,或分段分析)",
+            s.len()
+        ));
+    }
+    Ok(())
+}
+
 pub use calibrate::{
     calibrate_native, CalibrationInput, MAX_CALIBRATION_ANCHORS, MAX_CALIBRATION_REPLICATES,
 };
@@ -51,6 +67,7 @@ fn load(yaml: &str) -> Result<core::config::SimConfig, String> {
 }
 
 fn parse_results(results_json: &str, what: &str) -> Result<Vec<core::metrics::RunMetrics>, String> {
+    check_results_json_size(results_json, what)?;
     serde_json::from_str(results_json).map_err(|e| format!("参数错误: {what}解析失败: {e}"))
 }
 
@@ -118,10 +135,15 @@ fn sweep_run_native(yaml: &str, replicates_override: u32) -> Result<Value, Strin
         spec.replicates = replicates_override;
         spec.validate().map_err(|e| format!("配置错误: {e}"))?;
     }
-    let candidates = spec
-        .plan(cfg.base_seed)
+    // ST-AUD-19 / I-019:预算账在 `plan()` **之前**先算(候选计数纯计算不物化,
+    // 与 wasm / CLI 同一 [`core::sweep::candidate_count`] 口径),不「先展开
+    // 候选再检查」。规模门(players × days)已由 load_experiment_str →
+    // into_config → [`core::config::validate`] 统一把关(五壳层共用同一常量),
+    // 此处不再重复判界。
+    let count = spec
+        .candidate_count()
         .map_err(|e| format!("配置错误: {e}"))?;
-    let sims = candidates.len() as u64 * spec.replicates as u64;
+    let sims = core::sweep::sim_work(count, spec.replicates, 1, 1);
     if sims == 0 {
         return Err("参数错误: 扫描网格为空(检查 parameters 的 min/max/step)".into());
     }
@@ -130,6 +152,9 @@ fn sweep_run_native(yaml: &str, replicates_override: u32) -> Result<Value, Strin
             "参数错误: 候选数 × replicates = {sims} 超出 MCP 预算 {MAX_SWEEP_SIMS}(调小网格或 replicates 粗筛,更大实验走 CLI)"
         ));
     }
+    let candidates = spec
+        .plan(cfg.base_seed)
+        .map_err(|e| format!("配置错误: {e}"))?;
     // 候选间并行(与 CLI sweep 同纪律);内核 keyed RNG 保证并行与串行
     // 逐值一致(parallel_determinism 测试锁死)。
     let results: Vec<core::sweep::CandidateResult> = candidates
@@ -225,6 +250,7 @@ fn recommend_native(yaml: &str, results_json: &str) -> Result<Value, String> {
             spec.parameters.len()
         ));
     }
+    check_results_json_size(results_json, "候选结果")?;
     let results: Vec<core::sweep::CandidateResult> = serde_json::from_str(results_json)
         .map_err(|e| format!("参数错误: 候选结果解析失败: {e}"))?;
     let elasticities =
@@ -493,6 +519,38 @@ mod tests {
         let big = "schema_version: \"1\"\nscenario: {population: 100, duration: \"10d\"}\nsweep:\n  replicates: 400\n  parameters:\n    model.warrior.attack: {min: 90, max: 110, step: 10}\n".to_string();
         let err = sweep_run_native(&big, 0).unwrap_err();
         assert!(err.contains("超出 MCP 预算"), "{err}");
+    }
+
+    /// ST-AUD-19 / I-019:预算账在 `plan()` **之前**先算(候选计数纯计算不物化);
+    /// 规模门已由 load_experiment_str → into_config → config::validate 统一把关,
+    /// 超规模经加载期拒绝(不进入 plan 物化)。
+    #[test]
+    fn sweep_budget_counted_before_plan_and_scale_gated_at_load() {
+        // 规模超限经加载期拒绝(players 超 MAX_SIM_DIM)
+        let big = "schema_version: \"1\"\nscenario: {population: 1000000, duration: \"1d\"}\nsweep:\n  replicates: 2\n  parameters:\n    model.warrior.attack: {min: 90, max: 110, step: 10}\n"
+            .to_string();
+        let err = sweep_run_native(&big, 0).unwrap_err();
+        assert!(err.contains("players"), "{err}");
+        // 规模以内仍放行(40 万内,1 维小网格)
+        let ok = "schema_version: \"1\"\nscenario: {population: 1000, duration: \"30d\"}\nsweep:\n  replicates: 2\n  parameters:\n    model.warrior.attack: {min: 90, max: 110, step: 10}\n"
+            .to_string();
+        assert!(sweep_run_native(&ok, 0).is_ok());
+        // candidate_count 与 plan 候选数一致(物化路径同口径)
+        let v = sweep_run_native(&exp_yaml(), 0).unwrap();
+        assert_eq!(v["candidates"].as_array().unwrap().len(), 3);
+    }
+
+    /// ST-AUD-19 / I-019:results_json 超字节上限拒绝(原无上限,可撑爆进程)。
+    #[test]
+    fn analyze_rejects_oversized_results_json() {
+        let big = "x".repeat(MAX_RESULTS_JSON_BYTES + 1);
+        let err = daily_aggregate_native(&big).unwrap_err();
+        assert!(err.contains("超出上限"), "{err}");
+        let err = recommend_native(&exp_yaml(), &big).unwrap_err();
+        assert!(err.contains("超出上限"), "{err}");
+        // 合法大小仍通过解析错误路径(非超限错误)
+        let err = daily_aggregate_native("[]").unwrap_err();
+        assert!(!err.contains("超出上限"), "{err}");
     }
 
     #[test]

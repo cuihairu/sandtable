@@ -316,3 +316,89 @@ fn sweep_modes_grid_random_lhs_plan_combos_tasks_reproduce() {
         );
     }
 }
+
+/// ST-AUD-17/19 / I-017/I-019:桌面路径此前无规模 / 仿真量门(仅靠 core 上限
+/// 兜底),大 population × duration 或大网格 × replicates 会 OOM。现按统一
+/// sim_work 账收紧,超限退出码 2 且错误文案点名超限维度。
+#[test]
+fn sweep_enforces_scale_and_work_budgets() {
+    let dir = temp_dir("budget");
+    fs::create_dir_all(&dir).unwrap();
+
+    // 规模门:100 万 × 1d = 100 万 > 40 万(经加载器 config::validate 拒绝,
+    // 单维均未超 MAX_SIM_DIM)
+    let exp = dir.join("big-scale.yaml");
+    fs::write(
+        &exp,
+        r#"schema_version: "1"
+scenario: {population: 1000000, duration: "1d"}
+sweep:
+  replicates: 2
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+"#,
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_sandtable"))
+        .args([
+            "sweep",
+            exp.to_str().unwrap(),
+            "--out",
+            dir.join("o1").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("players"), "{stderr}");
+
+    // 总工作量门:大网格 × replicates,规模合法但总仿真超限
+    let exp = dir.join("big-work.yaml");
+    fs::write(
+        &exp,
+        r#"schema_version: "1"
+scenario: {population: 100, duration: "30d"}
+sweep:
+  replicates: 3000
+  parameters:
+    model.warrior.attack: {min: 0, max: 300, step: 1}
+"#,
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_sandtable"))
+        .args([
+            "sweep",
+            exp.to_str().unwrap(),
+            "--out",
+            dir.join("o2").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("总仿真工作量"), "{stderr}");
+
+    // 规模内、工作量内仍放行(小网格)
+    let exp = dir.join("ok.yaml");
+    fs::write(
+        &exp,
+        r#"schema_version: "1"
+scenario: {population: 100, duration: "10d"}
+sweep:
+  replicates: 2
+  parameters:
+    model.warrior.attack: {min: 90, max: 110, step: 10}
+"#,
+    )
+    .unwrap();
+    let st = Command::new(env!("CARGO_BIN_EXE_sandtable"))
+        .args([
+            "sweep",
+            exp.to_str().unwrap(),
+            "--out",
+            dir.join("o3").to_str().unwrap(),
+        ])
+        .status()
+        .unwrap();
+    assert!(st.success());
+}
