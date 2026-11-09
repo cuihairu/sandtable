@@ -181,6 +181,22 @@ test('WB-07.08:协议信封版本 + 请求/响应守卫(非协议消息丢弃)',
     false,
     'ab_compare 双臂 results 必须是数组',
   )
+  // I-024 · 内核杂项 kind 同一信封:逐字段校验
+  assert.equal(isWorkerRequest({ protocol: 1, kind: 'optimize', taskId: 'x', yaml: 'a' }), true)
+  assert.equal(isWorkerRequest({ protocol: 1, kind: 'optimize', taskId: 'x' }), false, 'optimize 必须带 yaml')
+  assert.equal(
+    isWorkerRequest({ protocol: 1, kind: 'surrogate_train', taskId: 'x', results: [], metric: 'gold_per_player', trees: 32, maxDepth: 6, minSamplesLeaf: 2, seed: 7 }),
+    true,
+  )
+  assert.equal(
+    isWorkerRequest({ protocol: 1, kind: 'surrogate_train', taskId: 'x', results: 'nope', metric: 'm', trees: 32, maxDepth: 6, minSamplesLeaf: 2, seed: 7 }),
+    false,
+    'surrogate_train results 必须是数组',
+  )
+  assert.equal(isWorkerRequest({ protocol: 1, kind: 'surrogate_predict', taskId: 'x', modelJson: '{}', paramsJson: '{}' }), true)
+  assert.equal(isWorkerRequest({ protocol: 1, kind: 'daily_aggregate', taskId: 'x', results: [] }), true)
+  assert.equal(isWorkerRequest({ protocol: 1, kind: 'kpi_eval', taskId: 'x', expression: 'gold_per_player*2', results: [] }), true)
+  assert.equal(isWorkerRequest({ protocol: 1, kind: 'kpi_eval', taskId: 'x', expression: 'gold_per_player*2', results: 'nope' }), false)
   assert.equal(isWorkerRequest(null), false)
   assert.equal(isWorkerRequest('hello'), false)
 
@@ -191,11 +207,118 @@ test('WB-07.08:协议信封版本 + 请求/响应守卫(非协议消息丢弃)',
     true,
     'ab_compare 结果响应在协议内',
   )
+  assert.equal(
+    isWorkerResponse({ protocol: 1, kind: 'result', taskId: 'wreq_1', reqKind: 'kpi_eval', value: { reqKind: 'kpi_eval', output: {} } }),
+    true,
+    'I-024 · kpi_eval 结果响应在协议内',
+  )
+  assert.equal(
+    isWorkerResponse({ protocol: 1, kind: 'error', taskId: 'x', reqKind: 'daily_aggregate', errorClass: 'run', retryable: false, message: 'm' }),
+    true,
+    'I-024 · 杂项 kind 的 run 错误在协议内',
+  )
+  assert.equal(
+    isWorkerResponse({ protocol: 1, kind: 'result', taskId: 'wreq_1', reqKind: 'magic', value: {} }),
+    false,
+    '未知 reqKind 拒绝',
+  )
   assert.equal(isWorkerResponse({ ...res, protocol: 0 }), false)
   assert.equal(isWorkerResponse({ protocol: 1, kind: 'error', taskId: 'x', reqKind: null, errorClass: 'init', retryable: true, message: 'm' }), true)
   // progress 是协议内可用事件形态(serve 端不伪造,见 WB-07.05 断言)
   assert.equal(isWorkerResponse({ protocol: 1, kind: 'progress', taskId: 'x', done: 1, total: 2, scope: 'replicates' }), true)
   assert.equal(isWorkerResponse({ protocol: 1, kind: 'progress', taskId: 'x', done: 1, total: 2, scope: 'magic' }), false)
+})
+
+// ————— I-024 · 内核杂项 kind(optimize/surrogate/daily_aggregate/kpi_eval) —————
+
+test('I-024:五个内核杂项 kind 经服务端转发,结果与运行错误都过协议信封', async () => {
+  const outbox = []
+  const calls = []
+  const server = serveSweepWorker({
+    post: (m) => outbox.push(m),
+    init: async () => {},
+    plan: async () => ({}),
+    sim: async () => ({}),
+    candidate: async () => ({}),
+    recommend: async () => ({}),
+    abCompare: async () => ({}),
+    optimize: async (yaml) => {
+      calls.push(['optimize', yaml])
+      return { best: null }
+    },
+    surrogateTrain: async (...args) => {
+      calls.push(['surrogate_train', ...args])
+      return { trained: 3 }
+    },
+    surrogatePredict: async (modelJson, paramsJson) => {
+      calls.push(['surrogate_predict', modelJson, paramsJson])
+      return { mean: 1.5 }
+    },
+    dailyAggregate: async (results) => {
+      calls.push(['daily_aggregate', results])
+      return { replicates: 2 }
+    },
+    kpiEval: async (expression, results) => {
+      calls.push(['kpi_eval', expression, results])
+      return { n_used: 2 }
+    },
+  })
+  await server.onMessage({ protocol: 1, kind: 'optimize', taskId: 'o1', yaml: 'a: 1' })
+  assert.deepEqual(calls[0], ['optimize', 'a: 1'])
+  assert.equal(outbox.at(-1).reqKind, 'optimize')
+  assert.deepEqual(outbox.at(-1).value, { reqKind: 'optimize', result: { best: null } })
+
+  await server.onMessage({
+    protocol: 1,
+    kind: 'surrogate_train',
+    taskId: 'o2',
+    results: [{ status: 'ok' }],
+    metric: 'gold_per_player',
+    trees: 32,
+    maxDepth: 6,
+    minSamplesLeaf: 2,
+    seed: 7,
+  })
+  assert.deepEqual(calls[1], ['surrogate_train', [{ status: 'ok' }], 'gold_per_player', 32, 6, 2, 7], '参数按序透传(entry 侧做 BigInt 转换)')
+  assert.equal(outbox.at(-1).reqKind, 'surrogate_train')
+
+  await server.onMessage({ protocol: 1, kind: 'surrogate_predict', taskId: 'o3', modelJson: '{"m":1}', paramsJson: '{"x":2}' })
+  assert.deepEqual(calls[2], ['surrogate_predict', '{"m":1}', '{"x":2}'])
+  assert.equal(outbox.at(-1).reqKind, 'surrogate_predict')
+
+  const results = [{ churn_rate_total: 0.1 }]
+  await server.onMessage({ protocol: 1, kind: 'daily_aggregate', taskId: 'o4', results })
+  assert.deepEqual(calls[3], ['daily_aggregate', results])
+  assert.equal(outbox.at(-1).reqKind, 'daily_aggregate')
+
+  await server.onMessage({ protocol: 1, kind: 'kpi_eval', taskId: 'o5', expression: 'gold_per_player*2', results })
+  assert.deepEqual(calls[4], ['kpi_eval', 'gold_per_player*2', results])
+  assert.equal(outbox.at(-1).reqKind, 'kpi_eval')
+  assert.equal(outbox.at(-1).value.output.n_used, 2)
+
+  // 运行错误仍是 run 类结构化 error(reqKind 带回,主线程按错误分类恢复)
+  const failing = serveSweepWorker({
+    post: (m) => outbox.push(m),
+    init: async () => {},
+    plan: async () => ({}),
+    sim: async () => ({}),
+    candidate: async () => ({}),
+    recommend: async () => ({}),
+    abCompare: async () => ({}),
+    optimize: async () => {
+      throw new Error('内核寻优失败(模拟)')
+    },
+    surrogateTrain: async () => ({}),
+    surrogatePredict: async () => ({}),
+    dailyAggregate: async () => ({}),
+    kpiEval: async () => ({}),
+  })
+  await failing.onMessage({ protocol: 1, kind: 'optimize', taskId: 'o6', yaml: 'a: 1' })
+  const last = outbox.at(-1)
+  assert.equal(last.kind, 'error')
+  assert.equal(last.errorClass, 'run')
+  assert.equal(last.retryable, false, 'run 错误不可原样重试')
+  assert.equal(last.reqKind, 'optimize')
 })
 
 // ————— WB-07.09 · Worker 内初始化并复用 WASM;失败可重试 —————

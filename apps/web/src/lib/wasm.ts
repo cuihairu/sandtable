@@ -10,13 +10,8 @@ import init, {
   param_apply as paramApplyBinding,
   kpi_availability as kpiAvailabilityBinding,
   kpi_validate as kpiValidateBinding,
-  kpi_eval as kpiEvalBinding,
   metric_dictionary as metricDictionaryBinding,
   ab_compare as abCompareBinding,
-  daily_aggregate as dailyAggregateBinding,
-  optimize as optimizeBinding,
-  surrogate_train as surrogateTrainBinding,
-  surrogate_predict as surrogatePredictBinding,
   sweep_plan as sweepPlanBinding,
   sweep_candidate as sweepCandidateBinding,
   sweep_recommend as sweepRecommendBinding,
@@ -160,8 +155,12 @@ export async function dailyAggregate(results: RunMetrics[]): Promise<DailyAggreg
   if (isDesktop) {
     return invoke('daily_aggregate', { resultsJson: JSON.stringify(results) })
   }
-  await ensureInit()
-  return JSON.parse(dailyAggregateBinding(JSON.stringify(results)) as unknown as string) as DailyAggregation
+  // I-024 · 浏览器不走主线程同步 wasm:重活进共享 Worker(I-038 同思路),
+  // 主线程保持可交互;结果经协议载荷 reqKind 收窄。
+  const { kernelRequest } = await import('../workbench/state/executor.ts')
+  const v = await kernelRequest({ kind: 'daily_aggregate', results })
+  if (v.reqKind !== 'daily_aggregate') throw new Error('unreachable')
+  return v.aggregation
 }
 
 // 自定义 KPI 校验(内核 core::kpi_custom):表达式过公式白名单(函数 /
@@ -198,10 +197,11 @@ export async function kpiEval(
   if (isDesktop) {
     return invoke('kpi_eval', { expression, resultsJson: JSON.stringify(results) })
   }
-  await ensureInit()
-  return JSON.parse(
-    kpiEvalBinding(expression, JSON.stringify(results)) as unknown as string,
-  ) as CustomKpiOutput
+  // I-024 · 浏览器重活进共享 Worker(同 dailyAggregate)
+  const { kernelRequest } = await import('../workbench/state/executor.ts')
+  const v = await kernelRequest({ kind: 'kpi_eval', expression, results })
+  if (v.reqKind !== 'kpi_eval') throw new Error('unreachable')
+  return v.output
 }
 
 // 指标字典(内核 core::kpi_dict):**内置指标机器可判定口径的事实源** ——
@@ -235,8 +235,11 @@ export async function optimizeRun(yaml: string): Promise<OptimResult> {
   }).__testOptimizeRun
   if (override) return override(yaml)
   if (isDesktop) return invoke('optimize', { yaml })
-  await ensureInit()
-  return JSON.parse(optimizeBinding(yaml) as unknown as string) as OptimResult
+  // I-024 · 浏览器寻优是长任务,进共享 Worker,主线程保持可交互
+  const { kernelRequest } = await import('../workbench/state/executor.ts')
+  const v = await kernelRequest({ kind: 'optimize', yaml })
+  if (v.reqKind !== 'optimize') throw new Error('unreachable')
+  return v.result
 }
 
 // 代理训练(P2 自动寻优增量):**已跑**候选结果 → 随机森林。零额外仿真;
@@ -274,11 +277,20 @@ export async function surrogateTrain(
       seed,
     })
   }
-  await ensureInit()
-  return JSON.parse(
-    // wasm u64 → JS bigint(wasm-bindgen ABI),超参上限由内核 SurrogateSpec::validate 拦
-    surrogateTrainBinding(JSON.stringify(results), metric, trees, max_depth, min_samples_leaf, BigInt(seed)) as unknown as string,
-  ) as SurrogateTrainOutput
+  // I-024 · 浏览器重活进共享 Worker;u64 seed 的 bigint 转换在 Worker 侧
+  // 入口(sweepWorker.entry.ts)完成
+  const { kernelRequest } = await import('../workbench/state/executor.ts')
+  const v = await kernelRequest({
+    kind: 'surrogate_train',
+    results,
+    metric,
+    trees,
+    maxDepth: max_depth,
+    minSamplesLeaf: min_samples_leaf,
+    seed,
+  })
+  if (v.reqKind !== 'surrogate_train') throw new Error('unreachable')
+  return v.output
 }
 
 // 代理预测:模型 + 参数点 → 森林均值 + 树间分歧包络(spread_min/spread_max
@@ -301,8 +313,11 @@ export async function surrogatePredict(
   if (isDesktop) {
     return invoke('surrogate_predict', { modelJson, paramsJson })
   }
-  await ensureInit()
-  return JSON.parse(surrogatePredictBinding(modelJson, paramsJson) as unknown as string) as SurrogatePrediction
+  // I-024 · 浏览器重活进共享 Worker(同 dailyAggregate)
+  const { kernelRequest } = await import('../workbench/state/executor.ts')
+  const v = await kernelRequest({ kind: 'surrogate_predict', modelJson, paramsJson })
+  if (v.reqKind !== 'surrogate_predict') throw new Error('unreachable')
+  return v.prediction
 }
 
 // 长任务(桌面异步命令):onProgress 经 Channel 逐 replicate 收 {done,total};

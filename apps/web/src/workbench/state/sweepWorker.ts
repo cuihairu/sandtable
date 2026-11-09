@@ -20,6 +20,16 @@ export type ServeEnv = {
   recommend: (yaml: string, results: readonly unknown[]) => Promise<unknown>
   /** A/B 统计比较(双臂 YAML + metric + 已跑 results 数组 → 内核 Comparison) */
   abCompare: (baseYaml: string, candYaml: string, metric: string, resultsA: readonly unknown[], resultsB: readonly unknown[]) => Promise<unknown>
+  /** 寻优(进化搜索,全历史最优 + 逐代统计) */
+  optimize: (yaml: string) => Promise<unknown>
+  /** 代理模型训练(候选 results + 指标 + 容量参数 → 账 + 森林) */
+  surrogateTrain: (results: readonly unknown[], metric: string, trees: number, maxDepth: number, minSamplesLeaf: number, seed: number) => Promise<unknown>
+  /** 代理模型预测(模型 JSON + 参数 JSON → 均值 + 树间分歧包络) */
+  surrogatePredict: (modelJson: string, paramsJson: string) => Promise<unknown>
+  /** 跨 replicate 按天聚合(结果数组 → 公共天 + CI/SD 口径) */
+  dailyAggregate: (results: readonly unknown[]) => Promise<unknown>
+  /** 自定义 KPI 求值(表达式 + 结果数组 → 逐 replicate 值 + 聚合) */
+  kpiEval: (expression: string, results: readonly unknown[]) => Promise<unknown>
 }
 
 export type SweepWorkerServer = {
@@ -87,6 +97,26 @@ export function serveSweepWorker(env: ServeEnv): SweepWorkerServer {
         case 'ab_compare': {
           const comparison = await env.abCompare(req.baseYaml, req.candYaml, req.metric, req.resultsA, req.resultsB)
           return ok(req.taskId, 'ab_compare', { reqKind: 'ab_compare', comparison } as WorkerResultValue)
+        }
+        case 'optimize': {
+          const result = await env.optimize(req.yaml)
+          return ok(req.taskId, 'optimize', { reqKind: 'optimize', result } as WorkerResultValue)
+        }
+        case 'surrogate_train': {
+          const output = await env.surrogateTrain(req.results, req.metric, req.trees, req.maxDepth, req.minSamplesLeaf, req.seed)
+          return ok(req.taskId, 'surrogate_train', { reqKind: 'surrogate_train', output } as WorkerResultValue)
+        }
+        case 'surrogate_predict': {
+          const prediction = await env.surrogatePredict(req.modelJson, req.paramsJson)
+          return ok(req.taskId, 'surrogate_predict', { reqKind: 'surrogate_predict', prediction } as WorkerResultValue)
+        }
+        case 'daily_aggregate': {
+          const aggregation = await env.dailyAggregate(req.results)
+          return ok(req.taskId, 'daily_aggregate', { reqKind: 'daily_aggregate', aggregation } as WorkerResultValue)
+        }
+        case 'kpi_eval': {
+          const output = await env.kpiEval(req.expression, req.results)
+          return ok(req.taskId, 'kpi_eval', { reqKind: 'kpi_eval', output } as WorkerResultValue)
         }
       }
     } catch (e) {

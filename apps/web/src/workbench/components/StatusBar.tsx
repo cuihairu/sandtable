@@ -8,7 +8,6 @@ import { WbIcon } from './icons.tsx'
 import * as runManager from '../state/runManager.ts'
 import * as jobLogic from '../state/jobLogic.ts'
 import { activeJob } from '../state/execFsm.ts'
-import { DATA_SOURCE } from '../demo/sampleProject.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 
@@ -19,6 +18,8 @@ export type StatusBarProps = {
   onResetLayout: () => void
   draftSavedLabel: string
   draftSaved: boolean
+  /** I-025 · 演示标注随选择派生(WorkbenchApp 传入),不再模块内恒真 */
+  demoMode: boolean
 }
 
 export function StatusBar({
@@ -28,6 +29,7 @@ export function StatusBar({
   onResetLayout,
   draftSavedLabel,
   draftSaved,
+  demoMode,
 }: StatusBarProps): JSX.Element {
   const locale = useLocale()
   const jobs = useSyncExternalStore(runManager.subscribe, runManager.listJobs)
@@ -56,7 +58,7 @@ export function StatusBar({
         <span className="task-count">{active || jobs.length}</span>
       </button>
       <span className="status-separator" />
-      <span>{DATA_SOURCE === 'synthetic_demo' ? t(locale, 'common.dataSourceDemo') : t(locale, 'common.dataSourceReal')}</span>
+      <span>{demoMode ? t(locale, 'common.dataSourceDemo') : t(locale, 'common.dataSourceReal')}</span>
       <button onClick={onShortcuts} aria-label={t(locale, 'common.viewShortcuts')}>
         <kbd>?</kbd>
       </button>

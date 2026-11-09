@@ -485,6 +485,20 @@ export function workerBackends(spawn: () => WorkerLike): ExecBackends {
   }
 }
 
+/** WB-07/I-024 · 内核杂项请求共享连接(optimize/surrogate_train/surrogate_predict/
+ *  daily_aggregate/kpi_eval):resolveBackends 每次 sweep 任务新建连接(任务队列
+ *  语义),这些调用没有 sweep 任务上下文——单例复用同一 Worker,避免逐调用
+ *  spawn + 冷启动,也让频繁的 kpi/聚合请求不与 sweep 队列互相争占。 */
+let kernelConnection: WorkerConnection | null = null
+
+/** 单次协议请求 → 结果载荷联合(调用方按 reqKind 收窄)。 */
+export async function kernelRequest(input: WorkerRequestInput): Promise<WorkerResultValue> {
+  kernelConnection ??= new WorkerConnection(
+    () => new Worker(new URL('./sweepWorker.entry.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike,
+  )
+  return kernelConnection.request(input)
+}
+
 /** 真实后端解析:桌面走 native 命令面;浏览器走 Worker(动态 import,节点
  *  测试注入假后端时绝不触发)。compare = 内核 A/B 统计桥接(WB-03.12 双端同构)。 */
 export async function resolveBackends(): Promise<ExecBackends> {

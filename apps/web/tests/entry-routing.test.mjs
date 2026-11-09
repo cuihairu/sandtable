@@ -28,6 +28,13 @@ test('legacy 深链:渲染旧应用且内部入口不自改根 hash', () => {
   assert.doesNotMatch(source, /location\.hash|href="#\/?"/)
 })
 
+test('legacy 应用:空结果集不产出统计,结果面板整体不渲染', () => {
+  // I-032 · results 为空时 reduce 均值是 NaN、results[0] 是 undefined——
+  // mean useMemo 必须以空数组为空口径(null),整块图表区不进入
+  const source = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  assert.match(source, /out\.results\.length === 0\) return null/)
+})
+
 test('workbench 深链:parameters 直达且路由前缀仍生效', () => {
   assert.equal(entryRoute('#/workbench/parameters'), 'workbench')
   assert.equal(legacyHash('#/workbench/parameters'), '#/legacy')

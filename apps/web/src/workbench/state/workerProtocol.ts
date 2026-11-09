@@ -6,7 +6,19 @@
 //   Worker 内核执行是同步 wasm,候选内/仿真内没有真实进度,serve 端
 //   不得伪造 progress(WB-07.05 红线:未提供的进度不得推算成真进度);
 // - 输入 = 请求载荷原文(输入快照自足,不引用主线程可变状态)。
-import type { CandidateResult, Comparison, RunMetrics, SimOutput, SweepPlan, SweepRecOutput } from '../../lib/types.ts'
+import type {
+  CandidateResult,
+  Comparison,
+  CustomKpiOutput,
+  DailyAggregation,
+  OptimResult,
+  RunMetrics,
+  SimOutput,
+  SurrogatePrediction,
+  SurrogateTrainOutput,
+  SweepPlan,
+  SweepRecOutput,
+} from '../../lib/types.ts'
 
 export const WORKER_PROTOCOL_VERSION = 1
 
@@ -35,6 +47,21 @@ export type WorkerRequest =
       resultsA: readonly RunMetrics[]
       resultsB: readonly RunMetrics[]
     }
+  | { protocol: 1; kind: 'optimize'; taskId: string; yaml: string }
+  | {
+      protocol: 1
+      kind: 'surrogate_train'
+      taskId: string
+      results: readonly CandidateResult[]
+      metric: string
+      trees: number
+      maxDepth: number
+      minSamplesLeaf: number
+      seed: number
+    }
+  | { protocol: 1; kind: 'surrogate_predict'; taskId: string; modelJson: string; paramsJson: string }
+  | { protocol: 1; kind: 'daily_aggregate'; taskId: string; results: readonly RunMetrics[] }
+  | { protocol: 1; kind: 'kpi_eval'; taskId: string; expression: string; results: readonly RunMetrics[] }
 
 /** Worker 侧错误类:init = WASM 初始化失败(可重试,retryable: true);run = 内核运行错误。 */
 export type WorkerErrorClass = 'init' | 'run'
@@ -59,6 +86,11 @@ export type WorkerResultValue =
   | { reqKind: 'candidate'; result: CandidateResult }
   | { reqKind: 'recommend'; rec: SweepRecOutput }
   | { reqKind: 'ab_compare'; comparison: Comparison }
+  | { reqKind: 'optimize'; result: OptimResult }
+  | { reqKind: 'surrogate_train'; output: SurrogateTrainOutput }
+  | { reqKind: 'surrogate_predict'; prediction: SurrogatePrediction }
+  | { reqKind: 'daily_aggregate'; aggregation: DailyAggregation }
+  | { reqKind: 'kpi_eval'; output: CustomKpiOutput }
 
 /** 守卫:入站消息必须过协议检查,非协议消息被丢弃(不进入执行)。 */
 export function isWorkerRequest(v: unknown): v is WorkerRequest {
@@ -86,6 +118,23 @@ export function isWorkerRequest(v: unknown): v is WorkerRequest {
         Array.isArray(r.resultsA) &&
         Array.isArray(r.resultsB)
       )
+    case 'optimize':
+      return typeof r.yaml === 'string'
+    case 'surrogate_train':
+      return (
+        Array.isArray(r.results) &&
+        typeof r.metric === 'string' &&
+        typeof r.trees === 'number' &&
+        typeof r.maxDepth === 'number' &&
+        typeof r.minSamplesLeaf === 'number' &&
+        typeof r.seed === 'number'
+      )
+    case 'surrogate_predict':
+      return typeof r.modelJson === 'string' && typeof r.paramsJson === 'string'
+    case 'daily_aggregate':
+      return Array.isArray(r.results)
+    case 'kpi_eval':
+      return typeof r.expression === 'string' && Array.isArray(r.results)
     default:
       return false
   }
@@ -98,11 +147,30 @@ export function isWorkerResponse(v: unknown): v is WorkerResponse {
   switch (r.kind) {
     case 'result':
       return (
-        r.reqKind === 'plan' || r.reqKind === 'sim' || r.reqKind === 'candidate' || r.reqKind === 'recommend' || r.reqKind === 'ab_compare'
+        r.reqKind === 'plan' ||
+        r.reqKind === 'sim' ||
+        r.reqKind === 'candidate' ||
+        r.reqKind === 'recommend' ||
+        r.reqKind === 'ab_compare' ||
+        r.reqKind === 'optimize' ||
+        r.reqKind === 'surrogate_train' ||
+        r.reqKind === 'surrogate_predict' ||
+        r.reqKind === 'daily_aggregate' ||
+        r.reqKind === 'kpi_eval'
       )
     case 'error':
       return (
-        (r.reqKind === null || r.reqKind === 'plan' || r.reqKind === 'sim' || r.reqKind === 'candidate' || r.reqKind === 'recommend' || r.reqKind === 'ab_compare') &&
+        (r.reqKind === null ||
+          r.reqKind === 'plan' ||
+          r.reqKind === 'sim' ||
+          r.reqKind === 'candidate' ||
+          r.reqKind === 'recommend' ||
+          r.reqKind === 'ab_compare' ||
+          r.reqKind === 'optimize' ||
+          r.reqKind === 'surrogate_train' ||
+          r.reqKind === 'surrogate_predict' ||
+          r.reqKind === 'daily_aggregate' ||
+          r.reqKind === 'kpi_eval') &&
         (r.errorClass === 'init' || r.errorClass === 'run') &&
         typeof r.retryable === 'boolean' &&
         typeof r.message === 'string'

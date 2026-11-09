@@ -147,7 +147,10 @@ export default function App() {
   }
 
   const mean = useMemo(() => {
-    if (!out) return null
+    // I-032 · 空结果集(如 0 天/0 replicate 边界配置)不产出统计:rs 为空时
+    // reduce 均值是 NaN、results[0] 是 undefined,下面的图表区会 TypeError。
+    // mean = null 与 !out 同口径,整块结果面板不渲染。
+    if (!out || out.results.length === 0) return null
     const rs = out.results
     const avg = (f: (m: RunMetrics) => number) => rs.reduce((s, m) => s + f(m), 0) / rs.length
     return {

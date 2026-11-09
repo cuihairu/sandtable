@@ -40,7 +40,7 @@ import {
   deriveDocuments, explorerGroupsFor, getState, hasUnsavedWork, paramYamlView, persistDraft, subscribe, dispatch,
 } from './state/workbenchStore.ts'
 import type { WorkbenchState } from './state/workbenchStore.ts'
-import { parseHash } from './routing.ts'
+import { formatHash, parseHash } from './routing.ts'
 import type { PageId } from './routing.ts'
 import { globalShortcutFor } from './keyboard.ts'
 import {
@@ -133,19 +133,24 @@ export default function WorkbenchApp(): JSX.Element {
   const [overlays, setOverlays] = useState(INITIAL_OVERLAYS)
   const patchOverlays = (patch: Partial<OverlayState>): void =>
     setOverlays((prev) => ({ ...prev, ...patch }))
-  const requestNavigate = (page: PageId): void => {
+  const requestNavigate = (page: PageId, selection?: Record<string, string>): void => {
     if (isNavigationBlocked(deriveDocuments(getState()), getState().page, page)) {
+      // I-035 · hashchange 触发的导航被守卫拦截时,地址栏已指向目标页而界面
+      // 留在原页——回写当前页 hash,消除守卫漂移;确认弹窗仍提供"前往"。
+      const here = formatHash({ page: getState().page, selection: getState().selection })
+      if (window.location.hash !== here) window.history.replaceState(null, '', here)
       patchOverlays({ confirmNavigate: page })
       return
     }
-    dispatch({ type: 'navigate', page })
+    dispatch({ type: 'navigate', page, selection })
   }
 
   /* 深链:浏览器前进/后退与初始 hash 解析 */
   useEffect(() => {
     const onHashChange = (): void => {
       const link = parseHash(window.location.hash)
-      if (link) requestNavigate(link.page)
+      // I-035 · 深链带的选择键(候选/指标等)一并恢复,不再只还原页名
+      if (link) requestNavigate(link.page, link.selection)
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
@@ -518,8 +523,10 @@ export default function WorkbenchApp(): JSX.Element {
   }
 
   /* —— WB-04 · 项目模式派生:应用栏/浏览器挂接真实项目文档 —— */
-  // 演示数据标注保持显示(分析页图表仍来自内置演示结果集,WB-08 才替换)
-  const demoMode = true
+  // I-025 · 演示标注按选择派生:仅显式切到内置演示结果集(source =
+  // 'synthetic_demo')才是演示态,默认是真实内核视图,与 AnalysisPage /
+  // exportCtx(:441)同一口径;不再恒真。
+  const demoMode = state.selection.source === 'synthetic_demo'
   const projectName = state.project?.name ?? 'RPG 平衡实验室'
   const projectId = state.project?.projectId ?? DEMO_PROJECT_ID
   const unsavedCount = unsavedKeys(state.objectDrafts).length + (state.paramDraft.saved ? 0 : 1) + (state.designDirty ? 1 : 0)
@@ -736,6 +743,7 @@ export default function WorkbenchApp(): JSX.Element {
               : t(locale, 'common.draftUnsavedObjects', { count: unsavedKeys(state.objectDrafts).length })
             : state.paramDraft.saved ? t(locale, 'common.draftSavedLocal') : t(locale, 'common.draftUnsaved')
         }
+        demoMode={demoMode}
       />
 
       {/* 弹层与通知(WB-02.09) */}

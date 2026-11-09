@@ -56,7 +56,16 @@ export function parseHash(hash: string): WorkbenchDeepLink | null {
     if (!pair) continue
     const eq = pair.indexOf('=')
     const key = eq === -1 ? pair : pair.slice(0, eq)
-    const value = eq === -1 ? '' : decodeURIComponent(pair.slice(eq + 1))
+    // I-022 · 逐对解码容错:手改/外来的 hash 可能带悬空转义(`%`、`%zz`),
+    // 一对坏值只丢该对(还原为空),不让整条深链解析抛异常炸掉 hashchange
+    let value = ''
+    if (eq !== -1) {
+      try {
+        value = decodeURIComponent(pair.slice(eq + 1))
+      } catch {
+        value = ''
+      }
+    }
     if (allowed.includes(key) && value !== '') selection[key] = value
   }
   return { page, selection }

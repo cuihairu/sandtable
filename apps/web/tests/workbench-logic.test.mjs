@@ -28,6 +28,19 @@ test('路由:hash 深链解析与序列化 roundtrip + 非法回退', () => {
   // 不在白名单的选择键被剥掉(草稿不进 URL)
   const stripped = parseHash(formatHash({ page: 'exchange', selection: { candidate: 'x' } }))
   assert.deepEqual(stripped, { page: 'exchange', selection: {} })
+  // I-022 · 悬空转义逐对容错:一对坏值只丢该对,整条深链不抛异常
+  assert.deepEqual(parseHash(`${HASH_BASE}analysis?candidate=%zz&metric=win`), {
+    page: 'analysis',
+    selection: { metric: 'win' },
+  })
+  assert.deepEqual(parseHash(`${HASH_BASE}analysis?candidate=a%2Fb`), {
+    page: 'analysis',
+    selection: { candidate: 'a/b' },
+  })
+  assert.deepEqual(parseHash(`${HASH_BASE}analysis?candidate=%E4%%B8%AD`), {
+    page: 'analysis',
+    selection: {},
+  })
   // 缺省页
   assert.equal(DEFAULT_PAGE, 'analysis')
   assert.ok(PAGES.length === 5)

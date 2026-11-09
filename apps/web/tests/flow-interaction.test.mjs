@@ -199,7 +199,8 @@ if (!existsSync(pkgNode)) {
     assert.match(paramTable, /onFocusRow\(path\)/, '方向键步进同步工作台选中态')
     assert.match(paramTable, /onCopyRows\(\)/, 'Ctrl/Cmd+C 走多选复制')
     assert.match(readFileSync(join(here, '../src/workbench/pages/ParametersPage.tsx'), 'utf8'), /scrollIntoView\(\{ block: 'center' \}\)/, '内核错误定位滚动到行')
-    assert.match(readFileSync(join(here, '../src/workbench/WorkbenchApp.tsx'), 'utf8'), /if \(link\) requestNavigate\(link\.page\)/, 'hash 深链同样受未保存守卫')
+    // I-035 · 深链带的选择键一并恢复(候选/指标等),守卫拦截时回写当前页 hash
+    assert.match(readFileSync(join(here, '../src/workbench/WorkbenchApp.tsx'), 'utf8'), /if \(link\) requestNavigate\(link\.page, link\.selection\)/, 'hash 深链同样受未保存守卫')
     const taskList = readFileSync(join(here, '../src/workbench/tasks/TaskList.tsx'), 'utf8')
     assert.match(taskList, /role=\{job\.status === 'failed' \? 'alert' : undefined\}/, '失败任务就地 role=alert')
     assert.match(taskList, /recoveryText\(ex\.errorClass, ex\.kind, locale\)/, '失败任务带恢复提示')

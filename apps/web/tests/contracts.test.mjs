@@ -753,7 +753,9 @@ test('P2 逐日聚合桥:daily_aggregate 内核直出,天数交集/可选缺席/
   // TS 桥接双路径 + 类型镜像接线守卫
   const svc = read('src/lib/wasm.ts')
   assert.match(svc, /invoke\('daily_aggregate', \{/, '桌面路径走 daily_aggregate 命令')
-  assert.match(svc, /dailyAggregateBinding\(/, '浏览器路径走 wasm 绑定')
+  // I-024 · 浏览器重活经共享 Worker 协议(kind 信封),绑定只在 Worker 入口
+  assert.match(svc, /kernelRequest\(\{ kind: 'daily_aggregate'/, '浏览器路径经共享 Worker 协议请求')
+  assert.match(read('src/workbench/state/sweepWorker.entry.ts'), /dailyAggregateBinding\(/, 'Worker 入口接真实绑定')
   const types = typesSrc
   assert.match(types, /export interface DailyAggregation/, 'TS 镜像类型在场')
   assert.match(types, /export interface AggregateMetricStats/)
@@ -837,7 +839,9 @@ test('P2 自定义 KPI 桥:kpi_validate / kpi_eval 内核直出,白名单同口�
   assert.match(svc, /invoke\('kpi_validate', \{ expression \}\)/, '桌面路径走 kpi_validate 命令')
   assert.match(svc, /kpiValidateBinding\(expression\)/, '浏览器路径走 wasm 绑定')
   assert.match(svc, /invoke\('kpi_eval', \{ expression, resultsJson: /, '桌面路径走 kpi_eval 命令')
-  assert.match(svc, /kpiEvalBinding\(expression, /, '浏览器路径走 wasm 绑定')
+  // I-024 · 浏览器重活经共享 Worker 协议(kind 信封),绑定只在 Worker 入口
+  assert.match(svc, /kernelRequest\(\{ kind: 'kpi_eval'/, '浏览器路径经共享 Worker 协议请求')
+  assert.match(read('src/workbench/state/sweepWorker.entry.ts'), /kpiEvalBinding\(expression, /, 'Worker 入口接真实绑定')
   const types = typesSrc
   assert.match(types, /export interface CustomKpiShape/, 'CustomKpiShape 镜像在场')
   assert.match(types, /export interface CustomKpiOutput/, 'CustomKpiOutput 镜像在场')
