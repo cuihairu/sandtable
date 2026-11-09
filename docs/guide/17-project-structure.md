@@ -14,7 +14,12 @@ sandtable/
 ├── crates/
 │   ├── sandtable-core/
 │   │   └── src/
-│   │       ├── config.rs      # Config load / validate / normalize / config_hash
+│   │       ├── config/        # Config split by domain (pub use re-exports keep core::config::* paths)
+│   │       │   ├── mod.rs     # SimConfig compile artifact + config_hash
+│   │       │   ├── limits.rs  # Cohort + shared scale / economy / gacha bounds
+│   │       │   ├── combat.rs / loot.rs / gacha.rs / behavior.rs / progression.rs  # Domain sections
+│   │       │   ├── validate.rs  # Per-domain load-time validation
+│   │       │   └── tests.rs
 │   │       ├── registry.rs    # Parameter registry (path / kind / default / desc)
 │   │       ├── scenario.rs    # YAML scenario and experiment file loading (scenario+model/sweep/optimize sections)
 │   │       ├── formula.rs     # Bounded expression evaluator (compiled at load time)

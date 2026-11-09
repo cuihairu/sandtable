@@ -15,7 +15,12 @@ sandtable/
 ├── crates/
 │   ├── sandtable-core/
 │   │   └── src/
-│   │       ├── config.rs      # 配置加载 / 校验 / 规范化 / config_hash
+│   │       ├── config/        # 配置按域拆分(pub use 再导出,core::config::* 路径不变)
+│   │       │   ├── mod.rs     # SimConfig 编译产物 + config_hash
+│   │       │   ├── limits.rs  # Cohort 与共享规模 / 经济 / 抽卡上界
+│   │       │   ├── combat.rs / loot.rs / gacha.rs / behavior.rs / progression.rs  # 逐域配置节
+│   │       │   ├── validate.rs  # 逐域加载期校验
+│   │       │   └── tests.rs
 │   │       ├── registry.rs    # 参数注册表(path / kind / default / desc)
 │   │       ├── scenario.rs    # YAML 场景与实验文件加载(scenario+model/sweep/optimize 节)
 │   │       ├── formula.rs     # 有界表达式求值器(加载期编译)

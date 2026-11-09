@@ -786,7 +786,7 @@
 
 ### 超大文件候选
 
-- [ ] LAY-001 [P1] 拆分 crates/sandtable-core/src/config.rs（2012 行）——编译结构、逐域校验与哈希同文件，配置边界已被多种外壳共同依赖（crates/sandtable-core/src/config.rs:647）。
+- [x] LAY-001 [P1] 拆分 crates/sandtable-core/src/config.rs（2012 行）——编译结构、逐域校验与哈希同文件，配置边界已被多种外壳共同依赖（crates/sandtable-core/src/config.rs:647）。✅ 2026-11-10：拆为 `config/` 按域 9 文件——mod.rs（SimConfig + config_hash + replicate_seed，`pub use` 再导出保住 `core::config::*` 全部路径）、limits.rs（Cohort + 共享规模/经济/抽卡上界）、combat.rs、loot.rs、gacha.rs、behavior.rs（含 Partial* 私有 serde 中间态）、progression.rs、validate.rs（逐域校验）、tests.rs；serde 语义零改动（容器级 default / skip_serializing_if / 私有 shim 均原样随域迁移），config_hash 不变（golden 锚值测试全过）。门禁：`cargo check -p sandtable-core` ✓、clippy `--workspace --all-targets` 0 告警、`cargo test --workspace` 全绿（core 219 passed 含 config 域 24 测试，0 failed 全仓）、wasm32 check（默认 + arrow feature）✓、`cargo fmt --check` ✓。文档同步：17 章目录树 config.rs→config/ 子树、27 章三层表/配置输入/LAY-002 引用、28 章术语表 SimConfig/config_hash 引用改 `config/mod.rs:36`/`:90`（en+zh 锁步）。
 - [ ] LAY-002 [P1] 拆分 crates/sandtable-cli/src/main.rs（1827 行）——命令分发与多类文件读写/输出整形集中在一个入口（crates/sandtable-cli/src/main.rs:33）。
 - [ ] LAY-003 [P1] 拆分 apps/desktop/src-tauri/src/lib.rs（1495 行）——Tauri commands、任务进度注册和 DuckDB 查询同文件（apps/desktop/src-tauri/src/lib.rs:562）。
 - [ ] LAY-004 [P1] 拆分 crates/sandtable-wasm/src/lib.rs（1370 行）——多个能力的 native 语义与 wasm-bindgen 包装并列成单入口（crates/sandtable-wasm/src/lib.rs:188）。

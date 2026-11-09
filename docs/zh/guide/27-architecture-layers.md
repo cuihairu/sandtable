@@ -12,7 +12,7 @@ title: 27 · 架构分层
 
 | 层 | 名称 | 职责 | 代表锚点 |
 | --- | --- | --- | --- |
-| 1 | 场景与配置编译 | 解析场景/实验 YAML，按注册表校验，并编译出一次运行使用的内存态 `SimConfig`。 | `crates/sandtable-core/src/scenario.rs:98`; `crates/sandtable-core/src/config.rs:647` |
+| 1 | 场景与配置编译 | 解析场景/实验 YAML，按注册表校验，并编译出一次运行使用的内存态 `SimConfig`。 | `crates/sandtable-core/src/scenario.rs:98`; `crates/sandtable-core/src/config/mod.rs:36` |
 | 2 | 仿真核心 | 在内存 World 上运行确定性事件系统，并产出每个 replicate 的指标。 | `crates/sandtable-core/src/kernel.rs:123`; `crates/sandtable-core/src/world.rs:55` |
 | 3 | 实验与统计 | 扫描、优化、对照、代理模型和敏感性分析，把样本转化为可解释的统计决策。 | `crates/sandtable-core/src/experiment.rs:120`; `crates/sandtable-core/src/sweep.rs:174` |
 | 4 | 输出契约与互操作 | 定义稳定产物，并在内部结果与 JSON/CSV/Parquet/Arrow、项目包、XLSX、引擎输入之间转换。 | `crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35` |
@@ -28,7 +28,7 @@ title: 27 · 架构分层
 - **模块：** `sandtable-core::scenario`、`config`、`registry`、`formula`。
 - **状态：** 无 Redis、MySQL、磁盘、网络或墙钟依赖；产物是由调用方持有的内存态 `SimConfig`。核心 crate 只声明序列化和错误依赖（`crates/sandtable-core/Cargo.toml:8`），并在 `crates/sandtable-core/src/lib.rs:3` 明确纯度规则。
 - **调用面：** 各外壳先调用 `scenario::load_str` 或实验加载器再仿真；注册表树检查发生在加载内（`crates/sandtable-core/src/scenario.rs:101`）。
-- **配置输入：** `scenario` 与 `model` YAML 映射为 `SimConfig`（`crates/sandtable-core/src/config.rs:644`）；实验节可进入校验入口，再由各自加载器处理（`crates/sandtable-core/src/scenario.rs:109`）。
+- **配置输入：** `scenario` 与 `model` YAML 映射为 `SimConfig`（`crates/sandtable-core/src/config/mod.rs:36`）；实验节可进入校验入口，再由各自加载器处理（`crates/sandtable-core/src/scenario.rs:109`）。
 - **生命周期：** 解析 → 校验 → 编译 → 交付。对象属于当前进程/调用方，随其所有者释放。
 
 ### 2. 仿真核心
@@ -90,7 +90,7 @@ title: 27 · 架构分层
 ## 拆分理由
 
 1. **LAY-001：仿真逻辑与传输面解耦。** `sandtable-core` 在 `crates/sandtable-core/src/lib.rs:3` 声明无 I/O、无墙钟；`crates/sandtable-core/Cargo.toml:8` 只保留序列化/错误依赖。CLI、WASM、Python、MCP 和桌面因此共享同一套可测试核心，而不是复制仿真行为。
-2. **LAY-002：接受文本与编译语义分离。** YAML 在 `crates/sandtable-core/src/scenario.rs:98` 先做注册表树检查再类型化反序列化；运行时消费 `crates/sandtable-core/src/config.rs:647` 的编译产物。实验入口可以共享同一校验纪律，而不必把原始 YAML 当运行时接口。
+2. **LAY-002：接受文本与编译语义分离。** YAML 在 `crates/sandtable-core/src/scenario.rs:98` 先做注册表树检查再类型化反序列化；运行时消费 `crates/sandtable-core/src/config/mod.rs:36` 的编译产物。实验入口可以共享同一校验纪律，而不必把原始 YAML 当运行时接口。
 3. **LAY-003：确定性是内核显式契约。** `EventQueue` 按 `(tick, sequence)` 排序，同 tick 调度保持 FIFO（`crates/sandtable-core/src/kernel.rs:67`）；键控 RNG 从种子派生 replicate 流（`crates/sandtable-core/src/rng.rs:24`）。若与 UI 或 I/O 混层，复现和调试会依赖偶然执行顺序。
 4. **LAY-004：统计与场景机制分离。** 对照定义在结果样本和指标统计上（`crates/sandtable-core/src/experiment.rs:120`），扫描规格独立展开（`crates/sandtable-core/src/sweep.rs:174`）。改战斗、经济或抽卡规则时，不需要同步改置信区间/决策逻辑。
 5. **LAY-005：交换格式在边界集中所有。** 导出与 engine contract 独立于执行定义产物形状和校验（`crates/sandtable-core/src/export.rs:13`；`crates/sandtable-engine/src/contract.rs:35`）。消费者读取稳定文件时不需要引入内核内部或重跑仿真。
