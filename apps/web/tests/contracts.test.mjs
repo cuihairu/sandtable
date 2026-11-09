@@ -27,6 +27,15 @@ import { DATA_SOURCE } from '../src/workbench/demo/sampleProject.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const read = (p) => readFileSync(join(here, '..', p), 'utf8')
+// lib.rs 已按域拆分(桌面 model/sim/sweep/optimize/query/window;wasm
+// compare/kpi/optimize/params/run/sweep/validate):契约断言对整个模块面扫描,
+// 单文件 raw 读只留给入口壳自身。
+const readSurface = (rootDir) =>
+  readdirSync(join(here, '..', rootDir, 'src'))
+    .filter((f) => f.endsWith('.rs'))
+    .sort()
+    .map((f) => read(`${rootDir}/src/${f}`))
+    .join('\n')
 const typesSrc = read('src/lib/types.ts')
 
 const YAML = 'schema_version: "1"\nscenario: {population: 40, duration: "3d", seed: 7}\n'
@@ -691,7 +700,7 @@ test('WB-09.08 下载成功口径:真实产物名可追溯(run id),失败/取消
     '无主图时整段跳过(无下载无成功提示)',
   )
   // 桌面壳:下载落 ~/Downloads 重名加序号(不覆盖),落盘结果显式上报(不静默)
-  const desktop = read('../../apps/desktop/src-tauri/src/lib.rs')
+  const desktop = readSurface('../../apps/desktop/src-tauri')
   assert.match(desktop, /DownloadEvent::Finished \{ success/, '下载完成态显式上报(无头走查凭据)')
   assert.match(desktop, /download_destination/, '重名加序号落点')
   assert.match(desktop, /fn download_destination_uniquifies/, '桌面落点有独立测试(web 侧不重复验)')
@@ -760,9 +769,9 @@ test('P2 逐日聚合桥:daily_aggregate 内核直出,天数交集/可选缺席/
   assert.match(types, /export interface DailyAggregation/, 'TS 镜像类型在场')
   assert.match(types, /export interface AggregateMetricStats/)
   // wasm 与 Tauri 命令注册在场(防只接一端)
-  const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')
+  const wasmRs = readSurface('../../crates/sandtable-wasm')
   assert.match(wasmRs, /pub fn daily_aggregate\(/, 'wasm 导出在场')
-  const tauri = read('../../apps/desktop/src-tauri/src/lib.rs')
+  const tauri = readSurface('../../apps/desktop/src-tauri')
   assert.match(tauri, /fn daily_aggregate\(/, 'Tauri 命令在场')
   assert.match(tauri, /daily_aggregate,/, '命令已注册到 generate_handler 列表')
 })
@@ -849,8 +858,8 @@ test('P2 自定义 KPI 桥:kpi_validate / kpi_eval 内核直出,白名单同口�
   const outBody = outBlock.slice(0, outBlock.indexOf('\n}') + 2)
   assert.match(outBody, /stats\?: SampleStats/, 'stats 可选键:n < 2 整键缺席')
   assert.match(outBody, /per_replicate: \(number \| null\)\[\]/, '逐 replicate 缺席记 null')
-  const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')
-  const tauri = read('../../apps/desktop/src-tauri/src/lib.rs')
+  const wasmRs = readSurface('../../crates/sandtable-wasm')
+  const tauri = readSurface('../../apps/desktop/src-tauri')
   for (const cmd of ['kpi_validate', 'kpi_eval']) {
     assert.match(wasmRs, new RegExp(`pub fn ${cmd}\\(`), `${cmd}: wasm 导出在场`)
     assert.match(tauri, new RegExp(`fn ${cmd}\\(`), `${cmd}: Tauri 命令在场`)
@@ -918,8 +927,8 @@ test('P2 指标字典桥:metric_dictionary 三端接线,前端显示元数据表
   assert.match(types, /export interface MetricDictionary/, 'MetricDictionary 镜像在场')
   assert.match(types, /export interface MetricDefinition/, 'MetricDefinition 镜像在场')
   assert.match(types, /export type MetricKind = 'ratio' \| 'value'/, '量纲口径镜像在场')
-  const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')
-  const tauri = read('../../apps/desktop/src-tauri/src/lib.rs')
+  const wasmRs = readSurface('../../crates/sandtable-wasm')
+  const tauri = readSurface('../../apps/desktop/src-tauri')
   assert.match(wasmRs, /pub fn metric_dictionary\(/, 'wasm 导出在场')
   assert.match(tauri, /fn metric_dictionary\(/, 'Tauri 命令在场')
   assert.match(tauri, /metric_dictionary,/, '命令已注册到 generate_handler 列表')
@@ -929,8 +938,8 @@ test('P2 指标字典桥:metric_dictionary 三端接线,前端显示元数据表
 
 test('P2 优化与代理桥:optimize / surrogate_train / surrogate_predict 三命令双路径接线(行为断言在 optimize-surrogate.test.mjs)', () => {
   const svc = read('src/lib/wasm.ts')
-  const wasmRs = read('../../crates/sandtable-wasm/src/lib.rs')
-  const tauri = read('../../apps/desktop/src-tauri/src/lib.rs')
+  const wasmRs = readSurface('../../crates/sandtable-wasm')
+  const tauri = readSurface('../../apps/desktop/src-tauri')
   const types = typesSrc
   for (const cmd of ['optimize', 'surrogate_train', 'surrogate_predict']) {
     assert.match(svc, new RegExp(`invoke\\('${cmd}', \\{`), `${cmd}: 桌面路径走 native 命令`)

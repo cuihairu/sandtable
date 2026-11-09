@@ -30,7 +30,6 @@ pub use sweep::*;
 pub use validate::{validate_config, validate_config_native};
 
 #[cfg(test)]
-#[cfg(test)]
 mod tests {
     use super::*;
     // 显式 use 优先于 prelude 的 glob(wasm-bindgen 会导出 core 别名,须显式声明遮蔽回核心 crate)
