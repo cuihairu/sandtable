@@ -35,7 +35,7 @@ title: 27 · 架构分层
 
 - **模块：** `kernel`、`world`、确定性 `rng`、`sim`、`systems/*`。
 - **状态：** 单个 replicate 的内存 `World`、Actor、事件队列、RNG 流和指标（`crates/sandtable-core/src/world.rs:55`；`crates/sandtable-core/src/kernel.rs:69`）。没有数据库或服务状态。
-- **调用面：** System 声明订阅事件并接收可变 World（`crates/sandtable-core/src/kernel.rs:123`）；`sim` 调度系统并聚合每个 replicate（`crates/sandtable-core/src/sim.rs:41`）。
+- **调用面：** System 声明订阅事件并接收可变 World（`crates/sandtable-core/src/kernel.rs:123`）；`sim` 调度系统并聚合每个 replicate（`crates/sandtable-core/src/sim/run.rs:11`）。
 - **配置输入：** 编译后的 `SimConfig`；replicate `r` 从基础种子派生确定性流（`crates/sandtable-core/src/rng.rs:24`）。
 - **生命周期：** 构造 World → 注册 System → 执行事件到末日 → 返回指标并释放内存。取消发生在 shells 的 replicate/candidate 边界，核心内没有后台常驻任务。
 

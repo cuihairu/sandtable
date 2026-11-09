@@ -35,7 +35,13 @@ sandtable/
 │   │       ├── world.rs       # World 与实体存储
 │   │       ├── systems/       # 内置游戏系统(behavior / combat / progression / churn / gacha)
 │   │       ├── metrics.rs     # RunMetrics 与在线聚合
-│   │       ├── sim.rs         # 仿真主循环(事件驱动)
+│   │       ├── sim/           # 仿真主循环(事件驱动,按域拆 run / system / event / registry)
+│   │       │   ├── mod.rs     # 入口 + 再导出(sim::* 路径不变)
+│   │       │   ├── run.rs     # run / run_with_day_hook / DayHook + 滚动调度 schedule_day
+│   │       │   ├── event.rs   # SimEvent + EventKind(订阅面快照)
+│   │       │   ├── system.rs  # 日初 / 玩家日 / 抽卡 / 日结系统 + build_systems
+│   │       │   ├── registry.rs# system_registry(派发面快照)
+│   │       │   └── tests.rs
 │   │       ├── experiment/    # replicates、CRN 配对比较、统计(按域拆 stats / metric / arms / daily)
 │   │       │   ├── mod.rs     # 入口 + 再导出(experiment::* 路径不变)
 │   │       │   ├── stats.rs   # SampleStats / t 临界值 / Verdict / Comparison / compare

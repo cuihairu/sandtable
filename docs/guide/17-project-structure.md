@@ -34,7 +34,13 @@ sandtable/
 │   │       ├── world.rs       # World and entity storage
 │   │       ├── systems/       # Built-in game systems (behavior / combat / progression / churn / gacha)
 │   │       ├── metrics.rs     # RunMetrics and online aggregation
-│   │       ├── sim.rs         # Main simulation loop (event-driven)
+│   │       ├── sim/           # Main simulation loop, event-driven (split by domain: run / system / event / registry)
+│   │       │   ├── mod.rs     # Entry + re-exports (sim::* paths unchanged)
+│   │       │   ├── run.rs     # run / run_with_day_hook / DayHook + rolling schedule_day
+│   │       │   ├── event.rs   # SimEvent + EventKind (subscription-surface snapshot)
+│   │       │   ├── system.rs  # DayOpen / PlayerDay / GachaRoll / DayClose systems + build_systems
+│   │       │   ├── registry.rs# system_registry (dispatch-surface snapshot)
+│   │       │   └── tests.rs
 │   │       ├── experiment/    # Replicates, CRN paired comparison, statistics (split by domain: stats / metric / arms / daily)
 │   │       │   ├── mod.rs     # Entry + re-exports (experiment::* paths unchanged)
 │   │       │   ├── stats.rs   # SampleStats / t-critical / Verdict / Comparison / compare

@@ -35,7 +35,7 @@ This page records the responsibilities that already exist in the source tree. A 
 
 - **Modules:** `kernel`, `world`, deterministic `rng`, `sim`, and `systems/*`.
 - **State:** in-memory `World`, actors, event queue, RNG streams, and metrics for one replicate (`crates/sandtable-core/src/world.rs:55`; `crates/sandtable-core/src/kernel.rs:69`). It has no database or service state.
-- **Call surface:** systems subscribe to typed events and receive the mutable world (`crates/sandtable-core/src/kernel.rs:123`); `sim` schedules systems and aggregates each replicate (`crates/sandtable-core/src/sim.rs:41`).
+- **Call surface:** systems subscribe to typed events and receive the mutable world (`crates/sandtable-core/src/kernel.rs:123`); `sim` schedules systems and aggregates each replicate (`crates/sandtable-core/src/sim/run.rs:11`).
 - **Configuration input:** the compiled `SimConfig`; replicate `r` derives its deterministic stream from the base seed (`crates/sandtable-core/src/rng.rs:24`).
 - **Lifecycle:** construct world → register systems → run scheduled events through the final day → return metrics and drop memory. Cancellation is at replicate/candidate boundaries in shells, not by a background daemon.
 
