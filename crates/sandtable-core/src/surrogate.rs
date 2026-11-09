@@ -31,6 +31,11 @@ pub const DEFAULT_TREES: u32 = 50;
 pub const DEFAULT_MAX_DEPTH: u32 = 8;
 /// 默认叶最小样本数。
 pub const DEFAULT_MIN_SAMPLES_LEAF: usize = 2;
+/// 树数上界:spec 随 model.json 回读,是外部输入面;`Vec::with_capacity(trees)`
+/// 按 u32 全量预分配,超界只放大内存与时长(ST-AUD-18)。
+pub const MAX_TREES: u32 = 1024;
+/// 最大深度上界:递归 `build_tree` 的深度由它控制(ST-AUD-18)。
+pub const MAX_TREE_DEPTH: u32 = 32;
 
 /// 森林超参(显式落模型文件,不藏运行期默认)。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,8 +64,18 @@ impl SurrogateSpec {
         if self.trees < 1 {
             return Err(Error::Config("surrogate.trees 必须 ≥ 1".into()));
         }
+        if self.trees > MAX_TREES {
+            return Err(Error::Config(format!(
+                "surrogate.trees 不能超过 {MAX_TREES}(超界只放大内存与训练时长)"
+            )));
+        }
         if self.max_depth < 1 {
             return Err(Error::Config("surrogate.max_depth 必须 ≥ 1".into()));
+        }
+        if self.max_depth > MAX_TREE_DEPTH {
+            return Err(Error::Config(format!(
+                "surrogate.max_depth 不能超过 {MAX_TREE_DEPTH}(递归建树深度上界)"
+            )));
         }
         if self.min_samples_leaf < 1 {
             return Err(Error::Config("surrogate.min_samples_leaf 必须 ≥ 1".into()));
@@ -163,6 +178,12 @@ impl RandomForest {
         if rows.iter().any(|r| r.0.len() != width) {
             return Err(Error::Config("surrogate: 训练行特征维数不一致".into()));
         }
+        // 目标值先中心化再训练:未中心化的 Σy²−(Σy)²/n 在大均值小方差时
+        // 两位相减相消,方差削减全是舍入噪声(与 experiment::summarize 的
+        // 中心化口径不一致,ST-AUD-18)。树完成后把均值加回叶值,预测值
+        // 数学上不变;加回按森林序固定遍历,确定性保持。
+        let mean = rows.iter().map(|(_, y)| *y).sum::<f64>() / rows.len() as f64;
+        let rows: Vec<TrainingRow> = rows.into_iter().map(|(x, y)| (x, y - mean)).collect();
         let mut importance = vec![0.0; width];
         let mut forest = Vec::with_capacity(spec.trees as usize);
         for t in 0..spec.trees {
@@ -174,6 +195,9 @@ impl RandomForest {
                 })
                 .collect();
             forest.push(build_tree(&sample, 0, &spec, &mut importance));
+        }
+        for tree in &mut forest {
+            add_leaf_offset(tree, mean);
         }
         // 方差削减归一(全零 = 无任何分裂,如实保持 0)
         let total: f64 = importance.iter().sum();
@@ -194,7 +218,30 @@ impl RandomForest {
     /// 预测:参数按模型特征序组装后取全树均值。
     pub fn predict(&self, params: &BTreeMap<String, f64>) -> Result<f64, Error> {
         let row = self.resolve(params)?;
-        Ok(self.predict_row(&row))
+        self.predict_row(&row)
+    }
+
+    /// 回读校验(serde 反序列化不会自我校验,model.json 是外部输入面):
+    /// 森林非空、分裂节点特征下标全部落在特征表内、重要性表与特征表同宽。
+    /// 各壳层(CLI / wasm / 桌面)回读模型后先走这一趟再预测。
+    pub fn validate(&self) -> Result<(), Error> {
+        if self.forest.is_empty() {
+            return Err(Error::Config("surrogate: 模型森林为空".into()));
+        }
+        let width = self.features.len();
+        if self.importance.len() != width {
+            return Err(Error::Config(format!(
+                "surrogate: 重要性 {} 项与特征 {} 个不一致",
+                self.importance.len(),
+                width
+            )));
+        }
+        if !self.forest.iter().all(|t| tree_indices_valid(t, width)) {
+            return Err(Error::Config(
+                "surrogate: 分裂节点特征下标越界(模型文件损坏或被篡改)".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// 预测 + 树间分歧包络(内核算好 min/max,前端只展示不重算)。
@@ -203,7 +250,7 @@ impl RandomForest {
         params: &BTreeMap<String, f64>,
     ) -> Result<SurrogatePrediction, Error> {
         let row = self.resolve(params)?;
-        let values = self.tree_values(&row);
+        let values = self.tree_values(&row)?;
         let mut spread_min = f64::INFINITY;
         let mut spread_max = f64::NEG_INFINITY;
         for &v in &values {
@@ -211,7 +258,7 @@ impl RandomForest {
             spread_max = spread_max.max(v);
         }
         Ok(SurrogatePrediction {
-            mean: self.predict_row(&row),
+            mean: values.iter().sum::<f64>() / values.len() as f64,
             spread_min,
             spread_max,
             trees: values.len(),
@@ -219,14 +266,28 @@ impl RandomForest {
     }
 
     /// 单行预测(row 与 [`Self::features`] 同序;先验 API,快于逐候选查表)。
-    pub fn predict_row(&self, row: &[f64]) -> f64 {
+    /// 行宽必须与特征表一致——训练树按列下标取值,错宽行会越界 panic。
+    pub fn predict_row(&self, row: &[f64]) -> Result<f64, Error> {
+        self.check_row(row)?;
         let sum: f64 = self.forest.iter().map(|t| eval_tree(t, row)).sum();
-        sum / self.forest.len() as f64
+        Ok(sum / self.forest.len() as f64)
     }
 
     /// 逐树预测(森林分歧度 = 这组值的散布)。
-    pub fn tree_values(&self, row: &[f64]) -> Vec<f64> {
-        self.forest.iter().map(|t| eval_tree(t, row)).collect()
+    pub fn tree_values(&self, row: &[f64]) -> Result<Vec<f64>, Error> {
+        self.check_row(row)?;
+        Ok(self.forest.iter().map(|t| eval_tree(t, row)).collect())
+    }
+
+    fn check_row(&self, row: &[f64]) -> Result<(), Error> {
+        if row.len() != self.features.len() {
+            return Err(Error::Config(format!(
+                "surrogate: 行宽 {} 与特征数 {} 不一致",
+                row.len(),
+                self.features.len()
+            )));
+        }
+        Ok(())
     }
 
     fn resolve(&self, params: &BTreeMap<String, f64>) -> Result<Vec<f64>, Error> {
@@ -278,6 +339,33 @@ fn training_rows(results: &[CandidateResult], metric: MetricKey) -> Result<Train
 
 /// CART 回归树:停留条件(达限深 / 样本不足以再分 / 目标常数 / 无有效分裂)
 /// 下落叶(均值);否则全特征扫相邻不同值中点,取方差削减最大的分裂。
+/// 把目标均值加回叶值:训练在中心化目标上进行(见 [`RandomForest::train`])。
+fn add_leaf_offset(node: &mut TreeNode, offset: f64) {
+    match node {
+        TreeNode::Leaf { value } => *value += offset,
+        TreeNode::Split { left, right, .. } => {
+            add_leaf_offset(left, offset);
+            add_leaf_offset(right, offset);
+        }
+    }
+}
+
+/// 分裂节点特征下标是否全部落在 `[0, width)`。model.json 是外部输入面,
+/// 越界下标会在 `eval_tree` 索引行向量时 panic(ST-AUD-18)。
+fn tree_indices_valid(node: &TreeNode, width: usize) -> bool {
+    match node {
+        TreeNode::Leaf { .. } => true,
+        TreeNode::Split {
+            feature,
+            left,
+            right,
+            ..
+        } => {
+            *feature < width && tree_indices_valid(left, width) && tree_indices_valid(right, width)
+        }
+    }
+}
+
 fn build_tree(
     rows: &[TrainingRow],
     depth: u32,
@@ -342,6 +430,10 @@ fn best_split(
         .iter()
         .fold((0.0, 0.0), |(s, q), (_, y)| (s + y, q + y * y));
     let parent = total_sumsq - total_sum * total_sum / n as f64;
+    // 最小削减阈值 = 父方差 × f64 舍入余量:滤掉舍入噪声级的伪削减
+    // (目标已中心化,量级健康,此阈值只防全同值样本的退化),破平仍
+    // 严格大于,确定性不变。
+    let min_red = parent * 1e-12;
     let mut best: Option<(usize, f64, f64)> = None;
     let mut best_red = 0.0;
     for f in 0..n_features {
@@ -365,7 +457,7 @@ fn best_split(
             let sse_l = sumsq_l - sum_l * sum_l / cnt_l as f64;
             let sse_r = sumsq_r - sum_r * sum_r / (n - cnt_l) as f64;
             let reduction = parent - sse_l - sse_r;
-            if reduction > best_red {
+            if reduction > best_red && reduction > min_red {
                 best_red = reduction;
                 best = Some((f, (x_here + x_next) / 2.0, reduction));
             }
@@ -414,6 +506,96 @@ mod tests {
             }
         }
         rows
+    }
+
+    /// ST-AUD-18:超参上界——spec 随 model.json 回读,是外部输入面。
+    #[test]
+    fn spec_caps_trees_and_depth() {
+        let mut spec = SurrogateSpec::new(1);
+        spec.trees = MAX_TREES + 1;
+        let err = spec.validate().unwrap_err();
+        assert!(err.to_string().contains("trees"), "{err}");
+        spec.trees = MAX_TREES;
+        spec.max_depth = MAX_TREE_DEPTH + 1;
+        let err = spec.validate().unwrap_err();
+        assert!(err.to_string().contains("max_depth"), "{err}");
+        spec.max_depth = MAX_TREE_DEPTH;
+        assert!(spec.validate().is_ok(), "边界值应放行");
+    }
+
+    /// ST-AUD-18:predict_row / tree_values 校验行宽——错宽行会越界索引。
+    #[test]
+    fn predict_row_rejects_wrong_width() {
+        let model = RandomForest::train(
+            "win_rate",
+            vec!["a".into(), "b".into()],
+            synth_rows(),
+            SurrogateSpec::new(3),
+        )
+        .unwrap();
+        let err = model.predict_row(&[1.0]).unwrap_err();
+        assert!(err.to_string().contains("不一致"), "{err}");
+        assert!(model.tree_values(&[1.0]).is_err());
+        assert!(model.predict_row(&[1.0, 2.0]).is_ok());
+        assert!(model.tree_values(&[1.0, 2.0]).is_ok());
+    }
+
+    /// ST-AUD-18:回读模型校验分裂节点特征下标越界(模拟损坏 / 被篡改的
+    /// model.json;serde 反序列化不会自我校验)。
+    #[test]
+    fn model_json_feature_index_out_of_range_rejected() {
+        let mut model = RandomForest::train(
+            "win_rate",
+            vec!["x".into()],
+            (1..=8).map(|i| (vec![i as f64], i as f64 * 2.0)).collect(),
+            SurrogateSpec::new(3),
+        )
+        .unwrap();
+        assert!(
+            model
+                .forest
+                .iter()
+                .any(|t| matches!(t, TreeNode::Split { .. })),
+            "测试数据应产出分裂节点"
+        );
+        for tree in &mut model.forest {
+            if let TreeNode::Split { feature, .. } = tree {
+                *feature = 999;
+            }
+        }
+        let json = serde_json::to_string(&model).unwrap();
+        let back: RandomForest = serde_json::from_str(&json).unwrap();
+        let err = back.validate().unwrap_err();
+        assert!(err.to_string().contains("特征下标"), "{err}");
+        // 未篡改的模型校验通过
+        let clean = RandomForest::train(
+            "win_rate",
+            vec!["x".into()],
+            (1..=8).map(|i| (vec![i as f64], i as f64 * 2.0)).collect(),
+            SurrogateSpec::new(3),
+        )
+        .unwrap();
+        assert!(clean.validate().is_ok());
+    }
+
+    /// ST-AUD-18:大均值小方差目标——未中心化的 Σy²−(Σy)²/n 在 ~1e9 量级
+    /// 两位相减相消,方差削减全是舍入噪声,树分裂不出 {0,1} 差;中心化后
+    /// 削减恢复健康量级。
+    #[test]
+    fn large_mean_small_variance_targets_still_split() {
+        let rows: Vec<(Vec<f64>, f64)> = (1..=8)
+            .map(|i| (vec![i as f64], 1e9 + if i <= 4 { 0.0 } else { 1.0 }))
+            .collect();
+        let model =
+            RandomForest::train("win_rate", vec!["x".into()], rows, SurrogateSpec::new(5)).unwrap();
+        let lo = model.predict_row(&[1.0]).unwrap();
+        let hi = model.predict_row(&[8.0]).unwrap();
+        assert!(
+            (hi - lo).abs() > 0.5,
+            "大均值目标应仍能分裂出两群:lo={lo} hi={hi}"
+        );
+        assert!((lo - 1e9).abs() < 0.5, "左叶 ≈ 1e9:{lo}");
+        assert!((hi - 1e9 - 1.0).abs() < 0.5, "右叶 ≈ 1e9+1:{hi}");
     }
 
     fn stats(mean: f64) -> SampleStats {
@@ -494,7 +676,7 @@ mod tests {
         // 训练内 MAE 远小于目标值域(≈200)
         let mae: f64 = rows
             .iter()
-            .map(|(x, y)| (model.predict_row(x) - y).abs())
+            .map(|(x, y)| (model.predict_row(x).unwrap() - y).abs())
             .sum::<f64>()
             / rows.len() as f64;
         assert!(mae < 20.0, "训练内 MAE {} 过大", mae);
@@ -515,7 +697,7 @@ mod tests {
         for tree in &model.forest {
             assert!(matches!(tree, TreeNode::Leaf { value } if (*value - 7.0).abs() < 1e-12));
         }
-        assert_eq!(model.predict_row(&[3.0]), 7.0);
+        assert_eq!(model.predict_row(&[3.0]).unwrap(), 7.0);
         assert!(model.importance.iter().all(|v| *v == 0.0));
     }
 

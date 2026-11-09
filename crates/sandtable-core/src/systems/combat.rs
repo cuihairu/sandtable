@@ -21,9 +21,13 @@ fn strike_damage(cfg: &SimConfig, attack: i64, defense: i64, var: i64) -> i64 {
     let c = &cfg.combat;
     match c.damage_model {
         Some(DamageModel::Ratio) => {
-            ((c.ratio_k * attack as f64 / (attack + defense) as f64 + var as f64) as i64).max(1)
+            // 加法留在 f64 域:极端派生值(attack 逼近 i64::MAX)在 i64 域相加
+            // 会溢出,f64 域不溢出且口径不变(ST-AUD-15)
+            ((c.ratio_k * attack as f64 / (attack as f64 + defense as f64) + var as f64) as i64)
+                .max(1)
         }
-        _ => (attack - defense + var).max(1),
+        // 差值口径同口径饱和:减法/加法都可能触界
+        _ => attack.saturating_sub(defense).saturating_add(var).max(1),
     }
 }
 

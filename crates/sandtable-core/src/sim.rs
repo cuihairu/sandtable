@@ -291,9 +291,12 @@ impl System<World, SimEvent> for PlayerDaySystem<'_> {
                 Action::Training => {
                     // 练级产出面(阻力 #4):金币经验入账、升级推进,不进战斗统计
                     if let Some(t) = cfg.training {
-                        let gold_gain = t.gold * mult;
-                        let xp_gain = t.xp * mult;
-                        actor.gold += gold_gain;
+                        // 产出乘鲸鱼倍率可超 i64(两个因子各自 ≤ MAX_ECONOMY_VALUE
+                        // 但乘积 1e30):饱和运算兜底,调试 / 发布构建都不 panic
+                        // 不回绕(ST-AUD-15)
+                        let gold_gain = t.gold.saturating_mul(mult);
+                        let xp_gain = t.xp.saturating_mul(mult);
+                        actor.gold = actor.gold.saturating_add(gold_gain);
                         let levelups =
                             progression::gain_xp(actor, xp_gain, &cfg.progression, self.xp_formula);
                         agg.record_levelup(levelups);
@@ -317,8 +320,10 @@ impl System<World, SimEvent> for PlayerDaySystem<'_> {
                     );
                     battle_index += 1;
                     if out.win {
-                        let mut gold_gain = out.gold * mult;
-                        let mut xp_gain = out.xp * mult;
+                        // 战斗产出 × 鲸鱼倍率同上:saturating(ST-AUD-15 实测
+                        // debug 构建在 1e15 × 1e15 处 panic)
+                        let mut gold_gain = out.gold.saturating_mul(mult);
+                        let mut xp_gain = out.xp.saturating_mul(mult);
                         // 掉落结算(docs/loot-settlement-design.md):胜利时从绑定
                         // 的表抽一次——独立键维度 Purpose::Loot,不扰动战斗流;
                         // 数额乘 rate_mult 四舍五入,金币随战斗金币同口径乘鲸鱼
@@ -327,18 +332,22 @@ impl System<World, SimEvent> for PlayerDaySystem<'_> {
                             let idx = rng.weighted(crate::rng::Purpose::Loot, wt);
                             if let Some(name) = wt.names().get(idx) {
                                 if let Some(r) = loot.rewards.get(name) {
-                                    let g =
-                                        ((r.gold as f64) * loot.rate_mult).round() as i64 * mult;
-                                    let x = ((r.xp as f64) * loot.rate_mult).round() as i64 * mult;
-                                    gold_gain += g;
-                                    xp_gain += x;
+                                    // rate_mult 只有「有限正数」门没有上界:乘积
+                                    // 可为 inf(NaN → as i64 = 0,inf → 饱和转
+                                    // i64::MAX),再 saturating_mul 兜底(ST-AUD-15)
+                                    let g = ((r.gold as f64) * loot.rate_mult).round() as i64;
+                                    let x = ((r.xp as f64) * loot.rate_mult).round() as i64;
+                                    let g = g.saturating_mul(mult);
+                                    let x = x.saturating_mul(mult);
+                                    gold_gain = gold_gain.saturating_add(g);
+                                    xp_gain = xp_gain.saturating_add(x);
                                     if g > 0 {
                                         agg.record_loot(g as u64);
                                     }
                                 }
                             }
                         }
-                        actor.gold += gold_gain;
+                        actor.gold = actor.gold.saturating_add(gold_gain);
                         let levelups =
                             progression::gain_xp(actor, xp_gain, &cfg.progression, self.xp_formula);
                         agg.record_levelup(levelups);
@@ -445,7 +454,8 @@ impl System<World, SimEvent> for DayCloseSystem<'_> {
             if a.churned {
                 continue;
             }
-            supply += a.gold;
+            // 金币存量逐玩家可达 i64::MAX(产出饱和,ST-AUD-15),合计再饱和
+            supply = supply.saturating_add(a.gold);
             agg.observe_power(a.power);
             if is_snapshot {
                 snapshot_powers.push(a.power);

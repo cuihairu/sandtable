@@ -1324,6 +1324,10 @@ fn run_surrogate(action: &SurrogateAction) -> anyhow::Result<()> {
                 .with_context(|| format!("读取 {} 失败", model.display()))?;
             let forest: core::surrogate::RandomForest = serde_json::from_str(&raw)
                 .with_context(|| format!("{} 解析失败(代理模型)", model.display()))?;
+            // model.json 是外部输入面:回读先校验(特征下标越界会在预测时 panic)
+            forest
+                .validate()
+                .map_err(|e| anyhow::anyhow!("模型无效: {e}"))?;
             let map: std::collections::BTreeMap<String, f64> = serde_json::from_str(params)
                 .with_context(|| "params 解析失败(须为 JSON 对象,键 = 参数路径)".to_string())?;
             let row: Vec<f64> = forest
@@ -1335,7 +1339,7 @@ fn run_surrogate(action: &SurrogateAction) -> anyhow::Result<()> {
                     })
                 })
                 .collect::<Result<_, _>>()?;
-            let values = forest.tree_values(&row);
+            let values = forest.tree_values(&row)?;
             let mean = values.iter().sum::<f64>() / values.len() as f64;
             let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
             let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
@@ -1354,6 +1358,9 @@ fn run_surrogate(action: &SurrogateAction) -> anyhow::Result<()> {
                 .with_context(|| format!("读取 {} 失败", model.display()))?;
             let forest: core::surrogate::RandomForest = serde_json::from_str(&raw)
                 .with_context(|| format!("{} 解析失败(代理模型)", model.display()))?;
+            forest
+                .validate()
+                .map_err(|e| anyhow::anyhow!("模型无效: {e}"))?;
             let mut ranked: Vec<(&String, f64)> = forest
                 .features
                 .iter()

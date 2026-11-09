@@ -230,6 +230,9 @@ impl RunAggregator {
     }
 
     /// 一次战斗结算(无论胜负)。`gold_gain` 为该场实际入账(含 whale 倍率)。
+    ///
+    /// 金币累计走饱和:单场产出可饱和到 i64::MAX(ST-AUD-15),总量再用
+    /// `+=` 会在 debug 构建 panic、release 构建回绕。
     pub fn record_battle(&mut self, win: bool, gold_gain: u64, is_whale: bool) {
         self.cur.battles += 1;
         self.battles_total += 1;
@@ -237,27 +240,27 @@ impl RunAggregator {
             self.cur.wins += 1;
             self.wins_total += 1;
         }
-        self.cur.gold_earned += gold_gain;
-        self.gold_earned_total += gold_gain;
+        self.cur.gold_earned = self.cur.gold_earned.saturating_add(gold_gain);
+        self.gold_earned_total = self.gold_earned_total.saturating_add(gold_gain);
         if is_whale {
-            self.cur.whale_gold += gold_gain;
-            self.whale_gold_total += gold_gain;
+            self.cur.whale_gold = self.cur.whale_gold.saturating_add(gold_gain);
+            self.whale_gold_total = self.whale_gold_total.saturating_add(gold_gain);
         }
     }
 
     /// 一次练级会话产出(阻力 #4):金币进经济面,不进战斗统计
     /// (练级不是战斗,胜率分母不含它)。
     pub fn record_training(&mut self, gold_gain: u64) {
-        self.cur.gold_earned += gold_gain;
-        self.gold_earned_total += gold_gain;
+        self.cur.gold_earned = self.cur.gold_earned.saturating_add(gold_gain);
+        self.gold_earned_total = self.gold_earned_total.saturating_add(gold_gain);
     }
 
     pub fn record_upgrade(&mut self, cost: i64) {
         let spent = u64::try_from(cost).unwrap_or_else(|_| {
             panic!("record_upgrade 收到负成本 {cost}(validate 已前置拦截,运行时不可能)")
         });
-        self.cur.gold_spent += spent;
-        self.gold_spent_total += spent;
+        self.cur.gold_spent = self.cur.gold_spent.saturating_add(spent);
+        self.gold_spent_total = self.gold_spent_total.saturating_add(spent);
         self.cur.upgrades += 1;
     }
 
@@ -281,7 +284,7 @@ impl RunAggregator {
     /// 掉落金币切片:只记掉落自身的额(全额产出已随 `record_battle` 计入
     /// `gold_earned_total`,此处为切片口径,避免重复计数)
     pub fn record_loot(&mut self, gold: u64) {
-        self.loot_gold_total += gold;
+        self.loot_gold_total = self.loot_gold_total.saturating_add(gold);
     }
 
     pub fn observe_power(&mut self, power: i64) {

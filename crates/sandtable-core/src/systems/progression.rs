@@ -13,8 +13,10 @@ pub fn xp_needed(level: u32, p: &ProgressionConfig, f: &Formula) -> i64 {
 
 /// 发放经验并结算升级(可连升)。返回升级次数。
 pub fn gain_xp(actor: &mut Actor, amount: i64, p: &ProgressionConfig, f: &Formula) -> u32 {
-    actor.xp_into_level += amount;
-    let mut levelups = 0;
+    // 产出口径与战斗金币一致走饱和:大经验产出(×鲸鱼倍率)可触 i64 上界
+    // (ST-AUD-15)
+    actor.xp_into_level = actor.xp_into_level.saturating_add(amount);
+    let mut levelups = 0u32;
     loop {
         let need = xp_needed(actor.level, p, f);
         // 运行时防护(审核整改 P1):公式在探针区间外退化为 ≤ 0 时停止
@@ -23,11 +25,18 @@ pub fn gain_xp(actor: &mut Actor, amount: i64, p: &ProgressionConfig, f: &Formul
         if need <= 0 || actor.xp_into_level < need {
             break;
         }
+        // 等级 u32 上界防护:need ≥ 1 时升级次数 ≤ 经验量,但经验可达
+        // i64::MAX > u32::MAX,不加防护会让 debug 构建 panic(ST-AUD-15)
+        if actor.level == u32::MAX {
+            break;
+        }
         actor.xp_into_level -= need;
         actor.level += 1;
-        actor.attack += p.level_attack_gain;
-        actor.defense += p.level_defense_gain;
-        actor.hp += p.level_hp_gain;
+        // 属性增益累加饱和(练级可重复触发,累加值不在任何入口门内)
+        actor.attack = actor.attack.saturating_add(p.level_attack_gain);
+        actor.defense = actor.defense.saturating_add(p.level_defense_gain);
+        actor.hp = actor.hp.saturating_add(p.level_hp_gain);
+        // level 上界防护保证本循环 ≤ u32::MAX 次,levelups 不会溢出
         levelups += 1;
     }
     levelups
@@ -44,10 +53,14 @@ pub fn can_afford(actor: &Actor) -> bool {
 }
 
 pub fn apply_upgrade(actor: &mut Actor, p: &ProgressionConfig) {
+    // 调用前置 can_afford(gold ≥ cost),减法不欠账;属性累加与成本链
+    // 乘法走饱和:cost × num 两个合法值(各 ≤ MAX_ECONOMY_VALUE)的乘积
+    // 可超 i64,溢出会让 debug 构建 panic(ST-AUD-15)
     actor.gold -= actor.upgrade_cost_next;
-    actor.attack += p.upgrade_attack_gain;
+    actor.attack = actor.attack.saturating_add(p.upgrade_attack_gain);
     actor.upgrades += 1;
-    actor.upgrade_cost_next = actor.upgrade_cost_next * p.upgrade_cost_num / p.upgrade_cost_den;
+    actor.upgrade_cost_next =
+        actor.upgrade_cost_next.saturating_mul(p.upgrade_cost_num) / p.upgrade_cost_den;
 }
 
 #[cfg(test)]
@@ -123,6 +136,20 @@ mod tests {
     /// 运行时防护(审核整改 P1):公式退化为 ≤ 0(绕过 validate 探针区间
     /// 的直连构造)时,gain_xp 必须有限步终止,不升级、不改属性。
     /// 修复前该用例为死循环。
+    #[test]
+    fn gain_xp_saturates_xp_budget() {
+        // i64::MAX 级经验产出(×鲸鱼倍率饱和所致,ST-AUD-15):入账走
+        // saturating_add。预算已满时再入账,溢出 → 饱和留在 MAX,不 panic
+        // 不回绕;退化公式(need ≤ 0)拦住升级循环,单测只看入账口径。
+        let cfg = SimConfig::default();
+        let zero = formula::compile("0", formula::XP_NEEDED_VARS).unwrap();
+        let mut a = actor();
+        a.xp_into_level = i64::MAX;
+        assert_eq!(gain_xp(&mut a, i64::MAX, &cfg.progression, &zero), 0);
+        assert_eq!(a.xp_into_level, i64::MAX, "预算饱和,不回绕");
+        assert_eq!(a.level, 1);
+    }
+
     #[test]
     fn gain_xp_terminates_on_degenerate_formula() {
         let cfg = SimConfig::default();

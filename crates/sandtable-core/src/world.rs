@@ -42,8 +42,15 @@ pub struct Actor {
 }
 
 impl Actor {
+    /// 战力合成全程饱和:入口值各有上界门,但练级增益的累加(运行时
+    /// `+= level_*_gain`)与 `attack * 2` 的合成结果不在门内,溢出会让
+    /// debug 构建 panic、release 构建回绕(ST-AUD-15)。
     pub fn power_of(attack: i64, defense: i64, hp: i64, level: u32) -> i64 {
-        attack * 2 + defense + hp / 10 + level as i64 * 10
+        attack
+            .saturating_mul(2)
+            .saturating_add(defense)
+            .saturating_add(hp / 10)
+            .saturating_add(i64::from(level) * 10)
     }
 
     pub fn recompute_power(&mut self) {

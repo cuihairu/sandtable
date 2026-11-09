@@ -432,6 +432,8 @@ fn surrogate_train(
 fn surrogate_predict(model_json: String, params_json: String) -> Result<serde_json::Value, String> {
     let model: sandtable_core::surrogate::RandomForest = serde_json::from_str(&model_json)
         .map_err(|e| format!("参数错误: 代理模型解析失败: {e}"))?;
+    // model.json 是外部输入面:回读先校验(特征下标越界会在预测时 panic)
+    model.validate().map_err(|e| format!("参数错误: {e}"))?;
     let params: std::collections::BTreeMap<String, f64> =
         serde_json::from_str(&params_json).map_err(|e| format!("参数错误: 参数点解析失败: {e}"))?;
     let envelope = model
