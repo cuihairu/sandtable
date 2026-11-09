@@ -50,7 +50,7 @@ sandtable/
 │   └── sandtable-mcp/        # MCP server in Rust (landed: official rmcp SDK over stdio, calls core natively — no wasm/Node hop; tools sandtable_validate / sandtable_run / sandtable_plan_sweep / sandtable_analyze / sandtable_calibrate; kernel errors pass through as tool-level errors, interaction budget caps reject oversized runs)
 │
 ├── apps/
-│   ├── web/                  # React + TS + Vite (landed: config editing → local simulation → KPI/curves/cohort table, zero chart libraries; project multi-config selector landed)
+│   ├── web/                  # React + TS + Vite (landed: config editing → local simulation → KPI/curves/cohort table, zero chart libraries; project multi-config selector landed; i18n dictionaries split by domain into dict/{zh,en}/, entries zh.ts / en.ts aggregate)
 │   └── desktop/              # Tauri 2 shell (Phase 7: src-tauri + direct core path connection, all 7 commands wired, native query already in the UI; Linux local machine first; lib.rs = run() entry + command-surface integration tests, commands split by domain into model / sim / sweep / optimize / query / window)
 │
 ├── examples/                 # Scenario and experiment YAML (pokemon / gacha-pity / pokemon-sweep etc.)

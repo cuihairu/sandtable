@@ -51,7 +51,7 @@ sandtable/
 │   └── sandtable-mcp/        # Rust 版 MCP 服务器(已落地:官方 rmcp SDK + stdio,原生直调 core——不经 wasm/Node;工具五枚 sandtable_validate / sandtable_run / sandtable_plan_sweep / sandtable_analyze / sandtable_calibrate;内核错误以 tool-level error 原文透传,交互预算上限拒绝超大运行)
 │
 ├── apps/
-│   ├── web/                  # React + TS + Vite(已落地:配置编辑 → 本地仿真 → KPI/曲线/分群表,零图表库;项目多配置选择器已落地)
+│   ├── web/                  # React + TS + Vite(已落地:配置编辑 → 本地仿真 → KPI/曲线/分群表,零图表库;项目多配置选择器已落地;i18n 词典按域拆分 dict/{zh,en}/,入口 zh.ts / en.ts 聚合)
 │   └── desktop/              # Tauri 2 壳(Phase 7:src-tauri + core path 直连,命令面 7 个全接线,native query 已入 UI;Linux 本机先行;lib.rs = 入口 run() + 命令面集成测试,命令按域拆分 model / sim / sweep / optimize / query / window)
 │
 ├── examples/                 # 场景与实验 YAML(pokemon / gacha-pity / pokemon-sweep 等)
