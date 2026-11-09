@@ -36,7 +36,13 @@ sandtable/
 │   │       ├── systems/       # 内置游戏系统(behavior / combat / progression / churn / gacha)
 │   │       ├── metrics.rs     # RunMetrics 与在线聚合
 │   │       ├── sim.rs         # 仿真主循环(事件驱动)
-│   │       ├── experiment.rs  # replicates、CRN 配对比较、统计
+│   │       ├── experiment/    # replicates、CRN 配对比较、统计(按域拆 stats / metric / arms / daily)
+│   │       │   ├── mod.rs     # 入口 + 再导出(experiment::* 路径不变)
+│   │       │   ├── stats.rs   # SampleStats / t 临界值 / Verdict / Comparison / compare
+│   │       │   ├── metric.rs  # MetricKey(name/parse/extract/unavailable_reason)+ serde
+│   │       │   ├── arms.rs    # A/B CRN 配对比较入口(compare_arms)
+│   │       │   ├── daily.rs   # 逐日跨 replicate 聚合
+│   │       │   └── tests.rs
 │   │       ├── sweep.rs       # 网格 / 随机 / LHS 扫描引擎
 │   │       ├── sensitivity.rs # OAT 弹性
 │   │       ├── recommend.rs   # 单轴插值推荐

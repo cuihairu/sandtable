@@ -16,7 +16,7 @@ title: 28 · 术语表
 | 事件队列 | EventQueue | 按 `(tick, sequence)` 排序的确定性优先队列；同 tick 内保持调度 FIFO。 | `crates/sandtable-core/src/kernel.rs:69` |
 | 系统 | System | 内核扩展 trait：声明标识、订阅事件，并对 World 执行一步变更。 | `crates/sandtable-core/src/kernel.rs:123` |
 | 重复实验 | Replicate | 一次独立种子的模型执行；其指标会被保留用于聚合与比较。 | `crates/sandtable-core/src/sim.rs:41` |
-| 对照实验 | Comparison / CRN | 对基线与候选输出做样本级统计比较，并用公共随机数降低方差。 | `crates/sandtable-core/src/experiment.rs:120` |
+| 对照实验 | Comparison / CRN | 对基线与候选输出做样本级统计比较，并用公共随机数降低方差。 | `crates/sandtable-core/src/experiment/stats.rs:110` |
 | 扫描规格 | SweepSpec | 声明式实验计划：展开参数候选，并定义执行与统计范围。 | `crates/sandtable-core/src/sweep.rs:174` |
 | 引擎契约 | EngineContract | 与外部引擎适配器交换仿真载荷的版本化记录 schema 和校验边界。 | `crates/sandtable-engine/src/contract.rs:35` |
 | 项目文档 | ProjectDoc | 工作台文档模型：持久化场景/实验草稿、执行结果、队列状态及相关 UI 状态。 | `apps/web/src/workbench/state/projectDoc.ts:40` |

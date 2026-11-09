@@ -14,7 +14,7 @@ title: 27 · 架构分层
 | --- | --- | --- | --- |
 | 1 | 场景与配置编译 | 解析场景/实验 YAML，按注册表校验，并编译出一次运行使用的内存态 `SimConfig`。 | `crates/sandtable-core/src/scenario/file.rs:86`; `crates/sandtable-core/src/config/mod.rs:36` |
 | 2 | 仿真核心 | 在内存 World 上运行确定性事件系统，并产出每个 replicate 的指标。 | `crates/sandtable-core/src/kernel.rs:123`; `crates/sandtable-core/src/world.rs:55` |
-| 3 | 实验与统计 | 扫描、优化、对照、代理模型和敏感性分析，把样本转化为可解释的统计决策。 | `crates/sandtable-core/src/experiment.rs:120`; `crates/sandtable-core/src/sweep.rs:174` |
+| 3 | 实验与统计 | 扫描、优化、对照、代理模型和敏感性分析，把样本转化为可解释的统计决策。 | `crates/sandtable-core/src/experiment/stats.rs:110`; `crates/sandtable-core/src/sweep.rs:174` |
 | 4 | 输出契约与互操作 | 定义稳定产物，并在内部结果与 JSON/CSV/Parquet/Arrow、项目包、XLSX、引擎输入之间转换。 | `crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35` |
 | 5 | 平台绑定 | 通过 WASM、Python、MCP 和桌面原生命令暴露同一套核心能力。 | `crates/sandtable-wasm/src/validate.rs:39`; `apps/desktop/src-tauri/src/sim.rs:66` |
 | 6 | CLI 外壳 | 解析进程参数，编排文件 I/O，执行 run/report/query 工作流并输出命令结果。 | `crates/sandtable-cli/src/args.rs:16`; `crates/sandtable-cli/src/args.rs:22` |
@@ -43,7 +43,7 @@ title: 27 · 架构分层
 
 - **模块：** `experiment`、`sweep`、`optimize`、`recommend`、`surrogate`、`sensitivity`、`kpi_dict`、`kpi_custom`、`disttest`。
 - **状态：** 调用方内存中的样本结构与统计量。持久状态归 shells 所有：CLI 结果文件、浏览器 `localStorage` 任务队列，或桌面进程状态。
-- **调用面：** 实验/对照代码消费结果样本，不读数据库（`crates/sandtable-core/src/experiment.rs:120`、`:364`）；扫描规格展开为候选和统计（`crates/sandtable-core/src/sweep.rs:174`）。
+- **调用面：** 实验/对照代码消费结果样本，不读数据库（`crates/sandtable-core/src/experiment/stats.rs:110`、`crates/sandtable-core/src/experiment/arms.rs:19`）；扫描规格展开为候选和统计（`crates/sandtable-core/src/sweep.rs:174`）。
 - **配置输入：** 实验 YAML 的 sweep/optimize 节、目标定义、约束以及内置/自定义 KPI 语义。
 - **生命周期：** 加载计划 → 展开/运行候选（通常由 shell 驱动）→ 聚合样本 → 比较、推荐、优化或拟合 → 返回值。核心内无常驻调度器。
 
@@ -92,7 +92,7 @@ title: 27 · 架构分层
 1. **LAY-001：仿真逻辑与传输面解耦。** `sandtable-core` 在 `crates/sandtable-core/src/lib.rs:3` 声明无 I/O、无墙钟；`crates/sandtable-core/Cargo.toml:8` 只保留序列化/错误依赖。CLI、WASM、Python、MCP 和桌面因此共享同一套可测试核心，而不是复制仿真行为。
 2. **LAY-002：接受文本与编译语义分离。** YAML 在 `crates/sandtable-core/src/scenario/file.rs:86` 先做注册表树检查再类型化反序列化；运行时消费 `crates/sandtable-core/src/config/mod.rs:36` 的编译产物。实验入口可以共享同一校验纪律，而不必把原始 YAML 当运行时接口。
 3. **LAY-003：确定性是内核显式契约。** `EventQueue` 按 `(tick, sequence)` 排序，同 tick 调度保持 FIFO（`crates/sandtable-core/src/kernel.rs:67`）；键控 RNG 从种子派生 replicate 流（`crates/sandtable-core/src/rng.rs:24`）。若与 UI 或 I/O 混层，复现和调试会依赖偶然执行顺序。
-4. **LAY-004：统计与场景机制分离。** 对照定义在结果样本和指标统计上（`crates/sandtable-core/src/experiment.rs:120`），扫描规格独立展开（`crates/sandtable-core/src/sweep.rs:174`）。改战斗、经济或抽卡规则时，不需要同步改置信区间/决策逻辑。
+4. **LAY-004：统计与场景机制分离。** 对照定义在结果样本和指标统计上（`crates/sandtable-core/src/experiment/stats.rs:110`），扫描规格独立展开（`crates/sandtable-core/src/sweep.rs:174`）。改战斗、经济或抽卡规则时，不需要同步改置信区间/决策逻辑。
 5. **LAY-005：交换格式在边界集中所有。** 导出与 engine contract 独立于执行定义产物形状和校验（`crates/sandtable-core/src/export.rs:13`；`crates/sandtable-engine/src/contract.rs:35`）。消费者读取稳定文件时不需要引入内核内部或重跑仿真。
 6. **LAY-006：绑定是能力门面。** WASM 把校验后的调用转发给 native 函数，不维护第二套实现（`crates/sandtable-wasm/src/lib.rs:3`）；桌面直接调 core（`apps/desktop/src-tauri/src/lib.rs:3`）。传输、预算、进度和序列化留在宿主侧，可分别替换。
 7. **LAY-007：短命进程与持久 UI 会话分离。** CLI 在 `crates/sandtable-cli/src/main.rs:87` 分发单条 argv 命令后返回；Web Workbench 在 `apps/web/src/workbench/state/projectDoc.ts:672` 恢复 `localStorage` 中的任务/草稿。常驻 UI 状态机需要取消、重试和协议版本，而一次性命令不需要。

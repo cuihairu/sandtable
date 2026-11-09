@@ -35,7 +35,13 @@ sandtable/
 │   │       ├── systems/       # Built-in game systems (behavior / combat / progression / churn / gacha)
 │   │       ├── metrics.rs     # RunMetrics and online aggregation
 │   │       ├── sim.rs         # Main simulation loop (event-driven)
-│   │       ├── experiment.rs  # Replicates, CRN paired comparison, statistics
+│   │       ├── experiment/    # Replicates, CRN paired comparison, statistics (split by domain: stats / metric / arms / daily)
+│   │       │   ├── mod.rs     # Entry + re-exports (experiment::* paths unchanged)
+│   │       │   ├── stats.rs   # SampleStats / t-critical / Verdict / Comparison / compare
+│   │       │   ├── metric.rs  # MetricKey (name/parse/extract/unavailable_reason) + serde
+│   │       │   ├── arms.rs    # A/B CRN paired comparison entry (compare_arms)
+│   │       │   ├── daily.rs   # Per-day cross-replicate aggregation
+│   │       │   └── tests.rs
 │   │       ├── sweep.rs       # Grid / random / LHS sweep engine
 │   │       ├── sensitivity.rs # OAT elasticity
 │   │       ├── recommend.rs   # Single-axis interpolation recommendation
