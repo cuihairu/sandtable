@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - '**.md'
+      # 不整体忽略 .md:scaffold 模板 README.md 是 include_str! 编译期嵌入,
+      # 只改它会 cargo build 失败,必须在合并前暴露(I-031)
       - 'docs/**'
       - 'LICENSE'
       - '.gitignore'
@@ -12,7 +13,6 @@ on:
       - '.editorconfig'
   pull_request:
     paths-ignore:
-      - '**.md'
       - 'docs/**'
       - 'LICENSE'
       - '.gitignore'
@@ -76,6 +76,23 @@ jobs:
         run: |
           cargo check -p sandtable-cli --features duckdb
           cargo test -p sandtable-cli --features duckdb,parquet
+
+      # I-030 · 依赖去重:arrow/parquet 必须单版本(59.3/60.1 并存会编译两套
+      # Arrow 栈且 RecordBatch 类型不兼容,未来 Parquet 经 DuckDB 视图查询冲突)。
+      # 用 duckdb,parquet 特性路径重放历史双版本树(默认特性不含 arrow,查不出);
+      # 注意 cargo tree -d 对「多路径共享同一版本」也列出,须按版本去重计数
+      - name: 依赖去重守卫(I-030)
+        run: |
+          fail=0
+          for crate in arrow parquet; do
+            n=$(cargo tree -d -p sandtable-cli --features duckdb,parquet | grep -oE "${crate} v[0-9]+\.[0-9]+\.[0-9]+" | sort -u | wc -l)
+            if [ "$n" -gt 1 ]; then
+              echo "::error::$crate 多版本并存($n 个版本):"
+              cargo tree -d -p sandtable-cli --features duckdb,parquet | grep -E "${crate} v"
+              fail=1
+            fi
+          done
+          exit $fail
 
       # 脚本层阶段 2(scripts/scripting-design.md):编排模板语法门(不建 wheel,拍板④维持挂起)
       - name: Python 模板语法检查
@@ -144,13 +161,10 @@ jobs:
       # 项目打包/解包闭环 + 路径纪律(打包产物过真实内核 validate)
       - name: 前端守卫(node --test)
         run: |
-          # 不依赖 wasm pkg 的套件先跑;需要 pkg-node 的测试必须在下面 wasm-pack
-          # nodejs 构建之后(experiment-form 曾错列在此组,全新 checkout 无 pkg-node)
-          node --test apps/web/tests/columns.test.mjs apps/web/tests/tokens.test.mjs apps/web/tests/workbench-ids.test.mjs apps/web/tests/workbench-logic.test.mjs apps/web/tests/i18n.test.mjs apps/web/tests/params-config.test.mjs apps/web/tests/gacha-behavior-yaml.test.mjs apps/web/tests/live-preview.test.mjs apps/web/tests/dependency-graph.test.mjs apps/web/tests/sweep-view.test.mjs apps/web/tests/machine-export.test.mjs apps/web/tests/execution.test.mjs apps/web/tests/workbench-store.test.mjs apps/web/tests/workbench-shortcuts.test.mjs apps/web/tests/workbench-locale.test.mjs apps/web/tests/data-workspace.test.mjs apps/web/tests/flow-multi-config.test.mjs apps/web/tests/project-management.test.mjs apps/web/tests/param-meta.test.mjs
+          # I-031 · 自动发现全部测试(pkg-node 先建,所有 *.test.mjs 之后统一跑;
+          # 手写清单曾漏 ~27 个测试文件,新增测试不再需要改 CI)
           wasm-pack build crates/sandtable-wasm --target nodejs --out-dir pkg-node --dev
-          # 依赖 pkg-node 的套件(sandtable_wasm.js 由上一步构建)
-          node --test apps/web/tests/presets.test.mjs apps/web/tests/project.test.mjs apps/web/tests/contracts.test.mjs apps/web/tests/execution-kernel.test.mjs apps/web/tests/ab-parity.test.mjs apps/web/tests/experiment-form.test.mjs apps/web/tests/flow-loop.test.mjs apps/web/tests/flow-run-interrupt.test.mjs apps/web/tests/flow-adopt-rerun.test.mjs apps/web/tests/error-surface.test.mjs apps/web/tests/export-roundtrip.test.mjs apps/web/tests/flow-bilingual.test.mjs apps/web/tests/locale-inert.test.mjs apps/web/tests/flow-channels.test.mjs apps/web/tests/flow-interaction.test.mjs apps/web/tests/workspace-efficiency.test.mjs apps/web/tests/workspace-guard.test.mjs
-          node --test apps/web/tests/analysis-results.test.mjs
+          node --test apps/web/tests/*.test.mjs
 
   # 桌面启动链守卫(2026-10-13 接入):无 custom-protocol 的构建是开发形态——窗口
   # 加载 build.devUrl(localhost:5173),独立运行只显示错误页;这个坑此前只被

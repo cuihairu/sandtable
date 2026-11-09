@@ -19,10 +19,11 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 serde_yaml_ng = "0.10"
 # 候选间并行(文档 11 章);core 保持无 rayon,并行只在壳层
 rayon = "1"
-# Parquet 载体(文档 09 章):以 feature 提供,默认构建不含
-parquet = { version = "59.3", default-features = false, features = ["arrow"], optional = true }
+# Parquet 载体(文档 09 章):以 feature 提供,默认构建不含。
+# I-030 · 59.3 → 60:与 duckdb(arrow 60.1.0)统一,不再编译两套 Arrow 栈
+parquet = { version = "60", default-features = false, features = ["arrow"], optional = true }
 # Arrow 数组读回(Parquet 输入通道的单元格转换;与 parquet 同 feature 门)
-arrow = { version = "59.3", default-features = false, optional = true }
+arrow = { version = "60", default-features = false, optional = true }
 # DuckDB 分析层(文档 09 章:只读结果数据集,不进仿真路径),feature 提供
 duckdb = { version = "1.20000.1", default-features = false, features = ["bundled", "parquet"], optional = true }
 # 项目打包(文档 09 章):.sandtable 归档,只开 deflate,不背多余编码
@@ -41,7 +42,7 @@ parquet = ["dep:parquet", "dep:arrow", "sandtable-core/arrow"]
 duckdb = ["dep:duckdb"]
 
 [dev-dependencies]
-arrow = { version = "59.3", default-features = false }
+arrow = { version = "60", default-features = false }
 # 项目打包测试:手工构造篡改归档(哈希不匹配 / 路径纪律)
 zip = { version = "9", default-features = false, features = ["deflate"] }
 # Web 等价测试:直接调绑定层的 native 转发(文档 18 章 Phase 6 验收)
