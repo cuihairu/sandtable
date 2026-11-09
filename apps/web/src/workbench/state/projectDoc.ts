@@ -19,7 +19,9 @@ import { candidateIdFor, hashId, ID_PREFIXES, runIdFor } from '../ids.ts'
 import type { BaselineId, CandidateId, ProjectId, RunId } from '../ids.ts'
 import { DEMO_SOURCE, KERNEL_SOURCE, isDataSource } from '../../lib/dataSource.ts'
 import type { DataSource } from '../../lib/dataSource.ts'
-import type { ExecSpec, Job, JobStatus } from './jobLogic.ts'
+import type { ExecSpec, Job, JobExec, JobStatus } from './jobLogic.ts'
+import { isTerminal } from './jobLogic.ts'
+import type { CandidateResult, Comparison, ComparisonFailure } from '../../lib/types.ts'
 
 /* —— 打开项目(WB-04.02/03/04) —— */
 
@@ -850,6 +852,95 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && Number.isFinite(value) && value > 0
 }
 
+/* —— ST-AUD-13 · 恢复载荷结果类字段净化工 —— */
+
+/** 候选结果条目形状校验(容器与标量面;数值面由内核契约保证,这里只挡
+ *  "非对象 / 坏 status / 坏容器"级别的伪造,不逐值深校验)。 */
+function isRestorableCandidateResult(value: unknown): value is CandidateResult {
+  if (!isPlainObject(value)) return false
+  const status = value.status
+  const okStatus = status === 'ok' || (isPlainObject(status) && typeof status.config_error === 'string')
+  return isPlainObject(value.values) && okStatus && Array.isArray(value.metric_stats) && Array.isArray(value.target_outcomes)
+}
+
+/** A/B 双臂输出容器形状(双臂可为 null=未完成;SimOutput 内层不做深校验)。 */
+function isRestorableArms(value: unknown): value is { base: unknown; cand: unknown } {
+  return isPlainObject(value)
+    && (value.base === null || isPlainObject(value.base))
+    && (value.cand === null || isPlainObject(value.cand))
+}
+
+/** 内核 A/B 比较形状(容器 + 关键标量;SampleStats 数值面不逐值深校验)。 */
+function isRestorableComparison(value: unknown): value is Comparison {
+  return isPlainObject(value) && typeof value.metric === 'string' && typeof value.verdict === 'string'
+}
+
+/** 逐 KPI 内核配对比较数组(null=无 A/B 分析视图,合法);条目验 comparison 形状。 */
+function isRestorableComparisonArray(value: unknown): value is readonly Comparison[] {
+  return value === null || (Array.isArray(value) && value.every(isRestorableComparison))
+}
+
+/** 推荐输出形状(容器:elasticities 数组 + recommendation 对象)。 */
+function isRestorableRecommendation(value: unknown): boolean {
+  return isPlainObject(value) && Array.isArray(value.elasticities) && isPlainObject(value.recommendation)
+}
+
+/** 内核显式拒绝的 KPI 数组(null 合法);条目验 metric/message 标量。 */
+function isRestorableComparisonErrorArray(value: unknown): value is readonly ComparisonFailure[] {
+  return value === null || (Array.isArray(value) && value.every(
+    (e) => isPlainObject(e) && typeof e.metric === 'string' && typeof e.message === 'string',
+  ))
+}
+
+/** 恢复载荷净化工:结果类字段不得从 localStorage 直接冒充内核结果。
+ *  非终态任务(将重新执行)结果类字段一律剥离,由执行槽经 baseExec 重建;
+ *  终态任务按字段逐一做形状校验,坏形字段剥离为规范空值——任务与其余字段
+ *  保留,不因单任务伪造丢弃整条队列。诚实边界:无签名(MAC 不可行),恶意
+ *  构造的合法形状载荷仍无法与真值区分,该残留如实记录在 todo 证据内。 */
+export function sanitizeRestorableJob(job: Job): Job {
+  const exec = job.exec
+  if (exec === undefined) return job
+  if (!isTerminal(job.status)) {
+    return {
+      ...job,
+      done: 0,
+      exec: {
+        ...exec,
+        progressKind: 'none',
+        candidatesDone: 0,
+        results: [],
+        recommendation: null,
+        recommendationError: null,
+        comparison: null,
+        comparisons: null,
+        comparisonErrors: null,
+        arms: null,
+        sim: null,
+        errorClass: null,
+        errorMessage: null,
+        resume: null,
+      },
+    }
+  }
+  const terminalExec: JobExec = {
+    ...exec,
+    results: Array.isArray(exec.results) ? exec.results.filter(isRestorableCandidateResult) : [],
+    recommendation: isRestorableRecommendation(exec.recommendation) ? exec.recommendation : null,
+    recommendationError: typeof exec.recommendationError === 'string' ? exec.recommendationError : null,
+    comparison: isRestorableComparison(exec.comparison) ? exec.comparison : null,
+    comparisons: isRestorableComparisonArray(exec.comparisons) ? exec.comparisons : null,
+    comparisonErrors: isRestorableComparisonErrorArray(exec.comparisonErrors) ? exec.comparisonErrors : null,
+    arms: isRestorableArms(exec.arms) ? exec.arms : null,
+    sim: isPlainObject(exec.sim) ? exec.sim : null,
+    errorClass: exec.errorClass === 'init' || exec.errorClass === 'run' || exec.errorClass === 'budget' || exec.errorClass === 'bridge'
+      ? exec.errorClass
+      : null,
+    errorMessage: typeof exec.errorMessage === 'string' ? exec.errorMessage : null,
+    resume: null,
+  }
+  return { ...job, exec: terminalExec }
+}
+
 /** 调度配置序列化;默认并发 1、默认预算沿用 executor 的内存上限。 */
 export function persistSchedulingState(input: {
   storage: StorageLike
@@ -916,7 +1007,7 @@ export function restoreQueueState(storage: StorageLike): Job[] | null {
     return null
   }
   if (parsed.version !== QUEUE_PERSIST_VERSION || !Array.isArray(parsed.jobs)) return null
-  return parsed.jobs.every(isRestorableJob) ? parsed.jobs.map((job) => ({ ...job })) : null
+  return parsed.jobs.every(isRestorableJob) ? parsed.jobs.map(sanitizeRestorableJob) : null
 }
 
 /* —— 文件选择与错误口径(WB-04.01/04.13) —— */

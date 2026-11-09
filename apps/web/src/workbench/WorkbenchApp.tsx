@@ -31,6 +31,7 @@ import { registryRegister } from './project/projectRegistry.ts'
 import { loadScenarioVersions, unloadScenarioVersions } from './project/scenarioVersions.ts'
 import { loadParamMeta, unloadParamMeta } from './project/paramMeta.ts'
 import { AnalysisPage } from './pages/AnalysisPage.tsx'
+import { hasTerminalOutputs } from './analysis/resultModel.ts'
 import { ParametersPage } from './pages/ParametersPage.tsx'
 import { DesignerPage } from './pages/DesignerPage.tsx'
 import { RunsPage } from './pages/RunsPage.tsx'
@@ -175,6 +176,10 @@ export default function WorkbenchApp(): JSX.Element {
       const exec = j.exec
       if (j.demo || exec === undefined) continue
       if (j.status !== 'succeeded' && j.status !== 'cancelled' && j.status !== 'failed') continue
+      // ST-AUD-13 · 恢复时被剥离结果类字段的 succeeded 任务(伪造/坏形)不得
+      // 用空数据再覆盖已落档产物;真实 succeeded 必有输出,空输出只能是剥离
+      // 残留(伪造/坏形载荷经 sanitizeRestorableJob 剥离后走到这里)。
+      if (j.status === 'succeeded' && !hasTerminalOutputs(exec)) continue
       if (archivedRuns.current.has(j.id)) continue
       archivedRuns.current.add(j.id)
       const runEntry = getState().runs.find((r) => r.run_id === exec.runId) ?? null

@@ -1250,3 +1250,93 @@ test('WB-07.17:语言切换只更新显示文案——任务对象与执行引�
   }
   resetForTest()
 })
+
+// —— ST-AUD-13/20/21 · 队列恢复与终局纪律(2026-11-09 批次) ——
+
+test('ST-AUD-20:终局统一释放并 terminate 后端(成功与失败路径)', async () => {
+  resetForTest()
+  let terminated = 0
+  const ok = fakeBackends({ terminate: () => { terminated++ } })
+  const job = enqueueRun({
+    experimentId: 'exp_aud20a', runId: 'run_aud20a', name: '终局释放-成功', method: 'GRID',
+    spec: { kind: 'sweep', yaml: 'y', plan: PLAN3 },
+    backends: ok.backends,
+  })
+  await new Promise((r) => setTimeout(r, 10))
+  assert.equal(listJobs().find((j) => j.id === job.id).status, 'succeeded')
+  assert.equal(terminated, 1, '成功终局应 terminate 后端(不留 Worker)')
+  resetForTest()
+
+  let terminated2 = 0
+  const fail = fakeBackends({
+    candidate: async () => { throw new Error('boom') },
+    terminate: () => { terminated2++ },
+  })
+  const job2 = enqueueRun({
+    experimentId: 'exp_aud20b', runId: 'run_aud20b', name: '终局释放-失败', method: 'GRID',
+    spec: { kind: 'sweep', yaml: 'y', plan: PLAN3 },
+    backends: fail.backends,
+  })
+  await new Promise((r) => setTimeout(r, 10))
+  assert.equal(listJobs().find((j) => j.id === job2.id).status, 'failed')
+  assert.equal(terminated2, 1, '失败终局也应 terminate 后端')
+  resetForTest()
+})
+
+test('ST-AUD-21:取消后执行器中途更新不得改写终态任务', async () => {
+  resetForTest()
+  // 门控后端:入队即被 startNextQueued 消费但状态尚未迁 running 的窗口内取消
+  let resolveGate
+  const gate = new Promise((r) => { resolveGate = r })
+  const job = enqueueRun({
+    experimentId: 'exp_aud21', runId: 'run_aud21', name: '终态闸-排队取消', method: 'GRID',
+    spec: { kind: 'sweep', yaml: 'y', plan: PLAN3 },
+    backends: gate,
+  })
+  assert.equal(listJobs().find((j) => j.id === job.id).status, 'queued')
+  await cancelJob(job.id)
+  assert.equal(listJobs().find((j) => j.id === job.id).status, 'cancelled', '排队项取消即终态')
+  // 放行后端:执行器随后发出 {status:running} 与 {done,exec:{results}} 中途更新,
+  // 均不得改写已终态的 cancelled 任务(旧守卫只拦带 status 的补丁)
+  resolveGate(fakeBackends().backends)
+  await new Promise((r) => setTimeout(r, 10))
+  const live = listJobs().find((j) => j.id === job.id)
+  assert.equal(live.status, 'cancelled')
+  assert.equal(live.done, 0, '取消后进度不得再被中途更新改写')
+  assert.deepEqual(live.exec.results, [], '取消后伪造/迟到结果不得写入终态任务')
+  assert.equal(live.exec.candidatesDone, 0)
+  resetForTest()
+})
+
+test('ST-AUD-13:队列恢复剥离伪造结果类字段,不冒充内核结果', () => {
+  resetForTest()
+  const storage = memoryStorage()
+  // 终态伪造:合法形状容器但结果条目坏形(非对象/坏 status/坏 metric_stats)
+  const forgedTerminal = persistedRealJob('job_forged_t1', 'succeeded', { kind: 'sweep', yaml: 'f', plan: PLAN3 })
+  forgedTerminal.exec.results = [
+    { values: { attack: 'not-a-number' }, status: 'evil', metric_stats: 'x', target_outcomes: 1 },
+    'not-an-object',
+  ]
+  forgedTerminal.exec.recommendation = { recommendation: { param: 123 } }
+  forgedTerminal.exec.arms = { base: [], cand: 'bad' }
+  forgedTerminal.exec.sim = 'forged'
+  forgedTerminal.done = 99
+  // 非终态伪造:将重新执行,结果类字段一律由执行槽重建
+  const forgedQueued = persistedRealJob('job_forged_q1', 'queued', { kind: 'single', yaml: 'q', replicates: 2 })
+  forgedQueued.exec.results = [{ values: {}, status: 'ok', metric_stats: [], target_outcomes: [] }]
+  forgedQueued.exec.sim = { config_hash: 'fake' }
+  const payload = { version: '1', savedAt: 1, jobs: [forgedTerminal, forgedQueued] }
+  storage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(payload))
+  const restored = restorePersistedQueue(storage, new Map([
+    [forgedQueued.id, fakeBackends().backends],
+  ]))
+  assert.equal(restored[0].status, 'succeeded')
+  assert.deepEqual(restored[0].exec.results, [], '终态伪造的坏形结果不得冒充内核结果')
+  assert.equal(restored[0].exec.sim, null, '终态伪造的坏形 sim 剥离')
+  assert.equal(restored[0].exec.recommendation, null, '终态伪造的坏形推荐剥离')
+  assert.equal(restored[0].exec.arms, null, '终态伪造的坏形双臂剥离')
+  assert.equal(restored[1].status, 'queued')
+  assert.deepEqual(restored[1].exec.results, [], '非终态伪造结果一律剥离由执行槽重建')
+  assert.equal(restored[1].exec.sim, null)
+  resetForTest()
+})

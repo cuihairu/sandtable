@@ -153,14 +153,16 @@ function candidateMemoryCount(spec: ExecSpec): number {
   return spec.kind === 'sweep' ? spec.plan.candidates.length : 1
 }
 
-/** 状态推进(真实任务):迁移守卫 + 终态单向闸(WB-07.01/16)。 */
+/** 状态推进(真实任务):迁移守卫 + 终态单向闸(WB-07.01/16)。
+ *  ST-AUD-21 · 终态闸无条件生效(不限于带 status 的补丁):排队取消把任务置
+ *  终态后,startExec 的迟到中途更新 `{done, exec:{...}}` 不带 status,旧守卫
+ *  只拦带 status 的补丁,会继续改写终态任务并在每次 emit 落 localStorage。
+ *  现统一在入口判终态,任何补丁都不得改写已终态任务。 */
 function patchJob(id: JobId, patch: ExecJobPatch): void {
   jobs = jobs.map((j) => {
     if (j.id !== id) return j
-    if (patch.status !== undefined) {
-      if (logic.isTerminal(j.status)) return j // 终态先到先得
-      if (!canTransition(j.status, patch.status)) return j // 非法迁移拒绝
-    }
+    if (logic.isTerminal(j.status)) return j // 终态先到先得:无条件拦全部补丁
+    if (patch.status !== undefined && !canTransition(j.status, patch.status)) return j // 非法迁移拒绝
     const next: Job = { ...j }
     if (patch.status !== undefined) next.status = patch.status
     if (patch.done !== undefined) next.done = patch.done
@@ -182,6 +184,17 @@ function isExecuting(status: Job['status']): boolean {
   return status === 'running' || status === 'cancelling'
 }
 
+/** ST-AUD-20 · 终局释放执行端点引用:成功(不可重试)删除 jobBackends 条目;
+ *  失败/取消保留条目供 retryJob 沿用同端点,但仍 terminate——浏览器端
+ *  WorkerConnection.terminate 置空句柄,下次 request 重新初始化新 Worker
+ *  (WB-07.11),桌面无 terminate 面为 no-op。 */
+function releaseBackends(id: JobId, keepForRetry: boolean): void {
+  const b = jobBackends.get(id)
+  if (!keepForRetry) jobBackends.delete(id)
+  if (b === undefined) return
+  void Promise.resolve(b).then((be) => { be.terminate?.() }, () => {})
+}
+
 /** 终局落地(WB-07.14/15):终态、错误分类与保留产物;清理活动引用,可再次提交。 */
 function applyOutcome(id: JobId, out: ExecOutcome): void {
   const job = jobs.find((j) => j.id === id)
@@ -196,8 +209,12 @@ function applyOutcome(id: JobId, out: ExecOutcome): void {
   const status = out.status === 'succeeded'
     ? ('succeeded' as const)
     : out.status === 'cancelled' ? ('cancelled' as const) : ('failed' as const)
+  // ST-AUD-21 · 终态闸无条件拦后续补丁:取消边界的 done 必须并入同一次终态
+  // 补丁(单独的 {done} 补丁会被无条件终态闸拦下)。
+  const done = status === 'cancelled' && out.boundary !== null ? boundaryDone(job, out) : job.done
   patchJob(id, {
     status,
+    done,
     exec: {
       resume: null,
       results: out.results,
@@ -212,9 +229,6 @@ function applyOutcome(id: JobId, out: ExecOutcome): void {
       errorMessage: out.message,
     },
   })
-  if (status === 'cancelled' && out.boundary !== null) {
-    patchJob(id, { done: boundaryDone(job, out) })
-  }
   // 终局 toast:取消/成功/失败各一个口径(与演示队列同风格)
   const kept = terminalOutcome(jobs.find((j) => j.id === id) ?? job)
   // 终局 toast 词条整句成形(边界种类 × 部分结果 × A/B 各为独立词条,
@@ -296,8 +310,12 @@ export function enqueueRun(input: {
       resume: null,
     },
   }
-  queuedBackends.set(job.id, input.backends ?? resolveBackends())
-  jobBackends.set(job.id, input.backends ?? resolveBackends())
+  // ST-AUD-20 · 同一后端引用只解析一次,排队与执行两图共用(原两次
+  // resolveBackends() 在浏览器分支各 new 一个 WorkerConnection,一次入队泄漏
+  // 两个 Worker)。
+  const backends = input.backends ?? resolveBackends()
+  queuedBackends.set(job.id, backends)
+  jobBackends.set(job.id, backends)
   jobs = [...jobs, job]
   startNextQueued()
   return job
@@ -334,6 +352,10 @@ function startNextQueued(): void {
       activeControls.delete(job.id)
       queuedBackends.delete(job.id)
       applyOutcome(job.id, out)
+      // ST-AUD-20 · 终局统一释放执行端点:成功(不可重试)删除条目并 terminate;
+      // 失败/取消保留条目供 retryJob 沿用同端点(仍 terminate,浏览器端
+      // WorkerConnection 置空句柄,下次 request 重建新 Worker)。
+      releaseBackends(job.id, out.status !== 'succeeded')
     }, (err: unknown) => {
       // WB-07.17 · ST-AUD-12:终局 promise 拒绝(backend reject / hooks.update 抛错)
       // 不得永久占死并发槽——失败分支同样删除控制引用、落 failed 终态并续跑队列。
@@ -353,6 +375,7 @@ function startNextQueued(): void {
         sim: null,
         boundary: null,
       })
+      releaseBackends(job.id, true)
     })
     emit()
   }

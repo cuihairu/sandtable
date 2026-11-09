@@ -19,7 +19,7 @@ function msg(locale: Locale | undefined, key: TranslationKey, params?: Interpola
 }
 import { candidateIdFor, hashId, ID_PREFIXES } from '../ids.ts'
 import type { BaselineId } from '../ids.ts'
-import type { Job } from '../state/jobLogic.ts'
+import type { Job, JobExec } from '../state/jobLogic.ts'
 import { applyParamEdits, numericValuesOf, parseConfig } from '../params/configYaml.ts'
 
 export type AnalysisContext = {
@@ -144,6 +144,15 @@ export function copyCandidate(job: Job, row: ResultRow, id: string, locale?: Loc
 }
 
 /** Conservative proof of an actually run baseline, including structural fields. */
+/** ST-AUD-13 · 终态任务是否持有可归档/可展示的真实输出:正常 succeeded 必有
+ *  输出(扫描=全候选、单次=sim、双臂=arms);输出为空说明恢复时结果类字段
+ *  被剥离(伪造/坏形),不得再用空数据覆盖已落档产物。 */
+export function hasTerminalOutputs(exec: JobExec): boolean {
+  if (exec.spec.kind === 'sweep') return exec.results.length > 0
+  if (exec.spec.kind === 'ab') return exec.arms !== null
+  return exec.sim !== null
+}
+
 export function ranBaseline(job: Job, rows: readonly ResultRow[]): ResultRow | null {
   const c = job.exec?.spec.analysis
   if (!c) return null
