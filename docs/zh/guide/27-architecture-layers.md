@@ -17,7 +17,7 @@ title: 27 · 架构分层
 | 3 | 实验与统计 | 扫描、优化、对照、代理模型和敏感性分析，把样本转化为可解释的统计决策。 | `crates/sandtable-core/src/experiment.rs:120`; `crates/sandtable-core/src/sweep.rs:174` |
 | 4 | 输出契约与互操作 | 定义稳定产物，并在内部结果与 JSON/CSV/Parquet/Arrow、项目包、XLSX、引擎输入之间转换。 | `crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35` |
 | 5 | 平台绑定 | 通过 WASM、Python、MCP 和桌面原生命令暴露同一套核心能力。 | `crates/sandtable-wasm/src/lib.rs:188`; `apps/desktop/src-tauri/src/lib.rs:71` |
-| 6 | CLI 外壳 | 解析进程参数，编排文件 I/O，执行 run/report/query 工作流并输出命令结果。 | `crates/sandtable-cli/src/main.rs:33`; `crates/sandtable-cli/src/main.rs:210` |
+| 6 | CLI 外壳 | 解析进程参数，编排文件 I/O，执行 run/report/query 工作流并输出命令结果。 | `crates/sandtable-cli/src/args.rs:16`; `crates/sandtable-cli/src/args.rs:22` |
 | 7 | Web 工作台 | 在浏览器/桌面 UI 中维护项目草稿、执行任务、进度、语言和展示状态。 | `apps/web/src/workbench/WorkbenchApp.tsx:129`; `apps/web/src/workbench/state/executor.ts:131` |
 | 8 | 数据与查询 | 把结果产物加载进进程内 DuckDB，执行用户 SQL 并整形输出。 | `apps/web/src/lib/duck.ts:20`; `apps/desktop/src-tauri/src/lib.rs:600` |
 
@@ -67,7 +67,7 @@ title: 27 · 架构分层
 
 - **模块：** `sandtable-cli::main`、`analyze`、`report`、`scaffold`、`project`、`xlsx`、`workbook`。
 - **状态：** 参数选择的目标文件与进程内存。没有隐藏 server 或本地 daemon；report/query 按命令读取磁盘产物（`crates/sandtable-cli/src/main.rs:127`、`:1074`）。
-- **调用面：** argv → clap 子命令 → core/interop/query 函数 → stdout、文件和退出码（`crates/sandtable-cli/src/main.rs:33`、`:210`）。
+- **调用面：** argv → clap 子命令 → core/interop/query 函数 → stdout、文件和退出码（`crates/sandtable-cli/src/args.rs:16`、`:22`）。
 - **配置输入：** 场景/实验 YAML、输出路径、报告/查询选项和命令级 flags。
 - **生命周期：** 一条命令一个进程；只初始化该命令需要的能力，退出即释放进程内存。
 
@@ -95,7 +95,7 @@ title: 27 · 架构分层
 4. **LAY-004：统计与场景机制分离。** 对照定义在结果样本和指标统计上（`crates/sandtable-core/src/experiment.rs:120`），扫描规格独立展开（`crates/sandtable-core/src/sweep.rs:174`）。改战斗、经济或抽卡规则时，不需要同步改置信区间/决策逻辑。
 5. **LAY-005：交换格式在边界集中所有。** 导出与 engine contract 独立于执行定义产物形状和校验（`crates/sandtable-core/src/export.rs:13`；`crates/sandtable-engine/src/contract.rs:35`）。消费者读取稳定文件时不需要引入内核内部或重跑仿真。
 6. **LAY-006：绑定是能力门面。** WASM 把校验后的调用转发给 native 函数，不维护第二套实现（`crates/sandtable-wasm/src/lib.rs:3`）；桌面直接调 core（`apps/desktop/src-tauri/src/lib.rs:3`）。传输、预算、进度和序列化留在宿主侧，可分别替换。
-7. **LAY-007：短命进程与持久 UI 会话分离。** CLI 在 `crates/sandtable-cli/src/main.rs:33` 分发单条 argv 命令后返回；Web Workbench 在 `apps/web/src/workbench/state/projectDoc.ts:672` 恢复 `localStorage` 中的任务/草稿。常驻 UI 状态机需要取消、重试和协议版本，而一次性命令不需要。
+7. **LAY-007：短命进程与持久 UI 会话分离。** CLI 在 `crates/sandtable-cli/src/main.rs:87` 分发单条 argv 命令后返回；Web Workbench 在 `apps/web/src/workbench/state/projectDoc.ts:672` 恢复 `localStorage` 中的任务/草稿。常驻 UI 状态机需要取消、重试和协议版本，而一次性命令不需要。
 8. **LAY-008：查询有独立加载/执行边界。** 浏览器在 `apps/web/src/lib/duck.ts:84` 把 CSV/Parquet 缓冲注册为 DuckDB 表；桌面在 `apps/desktop/src-tauri/src/lib.rs:562` 限制本地文件 SQL 为只读 `SELECT`/`WITH`。这样既允许分析查询，又不给分析代码改写源产物的权限。
 
 ## 五壳层契约矩阵

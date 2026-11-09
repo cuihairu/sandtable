@@ -17,7 +17,7 @@ This page records the responsibilities that already exist in the source tree. A 
 | 3 | Experiment & Statistics | Sweep, optimize, compare, fit surrogates, and turn samples into statistically interpreted decisions. | `crates/sandtable-core/src/experiment.rs:120`; `crates/sandtable-core/src/sweep.rs:174` |
 | 4 | Output Contract & Interop | Define stable artifacts and convert between internal results, JSON/CSV/Parquet/Arrow, project archives, XLSX, and engine inputs. | `crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35` |
 | 5 | Platform Bindings | Expose the same core capabilities through WASM, Python, MCP, and desktop-native commands. | `crates/sandtable-wasm/src/lib.rs:188`; `apps/desktop/src-tauri/src/lib.rs:71` |
-| 6 | CLI Shell | Parse process arguments, orchestrate file I/O, run/report/query workflows, and emit command results. | `crates/sandtable-cli/src/main.rs:33`; `crates/sandtable-cli/src/main.rs:210` |
+| 6 | CLI Shell | Parse process arguments, orchestrate file I/O, run/report/query workflows, and emit command results. | `crates/sandtable-cli/src/args.rs:16`; `crates/sandtable-cli/src/args.rs:22` |
 | 7 | Web Workbench | Maintain project drafts, execution jobs, progress, locales, and presentation in the browser/desktop UI. | `apps/web/src/workbench/WorkbenchApp.tsx:129`; `apps/web/src/workbench/state/executor.ts:131` |
 | 8 | Data & Query | Load result artifacts into an in-process DuckDB surface and execute user SQL with output shaping. | `apps/web/src/lib/duck.ts:20`; `apps/desktop/src-tauri/src/lib.rs:600` |
 
@@ -67,7 +67,7 @@ This page records the responsibilities that already exist in the source tree. A 
 
 - **Modules:** `sandtable-cli::main`, `analyze`, `report`, `scaffold`, `project`, `xlsx`, and `workbook`.
 - **State:** files chosen by arguments plus process memory. There is no hidden server or local daemon; report and query read generated artifacts from disk (`crates/sandtable-cli/src/main.rs:127`, `:1074`).
-- **Call surface:** argv → clap subcommands → core/interop/query functions → stdout, files, and exit code (`crates/sandtable-cli/src/main.rs:33`, `:210`).
+- **Call surface:** argv → clap subcommands → core/interop/query functions → stdout, files, and exit code (`crates/sandtable-cli/src/args.rs:16`, `:22`).
 - **Configuration input:** scenario/experiment YAML, output paths, report/query options, and command-level flags.
 - **Lifecycle:** one command per process. It initializes only what the requested command needs and releases process memory at exit.
 
@@ -95,7 +95,7 @@ This page records the responsibilities that already exist in the source tree. A 
 4. **LAY-004 — Isolate statistics from scenario mechanics.** Comparison is defined over result samples and metric statistics at `crates/sandtable-core/src/experiment.rs:120`, while sweep specs expand separately at `crates/sandtable-core/src/sweep.rs:174`. Changing combat, economy, or gacha rules does not require changing confidence/decision logic.
 5. **LAY-005 — Own interchange formats at a boundary.** Export and engine-contract code define artifact shapes and validation separately from execution (`crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35`). Consumers can read stable files without importing kernel internals or re-running a simulation.
 6. **LAY-006 — Keep bindings as capability facades.** WASM forwards validated calls to native functions instead of adding a second implementation (`crates/sandtable-wasm/src/lib.rs:3`), and desktop invokes core directly (`apps/desktop/src-tauri/src/lib.rs:3`). Transport, budgets, progress, and serialization stay host-specific and replaceable.
-7. **LAY-007 — Separate short-lived processes from persistent UI sessions.** The CLI dispatches one argv command and returns (`crates/sandtable-cli/src/main.rs:33`), whereas the Web Workbench restores persisted jobs and drafts in `localStorage` (`apps/web/src/workbench/state/projectDoc.ts:672`). A resident UI state machine has cancellation, retry, and protocol-version needs that a one-shot command does not.
+7. **LAY-007 — Separate short-lived processes from persistent UI sessions.** The CLI dispatches one argv command and dispatches (`crates/sandtable-cli/src/main.rs:87`), whereas the Web Workbench restores persisted jobs and drafts in `localStorage` (`apps/web/src/workbench/state/projectDoc.ts:672`). A resident UI state machine has cancellation, retry, and protocol-version needs that a one-shot command does not.
 8. **LAY-008 — Put query behind a load/execute boundary.** Browser query registers CSV/Parquet buffers into DuckDB tables at `apps/web/src/lib/duck.ts:84`; desktop constrains local-file SQL to read-only `SELECT`/`WITH` at `apps/desktop/src-tauri/src/lib.rs:562`. This contains arbitrary SQL access without giving analysis code authority to mutate source artifacts.
 
 ## Shell contract matrix
