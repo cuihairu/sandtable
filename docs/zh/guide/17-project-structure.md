@@ -22,7 +22,13 @@ sandtable/
 │   │       │   ├── validate.rs  # 逐域加载期校验
 │   │       │   └── tests.rs
 │   │       ├── registry.rs    # 参数注册表(path / kind / default / desc)
-│   │       ├── scenario.rs    # YAML 场景与实验文件加载(scenario+model/sweep/optimize 节)
+│   │       ├── scenario/      # YAML 场景与实验文件加载(scenario+model/sweep/optimize 节)
+│   │       │   ├── mod.rs     # 入口 + 加载函数再导出(scenario::* 路径不变)
+│   │       │   ├── file.rs    # 文档面:scenario/model 节结构与编译(into_config)
+│   │       │   ├── loader.rs  # 加载纪律:注册表树 → schema_version → 反序列化 → 校验
+│   │       │   ├── experiment.rs  # 实验节 YAML 面(sweep/optimize → Spec 翻译)
+│   │       │   ├── example.rs # init 示例模板
+│   │       │   └── tests.rs
 │   │       ├── formula.rs     # 有界表达式求值器(加载期编译)
 │   │       ├── rng.rs         # 带键随机数派生(SplitMix64)
 │   │       ├── kernel.rs      # Clock / EventQueue / System trait(离散事件骨架)

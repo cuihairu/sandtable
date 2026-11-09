@@ -8,7 +8,7 @@ title: 28 · Glossary
 
 | 术语 | Term | Definition | Evidence |
 | --- | --- | --- | --- |
-| 场景 | Scenario | A user-authored `scenario`/`model` YAML document that is parsed, registry-checked, and compiled before execution. | `crates/sandtable-core/src/scenario.rs:98` |
+| 场景 | Scenario | A user-authored `scenario`/`model` YAML document that is parsed, registry-checked, and compiled before execution. | `crates/sandtable-core/src/scenario/file.rs:86` |
 | 模型配置 | SimConfig | The compiled, typed simulation configuration consumed by the kernel; it is the boundary between source YAML and runtime semantics. | `crates/sandtable-core/src/config/mod.rs:36` |
 | 行为者 | Actor | A stateful simulation participant held in the in-memory world, such as a player with cohort, progression, and resource state. | `crates/sandtable-core/src/world.rs:10` |
 | 世界 | World | The per-replicate, in-memory aggregate of actors, time, resources, metrics, and other mutable simulation state. | `crates/sandtable-core/src/world.rs:55` |

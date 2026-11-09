@@ -21,7 +21,13 @@ sandtable/
 │   │       │   ├── validate.rs  # Per-domain load-time validation
 │   │       │   └── tests.rs
 │   │       ├── registry.rs    # Parameter registry (path / kind / default / desc)
-│   │       ├── scenario.rs    # YAML scenario and experiment file loading (scenario+model/sweep/optimize sections)
+│   │       ├── scenario/      # YAML scenario and experiment file loading (scenario+model/sweep/optimize sections)
+│   │       │   ├── mod.rs     # Entry + re-exports (scenario::* paths unchanged)
+│   │       │   ├── file.rs    # Document face: scenario/model section structs + compile (into_config)
+│   │       │   ├── loader.rs  # Load discipline: registry tree → schema_version → deserialize → validate
+│   │       │   ├── experiment.rs  # Experiment-section YAML face (sweep/optimize → Spec translation)
+│   │       │   ├── example.rs # init example template
+│   │       │   └── tests.rs
 │   │       ├── formula.rs     # Bounded expression evaluator (compiled at load time)
 │   │       ├── rng.rs         # Keyed random derivation (SplitMix64)
 │   │       ├── kernel.rs      # Clock / EventQueue / System trait (discrete-event skeleton)

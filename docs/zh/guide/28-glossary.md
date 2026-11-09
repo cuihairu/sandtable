@@ -8,7 +8,7 @@ title: 28 · 术语表
 
 | 术语 | Term | 定义 | 证据 |
 | --- | --- | --- | --- |
-| 场景 | Scenario | 用户编写的 `scenario`/`model` YAML 文档；执行前先解析、注册表检查并编译。 | `crates/sandtable-core/src/scenario.rs:98` |
+| 场景 | Scenario | 用户编写的 `scenario`/`model` YAML 文档；执行前先解析、注册表检查并编译。 | `crates/sandtable-core/src/scenario/file.rs:86` |
 | 模型配置 | SimConfig | 内核消费的编译后类型化仿真配置；是源 YAML 与运行时语义之间的边界。 | `crates/sandtable-core/src/config/mod.rs:36` |
 | 行为者 | Actor | 内存 World 中持有状态的仿真参与者，例如拥有分群、成长和资源状态的玩家。 | `crates/sandtable-core/src/world.rs:10` |
 | 世界 | World | 单个 replicate 的内存状态聚合：Actor、时间、资源、指标及其他可变仿真状态。 | `crates/sandtable-core/src/world.rs:55` |
