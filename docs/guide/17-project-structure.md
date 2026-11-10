@@ -20,7 +20,13 @@ sandtable/
 │   │       │   ├── combat.rs / loot.rs / gacha.rs / behavior.rs / progression.rs  # Domain sections
 │   │       │   ├── validate.rs  # Per-domain load-time validation
 │   │       │   └── tests.rs
-│   │       ├── registry.rs    # Parameter registry (path / kind / default / desc)
+│   │       ├── registry/     # Parameter registry (split by face: spec / suggest / tree / access)
+│   │       │   ├── mod.rs    # Entry + re-exports (registry::* paths unchanged)
+│   │       │   ├── spec.rs   # path / kind / default / desc registration + spec()/all/lookup
+│   │       │   ├── suggest.rs# Edit-distance suggestions for unknown paths (suggestions)
+│   │       │   ├── tree.rs   # Registry tree validation (check_tree)
+│   │       │   ├── access.rs # Numeric read/write face (read_numeric / apply_numeric / read_u64_raw)
+│   │       │   └── tests.rs
 │   │       ├── scenario/      # YAML scenario and experiment file loading (scenario+model/sweep/optimize sections)
 │   │       │   ├── mod.rs     # Entry + re-exports (scenario::* paths unchanged)
 │   │       │   ├── file.rs    # Document face: scenario/model section structs + compile (into_config)

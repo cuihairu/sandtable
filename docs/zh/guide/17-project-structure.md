@@ -21,7 +21,13 @@ sandtable/
 │   │       │   ├── combat.rs / loot.rs / gacha.rs / behavior.rs / progression.rs  # 逐域配置节
 │   │       │   ├── validate.rs  # 逐域加载期校验
 │   │       │   └── tests.rs
-│   │       ├── registry.rs    # 参数注册表(path / kind / default / desc)
+│   │       ├── registry/     # 参数注册表(按面拆 spec / suggest / tree / access)
+│   │       │   ├── mod.rs    # 入口 + 再导出(registry::* 路径不变)
+│   │       │   ├── spec.rs   # path / kind / default / desc 注册 + spec()/all/lookup
+│   │       │   ├── suggest.rs# 未知路径编辑距离建议(suggestions)
+│   │       │   ├── tree.rs   # 注册表树校验(check_tree)
+│   │       │   ├── access.rs # 数值读写面(read_numeric / apply_numeric / read_u64_raw)
+│   │       │   └── tests.rs
 │   │       ├── scenario/      # YAML 场景与实验文件加载(scenario+model/sweep/optimize 节)
 │   │       │   ├── mod.rs     # 入口 + 加载函数再导出(scenario::* 路径不变)
 │   │       │   ├── file.rs    # 文档面:scenario/model 节结构与编译(into_config)
