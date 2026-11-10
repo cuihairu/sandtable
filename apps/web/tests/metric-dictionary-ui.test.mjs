@@ -49,7 +49,7 @@ test('P2 指标字典界面:双语词典键齐全(中英镜像,不落下一个�
 
 test('P2 指标字典界面:DesignerPage 接内核字典桥并把字典喂给 KPI 约束表', () => {
   const src = readFileSync(join(here, '../src/workbench/pages/DesignerPage.tsx'), 'utf8')
-  assert.ok(/from '\.\.\/\.\.\/lib\/wasm\.ts'/.test(src), 'DesignerPage 应引 wasm 桥')
+  assert.ok(/from '\.\.\/\.\.\/lib\/kernel\.ts'/.test(src), 'DesignerPage 应引内核服务层')
   assert.ok(src.includes('metricDictionary'), 'DesignerPage 未调用 metricDictionary()')
   assert.ok(/useState<MetricDictionary \| null>\(null\)/.test(src), '字典状态未接')
   assert.ok(

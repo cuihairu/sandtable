@@ -143,7 +143,7 @@ export type KernelCheck =
   | { ok: false; message: string; path: string | null }
 
 /**
- * 内核完整校验:复用 lib/wasm 的 validate_config(浏览器/桌面同源内核)。
+ * 内核完整校验:复用 lib/kernel 的 validate_config(浏览器/桌面同源内核)。
  * 失败时返回原始错误详情并尽量定位注册路径(定位不到 path=null,
  * 由调用方在整批层面呈现)。validator 可注入(节点侧测试)。
  */
@@ -154,7 +154,7 @@ export async function kernelCheck(
   let run = validate
   if (!run) {
     // 动态引入:节点侧测试不触发 wasm/tauri 模块加载
-    const mod = await import('../../lib/wasm.ts')
+    const mod = await import('../../lib/kernel.ts')
     run = mod.validateConfig
   }
   try {

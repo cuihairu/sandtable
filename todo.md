@@ -37,7 +37,7 @@
 
 | 工作内容 | 当前入口 | 后续工作 |
 |---|---|---|
-| 校验场景配置 | `lib/wasm.ts::validateConfig` | 复用，校验结果/错误定位接 UI |
+| 校验场景配置 | `lib/kernel.ts::validateConfig` | 复用，校验结果/错误定位接 UI |
 | 仿真与逐日数据 | `runSimulation` → WASM / Tauri `run_simulation` | 复用；Web 迁 Worker，输出接结果状态 |
 | Grid / Random / LHS 规划 | `planSweep` → `sweep_plan` | 已支持，接结构化表单与计划预览 |
 | 运行一个扫描候选 | `runSweepCandidate` → `sweep_candidate` | 已支持，接真实队列和部分结果 |
@@ -802,7 +802,7 @@
 
 ### 目录/分类不合理处
 
-- [ ] LAY-014 [P1] `apps/web/src/lib/wasm.ts` 名称暗示浏览器 WASM，但实际按宿主分发 Tauri invoke 与 Worker/WASM，并在同一文件包含本地查询入口（apps/web/src/lib/wasm.ts:48）。
+- [x] LAY-014 [P1] `apps/web/src/lib/wasm.ts` 名称暗示浏览器 WASM，但实际按宿主分发 Tauri invoke 与 Worker/WASM，并在同一文件包含本地查询入口（apps/web/src/lib/wasm.ts:48）。(2026-11-10：改名 `apps/web/src/lib/kernel.ts`——名称改为反映按宿主分发的内核服务层；本地查询入口出壳到 `apps/web/src/lib/queryLocal.ts`（仅桌面 `invoke('query')`，经 `isDesktop` 门，与内核函数不同域，不进纯逻辑 localQuery.ts）；13 处 src 导入点全部重指（App/SweepPanel/LivePreviewPanel/EconomySection/OptimizeSurrogateSection/DesignerPage/CustomKpiSection/paramsLogic/executor/AnalysisPage/CrossReplicateSection/LocalQuery/ExchangePage），contracts WB-02.18 断言（ExchangePage 拆两导入）与 WB-03.14 服务层唯一面（允许面 = kernel.ts + queryLocal.ts + sweepWorker.entry.ts）同步，metric-dictionary-ui P2 断言重指 kernel.ts；门禁 node --test 539/0、tsc -b 0 错、oxlint exit 0、vite build ✓；docs 27 调用面 + 22-web WB-02.18 段 + 能力盘点 wasm.ts→kernel.ts 行 + 桌面对齐基准桌面分支（en+zh 锁步）更新，历史叙事（18 进度叙事/方向项草案 batch 3/既有 [x] 行）未动）
 - [ ] LAY-015 [P1] `crates/sandtable-cli/src/analyze.rs` 执行脚本级只读策略，但根据 `scripts/scripting-design.md` 的脚本层设计，脚本分析边界不在 CLI 外壳内（crates/sandtable-cli/src/analyze.rs:107）。
 
 ## 策划向设计工具（2026-11-08 用户令，方向已拍板=做 sandtable 策划友好面）

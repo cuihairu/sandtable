@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import QueryPanel from './QueryPanel'
-import { queryLocal } from '../lib/wasm'
+import { queryLocal } from '../lib/queryLocal'
 import type { QueryColumn } from '../lib/duck'
 
 // native 查询单元格是显示文本;能安全转数字的转数字,折线选择与千分位

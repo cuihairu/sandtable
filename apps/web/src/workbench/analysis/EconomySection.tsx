@@ -13,7 +13,7 @@ import { fmtNumber, fmtPercent } from '../../lib/i18n/format.ts'
 import { localizeWasmErrorText } from '../../lib/i18n/errorText.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
-import { dailyAggregate } from '../../lib/wasm.ts'
+import { dailyAggregate } from '../../lib/kernel.ts'
 
 function fmtValue(locale: 'zh-CN' | 'en-US', percent: boolean, value: number): string {
   return percent ? fmtPercent(locale, value) : fmtNumber(locale, value, { maxFractionDigits: 2 })

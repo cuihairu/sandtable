@@ -9,7 +9,7 @@ import { useRef, useState } from 'react'
 import SweepChart from './SweepChart'
 import SweepMatrix from './SweepMatrix'
 import { SWEEP_PRESETS } from '../lib/presets'
-import { planSweep, recommendSweep, runSweepCandidate } from '../lib/wasm'
+import { planSweep, recommendSweep, runSweepCandidate } from '../lib/kernel'
 import type {
   CandidateResult,
   ConstraintVerdict,

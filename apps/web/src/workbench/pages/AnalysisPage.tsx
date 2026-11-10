@@ -40,7 +40,7 @@ import { CandidateComparePanel } from '../project/CandidateComparePanel.tsx'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { parseConfig, readNumeric, readText } from '../params/configYaml.ts'
-import { kpiAvailabilityForTest, metricDictionary } from '../../lib/wasm.ts'
+import { kpiAvailabilityForTest, metricDictionary } from '../../lib/kernel.ts'
 import '../analysis/analysis.css'
 
 // 指标字典版本(内核 kpi_dict 桥,静态注册表):导出报告前取一次并缓存,

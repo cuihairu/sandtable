@@ -10,7 +10,7 @@
 import { useState } from 'react'
 import type { FormEvent, JSX } from 'react'
 import type { CustomKpiOutput, CustomKpiShape, RunMetrics } from '../../lib/types.ts'
-import { kpiEval, kpiValidate } from '../../lib/wasm.ts'
+import { kpiEval, kpiValidate } from '../../lib/kernel.ts'
 import { classifyWasmError } from '../../lib/errors.ts'
 import { fmtNumber } from '../../lib/i18n/format.ts'
 import { t } from '../../lib/i18n/index.ts'

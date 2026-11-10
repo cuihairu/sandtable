@@ -17,7 +17,7 @@ import { localizeWasmErrorText } from '../../lib/i18n/errorText.ts'
 import { t } from '../../lib/i18n/index.ts'
 import { useLocale } from '../state/localeStore.ts'
 import { formatMetric } from './resultModel.ts'
-import { optimizeRun, surrogatePredict, surrogateTrain } from '../../lib/wasm.ts'
+import { optimizeRun, surrogatePredict, surrogateTrain } from '../../lib/kernel.ts'
 import type { JobExec } from '../state/jobLogic.ts'
 
 const DEFAULT_TREES = 50

@@ -249,7 +249,7 @@ test('WB-03.04 参数定义桥接:内核注册表原样入界,恰四字段,无�
     assert.equal(d.desc, PARAM_REGISTRY[i].desc, `${d.path} desc`)
   }
   // TS 服务层两路径同源:桌面 invoke 与浏览器 wasm 绑定形状一致(WB-03.12 前置)
-  const svc = read('src/lib/wasm.ts')
+  const svc = read('src/lib/kernel.ts')
   assert.match(svc, /invoke\('param_registry'\)/, '桌面路径走 param_registry 命令')
   assert.match(svc, /paramRegistryBinding\(\)/, '浏览器路径走 wasm 绑定')
   assert.match(svc, /as ParamDefinition\[\]/, '返回形状声明为 ParamDefinition[]')
@@ -277,7 +277,7 @@ test('WB-03.05 当前配置读取:生效值来自配置,不拿注册表 default 
     return true
   })
   // TS 服务层双路径接线
-  const svc = read('src/lib/wasm.ts')
+  const svc = read('src/lib/kernel.ts')
   assert.match(svc, /invoke\('param_values', \{ yaml \}\)/, '桌面路径走 param_values 命令')
   assert.match(svc, /paramValuesBinding\(yaml\)/, '浏览器路径走 wasm 绑定')
 })
@@ -305,7 +305,7 @@ test('WB-03.06 数值应用桥接:内核寻址,错误逐类明确,应用后重�
   // 显式性契约:未配置 loot 应用 rate_mult → 编辑期重验即报 on_victory 缺失
   assert.throws(() => wasm.param_apply(YAML, 'model.loot.rate_mult', 2), /on_victory/)
   // TS 服务层双路径接线
-  const svc = read('src/lib/wasm.ts')
+  const svc = read('src/lib/kernel.ts')
   assert.match(svc, /invoke\('param_apply', \{ yaml, path, value \}\)/, '桌面路径走 param_apply 命令')
   assert.match(svc, /paramApplyBinding\(yaml, path, value\)/, '浏览器路径走 wasm 绑定')
 })
@@ -379,7 +379,7 @@ test('WB-03.08 u64 安全整数边界:越界读无损表达、写明确拒绝,�
   const ok = JSON.parse(wasm.param_apply(bigYaml, 'scenario.seed', 42))
   assert.equal(ok.value, 42)
   // TS 类型面:值字段与读取表允许 string 分支
-  const src = read('src/lib/wasm.ts')
+  const src = read('src/lib/kernel.ts')
   assert.match(src, /Record<string, number \| string>/, 'paramValues 类型含无损字符串分支')
   assert.match(src, /value: number \| string/, 'ParamApplyResult.value 含无损字符串分支')
 })
@@ -414,7 +414,7 @@ test('WB-03.09 KPI 入口:可用性来自内核规则,可空位与内核 extract
   assert.notEqual(metricLabel('win_rate', 'zh-CN'), 'win_rate')
   assert.notEqual(metricLabel('win_rate', 'en-US'), 'win_rate')
   // TS 桥接接线
-  const svc = read('src/lib/wasm.ts')
+  const svc = read('src/lib/kernel.ts')
   assert.match(svc, /invoke\('kpi_availability', \{ yaml \}\)/, '桌面路径走 kpi_availability 命令')
   assert.match(svc, /kpiAvailabilityBinding\(yaml\)/, '浏览器路径走 wasm 绑定')
 })
@@ -468,7 +468,7 @@ test('WB-03.10/11 A/B 桥:compare_arms 内核直出 Comparison,成对前提/可�
     (e) => String(e).includes('replicate 数不一致或为 0'),
   )
   // TS 桥接接线(双通道):桌面 invoke + 浏览器绑定,双端同构
-  const svc = read('src/lib/wasm.ts')
+  const svc = read('src/lib/kernel.ts')
   assert.match(svc, /invoke\('ab_compare', \{/, '桌面路径走 ab_compare 命令')
   assert.match(svc, /abCompareBinding\(/, '浏览器路径走 wasm 绑定')
   // 执行器接线:唯一调用点带双臂 YAML + metric;worker 协议含 ab_compare 面。
@@ -487,7 +487,7 @@ test('WB-03.10/11 A/B 桥:compare_arms 内核直出 Comparison,成对前提/可�
 test('WB-03.13 绑定生成守卫:TS 包装的命名导入必在 pkg 双面生成(node 运行时 + web pkg JS + .d.ts)', () => {
   // 收集 src 里全部 from 'sandtable-wasm' 的命名导入(服务层 + Worker 入口;
   // `import init` 默认导出由初始化路径覆盖,不在本守卫)
-  const files = ['src/lib/wasm.ts', 'src/workbench/state/sweepWorker.entry.ts']
+  const files = ['src/lib/kernel.ts', 'src/workbench/state/sweepWorker.entry.ts']
   const exports = new Map() // 内核导出名 → 使用处别名
   for (const f of files) {
     const src = read(f)
@@ -519,10 +519,10 @@ test('WB-03.13 绑定生成守卫:TS 包装的命名导入必在 pkg 双面生�
   }
 })
 
-test('WB-03.14 服务层唯一面:内核数据通道只经 lib/wasm.ts(+ Worker 入口),组件不散落 invoke / wasm 直连', () => {
+test('WB-03.14 服务层唯一面:内核数据通道只经 lib/kernel.ts(+ Worker 入口 / queryLocal.ts),组件不散落 invoke / wasm 直连', () => {
   // 允许直连的两个面:统一服务层(桌面 invoke / 浏览器 init 的分流都在这里)
   // 与 Worker 入口(Worker 线程内独立 init 是其本职)
-  const allowed = ['src/lib/wasm.ts', 'src/workbench/state/sweepWorker.entry.ts']
+  const allowed = ['src/lib/kernel.ts', 'src/lib/queryLocal.ts', 'src/workbench/state/sweepWorker.entry.ts']
   const walk = (dir) =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
       e.isDirectory() ? walk(join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [join(dir, e.name)] : [],
@@ -537,7 +537,7 @@ test('WB-03.14 服务层唯一面:内核数据通道只经 lib/wasm.ts(+ Worker 
     if (/@tauri-apps\/api\/core/.test(src)) offenders.push(`${rel}: 直连 tauri invoke/Channel`)
     if (/'__TAURI_INTERNALS__'/.test(src)) offenders.push(`${rel}: 重复嗅探桌面环境(isDesktop 走服务层)`)
   }
-  assert.deepEqual(offenders, [], '内核数据通道必须经 lib/wasm.ts 服务层双路径分流(桌面 invoke / 浏览器 wasm init),组件不得散落直连')
+  assert.deepEqual(offenders, [], '内核数据通道必须经 lib/kernel.ts 服务层双路径分流(桌面 invoke / 浏览器 wasm init),组件不得散落直连')
 })
 
 test('WB-03.15 统一错误分类:解析/配置/参数/序列化四码 + locale 展示;初始化与取消走任务状态面', () => {
@@ -617,7 +617,8 @@ test('WB-02.18 桌面本地查询迁入交换页:纯逻辑出壳,服务层唯一
   assert.ok(!/sandtable-wasm|@tauri-apps/.test(logic), 'localQuery.ts 保持纯逻辑,不得依赖绑定/native')
   // 交换页:本地查询走服务层 queryLocal + isDesktop 门;插件对话框动态导入
   const page = read('src/workbench/pages/ExchangePage.tsx')
-  assert.match(page, /import \{ isDesktop, queryLocal \} from '\.\.\/\.\.\/lib\/wasm\.ts'/)
+  assert.match(page, /import \{ isDesktop \} from '\.\.\/\.\.\/lib\/kernel\.ts'/)
+  assert.match(page, /import \{ queryLocal \} from '\.\.\/\.\.\/lib\/queryLocal\.ts'/)
   assert.match(page, /await import\('@tauri-apps\/plugin-dialog'\)/)
   assert.ok(!/from '@tauri-apps\/plugin-dialog'/.test(page), 'plugin-dialog 只能动态导入(不进浏览器包)')
   assert.match(page, /columnsFromLocal\(await queryLocal\(/, '面板 run 必须经纯逻辑整形再渲染')
@@ -760,7 +761,7 @@ test('P2 逐日聚合桥:daily_aggregate 内核直出,天数交集/可选缺席/
     (e) => String(e).includes('参数错误') && String(e).includes('解析失败'),
   )
   // TS 桥接双路径 + 类型镜像接线守卫
-  const svc = read('src/lib/wasm.ts')
+  const svc = read('src/lib/kernel.ts')
   assert.match(svc, /invoke\('daily_aggregate', \{/, '桌面路径走 daily_aggregate 命令')
   // I-024 · 浏览器重活经共享 Worker 协议(kind 信封),绑定只在 Worker 入口
   assert.match(svc, /kernelRequest\(\{ kind: 'daily_aggregate'/, '浏览器路径经共享 Worker 协议请求')
@@ -844,7 +845,7 @@ test('P2 自定义 KPI 桥:kpi_validate / kpi_eval 内核直出,白名单同口�
   )
 
   // TS 桥接双路径 + 类型镜像接线守卫(防只接一端)
-  const svc = read('src/lib/wasm.ts')
+  const svc = read('src/lib/kernel.ts')
   assert.match(svc, /invoke\('kpi_validate', \{ expression \}\)/, '桌面路径走 kpi_validate 命令')
   assert.match(svc, /kpiValidateBinding\(expression\)/, '浏览器路径走 wasm 绑定')
   assert.match(svc, /invoke\('kpi_eval', \{ expression, resultsJson: /, '桌面路径走 kpi_eval 命令')
@@ -920,7 +921,7 @@ test('P2 指标字典桥:metric_dictionary 三端接线,前端显示元数据表
   }
 
   // TS 桥接双路径 + 类型镜像接线守卫(防只接一端)
-  const svc = read('src/lib/wasm.ts')
+  const svc = read('src/lib/kernel.ts')
   assert.match(svc, /invoke\('metric_dictionary'\)/, '桌面路径走 metric_dictionary 命令')
   assert.match(svc, /metricDictionaryBinding\(\)/, '浏览器路径走 wasm 绑定')
   const types = typesSrc
@@ -937,7 +938,7 @@ test('P2 指标字典桥:metric_dictionary 三端接线,前端显示元数据表
 })
 
 test('P2 优化与代理桥:optimize / surrogate_train / surrogate_predict 三命令双路径接线(行为断言在 optimize-surrogate.test.mjs)', () => {
-  const svc = read('src/lib/wasm.ts')
+  const svc = read('src/lib/kernel.ts')
   const wasmRs = readSurface('../../crates/sandtable-wasm')
   const tauri = readSurface('../../apps/desktop/src-tauri')
   const types = typesSrc

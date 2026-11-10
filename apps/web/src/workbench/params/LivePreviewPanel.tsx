@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { abCompare, kpiEval, runSimulation } from '../../lib/wasm.ts'
+import { abCompare, kpiEval, runSimulation } from '../../lib/kernel.ts'
 import type { Comparison, MetricKey } from '../../lib/types.ts'
 import { localizeWasmErrorText } from '../../lib/i18n/errorText.ts'
 import { histogramBins, pairedDiff, PREVIEW_METRICS } from './livePreview.ts'

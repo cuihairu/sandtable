@@ -1,7 +1,9 @@
-// wasm 绑定单例:首次调用时 init(浏览器 fetch bg.wasm),之后复用。
-// 绑定层返回 JSON 字符串(ABI 稳通道),这里统一 parse 成类型。
+// 内核服务层(kernel client):按宿主分发到 Tauri native 命令面(桌面)或
+// 浏览器 wasm 绑定/共享 Worker。浏览器路径首次调用时 init(fetch bg.wasm),
+// 之后复用单例;绑定层返回 JSON 字符串(ABI 稳通道),这里统一 parse 成类型。
 // 桌面壳(Tauri)下不走 wasm:invoke 走 native 命令面,JSON 形状逐字段同构
 // (桌面 lib.rs 命令与本绑定同源 core 纯函数,core 直连不经 wasm 边界)。
+// 本地文件查询入口不在此模块:它是桌面独有、与内核函数不同域,在 queryLocal.ts。
 import init, {
   run_simulation as runSim,
   validate_config as validateCfg,
@@ -23,7 +25,6 @@ import type {
   CustomKpiOutput,
   CustomKpiShape,
   DailyAggregation,
-  LocalQueryResult,
   MetricDictionary,
   OptimResult,
   ParamDefinition,
@@ -383,15 +384,4 @@ export async function recommendSweep(
   return JSON.parse(
     sweepRecommendBinding(yaml, JSON.stringify(results)) as unknown as string,
   ) as SweepRecOutput
-}
-
-// —— 本地文件查询(仅桌面)——
-// 会话内按天数据走 duckdb-wasm 内存表;CLI / 桌面产物在磁盘上,浏览器拿不到
-// 本机路径,只有桌面壳的 query 命令(duckdb-rs,与 CLI query 同源)能只读打开。
-export async function queryLocal(
-  inputs: string[],
-  sql: string,
-): Promise<LocalQueryResult> {
-  if (!isDesktop) throw new Error('本地文件查询仅在桌面端可用')
-  return invoke('query', { inputs, sql })
 }

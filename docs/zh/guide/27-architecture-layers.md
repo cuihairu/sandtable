@@ -75,7 +75,7 @@ title: 27 · 架构分层
 
 - **模块：** `WorkbenchApp`、workbench stores、executor/run manager、worker protocol/sweep worker、project documents、routing、panels、i18n dictionaries。
 - **状态：** React 内存保存活动 UI；浏览器 `localStorage` 保存草稿/结果/队列、语言、工作区布局、表格偏好和分析偏好（`apps/web/src/workbench/state/workbenchStore.ts:35`；`apps/web/src/workbench/state/projectDoc.ts:672`；`apps/web/src/lib/i18n/localeStore.ts:9`）。没有应用 server 或 MySQL/Redis。
-- **调用面：** 门面按宿主选择桌面 Tauri `invoke` 或浏览器 worker postMessage（`apps/web/src/lib/wasm.ts:48`、`:58`）；worker 请求/响应带版本（`apps/web/src/workbench/state/workerProtocol.ts:11`）；本地文件查询仅桌面可用（`apps/web/src/lib/wasm.ts:376`）。
+- **调用面：** 门面按宿主选择桌面 Tauri `invoke` 或浏览器 worker postMessage（`apps/web/src/lib/kernel.ts:48`、`:58`）；worker 请求/响应带版本（`apps/web/src/workbench/state/workerProtocol.ts:11`）；本地文件查询仅桌面可用（`apps/web/src/lib/queryLocal.ts:13`）。
 - **配置输入：** 编辑器 YAML、预设、实验计划、语言/布局/表格偏好和项目归档。UI 文案集中在 `apps/web/src/lib/i18n/dict/en.ts` 与 `apps/web/src/lib/i18n/dict/zh.ts`（入口按域聚合 zh/ 与 en/ 子目录分片），由 i18n 层按键分发。
 - **生命周期：** 应用/会话 → 恢复持久草稿与任务 → 派发执行 → 保留完成产物和 UI 状态 → 关闭或按显式协议版本迁移。桌面执行在 replicate 边界停止；浏览器执行在 candidate/worker 边界停止。
 

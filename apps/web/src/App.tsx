@@ -11,7 +11,7 @@ import { PRESETS, SWEEP_PRESETS } from './lib/presets'
 import { packProject, unpackProject } from './lib/project'
 import type { UnpackedProject } from './lib/project'
 import type { RunMetrics, SimOutput, SimProgress } from './lib/types'
-import { cancelRun, isDesktop, runSimulation } from './lib/wasm'
+import { cancelRun, isDesktop, runSimulation } from './lib/kernel'
 
 function pct(v: number): string {
   return `${(v * 100).toFixed(2)}%`

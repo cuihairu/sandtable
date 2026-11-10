@@ -33,7 +33,7 @@ import type { WorkerRequest, WorkerRequestInput, WorkerResultValue } from './wor
  *  不静默丢弃也不 OOM)。Web 端内核 planSweep 另有 200 sims 预算门。 */
 export const MAX_CANDIDATE_RESULTS_IN_MEMORY = 1000
 
-/** 执行后端:桌面 = native 命令面(lib/wasm invoke);浏览器 = Worker 协议。
+/** 执行后端:桌面 = native 命令面(lib/kernel invoke);浏览器 = Worker 协议。
  *  compare = 内核 A/B 统计桥接(WB-03.10/11):双臂 YAML + metric + 已跑
  *  SimOutput 进内核 compare_arms,CRN 成对结论内核直出;null 仅为测试
  *  注入/防御分支保留。terminate = 浏览器端"终止 Worker"的升级取消(桌面无此面)。 */
@@ -502,7 +502,7 @@ export async function kernelRequest(input: WorkerRequestInput): Promise<WorkerRe
 /** 真实后端解析:桌面走 native 命令面;浏览器走 Worker(动态 import,节点
  *  测试注入假后端时绝不触发)。compare = 内核 A/B 统计桥接(WB-03.12 双端同构)。 */
 export async function resolveBackends(): Promise<ExecBackends> {
-  const wasm = await import('../../lib/wasm.ts')
+  const wasm = await import('../../lib/kernel.ts')
   if (wasm.isDesktop) {
     return {
       mode: 'desktop',
