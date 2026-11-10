@@ -33,12 +33,12 @@ const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 
 /* ————— 05.01 注册表全量(与 registry.rs 锁漂移) ————— */
 
-test('WB-05.01 注册表镜像与 registry.rs 逐条一致(路径数 + 四字段)', () => {
-  const src = readFileSync(`${REPO_ROOT}crates/sandtable-core/src/registry.rs`, 'utf8')
+test('WB-05.01 注册表镜像与 registry/spec.rs 逐条一致(路径数 + 四字段)', () => {
+  const src = readFileSync(`${REPO_ROOT}crates/sandtable-core/src/registry/spec.rs`, 'utf8')
   // 提取 spec("path", Kind, "default", "desc")——多行调用逐字匹配
   const specs = [...src.matchAll(/spec\(\s*"([^"]+)"\s*,\s*(\w+)\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*,?\s*\)/g)]
-  assert.ok(specs.length >= 60, `registry.rs 应有大量注册项,实际 ${specs.length}`)
-  assert.equal(PARAM_REGISTRY.length, specs.length, 'TS 镜像条数与 registry.rs 一致')
+  assert.ok(specs.length >= 60, `registry/spec.rs 应有大量注册项,实际 ${specs.length}`)
+  assert.equal(PARAM_REGISTRY.length, specs.length, 'TS 镜像条数与 registry/spec.rs 一致')
   for (const [i, [, path, kind, def, desc]] of specs.entries()) {
     const mirror = PARAM_REGISTRY[i]
     const kinds = { U32: 'u32', U64: 'u64', I64: 'i64', F64: 'f64', Dur: 'dur', Mix: 'mix', Expr: 'expr', Table: 'table' }

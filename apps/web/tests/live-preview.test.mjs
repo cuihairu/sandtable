@@ -13,7 +13,7 @@ import { histogramBins, pairedDiff, PREVIEW_METRICS } from '../src/workbench/par
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 
 test('PREVIEW_METRICS 与内核 MetricKey::ALL 同集锁漂移', () => {
-  const src = readFileSync(`${REPO_ROOT}crates/sandtable-core/src/experiment.rs`, 'utf8')
+  const src = readFileSync(`${REPO_ROOT}crates/sandtable-core/src/experiment/metric.rs`, 'utf8')
   const block = /pub const ALL: \[MetricKey; \d+\] = \[([\s\S]*?)\];/.exec(src)?.[1] ?? ''
   const kernelKeys = [...block.matchAll(/MetricKey::(\w+),/g)].map((m) => m[1])
   assert.equal(kernelKeys.length, 8, `内核应有 8 个指标,实际 ${kernelKeys.length}`)
