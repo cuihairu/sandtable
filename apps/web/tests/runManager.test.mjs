@@ -298,7 +298,13 @@ test('批量调度:并发 2 同时执行且结果保持 FIFO 一致', async () =
   assert.equal(live.find((job) => job.id === first.id).status, 'running')
   assert.equal(live.find((job) => job.id === second.id).status, 'running')
   assert.equal(live.find((job) => job.id === third.id).status, 'queued')
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  // 轮询等待所有任务终态,不用固定时长窗口:CI runner 慢时 15ms 不够
+  // 第三个任务(排队)完成 sim,固定等待会把时序竞态放大成假失败。
+  for (let i = 0; i < 100; i++) {
+    live = listJobs()
+    if (live.every((job) => job.status !== 'running' && job.status !== 'queued')) break
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
   live = listJobs()
   assert.equal(peak, 2, '并发配置生效且不超槽')
   assert.deepEqual(calls.candidate, [90, 90, 100, 100, 110, 110], '第一实验内部候选序不因并发交错')
@@ -422,7 +428,13 @@ test('批量队列:真实任务按 FIFO 自动续跑,同一时刻仅启动一项
   assert.equal(snapshot.find((job) => job.id === second.id).status, 'queued', '后续任务排队')
   assert.equal(snapshot.find((job) => job.id === third.id).status, 'queued', '后续任务排队')
 
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  // 轮询等待全部终态:第一个任务 6 个候选、每个候选 1ms 延迟,CI 慢时
+  // 固定 20ms 不够,会把时序竞态放大成假失败。
+  for (let i = 0; i < 200; i++) {
+    const all = listJobs()
+    if (all.every((job) => job.status !== 'running' && job.status !== 'queued')) break
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
   const byId = (job) => listJobs().find((item) => item.id === job.id)
   assert.deepEqual(calls.candidate.map((call) => call.values), [...PLAN3.candidates, ...PLAN3.candidates], '候选严格按 FIFO 顺序')
   assert.deepEqual([byId(first).status, byId(second).status, byId(third).status], ['succeeded', 'succeeded', 'succeeded'])

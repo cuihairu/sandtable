@@ -83,13 +83,24 @@ test('run history filters by id/hash/seed/condition text and explicit local date
   assert.deepEqual(filterRunHistory(runs, { query: 'bb'.repeat(32) }).map((r) => r.run_id), ['run_newhistory'])
   assert.deepEqual(filterRunHistory(runs, { query: 'seed=77' }).map((r) => r.run_id), ['run_newhistory'])
   assert.deepEqual(filterRunHistory(runs, { query: 'grid' }).map((r) => r.run_id), ['run_oldhistory', 'run_newhistory'])
+  // 两条记录 created_at_unix 都取 UTC 2025-10-21 日中段 (08:00Z=1761043200 /
+  // 12:00Z=1761057600),远离日界。日期搜索按「UI 本地时区」取日历日
+  // (dayBoundary 用 new Date(day+'T00:00:00'),不指定 Z)。UTC 与东八区下
+  // 两条都在本地 10-21,故:10-21 单日命中两条,10-22 单日不命中——断言
+  // 不依赖具体运行时区,只锁住产品语义「本地日历日过滤」。
+  const oldTs = 1761043200
+  const newTs = 1761057600
+  const dayRuns = [
+    { ...OLD_ENTRY, run_id: 'run_oldhistory', created_at_unix: oldTs },
+    { ...OLD_ENTRY, run_id: 'run_newhistory', created_at_unix: newTs },
+  ]
   assert.deepEqual(
-    filterRunHistory(runs, { fromDay: '2025-10-22', toDay: '2025-10-22' }).map((r) => r.run_id),
-    ['run_newhistory'],
+    filterRunHistory(dayRuns, { fromDay: '2025-10-21', toDay: '2025-10-21' }).map((r) => r.run_id),
+    ['run_oldhistory', 'run_newhistory'],
   )
   assert.deepEqual(
-    filterRunHistory(runs, { fromDay: '2025-10-22', toDay: '2025-10-22' }).map((r) => r.run_id),
-    ['run_newhistory'],
+    filterRunHistory(dayRuns, { fromDay: '2025-10-22', toDay: '2025-10-22' }).map((r) => r.run_id),
+    [],
   )
   assert.deepEqual(filterRunHistory(runs, { query: 'absent' }), [])
 })
