@@ -591,6 +591,12 @@ fn run() -> anyhow::Result<std::process::ExitCode> {
                 Ok(c) => c,
                 Err(code) => return Ok(std::process::ExitCode::from(code as u8)),
             };
+            // replicates=0 时 (0..0) 产出空 Vec,results[0] 越界 panic;
+            // 与 MCP / wasm 同口径在壳层拒收(退出码 2)
+            if replicates == 0 {
+                eprintln!("参数错误: replicates 至少为 1");
+                return Ok(std::process::ExitCode::from(2));
+            }
             let t0 = std::time::Instant::now();
             let results: Vec<core::metrics::RunMetrics> =
                 (0..replicates).map(|r| core::sim::run(&cfg, r)).collect();
