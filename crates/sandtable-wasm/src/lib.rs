@@ -794,4 +794,103 @@ mod tests {
         assert_eq!(v2["trained"], 3);
         assert_eq!(v2["excluded"], 1, "配置错误候选被内核过滤并计入排除账");
     }
+
+    // —— 逐日跨 replicate 聚合(native 桥,P2 内核导出面)——
+
+    /// 双错误通道:results JSON 解析失败走参数错误;replicates < 2 走配置
+    /// 错误(单次运行不得套置信带,内核原文透传)。
+    #[test]
+    fn daily_aggregate_rejects_bad_json_and_single_replicate() {
+        let e = daily_aggregate_native("not-json").unwrap_err();
+        assert!(
+            e.starts_with("参数错误") && e.contains("逐日聚合结果解析失败"),
+            "{e}"
+        );
+        let one = run_simulation_native(YAML, 1).unwrap();
+        let e = daily_aggregate_native(&one["results"].to_string()).unwrap_err();
+        assert!(
+            e.starts_with("配置错误") && e.contains("至少需要 2 份"),
+            "{e}"
+        );
+    }
+
+    /// 桥输出与内核直出逐值一致(纯转发纪律,与 run_matches_core_values 同源);
+    /// 形状红线:第 1 天 inflation 整键缺席(缺席 ≠ 0),n = replicates。
+    #[test]
+    fn daily_aggregate_matches_core_and_day0_has_no_inflation() {
+        let sim = run_simulation_native(YAML, 3).unwrap();
+        let results_json = sim["results"].to_string();
+        let parsed: Vec<core::metrics::RunMetrics> = serde_json::from_str(&results_json).unwrap();
+        let want =
+            serde_json::to_value(core::experiment::daily_aggregate_metrics(&parsed).unwrap())
+                .unwrap();
+        let got = daily_aggregate_native(&results_json).unwrap();
+        assert_eq!(got, want, "桥输出与内核直出逐值一致");
+        let first = &got["day_stats"][0];
+        assert_eq!(first["day"], 1, "day 索引 1 基");
+        assert_eq!(first["active"]["n"], 3);
+        assert!(
+            first.as_object().unwrap().get("inflation").is_none(),
+            "第 1 天 inflation 必须整键缺席:{first}"
+        );
+        assert!(
+            got["trim_warning"].as_str().unwrap().is_empty(),
+            "等长日集无裁剪警告"
+        );
+    }
+
+    /// 日集取交:某 replicate 缺尾日 → 公共天数裁剪,交外天数如实入
+    /// trimmed_days + trim_warning,不静默补齐(内核契约的桥面透传)。
+    #[test]
+    fn daily_aggregate_trims_to_common_days_with_warning() {
+        let sim = run_simulation_native(YAML, 3).unwrap();
+        let mut rows = sim["results"].as_array().unwrap().clone();
+        rows[0]["day_stats"].as_array_mut().unwrap().pop();
+        let out = daily_aggregate_native(&serde_json::Value::Array(rows).to_string()).unwrap();
+        let days: Vec<u64> = out["day_stats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d["day"].as_u64().unwrap())
+            .collect();
+        assert_eq!(days, vec![1, 2], "公共天数取交");
+        assert_eq!(
+            out["trimmed_days"],
+            serde_json::json!([3]),
+            "交外天数如实列出"
+        );
+        let warn = out["trim_warning"].as_str().unwrap();
+        assert!(warn.contains("取交") && warn.contains("3"), "{warn}");
+    }
+
+    // —— KPI 域守卫分支(native 错误通道)——
+
+    /// 可用性入口的 load 臂:YAML 非法走配置错误通道,与 validate_config
+    /// 同前缀(前端 classifyWasmError 依赖此通道约定)。
+    #[test]
+    fn kpi_availability_load_error_uses_config_channel() {
+        let e = kpi_availability_native("schema_version: '1'\nscenario: {population: -5}\n")
+            .unwrap_err();
+        assert!(e.starts_with("配置错误"), "{e}");
+    }
+
+    /// 求值入口的解析臂:results JSON 非法走参数错误通道,点名逐 replicate
+    /// 解析失败(与 kpi_eval 的 JsValue 包装共享同一 native 体)。
+    #[test]
+    fn kpi_eval_rejects_bad_results_json_as_param_error() {
+        let e = kpi_eval_native("win_rate", "not-json").unwrap_err();
+        assert!(
+            e.starts_with("参数错误") && e.contains("逐 replicate 结果解析失败"),
+            "{e}"
+        );
+    }
+
+    /// 求值入口的编译臂:未知变量在内核 compile_checked 处拒绝,走配置错误
+    /// 通道并点名变量(求值前编译,不静默把未知名当 0)。
+    #[test]
+    fn kpi_eval_rejects_unknown_variable_as_config_error() {
+        let sim = run_simulation_native(YAML, 2).unwrap();
+        let e = kpi_eval_native("win_rates * 2", &sim["results"].to_string()).unwrap_err();
+        assert!(e.starts_with("配置错误") && e.contains("win_rates"), "{e}");
+    }
 }
