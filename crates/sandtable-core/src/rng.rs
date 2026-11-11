@@ -153,6 +153,13 @@ impl WeightedTable {
         if total <= 0.0 {
             return Err(Error::Config("加权表至少一项权重为正".into()));
         }
+        // 权重和溢出为 inf 时(如两条 1e308,单项均有限合法),
+        // pick 的 target = u·inf 会使 partition_point 越界——加载期拒绝
+        if !total.is_finite() {
+            return Err(Error::Config(
+                "加权表权重总和必须为有限数(单项有限但总和溢出)".into(),
+            ));
+        }
         Ok(Self { names, cums, total })
     }
 
@@ -182,9 +189,20 @@ impl WeightedTable {
     }
 
     /// 一次抽取 → 项索引。
+    ///
+    /// 越界根治(2026-11-12 审核修复批 P1):`u = 1-2^-53` 且 total 为 2 的
+    /// 幂时 `fl(u·total)` 恰舍入到 total,`cums` 末项 ≤ target 使
+    /// partition_point 取到 len(此前越界 panic)。此时落回最后一个正权重
+    /// 项——尾段零权重项与末项并列不可入选,正权重项加载期已保证存在。
+    /// 界内路径与既有抽取语义逐位一致。
     pub fn pick(&self, draw: Draw) -> usize {
         let target = draw.f64() * self.total;
-        self.cums.partition_point(|&c| c <= target)
+        let i = self.cums.partition_point(|&c| c <= target);
+        if i < self.cums.len() {
+            i
+        } else {
+            self.cums.partition_point(|&c| c < self.total)
+        }
     }
 }
 
@@ -426,6 +444,32 @@ mod tests {
             .to_string()
             .contains("非负"));
         assert!(WeightedTable::from_weights(&[("a".to_string(), 0.0)]).is_err());
+    }
+
+    /// 2026-11-12 审核修复批 P1:单项均有限合法但总和溢出为 inf 时,
+    /// pick 的 target = u·inf 曾使 partition_point 越界——加载期拒绝。
+    #[test]
+    fn weighted_table_rejects_overflowing_total() {
+        let w = vec![("a".to_string(), 1e308), ("b".to_string(), 1e308)];
+        let err = WeightedTable::from_weights(&w).unwrap_err().to_string();
+        assert!(err.contains("总和"), "{err}");
+    }
+
+    /// u = 1-2^-53 且 total 为 2 的幂时 fl(u·total) 舍入恰等于 total,
+    /// `cums` 末项 ≤ target 曾使 partition_point 取到 len 越界 panic;
+    /// 现落回最后一个正权重项,尾段零权重项不入选。
+    #[test]
+    fn weighted_table_pick_at_upper_draw_stays_in_bounds() {
+        let t = table(&[1.0, 1.0]); // total = 2.0,恰触发舍入贴边
+        assert_eq!(t.pick(Draw(u64::MAX)), 1);
+        let t = table(&[1.0, 1.0, 0.0]);
+        assert_eq!(t.pick(Draw(u64::MAX)), 1);
+        // 常规抽取路径不变:零权重项仍永不入选
+        let t = table(&[5.0, 0.0, 5.0]);
+        for i in 0..64u32 {
+            let idx = Draw(derive_u64(3, 1, 1, i, Purpose::Loot)).weighted(&t);
+            assert_ne!(idx, 1);
+        }
     }
 
     #[test]
