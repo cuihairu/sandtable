@@ -411,6 +411,15 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
                 c.name()
             )));
         }
+        // 每日会话数上界(2026-11-12 审核修复批 P1):players × days 预算
+        // 不约束每人每日工作量,巨值会话数实质死循环且使战斗键
+        // `battle_index × 64` 回绕破坏 CRN
+        if b.sessions_int > MAX_SESSIONS_PER_DAY {
+            return Err(Error::Config(format!(
+                "behavior.{}.sessions_int 不能超过 {MAX_SESSIONS_PER_DAY}(每日会话数上界)",
+                c.name()
+            )));
+        }
     }
     // 练级环显式性(阻力 #4):产出面与行为带互相咬合,单边给出属配置矛盾。
     let any_training_band = Cohort::ALL

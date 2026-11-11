@@ -902,6 +902,20 @@ mod tests {
         assert!(validate(&ok).is_ok());
     }
 
+    /// 2026-11-12 审核修复批 P1:sessions_int 上界——players × days 预算
+    /// 不约束每人每日工作量,巨值会话数(合法 u32)实质死循环且战斗键
+    /// `battle_index × 64` 回绕破坏 CRN。
+    #[test]
+    fn validate_sessions_int_upper_bound() {
+        let mut cfg = SimConfig::default();
+        cfg.behavior.whale.sessions_int = MAX_SESSIONS_PER_DAY + 1;
+        let msg = validate(&cfg).unwrap_err().to_string();
+        assert!(msg.contains("sessions_int"), "{msg}");
+
+        cfg.behavior.whale.sessions_int = MAX_SESSIONS_PER_DAY;
+        assert!(validate(&cfg).is_ok());
+    }
+
     /// 2026-11-06 审核发现:分群权重和必须归一。`[0.5,0.5,0.5]` 和 1.5
     /// 会让 whale 桶恒空;和 < 1 时尾段无人。显式要求和 = 1。
     #[test]
