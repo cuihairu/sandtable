@@ -163,6 +163,38 @@ pub fn validate(cfg: &SimConfig) -> crate::Result<()> {
         if rows.iter().any(|r| r.hp <= 0) {
             return Err(Error::Config("tier_table 每层 hp 必须为正".into()));
         }
+        // 行级战斗面校验(2026-11-12 审核修复批 P1):attack/defense 此前
+        // 连正负都未设防;巨值进 combat 的 ceil_div/attack*2 溢出 i64 使
+        // 选层逻辑失真。与 warrior 三键同面同界(经济统一上界)。
+        for (i, r) in rows.iter().enumerate() {
+            if r.attack <= 0 || r.defense <= 0 {
+                return Err(Error::Config(format!(
+                    "tier_table[{i}]: attack/defense 必须为正(逐层怪物数值需正数)"
+                )));
+            }
+            if r.hp > MAX_ECONOMY_VALUE
+                || r.attack > MAX_ECONOMY_VALUE
+                || r.defense > MAX_ECONOMY_VALUE
+            {
+                return Err(Error::Config(format!(
+                    "tier_table[{i}]: hp/attack/defense 不能超过 {MAX_ECONOMY_VALUE}(战斗运算上界)"
+                )));
+            }
+            if let Some(g) = r.gold {
+                if !(0..=MAX_ECONOMY_VALUE).contains(&g) {
+                    return Err(Error::Config(format!(
+                        "tier_table[{i}]: gold 必须在 [0, {MAX_ECONOMY_VALUE}] 内"
+                    )));
+                }
+            }
+            if let Some(x) = r.xp {
+                if !(0..=MAX_ECONOMY_VALUE).contains(&x) {
+                    return Err(Error::Config(format!(
+                        "tier_table[{i}]: xp 必须在 [0, {MAX_ECONOMY_VALUE}] 内"
+                    )));
+                }
+            }
+        }
     }
     // 掉落加权表:权重非负、至少一项为正、表名非空(编译期校验由
     // rng::WeightedTable 承担,这里给出带路径的报错)

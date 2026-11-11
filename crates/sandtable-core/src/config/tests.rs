@@ -841,6 +841,67 @@ mod tests {
         assert!(msg.contains("reward_gold"), "{msg}");
     }
 
+    /// 2026-11-12 审核修复批 P1:tier_table 行级战斗面校验——attack/defense
+    /// 须为正(此前仅查 hp),三键与 warrior 同面上界;行内产出 gold/xp
+    /// 非负且走经济统一上界。
+    #[test]
+    fn validate_tier_table_row_bounds() {
+        let row =
+            |hp: i64, attack: i64, defense: i64, gold: Option<i64>, xp: Option<i64>| TierRow {
+                hp,
+                attack,
+                defense,
+                gold,
+                xp,
+            };
+        let cfg = |rows: Vec<TierRow>| SimConfig {
+            dungeon: DungeonConfig {
+                tiers: rows.len() as u32,
+                tier_table: Some(rows),
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+
+        let msg = validate(&cfg(vec![row(10, 0, 1, None, None)]))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            msg.contains("tier_table[0]") && msg.contains("attack/defense"),
+            "{msg}"
+        );
+
+        let msg = validate(&cfg(vec![row(10, -5, 1, None, None)]))
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("attack/defense"), "{msg}");
+
+        let msg = validate(&cfg(vec![row(MAX_ECONOMY_VALUE + 1, 1, 1, None, None)]))
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("战斗运算上界"), "{msg}");
+
+        let msg = validate(&cfg(vec![row(10, 1, 1, Some(-1), None)]))
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("gold"), "{msg}");
+
+        let msg = validate(&cfg(vec![row(10, 1, 1, None, Some(MAX_ECONOMY_VALUE + 1))]))
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("xp"), "{msg}");
+
+        // 边界值放行:三键恰在上界、产出为零
+        let ok = cfg(vec![row(
+            MAX_ECONOMY_VALUE,
+            MAX_ECONOMY_VALUE,
+            MAX_ECONOMY_VALUE,
+            Some(0),
+            Some(0),
+        )]);
+        assert!(validate(&ok).is_ok());
+    }
+
     /// 2026-11-06 审核发现:分群权重和必须归一。`[0.5,0.5,0.5]` 和 1.5
     /// 会让 whale 桶恒空;和 < 1 时尾段无人。显式要求和 = 1。
     #[test]

@@ -119,8 +119,17 @@ pub fn pick_tier(attack: i64, defense: i64, hp: i64, cfg: &SimConfig) -> u32 {
 /// 选层的清剿轮数预算(远小于 max_rounds,留命中波动的余量)。
 pub const CLEAR_BUDGET_ROUNDS: u32 = 20;
 
+/// 向上取整除法。先除后补余(不用 `a + b - 1`:巨值 a/b 在求和处溢出
+/// i64),商超 u32::MAX 时饱和——上层按「轮数过大 → 弃层」处理,而非
+/// 回绕成小轮数使选层失真(2026-11-12 审核修复批 P1)。
 fn ceil_div(a: i64, b: i64) -> u32 {
-    ((a + b - 1) / b) as u32
+    debug_assert!(b > 0);
+    let q = a / b;
+    if q >= u32::MAX as i64 {
+        u32::MAX
+    } else {
+        (q + (a % b > 0) as i64) as u32
+    }
 }
 
 /// 战斗结算结果。
@@ -201,5 +210,55 @@ pub fn settle_battle(
         damage_dealt: dealt,
         gold: 0,
         xp: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{DungeonConfig, SimConfig, TierRow, MAX_ECONOMY_VALUE};
+
+    /// 2026-11-12 审核修复批 P1:ceil_div 先除后补余,巨值被除数不再经
+    /// `a + b - 1` 溢出 i64(debug panic);商超 u32::MAX 饱和,上层按
+    /// 「轮数过大 → 弃层」处理而非回绕成小轮数使选层失真。
+    #[test]
+    fn ceil_div_saturates_instead_of_overflowing() {
+        assert_eq!(ceil_div(10, 3), 4);
+        assert_eq!(ceil_div(9, 3), 3);
+        assert_eq!(ceil_div(0, 1), 0);
+        // 旧实现 (i64::MAX + 0) 直接溢出:debug panic / release 回绕为负
+        assert_eq!(ceil_div(i64::MAX, 1), u32::MAX);
+        assert_eq!(ceil_div(MAX_ECONOMY_VALUE, 1), u32::MAX);
+    }
+
+    /// 巨 hp 最高层进选层:估算轮数饱和 → 弃层落回可达层,debug/release
+    /// 同结果(pokemon 等真实案例的层表量级不受影响)。
+    #[test]
+    fn pick_tier_skips_overflow_sized_tier() {
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 2,
+                tier_table: Some(vec![
+                    TierRow {
+                        hp: 10,
+                        attack: 1,
+                        defense: 1,
+                        gold: None,
+                        xp: None,
+                    },
+                    TierRow {
+                        hp: MAX_ECONOMY_VALUE,
+                        attack: 1,
+                        defense: 1,
+                        gold: None,
+                        xp: None,
+                    },
+                ]),
+                ..DungeonConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        let w = &cfg.warrior;
+        assert_eq!(pick_tier(w.attack, w.defense, w.hp, &cfg), 0);
     }
 }
