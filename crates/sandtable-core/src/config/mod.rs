@@ -16,12 +16,16 @@ mod loot;
 mod progression;
 mod validate;
 
+#[cfg(test)]
+#[path = "tests.rs"]
+mod config_tests;
+
 pub use behavior::{ActorBehaviorConfig, BehaviorConfig};
 pub use combat::{CombatConfig, DamageModel, DungeonConfig, TierRow, WarriorConfig};
 pub use gacha::GachaConfig;
 pub use limits::{
-    Cohort, COHORT_COUNT, MAX_ECONOMY_VALUE, MAX_GACHA_PULLS, MAX_SIM_DIM, MAX_SIM_SCALE,
-    MAX_SWEEP_REPLICATES, MIN_GACHA_BASE_RATE, MIN_GACHA_TARGET_RATE,
+    Cohort, COHORT_COUNT, MAX_ECONOMY_VALUE, MAX_GACHA_PULLS, MAX_SESSIONS_PER_DAY, MAX_SIM_DIM,
+    MAX_SIM_SCALE, MAX_SWEEP_REPLICATES, MIN_GACHA_BASE_RATE, MIN_GACHA_TARGET_RATE,
 };
 pub use loot::{LootConfig, LootReward, LootTableConfig};
 pub use progression::{ChurnConfig, FormulaConfig, ProgressionConfig, TrainingConfig};
