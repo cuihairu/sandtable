@@ -224,3 +224,74 @@ fn get_set_mirror_all_numeric_paths() {
         }
     }
 }
+
+/// WB-03.04:kind 串与 wasm/TS 桥的 ParamKind 字面量同形(serde 小写改名)。
+/// 新增枚举臂漏改名或拼错字面量在此红。
+#[test]
+fn param_kind_serializes_to_lowercase_bridge_strings() {
+    let cases = [
+        (ParamKind::U32, "u32"),
+        (ParamKind::U64, "u64"),
+        (ParamKind::I64, "i64"),
+        (ParamKind::F64, "f64"),
+        (ParamKind::Dur, "dur"),
+        (ParamKind::Mix, "mix"),
+        (ParamKind::Expr, "expr"),
+        (ParamKind::Table, "table"),
+    ];
+    for (kind, want) in cases {
+        let s = serde_json::to_string(&kind).unwrap();
+        assert_eq!(s, format!("\"{want}\""), "{kind:?} 应序列化为 \"{want}\"");
+    }
+}
+
+/// WB-03.04:注册项直出桥接面 = 恰四字段 path/kind/default/desc,内核没有
+/// 的可选元信息一概不出场(缺键 ≠ 空串)。
+#[test]
+fn param_spec_serializes_exactly_four_bridge_fields() {
+    let v = serde_json::to_value(lookup("model.combat.p_hit").unwrap()).unwrap();
+    let obj = v.as_object().unwrap();
+    assert_eq!(obj.len(), 4, "恰四字段,实际:{obj:?}");
+    assert_eq!(obj["path"], "model.combat.p_hit");
+    assert_eq!(obj["kind"], "f64");
+    assert_eq!(obj["default"], "0.85");
+    assert!(!obj["desc"].as_str().unwrap().is_empty(), "desc 不为空串");
+}
+
+/// lookup 是精确寻址:命中返回注册项本体;未命中(相近拼写 / 大小写 /
+/// 空串)一律 None,不做近似或折叠匹配(sweep/override 的寻址前提)。
+#[test]
+fn lookup_matches_paths_exactly_or_none() {
+    let sp = lookup("scenario.duration").unwrap();
+    assert_eq!(sp.kind, ParamKind::Dur);
+    assert_eq!(sp.default, "30d");
+    assert!(lookup("scenario.durations").is_none());
+    assert!(lookup("SCENARIO.DURATION").is_none(), "寻址区分大小写");
+    assert!(lookup("").is_none());
+}
+
+/// all() 与 lookup 互为镜像:全部注册路径可被 lookup 命中且是同一项,
+/// 路径前缀恰落在 scenario / model 两节(新增注册项挂错节在此红)。
+#[test]
+fn all_paths_roundtrip_through_lookup_with_section_prefix() {
+    let mut saw_scenario = false;
+    let mut saw_model = false;
+    for sp in all() {
+        assert!(
+            sp.path.starts_with("scenario.") || sp.path.starts_with("model."),
+            "前缀必须落在两节:{}",
+            sp.path
+        );
+        if sp.path.starts_with("scenario.") {
+            saw_scenario = true;
+        } else {
+            saw_model = true;
+        }
+        let found = lookup(sp.path).unwrap_or_else(|| panic!("{}: lookup 未命中", sp.path));
+        assert_eq!(
+            (found.path, found.kind, found.default),
+            (sp.path, sp.kind, sp.default)
+        );
+    }
+    assert!(saw_scenario && saw_model, "all() 必须同时含两节");
+}
