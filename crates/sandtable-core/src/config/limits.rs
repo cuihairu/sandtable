@@ -61,6 +61,14 @@ pub const MAX_SWEEP_REPLICATES: u32 = 10_000;
 /// 下的单次产出,但足以避免乘以 whale 倍率后溢出或 `as u64` 回绕。
 pub const MAX_ECONOMY_VALUE: i64 = 1_000_000_000_000_000;
 
+/// 每日会话数上界(2026-11-12 审核修复批 P1):`sessions_int` 为 u32 且
+/// 此前无上界,合法 YAML 即可写 4e9——`players × days` 预算
+/// (`MAX_SIM_SCALE`)只约束「人数 × 天数」,不约束「每人每天的工作量」,
+/// 单次运行实质死循环。战斗键 `battle_index × ROUND_STRIDE(64)` 也在
+/// 千万级会话下回绕破坏 CRN。取 1e6——对齐 `MAX_GACHA_PULLS` 的
+/// 「单玩家单日循环上界」口径,默认值 1(casual)的 10^6 倍余量。
+pub const MAX_SESSIONS_PER_DAY: u32 = 1_000_000;
+
 impl Cohort {
     pub const ALL: [Cohort; COHORT_COUNT] = [Cohort::Casual, Cohort::Core, Cohort::Whale];
     pub fn index(self) -> usize {
