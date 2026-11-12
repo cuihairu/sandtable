@@ -11,7 +11,7 @@ import { resetForTest, listJobs, enqueueRun, cancelJob, retryJob, getSchedulingC
 import { WAIT_REASON_LABEL } from '../src/workbench/state/jobLogic.ts'
 import { QUEUE_STORAGE_KEY, SCHEDULE_STORAGE_KEY, persistQueueState, restoreQueueState, persistSchedulingState, restoreSchedulingState } from '../src/workbench/state/projectDoc.ts'
 import { MAX_CANDIDATE_RESULTS_IN_MEMORY } from '../src/workbench/state/executor.ts'
-import { fakeBackends, PLAN3, memoryStorage, persistedRealJob, read } from './execFixtures.mjs'
+import { fakeBackends, PLAN3, memoryStorage, persistedRealJob, read, waitUntil } from './execFixtures.mjs'
 
 // ————— WB-07.02/12/13/15/17 · runManager 集成(注入假后端) —————
 
@@ -38,7 +38,11 @@ test('WB-07.02/12/15:真实任务绑定 run ID;单活动任务门;终态后清�
   assert.notEqual(second, null, '并发门改为排队:执行槽忙时仍接收任务')
   assert.equal(second.status, 'queued', '执行槽忙时新任务排队')
 
-  await new Promise((r) => setTimeout(r, 10))
+  await waitUntil(() => {
+    const a = listJobs().find((j) => j.id === job.id)
+    const b = listJobs().find((j) => j.id === second.id)
+    return a?.status === 'succeeded' && b?.status === 'succeeded'
+  })
   const finished = listJobs().find((j) => j.id === job.id)
   assert.equal(finished.status, 'succeeded')
   assert.equal(finished.exec.results.length, 3)
@@ -52,7 +56,7 @@ test('WB-07.02/12/15:真实任务绑定 run ID;单活动任务门;终态后清�
     backends,
   })
   assert.notEqual(third, null, '任务结束后可再次提交')
-  await new Promise((r) => setTimeout(r, 10))
+  await waitUntil(() => listJobs().find((j) => j.id === third.id)?.status === 'succeeded')
   resetForTest()
 })
 
@@ -67,7 +71,7 @@ test('WB-07.16:runManager 竞争——重复取消/终态后取消无副作用;�
     spec: { kind: 'sweep', yaml: 'e', plan: PLAN3 },
     backends: failing.backends,
   })
-  await new Promise((r) => setTimeout(r, 10))
+  await waitUntil(() => listJobs().find((j) => j.id === job.id)?.status === 'failed')
   assert.equal(listJobs().find((j) => j.id === job.id).status, 'failed')
   const retried = retryJob(job.id)
   assert.notEqual(retried, null)
@@ -77,7 +81,7 @@ test('WB-07.16:runManager 竞争——重复取消/终态后取消无副作用;�
   // 原位重试仍是 queued:取消请求按排队语义落终态,重复取消无副作用
   await cancelJob(job.id)
   await cancelJob(job.id)
-  await new Promise((r) => setTimeout(r, 10))
+  await waitUntil(() => listJobs().find((j) => j.id === job.id)?.status === 'cancelled')
   assert.equal(listJobs().find((j) => j.id === job.id).status, 'cancelled', 'queued 重试取消后终态不改变')
   resetForTest()
 })
@@ -92,7 +96,7 @@ test('WB-07.17 · ST-AUD-12:终局 promise 拒绝不得占死并发槽——失�
     spec: { kind: 'sweep', yaml: 'e', plan: PLAN3 },
     backends: rejectBackends,
   })
-  await new Promise((r) => setTimeout(r, 10))
+  await waitUntil(() => listJobs().find((j) => j.id === job.id)?.status === 'failed')
   const failed = listJobs().find((j) => j.id === job.id)
   assert.equal(failed.status, 'failed', '拒绝后端落 failed 终态,不永久卡 running')
   assert.equal(failed.exec.errorClass, 'run')
@@ -104,7 +108,7 @@ test('WB-07.17 · ST-AUD-12:终局 promise 拒绝不得占死并发槽——失�
     spec: { kind: 'sweep', yaml: 'e', plan: PLAN3 },
     backends,
   })
-  await new Promise((r) => setTimeout(r, 10))
+  await waitUntil(() => listJobs().find((j) => j.id === next.id)?.status === 'succeeded')
   assert.equal(listJobs().find((j) => j.id === next.id).status, 'succeeded', '拒绝后队列可继续')
   resetForTest()
 })
@@ -124,14 +128,14 @@ test('批量重试:扫描只补首个失败点之后的候选,不重跑成功 re
     experimentId: 'exp_retry_resume', runId: 'run_retry_resume', name: '扫描续跑', method: 'GRID',
     spec: { kind: 'sweep', yaml: 'resume', plan: PLAN3 }, backends,
   })
-  await new Promise((resolve) => setTimeout(resolve, 5))
+  await waitUntil(() => listJobs().find((item) => item.id === job.id)?.status === 'failed')
   const failed = listJobs().find((item) => item.id === job.id)
   assert.equal(failed.status, 'failed')
   assert.equal(failed.exec.results.length, 1)
 
   const retried = retryJob(job.id)
   assert.equal(retried.id, job.id, '失败任务重试保持原身份,不新增任务')
-  await new Promise((resolve) => setTimeout(resolve, 5))
+  await waitUntil(() => listJobs().find((item) => item.id === job.id)?.status === 'succeeded')
   const resumed = listJobs().find((item) => item.id === job.id)
   assert.equal(resumed.status, 'succeeded')
   assert.equal(resumed.exec.results.length, 3)
@@ -167,12 +171,12 @@ test('批量重试:A/B 只补缺失臂,已成功臂不重跑', async () => {
     experimentId: 'exp_ab_resume', runId: 'run_ab_resume', name: 'A/B 续跑', method: 'AB',
     spec: AB, backends,
   })
-  await new Promise((resolve) => setTimeout(resolve, 5))
+  await waitUntil(() => listJobs().find((item) => item.id === job.id)?.status === 'failed')
   assert.equal(listJobs().find((item) => item.id === job.id).status, 'failed')
   assert.deepEqual(calls.sim, ['base', 'cand'])
 
   retryJob(job.id)
-  await new Promise((resolve) => setTimeout(resolve, 5))
+  await waitUntil(() => listJobs().find((item) => item.id === job.id)?.status === 'succeeded')
   const resumed = listJobs().find((item) => item.id === job.id)
   assert.equal(resumed.status, 'succeeded')
   assert.deepEqual(calls.sim, ['base', 'cand', 'cand'], 'base 臂结果复用,只补 cand 臂')
@@ -204,13 +208,16 @@ test('队列持久化:版本/形状损坏整体丢弃;载荷按序恢复且执�
   let active = 0
   let peak = 0
   const calls = { sim: [] }
+  // 门控 sim:运行态被稳稳按住,快照断言不与调度竞速;放行后串行跑完
+  let releaseGate
+  const gate = new Promise((resolve) => { releaseGate = resolve })
   const slowBackend = {
     mode: 'desktop',
     sim: async (yaml) => {
       active += 1
       peak = Math.max(peak, active)
       calls.sim.push(yaml)
-      await new Promise((resolve) => setTimeout(resolve, 2))
+      await gate
       active -= 1
       return { config_hash: yaml, meta: {}, results: [], days_csv: yaml }
     },
@@ -225,12 +232,13 @@ test('队列持久化:版本/形状损坏整体丢弃;载荷按序恢复且执�
     ['job_q000003', slowBackend],
   ]))
   assert.deepEqual(restored.map((job) => job.id), ['job_q000001', 'job_q000002', 'job_q000003'])
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => fresh.listJobs().find((job) => job.id === 'job_q000001')?.status === 'running')
   const live = fresh.listJobs()
   assert.deepEqual(live.map((job) => [job.id, job.status]), [
     ['job_q000001', 'running'], ['job_q000002', 'queued'], ['job_q000003', 'queued'],
   ], '执行中项恢复为队首 queued 后由执行槽启动,其余保持顺序')
-  await new Promise((resolve) => setTimeout(resolve, 12))
+  releaseGate()
+  await waitUntil(() => calls.sim.length === 3)
   assert.equal(peak, 1, '恢复后仍只有一个执行槽')
   assert.deepEqual(calls.sim, ['q0', 'q1', 'q2'])
   fresh.resetForTest()
@@ -262,12 +270,16 @@ test('批量调度:并发 2 同时执行且结果保持 FIFO 一致', async () =
   let active = 0
   let peak = 0
   const calls = { candidate: [], sim: [] }
+  // 门控后端:两个执行槽被稳稳按住,running/queued 快照断言不与调度竞速;
+  // 放行后照常跑完,FIFO/峰值断言语义不变
+  let releaseGate
+  const gate = new Promise((resolve) => { releaseGate = resolve })
   const { backends } = fakeBackends({
     candidate: async (yaml, replicates, values) => {
       active += 1
       peak = Math.max(peak, active)
       calls.candidate.push(values['model.warrior.attack'])
-      await new Promise((resolve) => setTimeout(resolve, 2))
+      await gate
       active -= 1
       return { values, status: 'ok', metric_stats: [], target_outcomes: [] }
     },
@@ -275,7 +287,7 @@ test('批量调度:并发 2 同时执行且结果保持 FIFO 一致', async () =
       active += 1
       peak = Math.max(peak, active)
       calls.sim.push(yaml)
-      await new Promise((resolve) => setTimeout(resolve, 2))
+      await gate
       active -= 1
       return { config_hash: yaml, meta: {}, results: [], days_csv: yaml }
     },
@@ -293,11 +305,16 @@ test('批量调度:并发 2 同时执行且结果保持 FIFO 一致', async () =
     spec: { kind: 'single', yaml: 'single-3', replicates: 1 }, backends,
   })
 
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => {
+    const s = listJobs()
+    return s.find((job) => job.id === first.id)?.status === 'running'
+      && s.find((job) => job.id === second.id)?.status === 'running'
+  })
   let live = listJobs()
   assert.equal(live.find((job) => job.id === first.id).status, 'running')
   assert.equal(live.find((job) => job.id === second.id).status, 'running')
   assert.equal(live.find((job) => job.id === third.id).status, 'queued')
+  releaseGate()
   // 轮询等待所有任务终态,不用固定时长窗口:CI runner 慢时 15ms 不够
   // 第三个任务(排队)完成 sim,固定等待会把时序竞态放大成假失败。
   for (let i = 0; i < 100; i++) {
@@ -332,7 +349,7 @@ test('内存预算:超预算任务显式等待,预算放宽后自动续跑', asy
     experimentId: 'exp_budget', runId: 'run_budget', name: '等预算', method: 'GRID',
     spec: bigSpec, backends,
   })
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === waiting.id)?.waitReason === 'memory-budget')
   const waited = listJobs().find((job) => job.id === waiting.id)
   assert.equal(waited.status, 'queued')
   assert.equal(waited.waitReason, 'memory-budget')
@@ -342,7 +359,7 @@ test('内存预算:超预算任务显式等待,预算放宽后自动续跑', asy
   assert.equal(WAIT_REASON_LABEL['memory-budget'].en, 'Waiting for memory budget')
 
   setSchedulingConfig({ memoryBudget: 6 })
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === waiting.id)?.status === 'succeeded')
   assert.equal(listJobs().find((job) => job.id === waiting.id).status, 'succeeded')
   assert.equal(listJobs().find((job) => job.id === waiting.id).waitReason, undefined)
   assert.equal(calls.candidate.length, 6)
@@ -385,7 +402,11 @@ test('调度配置持久化:独立载荷恢复并驱动并发与预算', async (
     ['job_sched01', backend], ['job_sched02', backend],
   ]))
   assert.deepEqual(getSchedulingConfig(), { concurrency: 2, memoryBudget: 2 })
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => {
+    const s = listJobs()
+    return s.find((job) => job.id === 'job_sched01')?.status === 'succeeded'
+      && s.find((job) => job.id === 'job_sched02')?.waitReason === 'memory-budget'
+  })
   const live = listJobs()
   assert.equal(live.find((job) => job.id === 'job_sched01').status, 'succeeded')
   assert.equal(live.find((job) => job.id === 'job_sched02').status, 'queued')
@@ -400,12 +421,15 @@ test('调度配置持久化:独立载荷恢复并驱动并发与预算', async (
 
 test('批量队列:真实任务按 FIFO 自动续跑,同一时刻仅启动一项真实执行', async () => {
   resetForTest()
+  // 门控候选:执行槽被稳稳按住,入队快照断言不与调度竞速;放行后照常串行跑完
+  let releaseGate
+  const gate = new Promise((resolve) => { releaseGate = resolve })
   const { backends, calls } = fakeBackends({
     candidate: async (yaml, replicates, values) => {
       calls.active = (calls.active ?? 0) + 1
       assert.equal(calls.active, 1, '候选执行时活动执行数不超过 1')
       calls.candidate.push({ yaml, replicates, values })
-      await new Promise((resolve) => setTimeout(resolve, 1))
+      await gate
       calls.active = 0
       return { values, status: 'ok', metric_stats: [], target_outcomes: [] }
     },
@@ -414,7 +438,7 @@ test('批量队列:真实任务按 FIFO 自动续跑,同一时刻仅启动一项
     experimentId: 'exp_queue', runId: 'run_q1', name: '队列一', method: 'GRID',
     spec: { kind: 'sweep', yaml: 'e', plan: PLAN3 }, backends,
   })
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === first.id)?.status === 'running')
   const second = enqueueRun({
     experimentId: 'exp_queue', runId: 'run_q2', name: '队列二', method: 'GRID',
     spec: { kind: 'sweep', yaml: 'e', plan: PLAN3 }, backends,
@@ -427,14 +451,14 @@ test('批量队列:真实任务按 FIFO 自动续跑,同一时刻仅启动一项
   assert.equal(snapshot.find((job) => job.id === first.id).status, 'running', '队首立即启动')
   assert.equal(snapshot.find((job) => job.id === second.id).status, 'queued', '后续任务排队')
   assert.equal(snapshot.find((job) => job.id === third.id).status, 'queued', '后续任务排队')
+  releaseGate()
 
-  // 轮询等待全部终态:第一个任务 6 个候选、每个候选 1ms 延迟,CI 慢时
-  // 固定 20ms 不够,会把时序竞态放大成假失败。
-  for (let i = 0; i < 200; i++) {
+  // 轮询等待全部终态:固定时长窗口在 CI 慢机/高负载下会把时序竞态
+  // 放大成假失败(waitUntil 有界轮询,超时后断言照常裁决真挂起)。
+  await waitUntil(() => {
     const all = listJobs()
-    if (all.every((job) => job.status !== 'running' && job.status !== 'queued')) break
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
+    return all.every((job) => job.status !== 'running' && job.status !== 'queued')
+  })
   const byId = (job) => listJobs().find((item) => item.id === job.id)
   assert.deepEqual(calls.candidate.map((call) => call.values), [...PLAN3.candidates, ...PLAN3.candidates], '候选严格按 FIFO 顺序')
   assert.deepEqual([byId(first).status, byId(second).status, byId(third).status], ['succeeded', 'succeeded', 'succeeded'])
@@ -444,10 +468,14 @@ test('批量队列:真实任务按 FIFO 自动续跑,同一时刻仅启动一项
 
 test('批量队列:取消排队项不影响当前运行', async () => {
   resetForTest()
+  // 门控候选:当前任务被稳稳按住,running/queued 快照断言不与调度竞速;
+  // 取消排队项后放行,当前任务照常跑完
+  let releaseGate
+  const gate = new Promise((resolve) => { releaseGate = resolve })
   const { backends, calls } = fakeBackends({
     candidate: async (yaml, replicates, values) => {
       calls.candidate.push({ yaml, replicates, values })
-      await new Promise((resolve) => setTimeout(resolve, 3))
+      await gate
       return { values, status: 'ok', metric_stats: [], target_outcomes: [] }
     },
   })
@@ -455,7 +483,7 @@ test('批量队列:取消排队项不影响当前运行', async () => {
     experimentId: 'exp_queue', runId: 'run_current', name: '当前任务', method: 'GRID',
     spec: { kind: 'sweep', yaml: 'e', plan: PLAN3 }, backends,
   })
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === first.id)?.status === 'running')
   const queued = enqueueRun({
     experimentId: 'exp_queue', runId: 'run_queued', name: '排队任务', method: 'GRID',
     spec: { kind: 'sweep', yaml: 'e', plan: PLAN3 }, backends,
@@ -465,7 +493,8 @@ test('批量队列:取消排队项不影响当前运行', async () => {
   assert.equal(beforeCancel.find((job) => job.id === queued.id).status, 'queued')
   await cancelJob(queued.id)
   assert.equal(listJobs().find((job) => job.id === queued.id).status, 'cancelled', 'queued 项取消即终态')
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  releaseGate()
+  await waitUntil(() => listJobs().find((job) => job.id === first.id)?.status === 'succeeded')
   assert.equal(listJobs().find((job) => job.id === first.id).status, 'succeeded', '排队项取消不影响当前运行')
   assert.equal(calls.candidate.length, 3, '取消排队项不派发其候选')
   resetForTest()
@@ -491,12 +520,12 @@ test('批量队列:取消队首排队项立刻腾槽启动下一项', async () =
     spec: { kind: 'single', yaml: 'after-cancel', replicates: 1 }, backends,
   })
   await cancelJob(head.id)
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === next.id)?.status === 'running')
   assert.equal(listJobs().find((job) => job.id === head.id).status, 'cancelled', 'queued 项取消即终态')
   assert.equal(listJobs().find((job) => job.id === next.id).status, 'running', '取消队首后 startNextQueued 腾出执行槽')
   assert.deepEqual(calls.sim, ['cancel-head', 'after-cancel'], '已派发项的启动句柄保留;队列下一项独立启动')
   resolveFirst()
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === next.id)?.status === 'succeeded')
   assert.equal(listJobs().find((job) => job.id === next.id).status, 'succeeded')
   resetForTest()
 })
@@ -524,7 +553,7 @@ test('批量队列:当前运行终态后才启动下一项 startExec', async () 
     experimentId: 'exp_queue', runId: 'run_gate1', name: '门一', method: 'GRID',
     spec: { kind: 'single', yaml: 's1', replicates: 1 }, backends,
   })
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => calls.sim.length === 1)
   const second = enqueueRun({
     experimentId: 'exp_queue', runId: 'run_gate2', name: '门二', method: 'GRID',
     spec: { kind: 'single', yaml: 's2', replicates: 1 }, backends,
@@ -532,16 +561,17 @@ test('批量队列:当前运行终态后才启动下一项 startExec', async () 
   assert.equal(calls.sim.length, 1, '第一项尚未派发 sim')
   assert.equal(listJobs().find((job) => job.id === second.id).status, 'queued', '第一项终态前第二项不启动')
   resolveFirst()
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === first.id)?.status === 'succeeded'
+    && calls.sim.length === 2)
   assert.equal(listJobs().find((job) => job.id === first.id).status, 'succeeded')
   assert.equal(calls.sim.length, 2, '第一项终态后才启动第二项')
   assert.deepEqual(calls.sim.map((call) => call.yaml), ['s1', 's2'], '按 FIFO 使用各自的执行快照')
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === second.id)?.status === 'running')
   assert.equal(listJobs().find((job) => job.id === first.id).status, 'succeeded')
   assert.equal(calls.sim.length, 2, '第一项终态后才启动第二项')
   assert.equal(listJobs().find((job) => job.id === second.id).status, 'running', '第二项已调用 startExec 并进入运行')
   resolveSecond()
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === second.id)?.status === 'succeeded')
   assert.equal(listJobs().find((job) => job.id === second.id).status, 'succeeded')
   resetForTest()
 })
@@ -597,7 +627,7 @@ test('批量队列:终态先落竞争后仍按 FIFO 自动续跑', async () => {
   await cancelJob(first.id)
   assert.equal(listJobs().find((job) => job.id === first.id).status, 'cancelled')
   assert.equal(listJobs().find((job) => job.id === second.id).status, 'running', 'queued 取消同步释放槽')
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  await waitUntil(() => listJobs().find((job) => job.id === second.id)?.status === 'succeeded')
   assert.equal(listJobs().find((job) => job.id === second.id).status, 'succeeded')
   assert.deepEqual(pending.calls.sim.map((call) => call.yaml), ['race-current', 'race-next'], '当前任务已启动;竞争短路后只再启动下一项')
   resetForTest()
@@ -622,7 +652,13 @@ test('WB-07.13:activeJob 同源判定——任务页/状态栏/抽屉显示同�
   assert.equal(view1.id, job.id)
   assert.equal(view2.id, job.id, '切换工作区后仍是同一个任务')
   assert.equal(view1.name, '跨页任务')
-  await new Promise((r) => setTimeout(r, 40))
+  // 完成性用有界轮询,不用固定 40ms 窗口:3 候选 ×8ms 休眠的串行下限 24ms
+  // 之外还有逐候选完成→续跑的调度跳数,高负载机器上实耗可破窗(本机 HEAD
+  // 复测 6 次 5 次假失败);同款修法见上「并发队列」用例(6ab266b)。
+  const deadline = Date.now() + 2000
+  while (Date.now() < deadline && activeJob(listJobs()) !== null) {
+    await new Promise((r) => setTimeout(r, 5))
+  }
   assert.equal(activeJob(listJobs()), null, '终态后无活动任务')
   resetForTest()
 })
@@ -649,7 +685,12 @@ test('WB-07.17:语言切换只更新显示文案——任务对象与执行引�
   assert.equal(before === jobsBefore || JSON.stringify(before) === JSON.stringify(snapshot), true)
   // 执行后端(此处假 Worker/后端)从未被重建:注入的后端实例同一性不变
   assert.equal(slow.backends.mode, 'desktop')
-  await new Promise((r) => setTimeout(r, 40))
+  // 放任务跑到终态再清理:固定等待在高负载下可能把 resetForTest 落在任务
+  // 中途(后续 unhandled rejection 噪声);有界轮询到终态,语义不变。
+  await waitUntil(() => {
+    const j = listJobs().find((item) => item.id === job.id)
+    return j !== null && ['succeeded', 'failed', 'cancelled'].includes(j.status)
+  })
   // 源级守卫:状态层文件不 import i18n(语言状态不进执行域)
   for (const f of ['state/jobLogic.ts', 'state/execFsm.ts', 'state/executor.ts', 'state/runManager.ts', 'state/workerProtocol.ts', 'state/sweepWorker.ts']) {
     const src = read(`src/workbench/${f}`)
@@ -669,7 +710,7 @@ test('ST-AUD-20:终局统一释放并 terminate 后端(成功与失败路径)', 
     spec: { kind: 'sweep', yaml: 'y', plan: PLAN3 },
     backends: ok.backends,
   })
-  await new Promise((r) => setTimeout(r, 10))
+  await waitUntil(() => listJobs().find((j) => j.id === job.id)?.status === 'succeeded')
   assert.equal(listJobs().find((j) => j.id === job.id).status, 'succeeded')
   assert.equal(terminated, 1, '成功终局应 terminate 后端(不留 Worker)')
   resetForTest()
@@ -684,7 +725,7 @@ test('ST-AUD-20:终局统一释放并 terminate 后端(成功与失败路径)', 
     spec: { kind: 'sweep', yaml: 'y', plan: PLAN3 },
     backends: fail.backends,
   })
-  await new Promise((r) => setTimeout(r, 10))
+  await waitUntil(() => listJobs().find((j) => j.id === job2.id)?.status === 'failed')
   assert.equal(listJobs().find((j) => j.id === job2.id).status, 'failed')
   assert.equal(terminated2, 1, '失败终局也应 terminate 后端')
   resetForTest()

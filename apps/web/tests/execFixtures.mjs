@@ -56,6 +56,16 @@ export function jobPatchSink() {
   }
 }
 
+// 有界轮询:条件满足即返回;超时后照常走到断言(真挂起照常失败)。
+// 完成性断言禁用固定时长窗口:CI/高负载下窗口贴着串行下限,时序竞态
+// 被放大成假失败(「并发队列」等用例 6ab266b 起同款修法,逐步全量替换)。
+export async function waitUntil(cond, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline && !cond()) {
+    await new Promise((resolve) => setTimeout(resolve, 2))
+  }
+}
+
 export const JOB = 'job_test0001'
 
 export function memoryStorage(initial = {}) {
