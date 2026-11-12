@@ -804,6 +804,7 @@
 
 - [x] LAY-014 [P1] `apps/web/src/lib/wasm.ts` 名称暗示浏览器 WASM，但实际按宿主分发 Tauri invoke 与 Worker/WASM，并在同一文件包含本地查询入口（apps/web/src/lib/wasm.ts:48）。(2026-11-10：改名 `apps/web/src/lib/kernel.ts`——名称改为反映按宿主分发的内核服务层；本地查询入口出壳到 `apps/web/src/lib/queryLocal.ts`（仅桌面 `invoke('query')`，经 `isDesktop` 门，与内核函数不同域，不进纯逻辑 localQuery.ts）；13 处 src 导入点全部重指（App/SweepPanel/LivePreviewPanel/EconomySection/OptimizeSurrogateSection/DesignerPage/CustomKpiSection/paramsLogic/executor/AnalysisPage/CrossReplicateSection/LocalQuery/ExchangePage），contracts WB-02.18 断言（ExchangePage 拆两导入）与 WB-03.14 服务层唯一面（允许面 = kernel.ts + queryLocal.ts + sweepWorker.entry.ts）同步，metric-dictionary-ui P2 断言重指 kernel.ts；门禁 node --test 539/0、tsc -b 0 错、oxlint exit 0、vite build ✓；docs 27 调用面 + 22-web WB-02.18 段 + 能力盘点 wasm.ts→kernel.ts 行 + 桌面对齐基准桌面分支（en+zh 锁步）更新，历史叙事（18 进度叙事/方向项草案 batch 3/既有 [x] 行）未动）
 - [x] LAY-015 [P1] `crates/sandtable-cli/src/analyze.rs` 执行脚本级只读策略，但根据 `scripts/scripting-design.md` 的脚本层设计，脚本分析边界不在 CLI 外壳内（crates/sandtable-cli/src/analyze.rs:107）。**不属实：** 设计权威一致把脚本分析执行边界放在 CLI 内——scripting-design.md §3（CLI = 分析主载体）与 §5 表②行（执行面 = 仅显式 `sandtable analyze <file>`，执行前 CLI 打印路径+内容哈希）、todo 父目标 step ②（「CLI 提供 `sandtable analyze <script.py>`（超时+只读数据路径沙箱口径）」）、27 章 68 行（`analyze` 列为 CLI 模块）。analyze.rs 已是独立 `mod analyze`（main.rs:18），外壳仅经 `analyze::run`（main.rs:373）调用，自含 typed 参数、零参数解析耦合；2026-11-09 ST-AUD-28 复核仍以 analyze.rs 为执行边界（Windows Job Object 落此）。把边界移出 CLI 会与 §3/§5/父目标矛盾，无缺陷可修，维持现状。
+- [ ] 审核发现：本轮 diff 未见问题（f968c10d..HEAD）
 
 ### 覆盖率推进（第二轮，2026-11-11 巡检单 cov2）
 
@@ -811,6 +812,17 @@
 - [x] 前后数字（`cargo llvm-cov --workspace --all-features --summary-only`）：行 88.33%（16025/1870 miss）→ **88.44%**（16083/1859 miss）；region 88.65%（3024 miss）→ 88.79%（3001 miss）；function 77.17%（377 miss）→ **77.56%**（372 miss）。基线 sha 6ab266b，after sha c514bc0。
 - [x] 结构性上限记录（如实，不硬凑）：**98% 经 native 测试不可达**，两处生成/编译期主导——① registry/spec.rs 35.00% 即上限：13/20 未覆盖行 = `const fn spec(...)` 函数体（302-314 行，纯编译期 const 求值，运行时永不执行而 llvm-cov 仍计为可覆盖行；运行期函数 all/lookup 已全覆盖 FNDA 475/467，lcov 行级核过）；② sandtable-wasm 六模块（kpi 45.83%/compare 58.21%/optimize/params/sweep/run/validate）缺口主体 = `#[wasm_bindgen]` JsValue 包装体：`JsValue::from_str` → `__wbindgen_describe_cast` 在非 wasm32 目标是 panic stub（wasm-bindgen 0.2.106 src/lib.rs externs! 宏），包装体只能 wasm32+JS 宿主执行，native cargo test/llvm-cov 结构性够不着，wasm crate 剩余 miss 池 ~203 行全是此性质。可达上限路径：wasm32 目标覆盖率（wasm-bindgen-test + wasm 桩，属新基建非补测试）。
 - [x] 下一轮候选（native 可测的 miss 池，按绝对量）：engine/importer.rs（89 miss）、python/lib.rs（92，PyO3 面部分 native 可测）、mcp/calibrate.rs（65）+ mcp/main.rs（59，stdio 循环外壳）。
+
+### 审核修复批（2026-11-12，巡检单 audit-fix；报告 /home/cui/audit-batch4-6repos-2026-11-11.md sandtable 节，P0=无，P1 四条全闭环）
+
+- [x] [P1] CLI `simulate --replicates 0` 越界 panic（MCP/WASM 均拦 0，CLI 漏，`results[0]` 越界）：加载后显式拒收退出码 2，与 MCP/WASM 同口径同文案（crates/sandtable-cli/src/main.rs:597）；回归测试 crates/sandtable-cli/tests/simulate.rs 断言 exit 2 + stderr（0b53c08）。
+- [x] [P1] tier_table 行级校验缺上界/非负（仅查 hp>0；attack/defense 可负可巨 → ceil_div `a+b-1` i64 溢出 debug panic/release 回绕 → 选层失真，monster_power attack*2 同源）：行级 attack/defense 必须为正、hp/attack/defense 与 warrior 三键同面 MAX_ECONOMY_VALUE 上界、gold/xp ∈ [0, 上界]（validate.rs:166-197）；ceil_div 改先除后补余 + 商超 u32::MAX 饱和，i64::MAX 输入不再 panic、巨 hp 按「轮数过大→弃层」处理（systems/combat.rs:122）；回归测试 config validate_tier_table_row_bounds 5 拒收臂+边界放行 + combat ceil_div_saturates/pick_tier_skips_overflow_sized_tier（bd5dd1a）。
+- [x] [P1] WeightedTable 权重和溢出 inf（单项均有限合法如两条 1e308，pick target=u·inf → partition_point=len 越界：sim 静默丢抽、CLI disttest weighted obs[len] panic）：from_weights 加载期拒绝非有限总和（rng.rs:160）；另根治 pick 贴边越界——u=1-2^-53 且 total 为 2 的幂时 fl(u·total) 舍入恰等 total，此前取 len panic，现落回最后一个正权重项、尾段零权重项不入选，界内抽取语义逐位不变（rng.rs:193）；回归测试 weighted_table_rejects_overflowing_total + weighted_table_pick_at_upper_draw_stays_in_bounds（fcce04b）。
+- [x] [P1] behavior.*.sessions_int 无上界（u32 可写 4e9；players×days 预算不约束每人每日工作量 → 合法 YAML 近死循环；战斗键 battle_index×64 回绕破 CRN）：MAX_SESSIONS_PER_DAY=1e6 落 limits.rs（对齐 MAX_GACHA_PULLS 单玩家单日循环上界口径，limits.rs:70）+ validate 逐群拒收（validate.rs:414-420）+ 回归测试 validate_sessions_int_upper_bound 拒收/边界放行两臂（254efe0 常量 + e196b5e 校验与测试）。
+- [x] 连带发现并修复拆分回归：3759afd（LAY-001 config 拆分）mod.rs 漏声明 tests 模块，config/tests.rs 自 11-10 起整组未编译（18 测静默失跑，含 config_hash 黄金稳定性）；补 `#[cfg(test)] #[path = "tests.rs"] mod config_tests;`（#[path] 避 module_inception 告警），复活后全绿无潜伏破损（3281819）。全仓扫描其余拆分目录（scenario/optimize/experiment/sim/registry/desktop/wasm/report/i18n/cli）声明正常，唯一孤儿即 config 一处；mcp calibrate/tests.rs 为 file-module 自动解析非孤儿。教训：**拆分 commit 后必须 diff 核对新 mod 声明清单与迁移文件一一对应，测试计数逐 commit 对账**。
+- 过程事故（如实记录）：commit 1 误把 limits.rs 尚未提交的 MAX_SESSIONS_PER_DAY 再导出随 mod.rs 带入（0b53c08 短暂不可编译中间态），未 force-push，以追加 254efe0（常量定义）痊愈远端 tip；本地 revert 对已 reset 丢弃。
+
+门禁：cargo test --workspace 37 套 435 passed 0 failed、desktop 25 passed 0 failed、cargo fmt --all --check 净、clippy --workspace --all-targets 0 警告；golden/public_calibration/doc_assets 全含于 workspace。P2 清单（引擎 GachaContract 定轨字段、params gacha 物化、access NaN、sensitivity 0 基线、sweep centered release 断言、report 表头 esc、query 白名单扩展）未动，待下轮。
 
 
 ## 策划向设计工具（2026-11-08 用户令，方向已拍板=做 sandtable 策划友好面）
