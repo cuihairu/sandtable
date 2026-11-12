@@ -92,22 +92,29 @@ pub fn pick_tier(attack: i64, defense: i64, hp: i64, cfg: &SimConfig) -> u32 {
         // 期望口径(必中、零浮动)与 settle_battle 同式:比值口径下限同样取 1
         // (弱打强仍有少量伤害,轮数有限);差值口径承伤下限 0(打不穿 = 零承伤)
         let dmg_out = if ratio {
-            ((cfg.combat.ratio_k * attack as f64 / (attack + m.defense) as f64) as i64).max(1)
+            // 估算式全程饱和(2026-11-12 审核复核):练级增益累加走饱和后
+            // attack/defense/hp 可达 i64 边界,入口门不含 level_*_gain,
+            // 裸 i64 和/积在 debug 构建 panic、release 回绕使选层失真——
+            // 与 strike_damage 同口径
+            ((cfg.combat.ratio_k * attack as f64 / attack.saturating_add(m.defense) as f64) as i64)
+                .max(1)
         } else {
-            (attack - m.defense).max(1)
+            attack.saturating_sub(m.defense).max(1)
         };
         let rounds = ceil_div(m.hp, dmg_out);
         if rounds > CLEAR_BUDGET_ROUNDS {
             continue;
         }
         let dmg_in = if ratio {
-            ((cfg.combat.ratio_k * m.attack as f64 / (m.attack + defense) as f64) as i64).max(1)
+            ((cfg.combat.ratio_k * m.attack as f64 / m.attack.saturating_add(defense) as f64)
+                as i64)
+                .max(1)
         } else {
-            (m.attack - defense).max(0)
+            m.attack.saturating_sub(defense).max(0)
         };
         if dmg_in > 0 {
             let incoming = (rounds as f64 * cfg.combat.p_hit_monster * dmg_in as f64) as i64;
-            if incoming > hp * 8 / 10 {
+            if incoming > hp.saturating_mul(8).saturating_div(10) {
                 continue;
             }
         }
@@ -216,7 +223,9 @@ pub fn settle_battle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{DungeonConfig, SimConfig, TierRow, MAX_ECONOMY_VALUE};
+    use crate::config::{
+        CombatConfig, DamageModel, DungeonConfig, SimConfig, TierRow, MAX_ECONOMY_VALUE,
+    };
 
     /// 2026-11-12 审核修复批 P1:ceil_div 先除后补余,巨值被除数不再经
     /// `a + b - 1` 溢出 i64(debug panic);商超 u32::MAX 饱和,上层按
@@ -260,5 +269,52 @@ mod tests {
         };
         let w = &cfg.warrior;
         assert_eq!(pick_tier(w.attack, w.defense, w.hp, &cfg), 0);
+    }
+
+    /// 2026-11-12 审核复核:练级增益累加走饱和(`level_*_gain` 无入口门)后,
+    /// attack/defense/hp 可到达 i64 边界;选层估算式此前裸做 i64 和/积——
+    /// `hp * 8` 在 debug 构建 panic、release 回绕为负使承伤守卫永假(最高层
+    /// 被误弃),比值式在 `attack + m.defense` 处 overflow panic。
+    #[test]
+    fn pick_tier_tolerates_saturated_actor_stats() {
+        let mk = |model: Option<DamageModel>| SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 2,
+                tier_table: Some(vec![
+                    TierRow {
+                        hp: 10,
+                        attack: 1,
+                        defense: 1,
+                        gold: None,
+                        xp: None,
+                    },
+                    TierRow {
+                        hp: 1_000_000,
+                        attack: 2,
+                        defense: 2,
+                        gold: None,
+                        xp: None,
+                    },
+                ]),
+                ..DungeonConfig::default()
+            },
+            combat: CombatConfig {
+                damage_model: model,
+                ..CombatConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        // hp 饱和到 i64 上界(练级 hp 增益饱和所致):承伤守卫 `hp * 8 / 10`
+        // 须与普通大 hp 同判,不 panic、不回绕成负
+        let diff = mk(None);
+        assert_eq!(
+            pick_tier(100, 1, i64::MAX, &diff),
+            pick_tier(100, 1, 1_000_000, &diff)
+        );
+        // 比值口径:两条估算式的分母此前裸加 i64,attack/defense 触界即溢出
+        let ratio = mk(Some(DamageModel::Ratio));
+        assert!(pick_tier(i64::MAX, i64::MAX, i64::MAX, &ratio) < ratio.dungeon.tiers);
+        // 差值口径同值边界
+        assert!(pick_tier(i64::MAX, i64::MIN, i64::MAX, &diff) < diff.dungeon.tiers);
     }
 }
