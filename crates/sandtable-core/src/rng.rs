@@ -190,10 +190,12 @@ impl WeightedTable {
 
     /// 一次抽取 → 项索引。
     ///
-    /// 越界根治(2026-11-12 审核修复批 P1):`u = 1-2^-53` 且 total 为 2 的
-    /// 幂时 `fl(u·total)` 恰舍入到 total,`cums` 末项 ≤ target 使
-    /// partition_point 取到 len(此前越界 panic)。此时落回最后一个正权重
-    /// 项——尾段零权重项与末项并列不可入选,正权重项加载期已保证存在。
+    /// 越界根治(2026-11-12 审核修复批 P1):`u = 1-2^-53` 时 `fl(u·total)`
+    /// 可能恰等于 total——条件是 `total - u·total ≈ 2^-53·total` 小于半个
+    /// ULP(total),即 total 量级接近最小正规数/次正规数(1e-308、1e-323 等;
+    /// 常规量级下差值远大于半个 ULP,必舍到更小的邻近值)。此时 `cums` 末项
+    /// ≤ target 使 partition_point 取到 len(此前越界 panic)。落回最后一个正
+    /// 权重项——尾段零权重项与末项并列不可入选,正权重项加载期已保证存在。
     /// 界内路径与既有抽取语义逐位一致。
     pub fn pick(&self, draw: Draw) -> usize {
         let target = draw.f64() * self.total;
@@ -455,12 +457,20 @@ mod tests {
         assert!(err.contains("总和"), "{err}");
     }
 
-    /// u = 1-2^-53 且 total 为 2 的幂时 fl(u·total) 舍入恰等于 total,
-    /// `cums` 末项 ≤ target 曾使 partition_point 取到 len 越界 panic;
-    /// 现落回最后一个正权重项,尾段零权重项不入选。
+    /// 越界根治的可达触发(2026-11-12 审核复核):`u = 1-2^-53` 且 total 量级
+    /// 接近最小正规数时(差值 2^-53·total 小于半个 ULP(total)),`fl(u·total)`
+    /// 恰舍入回 total,`cums` 末项 ≤ target 曾使 partition_point 取到 len
+    /// 越界 panic;现落回最后一个正权重项,尾段零权重项不入选。常规量级
+    /// (如 [1,1])仍走界内路径,抽取语义逐位不变。
     #[test]
     fn weighted_table_pick_at_upper_draw_stays_in_bounds() {
-        let t = table(&[1.0, 1.0]); // total = 2.0,恰触发舍入贴边
+        // total = 2e-308:f64 网格上无更小邻近值可舍入到,恰触发越界
+        let t = table(&[1e-308, 1e-308]);
+        assert_eq!(t.pick(Draw(u64::MAX)), 1);
+        let t = table(&[1e-308, 1e-308, 0.0]);
+        assert_eq!(t.pick(Draw(u64::MAX)), 1);
+        // 常规量级:界内路径,末项同样不越界
+        let t = table(&[1.0, 1.0]);
         assert_eq!(t.pick(Draw(u64::MAX)), 1);
         let t = table(&[1.0, 1.0, 0.0]);
         assert_eq!(t.pick(Draw(u64::MAX)), 1);
