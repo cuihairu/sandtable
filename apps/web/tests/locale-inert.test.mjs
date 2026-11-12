@@ -158,7 +158,13 @@ if (!existsSync(pkgNode)) {
     assert.equal(snapAgain.runId, snap.runId, '实验哈希:同输入同 run_id(内容派生)')
     assert.equal(snapAgain.configHash, snap.configHash, 'config_hash 不随语言变')
     assert.equal(snapAgain.seed, snap.seed)
-    assert.deepEqual(runIndexEntryOf(snapAgain, check.config_hash), entry, '索引条目逐值不变')
+    // created_at_unix 是墙钟提交时间(非 locale 状态):两次独立提交跨秒边界
+    // 即不同,逐值比较只对内容派生字段成立——墙钟字段单独比大小。
+    const { created_at_unix: _at0, ...entryContent } = entry
+    const entryAgain = runIndexEntryOf(snapAgain, check.config_hash)
+    const { created_at_unix: at1, ...entryAgainContent } = entryAgain
+    assert.deepEqual(entryAgainContent, entryContent, '索引条目逐值不变(created_at_unix 另比)')
+    assert.ok(at1 >= _at0, '墙钟提交时间不回退')
     assert.equal(getState().selectedCandidateId, selId, '候选选中项保留')
     assert.equal(live().status, 'running', '运行状态不被切换扰动')
     assert.equal(live().done, 0, '真实进度无假推进')
