@@ -36,9 +36,11 @@ test('WB-07.03/05:扫描按已校验计划逐候选调用 runSweepCandidate;进�
   // 候选计数与结果随边界推进(0 = 起始态)
   const cands = patches.filter((p) => p.patch.exec?.candidatesDone !== undefined).map((p) => p.patch.exec.candidatesDone)
   assert.deepEqual(cands.filter((c) => c > 0), [1, 2, 3])
-  // 无定时器:进度补丁数 = 边界数(不随时间增长)
+  // 无定时器:进度补丁数 = 边界数(不随时间增长)——先留底数再观察,
+  // 之前断言写成 patches.length === patches.length 恒真,守卫从未生效
+  const patchesAtSettle = patches.length
   await new Promise((r) => setTimeout(r, 30))
-  assert.equal(patches.length, patches.length, '无定时器补丁(纯事件驱动)')
+  assert.equal(patches.length, patchesAtSettle, '无定时器补丁(纯事件驱动)')
 })
 
 test('WB-07.14:单候选 config_error 留在结果集;推荐仍基于完整候选集', async () => {
