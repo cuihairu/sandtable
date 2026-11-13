@@ -100,9 +100,9 @@ pub(crate) fn svg_chart(c: &Chart) -> String {
     let mut x1 = f64::NEG_INFINITY;
     let mut y0 = f64::INFINITY;
     let mut y1 = f64::NEG_INFINITY;
-    for i in 0..n {
-        x0 = x0.min(c.xs[i]);
-        x1 = x1.max(c.xs[i]);
+    for &x in c.xs {
+        x0 = x0.min(x);
+        x1 = x1.max(x);
     }
     for s in &c.series {
         for &y in s.ys.iter().take(n) {
