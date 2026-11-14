@@ -28,7 +28,7 @@
 - 指标在线聚合:留存 / 胜率 / 通胀 / sink_ratio / Power 分位快照,按 cohort 切片;保底抽卡的期望抽数
 - 随机函数扩展:加权表(加载期 CDF)、洗牌与无放回加权抽样、保底状态机、Box–Muller 正态、χ² 分布检验(`disttest`)
 - 报告与交换:单文件 HTML 报告、`.sandtable` 项目归档、双向 CSV 参数表、Arrow / Parquet(feature flag)
-- 桌面安装包:`desktop-package.yml` 构建 Windows msi+nsis / macOS dmg+app / Linux deb——手动 `workflow_dispatch` + 定时夜间滚动构建(每日一查,交付滞后上界 48 小时),滚动产物为移动 `nightly` tag 下的预发布;CI 每腿实证装完即跑(裸产物 + 安装产物各 20s 进程存活);不打版本 tag、不建正式 Release,未验收二进制不进 Releases 页面
+- 桌面安装包:`desktop-package.yml` 构建 Windows msi+nsis / macOS dmg+app / Linux deb+rpm——手动 `workflow_dispatch` + 定时夜间滚动构建(每日一查,交付滞后上界 48 小时),滚动产物为移动 `nightly` tag 下的预发布(桌面安装器与无界面 Linux CLI tar.gz);CI 每腿实证装完即跑(裸产物 + 安装产物各 20s 进程存活);不打版本 tag、不建正式 Release,未验收二进制不进 Releases 页面
 - 测试:解析解对照、同 seed 逐字节确定性、黄金快照,以及把 CLI ↔ Web(WASM)↔ 桌面锁到同一内核的等价测试
 - Python 绑定:pyo3 + maturin 扩展模块(`sandtable-sim` wheel;load / run / sweep / recommend / params 只读面 + 阶段 3 日粒度读态回调 `run_with_day_hook`),py_parity 把 Python ↔ CLI 锁到同一内核——[crate README](crates/sandtable-python/README.md)
 - 引擎 Adapter:引擎无关 JSON 契约(`sandtable-engine` crate;导出语义层数值面 + 参考导入器 + 回流约定,契约文件 `.engine.json`),roundtrip 回归把契约与 core 锁到同一来源——[crate README](crates/sandtable-engine/README.md)
@@ -48,7 +48,7 @@ sandtable validate --days 30                                # 校验参数
 
 ## 文档结构
 
-计划原文为单体文档(中文原文存档于 `docs/zh/计划-原始.md`,英文对照版 `docs/计划-原始.md`),先拆分为 20 章,后增补宝可梦案例、Web 端、类型矩阵、随机函数、公式曲线与配置开关效果六章。章节与原计划的对应关系:
+计划原文为单体文档(中文原文存档于 `docs/zh/计划-原始.md`,英文对照版 `docs/计划-原始.md`),先拆分为 20 章,后增补宝可梦案例、Web 端、类型矩阵、随机函数、公式曲线、配置开关效果、架构分层与术语表八章。章节与原计划的对应关系:
 
 | 章节 | 内容 | 原计划 |
 | --- | --- | --- |
@@ -78,6 +78,8 @@ sandtable validate --days 30                                # 校验参数
 | [24 随机函数与概率系统](docs/zh/guide/24-random-functions.md) | 加权表、保底、正态、卡方与分期 | — |
 | [25 常用函数与曲线](docs/zh/guide/25-formulas-and-curves.md) | 内置函数速查与真实求值器生成的曲线库 | — |
 | [26 配置开关效果](docs/zh/guide/26-config-effects.md) | 配置开关及其渲染的 off/on 效果 | — |
+| [27 架构分层](docs/zh/guide/27-architecture-layers.md) | 内核 / 壳层 / Web 工作台分层与源码指针 | — |
+| [28 术语表](docs/zh/guide/28-glossary.md) | 术语对照(英 / 中) | — |
 
 ## 许可证
 

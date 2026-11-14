@@ -12,7 +12,7 @@ This page records the responsibilities that already exist in the source tree. A 
 
 | # | Layer | Responsibility | Representative anchor |
 | --- | --- | --- | --- |
-| 1 | Scenario & Config Compilation | Parse scenario/experiment YAML, validate it against the registry, and compile one immutable in-memory `SimConfig`. | `crates/sandtable-core/src/scenario/file.rs:86`; `crates/sandtable-core/src/config/mod.rs:36` |
+| 1 | Scenario & Config Compilation | Parse scenario/experiment YAML, validate it against the registry, and compile one immutable in-memory `SimConfig`. | `crates/sandtable-core/src/scenario/file.rs:86`; `crates/sandtable-core/src/config/mod.rs:40` |
 | 2 | Simulation Core | Run deterministic event-driven systems over an in-memory world and produce per-replicate metrics. | `crates/sandtable-core/src/kernel.rs:123`; `crates/sandtable-core/src/world.rs:55` |
 | 3 | Experiment & Statistics | Sweep, optimize, compare, fit surrogates, and turn samples into statistically interpreted decisions. | `crates/sandtable-core/src/experiment/stats.rs:110`; `crates/sandtable-core/src/sweep.rs:174` |
 | 4 | Output Contract & Interop | Define stable artifacts and convert between internal results, JSON/CSV/Parquet/Arrow, project archives, XLSX, and engine inputs. | `crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35` |
@@ -28,7 +28,7 @@ This page records the responsibilities that already exist in the source tree. A 
 - **Modules:** `sandtable-core::scenario`, `sandtable-core::config`, `sandtable-core::registry`, and `sandtable-core::formula`.
 - **State:** no Redis, MySQL, disk, network, or wall-clock dependency. Its product is a compiled `SimConfig` owned by the caller. The core crate declares only serialization and error dependencies (`crates/sandtable-core/Cargo.toml:8`) and documents its purity at `crates/sandtable-core/src/lib.rs:3`.
 - **Call surface:** all shells call `scenario::load_str` or the experiment loaders before simulation; registry tree checks run inside loading (`crates/sandtable-core/src/scenario/loader.rs:16`).
-- **Configuration input:** `scenario` and `model` YAML map into `SimConfig` (`crates/sandtable-core/src/config/mod.rs:36`); experiment sections are accepted by validation and then dispatched by their own loaders (`crates/sandtable-core/src/scenario/loader.rs:22`).
+- **Configuration input:** `scenario` and `model` YAML map into `SimConfig` (`crates/sandtable-core/src/config/mod.rs:40`); experiment sections are accepted by validation and then dispatched by their own loaders (`crates/sandtable-core/src/scenario/loader.rs:22`).
 - **Lifecycle:** parse, validate, compile, hand off. The object is process-local and disappears with its owner.
 
 ### 2. Simulation Core
@@ -74,7 +74,7 @@ This page records the responsibilities that already exist in the source tree. A 
 ### 7. Web Workbench
 
 - **Modules:** `WorkbenchApp`, workbench stores, executor/run manager, worker protocol/sweep worker, project documents, routing, panels, and i18n dictionaries.
-- **State:** React memory for the active UI; browser `localStorage` for drafts/results/queue, locale, workspace layout, table preferences, and analysis preferences (`apps/web/src/workbench/state/workbenchStore.ts:35`; `apps/web/src/workbench/state/projectDoc.ts:672`; `apps/web/src/lib/i18n/localeStore.ts:9`). There is no application server or MySQL/Redis dependency.
+- **State:** React memory for the active UI; browser `localStorage` for drafts/results/queue, locale, workspace layout, table preferences, and analysis preferences (`apps/web/src/workbench/state/workbenchStore.ts:35`; `apps/web/src/workbench/state/projectDoc.ts:672`; `apps/web/src/lib/i18n/detect.ts:9`). There is no application server or MySQL/Redis dependency.
 - **Call surface:** a facade chooses desktop Tauri `invoke` or browser worker postMessage (`apps/web/src/lib/kernel.ts:48`, `:58`); worker requests/responses are versioned (`apps/web/src/workbench/state/workerProtocol.ts:11`); local-file query is desktop-only (`apps/web/src/lib/queryLocal.ts:13`).
 - **Configuration input:** editor YAML, presets, experiment plans, locale/layout/table preferences, and archived project documents. UI copy is centralized in `apps/web/src/lib/i18n/dict/en.ts` and `apps/web/src/lib/i18n/dict/zh.ts` (entries aggregating per-domain fragments in the zh/ and en/ subdirectories), keyed through the i18n layer.
 - **Lifecycle:** app/session → restore persisted drafts/jobs → dispatch execution → retain completed artifacts and UI state → close or migrate through explicit protocol versions. Desktop execution stops at replicate boundaries; browser execution stops at candidate/worker boundaries.
@@ -90,7 +90,7 @@ This page records the responsibilities that already exist in the source tree. A 
 ## Why the boundaries are split this way
 
 1. **LAY-001 — Keep simulation logic independent of transport.** `sandtable-core` states its no-I/O, no-wall-clock rule at `crates/sandtable-core/src/lib.rs:3`, and its dependency list is limited to serialization/error support at `crates/sandtable-core/Cargo.toml:8`. This lets CLI, WASM, Python, MCP, and desktop call one tested core instead of duplicating simulation behavior.
-2. **LAY-002 — Separate accepted text from compiled semantics.** YAML becomes a registry-checked tree before typed deserialization at `crates/sandtable-core/src/scenario/file.rs:86`, while the runtime consumes the compiled `SimConfig` at `crates/sandtable-core/src/config/mod.rs:36`. Experiments can therefore share one validation discipline without turning raw YAML into a runtime interface.
+2. **LAY-002 — Separate accepted text from compiled semantics.** YAML becomes a registry-checked tree before typed deserialization at `crates/sandtable-core/src/scenario/file.rs:86`, while the runtime consumes the compiled `SimConfig` at `crates/sandtable-core/src/config/mod.rs:40`. Experiments can therefore share one validation discipline without turning raw YAML into a runtime interface.
 3. **LAY-003 — Make determinism an explicit kernel contract.** `EventQueue` orders by `(tick, sequence)` so same-tick scheduling remains FIFO (`crates/sandtable-core/src/kernel.rs:67`), and keyed RNG derives replicate streams from the seed (`crates/sandtable-core/src/rng.rs:24`). Mixing this with UI or I/O code would make replication and debugging depend on accidental execution order.
 4. **LAY-004 — Isolate statistics from scenario mechanics.** Comparison is defined over result samples and metric statistics at `crates/sandtable-core/src/experiment/stats.rs:110`, while sweep specs expand separately at `crates/sandtable-core/src/sweep.rs:174`. Changing combat, economy, or gacha rules does not require changing confidence/decision logic.
 5. **LAY-005 — Own interchange formats at a boundary.** Export and engine-contract code define artifact shapes and validation separately from execution (`crates/sandtable-core/src/export.rs:13`; `crates/sandtable-engine/src/contract.rs:35`). Consumers can read stable files without importing kernel internals or re-running a simulation.

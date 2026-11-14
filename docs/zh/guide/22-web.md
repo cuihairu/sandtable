@@ -97,7 +97,7 @@ SVG 导出（WB-09.05）序列化分析页当前指标的主图：所选候选�
 - `web` job:wasm-pack `--release` 出 pkg → `npm ci` → `npm run build`(类型检查 + 打包,断言产物含 .wasm)→ **`node --test` 前端守卫**(`tests/columns.test.mjs` 列归一含 BigInt、`tests/presets.test.mjs` 预设过真实 wasm 内核、`tests/project.test.mjs` 打包/解包闭环 + 路径纪律 + 打包产物过真实内核,后两条需 pkg-node);
 - `desktop-smoke` job(2026-10-13):wasm-pack `--target web --dev` 出 pkg(桌面壳 custom-protocol 编译期内嵌 `web/dist`,tsc 也要解析 file:pkg 类型)→ 前端构建 → Xvfb 无头拉起壳截屏判定(启动链门,配方见 `scripts/desktop_smoke.sh`)。
 
-独立工作流 `.github/workflows/desktop-package.yml`(2026-10-13,`workflow_dispatch` 手动触发):同一 wasm pkg + 前端产物前置 → `tauri-action` 打包三平台安装制品(Windows msi+nsis / macOS dmg+app / Linux deb)上传 artifacts——**不打 tag、不建 Release**,未验收的二进制不进 Releases 页面(版本号只由用户手动给出)。前端产物同样先行(custom-protocol 内联),故这条链也顺带覆盖 wasm 类型解析与前端打包。
+独立工作流 `.github/workflows/desktop-package.yml`(2026-10-13,`workflow_dispatch` 手动触发):同一 wasm pkg + 前端产物前置 → `tauri-action` 打包三平台安装制品(Windows msi+nsis / macOS dmg+app / Linux deb+rpm)上传 artifacts——**不打 tag、不建 Release**,未验收的二进制不进 Releases 页面(版本号只由用户手动给出)。前端产物同样先行(custom-protocol 内联),故这条链也顺带覆盖 wasm 类型解析与前端打包。
 
 ## 本地运行
 

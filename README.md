@@ -27,7 +27,7 @@
 - Online metric aggregation: retention / win rate / inflation / sink_ratio / power percentile snapshots, sliced by cohort; pulls-to-hit for pity-driven gacha
 - Random-function extension: weighted tables (compile-time CDF), shuffling and weighted sampling without replacement, pity state machines, Box–Muller normals, and a chi-square `disttest` for distribution checks
 - Reporting and exchange: single-file HTML reports, `.sandtable` project archives, a two-way CSV parameter table, and Arrow / Parquet behind a feature flag
-- Desktop packages: `desktop-package.yml` builds Windows msi+nsis / macOS dmg+app / Linux deb — manual `workflow_dispatch` plus a scheduled nightly rolling build that publishes a prerelease under the moving `nightly` tag (daily gate, up-to-48h delivery bound); every platform leg is CI-verified to install and run (raw + installed binaries, each alive 20s after launch); no version tags, no formal Releases — unaccepted binaries never ship
+- Desktop packages: `desktop-package.yml` builds Windows msi+nsis / macOS dmg+app / Linux deb+rpm — manual `workflow_dispatch` plus a scheduled nightly rolling build that publishes a prerelease under the moving `nightly` tag (desktop installers plus the headless Linux CLI `tar.gz`; daily gate, up-to-48h delivery bound); every platform leg is CI-verified to install and run (raw + installed binaries, each alive 20s after launch); no version tags, no formal Releases — unaccepted binaries never ship
 - Testing: closed-form cross-checks, byte-for-byte determinism under the same seed, golden snapshots, and equivalence tests locking CLI ↔ Web (WASM) ↔ Desktop to one kernel
 - Python bindings: a pyo3 + maturin extension module (`sandtable-sim` wheel; load / run / sweep / recommend / params, plus the stage-3 day-level read-only hook `run_with_day_hook`), with parity tests locking Python ↔ CLI to one kernel — [crate README](crates/sandtable-python/README.md)
 - Engine adapter: an engine-agnostic JSON contract (`sandtable-engine` crate; exports the semantic-layer numbers with a reference importer and backflow convention, contract files `.engine.json`), with roundtrip regression locking the contract to the same core — [crate README](crates/sandtable-engine/README.md)
@@ -47,7 +47,7 @@ A single run of 10k players × 30 days takes about 0.5 s (release build). The fu
 
 ## Documentation structure
 
-The original plan was a single monolithic document (Chinese original archived at `docs/zh/计划-原始.md`, English rendering at `docs/计划-原始.md`), later split into 20 chapters, with six more chapters added for the Pokémon case study, the Web form, the genre matrix, the random-function extension, the formula-curve reference and the config-switch effects. The mapping from chapters to the original plan:
+The original plan was a single monolithic document (Chinese original archived at `docs/zh/计划-原始.md`, English rendering at `docs/计划-原始.md`), later split into 20 chapters, with eight more chapters added for the Pokémon case study, the Web form, the genre matrix, the random-function extension, the formula-curve reference, the config-switch effects, the architecture-layer reference and the glossary. The mapping from chapters to the original plan:
 
 | Chapter | Contents | Original plan |
 | --- | --- | --- |
@@ -77,6 +77,8 @@ The original plan was a single monolithic document (Chinese original archived at
 | [24 Random functions](docs/guide/24-random-functions.md) | Weighted tables, pity, normals, chi-square and staging | — |
 | [25 Common functions and curves](docs/guide/25-formulas-and-curves.md) | Built-in function reference and evaluator-generated curve library | — |
 | [26 Config Switch Effects](docs/guide/26-config-effects.md) | Configuration toggles and their rendered off/on effects | — |
+| [27 Architecture layers](docs/guide/27-architecture-layers.md) | Kernel / shell / web-workbench layering with source pointers | — |
+| [28 Glossary](docs/guide/28-glossary.md) | Term reference, English / Chinese | — |
 
 ## License
 
