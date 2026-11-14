@@ -844,3 +844,4 @@
 ## 双语与自动语言切换（fleet-docs-audit-G2，2026-11-14）
 
 - [ ] P2 [m] docs 站自动语言探测（拍板项）：现状=`/`=en 与 `/zh/`=zh-CN 的 locale 路由 + 导航内置手动切换器（受规基线「手动切换+显式链接」满足）；首页自动探测脚本已于 2026-10-23/24 下线（docs/index.md 现仅提示手动切换）；工作台 UI 侧保留浏览器语言探测（lib/i18n/detect.ts：持久化手动选择 > navigator.languages > en-US，接入 workbench/state/localeStore.ts:38）。部署探针：`/` 200 / lang=en / 首屏 CJK 0，`/zh/` 200 / lang=zh-CN / CJK 24。建议保持手动=基线；是否给 docs 站恢复 `navigator.language` 自动跳转待用户拍板。证据：docs/审计-文档一致性.md G2 节。
+- [ ] P2 [m] 架构图 SVG 缺 MCP 节点（G2-11）：docs/public/architecture/system-{en,zh}{,-mobile}.svg 四张系统图仍无 sandtable-mcp 节点，而 README:34 与 docs/guide/08-tech-stack.md:89 已把 MCP 服务器列为并列消费面；同批已修数值通道 56→58、子命令 12→16、Tauri 命令 13→19（G2-9）。补节点须重排布局并做宽度审计，非纯文本替换，待拍板后单独处理。证据：docs/审计-文档一致性.md G2-11。

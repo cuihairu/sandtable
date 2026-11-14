@@ -29,7 +29,7 @@
   <rect x="30" y="266" width="420" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
   <text x="48" y="296" font-size="23" font-weight="600">param registry</text>
   <text x="48" y="322" font-size="18" class="sub">path · kind · default</text>
-  <text x="48" y="346" font-size="18" font-weight="500" class="sub">56 numeric channels · CSV in/out</text>
+  <text x="48" y="346" font-size="18" font-weight="500" class="sub">58 numeric channels · CSV in/out</text>
 </g>
 <g data-node="kpi-registry">
   <rect x="30" y="386" width="420" height="100" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
@@ -69,7 +69,7 @@
 <g data-node="cli">
   <rect x="30" y="1110" width="420" height="124" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
   <text x="48" y="1140" font-size="22" font-weight="600">sandtable-cli</text>
-  <text x="48" y="1166" font-size="18" class="sub">12 subcommands</text>
+  <text x="48" y="1166" font-size="18" class="sub">16 subcommands</text>
   <text x="48" y="1190" font-size="18" font-weight="500" class="sub">report.html · .sandtable archive</text>
   <text x="48" y="1214" font-size="18" font-weight="500" class="sub">params CSV · duckdb query</text>
 </g>

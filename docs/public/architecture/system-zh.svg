@@ -34,7 +34,7 @@
   <rect x="420" y="154" width="300" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
   <text x="438" y="187" font-size="23" font-weight="600">参数注册表</text>
   <text x="438" y="214" font-size="17" class="sub">path · kind · default</text>
-  <text x="438" y="236" font-size="14" font-weight="500" class="sub">56 个数值通道 · CSV 进出</text>
+  <text x="438" y="236" font-size="14" font-weight="500" class="sub">58 个数值通道 · CSV 进出</text>
 </g>
 <g data-node="kpi-registry">
   <rect x="830" y="154" width="280" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
@@ -74,7 +74,7 @@
 <g data-node="cli">
   <rect x="48" y="544" width="210" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
   <text x="66" y="572" font-size="20" font-weight="600">sandtable-cli</text>
-  <text x="66" y="596" font-size="17" class="sub">12 个子命令</text>
+  <text x="66" y="596" font-size="17" class="sub">16 个子命令</text>
   <text x="66" y="617" font-size="14" font-weight="500" class="sub">report.html · .sandtable</text>
   <text x="66" y="635" font-size="14" font-weight="500" class="sub">params CSV · duckdb query</text>
 </g>
@@ -99,7 +99,7 @@
 <g data-node="desktop">
   <rect x="968" y="544" width="262" height="104" rx="10" fill="#fff" stroke="#ced8e5" stroke-width="1.3"/>
   <text x="986" y="572" font-size="22" font-weight="600">sandtable-desktop</text>
-  <text x="986" y="596" font-size="17" class="sub">Tauri 2 · 13 条命令</text>
+  <text x="986" y="596" font-size="17" class="sub">Tauri 2 · 19 条命令</text>
   <text x="986" y="617" font-size="14" font-weight="500" class="sub">同一工作台 · 不走 wasm</text>
   <text x="986" y="635" font-size="14" font-weight="500" class="sub">原生 DuckDB 查询</text>
 </g>

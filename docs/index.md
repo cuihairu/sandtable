@@ -38,7 +38,7 @@ footer:
 
 ## Architecture
 
-One pure-Rust kernel, every consumer beside it — CLI, Web workbench (WASM), desktop shell (Tauri 2), Python bindings, and the game-engine contract. Simulation, analytics, and artifacts stay on the user's machine; there is no server anywhere in the loop. Solid lines are business / data flow, dashed lines are registry lookups:
+One pure-Rust kernel, every consumer beside it — CLI, Web workbench (WASM), desktop shell (Tauri 2), Python bindings, the MCP server, and the game-engine contract. Simulation, analytics, and artifacts stay on the user's machine; there is no server anywhere in the loop. Solid lines are business / data flow, dashed lines are registry lookups:
 
 <figure style="margin:0">
   <picture>
