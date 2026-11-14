@@ -1,6 +1,6 @@
 // WB-11.06/.07:初始 locale 解析。优先级固定为
-// 用户手动选择(持久化)> 浏览器/系统语言 > en-US 兜底,
-// 与 docs 站首页探测同一套口径(见 docs/index.md 语言探测段)。
+// 用户手动选择(持久化)> 浏览器/系统语言 > en-US 兜底。
+// 仅工作台 UI 用;docs 站为手动切换器,无自动探测(首页只留提示文案)。
 // storage 与系统语言列表都作参数注入:模块不碰 window/localStorage,
 // 因此 SSR 与节点测试都可直接调用;接线在应用入口(WB-11.05/.06 落位后)。
 import { DEFAULT_LOCALE, isLocale, type Locale } from './locales.ts'
