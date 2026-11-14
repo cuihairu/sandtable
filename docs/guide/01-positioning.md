@@ -58,4 +58,4 @@ Sandtable's product position is **assisting relative comparison and balance expl
 
 ## Reading Guide
 
-This site has 26 chapters: [Core concepts](./03-concepts.md) and the [Simulation kernel](./04-kernel.md) define "what is simulated"; the [Time model](./05-time-model.md) and [Deterministic RNG](./06-deterministic-rng.md) define "how to advance it reproducibly"; [Experiment pipeline](./11-experiment-pipeline.md) through [Balance recommendation](./15-recommendation.md) define "how to run experiments and draw conclusions"; the [MVP](./16-mvp.md) and the [Roadmap](./18-roadmap.md) define "what comes first and what comes later".
+This site has 28 chapters: [Core concepts](./03-concepts.md) and the [Simulation kernel](./04-kernel.md) define "what is simulated"; the [Time model](./05-time-model.md) and [Deterministic RNG](./06-deterministic-rng.md) define "how to advance it reproducibly"; [Experiment pipeline](./11-experiment-pipeline.md) through [Balance recommendation](./15-recommendation.md) define "how to run experiments and draw conclusions"; the [MVP](./16-mvp.md) and the [Roadmap](./18-roadmap.md) define "what comes first and what comes later".

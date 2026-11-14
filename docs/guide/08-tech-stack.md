@@ -22,6 +22,9 @@ flowchart TD
     CORE["sandtable-core<br>(pure Rust, no platform dependencies)"]
     CORE --> CLI["sandtable-cli<br>(clap)"]
     CORE --> WASM["sandtable-wasm<br>(wasm-bindgen, thin bindings)"]
+    CORE --> PY["sandtable-python<br>(pyo3, thin bindings)"]
+    CORE --> ENG["sandtable-engine<br>(JSON contract)"]
+    CORE --> MCP["sandtable-mcp<br>(stdio MCP server)"]
     CLI --> T1["Terminal / CI<br>(large-scale experiments)"]
     WASM --> WEB["apps/web<br>(React + TS + Vite)"]
     CORE --> TAURI["Desktop shell<br>(Tauri 2)"]
@@ -83,6 +86,7 @@ The MVP splits only two crates, avoiding over-engineering; platform shells and t
 | `sandtable-wasm` | wasm-bindgen thin bindings (`run_simulation` / `validate_config`, etc., **no simulation logic**) | Phase 6 |
 | `sandtable-python` | pyo3 + maturin thin bindings (`load / run / sweep / recommend / params` read-only surface + Phase 3 day-granularity read-state callback `run_with_day_hook`, **no simulation logic**) | Scripting layer Phases 1–3 (landed 2026-10-11) |
 | `sandtable-engine` | Engine-agnostic JSON contract thin shell (contract export (valid-value discipline) / reference importer / return conventions, **no simulation logic**) | Engine adapter (landed 2026-10-14, inspection R1 decides) |
+| `sandtable-mcp` | MCP server in Rust (official rmcp SDK over stdio, calls core natively — no wasm/Node hop; tools `sandtable_validate` / `sandtable_run` / `sandtable_plan_sweep` / `sandtable_analyze` / `sandtable_calibrate`; interaction budgets reject oversized runs) | MCP server (landed 2026-10-26) |
 | `apps/web` | React + TS + Vite frontend | Phase 6 |
 | `apps/desktop` | Tauri 2 shell | Phase 7 |
 | `sandtable-analytics` | Spun out only if the analytics layer (DuckDB queries, dataset construction) grows | Evaluate on demand |

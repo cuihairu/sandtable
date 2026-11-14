@@ -49,6 +49,10 @@ sandtable surrogate train sweep-out/ --metric retention_d7
 sandtable disttest normal --samples 100000 --buckets 20
 ```
 
+### Global override flags
+
+`simulate` / `compare` / `validate` additionally accept the common override flags, applied onto the loaded (or default) configuration before validation: `--players` (scenario.population), `--days` (scenario.duration), `--seed` (scenario.seed), and `--init-attack` (model.warrior.attack). The quick-start example `simulate --players 10000 --days 30` runs the built-in default scenario at an overridden scale without a YAML file.
+
 ### scaffold (new scenario skeleton)
 
 ```bash

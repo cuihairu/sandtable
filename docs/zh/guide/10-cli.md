@@ -50,6 +50,10 @@ sandtable surrogate train sweep-out/ --metric retention_d7
 sandtable disttest normal --samples 100000 --buckets 20
 ```
 
+### 全局覆盖参数
+
+`simulate` / `compare` / `validate` 还接受一组共用覆盖参数,在校验前套到已加载(或默认)配置上:`--players`(scenario.population)、`--days`(scenario.duration)、`--seed`(scenario.seed)与 `--init-attack`(model.warrior.attack)。quick-start 的 `simulate --players 10000 --days 30` 即在不写 YAML 的情况下以覆盖规模跑内置默认场景。
+
 ### scaffold(新场景骨架)
 
 ```bash

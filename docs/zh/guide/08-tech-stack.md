@@ -23,6 +23,9 @@ flowchart TD
     CORE["sandtable-core<br>(纯 Rust,禁平台依赖)"]
     CORE --> CLI["sandtable-cli<br>(clap)"]
     CORE --> WASM["sandtable-wasm<br>(wasm-bindgen,薄绑定)"]
+    CORE --> PY["sandtable-python<br>(pyo3,薄绑定)"]
+    CORE --> ENG["sandtable-engine<br>(JSON 契约)"]
+    CORE --> MCP["sandtable-mcp<br>(stdio MCP 服务器)"]
     CLI --> T1["终端 / CI<br>(大规模实验)"]
     WASM --> WEB["apps/web<br>(React + TS + Vite)"]
     CORE --> TAURI["桌面壳<br>(Tauri 2)"]
@@ -84,6 +87,7 @@ MVP 只拆两个 crate,避免过度工程化;平台壳与薄绑定/契约壳按�
 | `sandtable-wasm` | wasm-bindgen 薄绑定(`run_simulation` / `validate_config` 等,**不放仿真逻辑**) | Phase 6 |
 | `sandtable-python` | pyo3 + maturin 薄绑定(`load / run / sweep / recommend / params` 只读面 + 阶段 3 日粒度读态回调 `run_with_day_hook`,**不放仿真逻辑**) | 脚本层 Phase 1–3(2026-10-11 落地) |
 | `sandtable-engine` | 引擎无关 JSON 契约薄壳(契约导出(有效值纪律)/ 参考导入器 / 回流约定,**不放仿真逻辑**) | 引擎 Adapter(2026-10-14 落地,巡检 R1 代决) |
+| `sandtable-mcp` | Rust MCP 服务器(官方 rmcp SDK 走 stdio,内核直调——无 wasm/Node 中跳;工具 `sandtable_validate` / `sandtable_run` / `sandtable_plan_sweep` / `sandtable_analyze` / `sandtable_calibrate`;交互预算拒绝超限运行) | MCP 服务器(2026-10-26 落地) |
 | `apps/web` | React + TS + Vite 前端 | Phase 6 |
 | `apps/desktop` | Tauri 2 壳 | Phase 7 |
 | `sandtable-analytics` | 若分析层(DuckDB 查询、数据集构建)膨胀再独立 | 按需评估 |
