@@ -92,11 +92,13 @@ pub fn pick_tier(attack: i64, defense: i64, hp: i64, cfg: &SimConfig) -> u32 {
         // 期望口径(必中、零浮动)与 settle_battle 同式:比值口径下限同样取 1
         // (弱打强仍有少量伤害,轮数有限);差值口径承伤下限 0(打不穿 = 零承伤)
         let dmg_out = if ratio {
-            // 估算式全程饱和(2026-11-12 审核复核):练级增益累加走饱和后
-            // attack/defense/hp 可达 i64 边界,入口门不含 level_*_gain,
-            // 裸 i64 和/积在 debug 构建 panic、release 回绕使选层失真——
-            // 与 strike_damage 同口径
-            ((cfg.combat.ratio_k * attack as f64 / attack.saturating_add(m.defense) as f64) as i64)
+            // 分母与 strike_damage 同口径(2026-11-15 审核复核):两处都先在
+            // f64 域相加再算比值。练级增益可把 attack/defense 推入 i64 边界,
+            // 入口门不含 level_*_gain;若这里改走 i64 饱和相加,巨值会被
+            // 截在 i64::MAX,f64 侧仍继续增长,估算伤害与实战伤害系统性偏离
+            // (attack=i64::MAX、defense≈1e15、ratio_k=10 时估算 10 / 实际 9,
+            // 使 200 血怪物被算成 20 轮可清而非 23 轮,选层突破轮数预算)
+            ((cfg.combat.ratio_k * attack as f64 / (attack as f64 + m.defense as f64)) as i64)
                 .max(1)
         } else {
             attack.saturating_sub(m.defense).max(1)
@@ -106,15 +108,20 @@ pub fn pick_tier(attack: i64, defense: i64, hp: i64, cfg: &SimConfig) -> u32 {
             continue;
         }
         let dmg_in = if ratio {
-            ((cfg.combat.ratio_k * m.attack as f64 / m.attack.saturating_add(defense) as f64)
-                as i64)
+            // 与 dmg_out 同口径:分母在 f64 域相加,见上(2026-11-15)
+            ((cfg.combat.ratio_k * m.attack as f64 / (m.attack as f64 + defense as f64)) as i64)
                 .max(1)
         } else {
             m.attack.saturating_sub(defense).max(0)
         };
         if dmg_in > 0 {
             let incoming = (rounds as f64 * cfg.combat.p_hit_monster * dmg_in as f64) as i64;
-            if incoming > hp.saturating_mul(8).saturating_div(10) {
+            // 「生命八成」取精确整数解:先除后补余,乘积不落 i64 域。
+            // hp 可达 i64 边界(练级 hp 增益饱和所致),饱和乘法会先截断乘积
+            // ——hp=i64::MAX 时阈值为 922337203685477580 而非 7378697629483820645,
+            // 承伤守卫因此系统性偏严,把本可上最高层的选择判为送死(2026-11-15)
+            let threshold = hp / 10 * 8 + (hp % 10) * 8 / 10;
+            if incoming > threshold {
                 continue;
             }
         }
@@ -198,7 +205,9 @@ pub fn settle_battle(
             let var = rng
                 .draw_indexed(Purpose::CombatDamage, m_base + r)
                 .range_i64(-c.dmg_var, c.dmg_var);
-            a_hp -= strike_damage(cfg, monster.attack, defense, var);
+            // 承伤同样走饱和:入口门不含 level_*_gain,负增益可把 hp 推成负数,
+            // 负 a_hp 再减正伤害会溢出 i64(debug panic / release 回绕)
+            a_hp = a_hp.saturating_sub(strike_damage(cfg, monster.attack, defense, var));
         }
         if a_hp <= 0 {
             return BattleOutcome {
@@ -316,5 +325,116 @@ mod tests {
         assert!(pick_tier(i64::MAX, i64::MAX, i64::MAX, &ratio) < ratio.dungeon.tiers);
         // 差值口径同值边界
         assert!(pick_tier(i64::MAX, i64::MIN, i64::MAX, &diff) < diff.dungeon.tiers);
+    }
+
+    /// 2026-11-15 审核复核(2026-11-13 深审 Critical):练级增益无正门,
+    /// `level_hp_gain` 可为负并经饱和累加把 hp 推成负数;负 a_hp 再减正伤害
+    /// 溢出 i64(debug panic / release 回绕成正,漏判败北)。
+    #[test]
+    fn settle_battle_tolerates_negative_hp_from_level_gains() {
+        // p_hit=0 使玩家永不命中,承伤每轮必发生,路径最短且无随机分岔
+        let cfg = SimConfig {
+            combat: CombatConfig {
+                p_hit: 0.0,
+                ..CombatConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        let m = Monster {
+            tier: 0,
+            hp: 10,
+            attack: 100,
+            defense: 1,
+            gold: 5,
+            xp: 1,
+        };
+        let out = settle_battle(
+            100,
+            1,
+            i64::MIN,
+            &m,
+            &mut crate::rng::DayRng::new(7, 1, 1),
+            0,
+            &cfg,
+        );
+        assert!(!out.win);
+        assert_eq!(out.gold, 0);
+        assert_eq!(out.xp, 0);
+    }
+
+    /// 2026-11-15 审核复核(2026-11-13 深审 Major):估算分母与实战公式分叉——
+    /// 估算计 i64 饱和相加、strike_damage 算 f64 相加,巨值处差一档伤害。
+    /// attack=i64::MAX、defense=1e15、ratio_k=10 时估算 10、实际 9:200 血
+    /// 怪物被算成 20 轮可清(实际 23 轮),选层突破清剿预算。
+    #[test]
+    fn pick_tier_denominator_matches_strike_damage_at_bounds() {
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 2,
+                tier_table: Some(vec![
+                    TierRow {
+                        hp: 10,
+                        attack: 1,
+                        defense: 1,
+                        gold: None,
+                        xp: None,
+                    },
+                    TierRow {
+                        hp: 200,
+                        attack: 1,
+                        defense: 1_000_000_000_000_000,
+                        gold: None,
+                        xp: None,
+                    },
+                ]),
+                ..DungeonConfig::default()
+            },
+            combat: CombatConfig {
+                damage_model: Some(DamageModel::Ratio),
+                ratio_k: 10.0,
+                ..CombatConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        let w = &cfg.warrior;
+        assert_eq!(pick_tier(i64::MAX, w.defense, w.hp, &cfg), 0);
+    }
+
+    /// 2026-11-15 审核复核(2026-11-13 深审 Major):「生命八成」走饱和乘法时
+    /// 乘积先被截在 i64::MAX,hp=i64::MAX 的阈值实际 922337203685477580
+    /// (精确值 7378697629483820645),承伤守卫系统性偏严。预计承伤 2e18
+    /// 本应上最高层,旧式落回低层。
+    #[test]
+    fn pick_tier_threshold_is_exact_eight_tenths_of_hp() {
+        let cfg = SimConfig {
+            dungeon: DungeonConfig {
+                tiers: 2,
+                tier_table: Some(vec![
+                    TierRow {
+                        hp: 10,
+                        attack: 1,
+                        defense: 1,
+                        gold: None,
+                        xp: None,
+                    },
+                    TierRow {
+                        hp: 1,
+                        attack: 1,
+                        defense: 1,
+                        gold: Some(100),
+                        xp: None,
+                    },
+                ]),
+                ..DungeonConfig::default()
+            },
+            combat: CombatConfig {
+                damage_model: Some(DamageModel::Ratio),
+                ratio_k: 4.0e18,
+                p_hit_monster: 1.0,
+                ..CombatConfig::default()
+            },
+            ..SimConfig::default()
+        };
+        assert_eq!(pick_tier(1, 1, i64::MAX, &cfg), 1);
     }
 }
