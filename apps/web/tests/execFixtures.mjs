@@ -56,12 +56,19 @@ export function jobPatchSink() {
   }
 }
 
-// 有界轮询:条件满足即返回;超时后照常走到断言(真挂起照常失败)。
+// 有界轮询:条件满足即返回;超时显式抛错(2026-11-15 审核复核)。
+// 原先超时静默返回,把失败兜底全押在「调用方随后有后置断言」上——
+// runManager.test.mjs:59 超时后紧接 resetForTest、:690 之后只断言无关的
+// 导入守卫,恒假条件也能 21 项全绿。真挂起必须在这里就红。
 // 完成性断言禁用固定时长窗口:CI/高负载下窗口贴着串行下限,时序竞态
 // 被放大成假失败(「并发队列」等用例 6ab266b 起同款修法,逐步全量替换)。
 export async function waitUntil(cond, timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline && !cond()) {
+  for (;;) {
+    if (cond()) return
+    if (Date.now() >= deadline) {
+      throw new Error(`waitUntil 超时(${timeoutMs}ms):等待条件始终未成立`)
+    }
     await new Promise((resolve) => setTimeout(resolve, 2))
   }
 }
