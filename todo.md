@@ -848,7 +848,8 @@
   ✅ 2026-11-15 修正(d56e45e):807-808 行已改为如实两段式(11-12 批=溢出防护完成、「同口径」声称不实;11-15 批=三处语义补齐+测试证据),见上。
 ## 双语与自动语言切换（fleet-docs-audit-G2，2026-11-14）
 
-- [ ] P2 [m] docs 站自动语言探测（拍板项）：现状=`/`=en 与 `/zh/`=zh-CN 的 locale 路由 + 导航内置手动切换器（受规基线「手动切换+显式链接」满足）；首页自动探测脚本已于 2026-10-23/24 下线（docs/index.md 现仅提示手动切换）；工作台 UI 侧保留浏览器语言探测（lib/i18n/detect.ts：持久化手动选择 > navigator.languages > en-US，接入 workbench/state/localeStore.ts:38）。部署探针：`/` 200 / lang=en / 首屏 CJK 0，`/zh/` 200 / lang=zh-CN / CJK 24。建议保持手动=基线；是否给 docs 站恢复 `navigator.language` 自动跳转待用户拍板。证据：docs/审计-文档一致性.md G2 节。
+- [x] P2 [m] docs 站自动语言探测（拍板项）：现状=`/`=en 与 `/zh/`=zh-CN 的 locale 路由 + 导航内置手动切换器（受规基线「手动切换+显式链接」满足）；首页自动探测脚本已于 2026-10-23/24 下线（docs/index.md 现仅提示手动切换）；工作台 UI 侧保留浏览器语言探测（lib/i18n/detect.ts：持久化手动选择 > navigator.languages > en-US，接入 workbench/state/localeStore.ts:38）。部署探针：`/` 200 / lang=en / 首屏 CJK 0，`/zh/` 200 / lang=zh-CN / CJK 24。建议保持手动=基线；是否给 docs 站恢复 `navigator.language` 自动跳转待用户拍板。证据：docs/审计-文档一致性.md G2 节。
+  ✅ 2026-11-21 用户拍板（无代码改动，故本行无 commit hash）：保持手动=基线——不恢复 docs 站 `navigator.language` 自动跳转；现状已满足受规基线「手动切换+显式链接」，维持 `/`=en、`/zh/`=zh-CN 路由 + 导航手动切换器，工作台 UI 侧自动探测保留不变。
 - [ ] **BLOCKED** P2 [m] 架构图 SVG 缺 MCP 节点（G2-11）。缺:用户拍板是否为四张手绘系统图做重排级重绘(非纯文本替换:顶部消费行 cli/wasm/python/engine/artifacts 已满,任一竖列穿过节点或标签;可行方案=mcp 落 y=680 行、底行 artifacts/web/templates/engine 下移 110、画布 840→950、边从 kernel 经 engine|desktop 20px 缝隙 x≈960 引下,en/zh 桌面 + en/zh 移动四文件同改并做宽度审计);不拍板则维持现状=README:34 与 docs/guide/08 已文字记载 MCP 为并列消费面,图缺节点属已登记的 P2 差异。证据:docs/审计-文档一致性.md G2-11。原登记(2026-11-15):docs/public/architecture/system-{en,zh}{,-mobile}.svg 四张系统图仍无 sandtable-mcp 节点，而 README:34 与 docs/guide/08-tech-stack.md:89 已把 MCP 服务器列为并列消费面；同批已修数值通道 56→58、子命令 12→16、Tauri 命令 13→19（G2-9）。补节点须重排布局并做宽度审计，非纯文本替换，待拍板后单独处理。证据：docs/审计-文档一致性.md G2-11。
 
 ## 依赖与维护巡检（2026-11-21 续轮，巡检单 continue-r2）
