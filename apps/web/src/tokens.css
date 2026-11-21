@@ -46,11 +46,12 @@
   --wb-font-ui: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --wb-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 
-  /* 字阶(正文 13 / 表格 12 / 辅助 10-11 / 标题 19——MASTER) */
+  /* 字阶(正文 13 / 表格 12 / 辅助 11-12 / 标题 19——2026-11-21 用户走查:
+     9-10px 字号在真机上挤压不可读,caption 由 10 提至 11,caption-lg 由 11 提至 12) */
   --wb-fs-body: 13px;
   --wb-fs-table: 12px;
-  --wb-fs-caption: 10px;
-  --wb-fs-caption-lg: 11px;
+  --wb-fs-caption: 11px;
+  --wb-fs-caption-lg: 12px;
   --wb-fs-title: 19px;
   --wb-lh: 1.5;
 
