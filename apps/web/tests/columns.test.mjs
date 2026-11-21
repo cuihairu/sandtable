@@ -31,6 +31,21 @@ test('BigInt 列归一为 number(WebKit ToBigInt 崩溃边界)', () => {
   for (const v of out[1].values) assert.equal(typeof v, 'number')
 })
 
+test('Int64 列 toArray() 返回 BigInt64Array(类型化数组)也归一为 number(2026-11-21 桌面查询崩)', () => {
+  // duckdb-wasm 对 Int64 列 toArray() 返回 BigInt64Array(非普通数组);
+  // 旧 toColumns 直接 .map 会在类型化数组上回调返回 number 被强转回 BigInt
+  // 而 throw「Cannot convert 80 to a BigInt」(Windows 真机走查复现)。
+  const out = toColumns(fakeTable([
+    ['model.warrior.attack', new BigInt64Array([80n, 85n, 90n])],
+    ['replicates', new BigInt64Array([20n, 20n, 20n])],
+    ['win_rate_pct', new Float64Array([54.2, 56.8, 59.7])],
+  ]))
+  assert.deepEqual(out[0].values, [80, 85, 90])
+  assert.deepEqual(out[1].values, [20, 20, 20])
+  assert.deepEqual(out[2].values, [54.2, 56.8, 59.7])
+  for (const c of out) for (const v of c.values) assert.equal(typeof v, 'number')
+})
+
 test('字符串与 null 原样透传,不误转数字', () => {
   const out = toColumns(fakeTable([
     ['tag', ['core', 'whale', null]],

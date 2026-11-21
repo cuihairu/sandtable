@@ -9,14 +9,21 @@ export type QueryColumn = { name: string; values: (string | number | null)[] }
  * WebKit(JSC)下流向 React 渲染会 throw「Invalid argument type in
  * ToBigInt operation」(2026-10-13 无头走查,ErrorBoundary 把白屏换成
  * 这条文案才定位到)。指标值域在 2^53 内,序列化边界统一归一 number,
- * 浏览器/壳两端行为一致。 */
+ * 浏览器/壳两端行为一致。
+ *
+ * 先 Array.from 再 map:toArray() 对 Int64 列返回 BigInt64Array(类型化
+ * 数组,非普通数组),其 .map 结果仍是指向 BigInt64Array 的类型化数组,
+ * 回调返回值被强转回 BigInt——归一回调返回 number 反而 throw
+ * 「Cannot convert 80 to a BigInt」(2026-11-21 Windows 真机走查,桌面
+ * 查询对演示候选表 SELECT * 即崩)。先摊平成普通数组,map 才按普通数组
+ * 语义返回 number。 */
 export function toColumns(table: {
   schema: { fields: { name: string }[] }
   getChild: (name: string) => { toArray: () => unknown[] } | null
 }): QueryColumn[] {
   return table.schema.fields.map((f) => ({
     name: f.name,
-    values: ((table.getChild(f.name)?.toArray() ?? []) as unknown[]).map((v) =>
+    values: Array.from(table.getChild(f.name)?.toArray() ?? []).map((v) =>
       typeof v === 'bigint' ? Number(v) : (v as string | number | null),
     ),
   }))
